@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Mes Bibliothèques BD</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link active">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">📚</span> <span class="header-title-full">Mes Bibliothèques BD</span><span class="header-title-short">Bibliothèques</span></h1>
+                        <p class="subtitle">Gérez vos collections de bandes dessinées</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+
+                    <!-- Barre de recherche globale -->
+                    <div style="margin-bottom: 30px;">
+                        <input type="text" id="global-search" class="search-input" placeholder="🔍 Rechercher une série dans toutes les bibliothèques..."
+                               onkeyup="searchSeriesGlobal()"
+                               style="width: 100%; padding: 12px 15px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 1em;">
+                        <div id="search-results-container" style="margin-top: 15px;"></div>
+                    </div>
+
+                    <div style="margin-bottom: 30px;">
+                        <button class="btn btn-success" onclick="openCreateModal()">
+                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14" /><path d="M12 5v14" /></svg> Créer une bibliothèque
+                        </button>
+                    </div>
+
+                    <div id="libraries-container">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Chargement des bibliothèques...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de création de bibliothèque -->
+    <div class="modal" id="create-modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeCreateModal()">×</span>
+            <h2 style="margin-bottom: 25px;">Créer une nouvelle bibliothèque</h2>
+
+            <form id="create-form" onsubmit="createLibrary(event)">
+                <div class="form-group">
+                    <label for="library-name">Nom de la bibliothèque *</label>
+                    <input type="text" id="library-name" required placeholder="Ma collection de BD">
+                </div>
+
+                <div class="form-group">
+                    <label for="library-path">Chemin du dossier *</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="library-path" required placeholder="/chemin/vers/mes/bd" style="flex: 1;">
+                    </div>
+                    <input type="file" id="folder-browser" webkitdirectory directory multiple style="display: none;" onchange="handleFolderSelect(event)">
+                    <small style="color: #666; font-size: 0.85em;">
+                        Le chemin complet du dossier contenant vos bandes dessinées. Avec Docker, utilisez les chemins montés dans docker-compose (ex: /library/Ma Bibliotheque). Les espaces dans le nom du dossier sont supportés.
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="library-description">Description (optionnel)</label>
+                    <textarea id="library-description" placeholder="Collection principale de bandes dessinées"></textarea>
+                </div>
+
+                <!-- "I want to set up adding a new bibliothèque from existing files. it
+                     will need to match series and checking current comicinfo" - coché
+                     par défaut car c'est le cas d'usage visé par cette case (un dossier
+                     qui contient déjà des BD) ; décochable pour une bibliothèque
+                     volontairement vide (future zone de téléchargement, rien à scanner
+                     tout de suite). Voir startLibraryOnboarding (index.js). -->
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+                        <input type="checkbox" id="library-onboard-existing" checked>
+                        Ce dossier contient déjà des fichiers - scanner et matcher automatiquement sur Bédéthèque après la création
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn" onclick="closeCreateModal()">Annuler</button>
+                    <button type="submit" class="btn btn-success">Créer</button>
+                </div>
+            </form>
+
+            <!-- Remplace #create-form pendant l'import guidé (scan + matching) - voir
+                 startLibraryOnboarding/pollLibraryOnboarding, index.js. -->
+            <div id="onboard-progress" style="display:none;">
+                <div class="loading"><div class="spinner"></div><p id="onboard-progress-text">Analyse du dossier...</p></div>
+            </div>
+            <div id="onboard-summary" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/index.js') }}?v={{ asset_version('js/index.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/match-modal.js') }}?v={{ asset_version('js/match-modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/library.js') }}?v={{ asset_version('js/library.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

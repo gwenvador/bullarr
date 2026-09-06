@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Déconnexion</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            max-width: 420px;
+            width: 100%;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06);
+            padding: 48px 40px;
+            text-align: center;
+        }
+        .login-container h1 {
+            font-size: 1.6em;
+            margin-bottom: 8px;
+        }
+        .login-container .subtitle {
+            color: #666;
+            margin-bottom: 24px;
+        }
+        .login-container .btn {
+            width: 100%;
+        }
+        .logout-provider-link {
+            display: block;
+            margin-top: 16px;
+            font-size: 0.85em;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>✅ Déconnecté</h1>
+        <p class="subtitle">Vous avez été déconnecté de Bullarr.</p>
+        <a href="/login" class="btn btn-success">Se reconnecter</a>
+        {% if show_provider_link %}
+        <a href="/logout/provider" class="logout-provider-link">Se déconnecter aussi du fournisseur SSO</a>
+        {% endif %}
+    </div>
+</body>
+</html>

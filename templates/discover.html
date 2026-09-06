@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Découvrir et ajouter des séries</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-discover.css') }}?v={{ asset_version('css/style-discover.css') }}">
+    <!-- Tableau compact de résultats EBDZ/Prowlarr (voir search-results-table.js), même
+         style que la page Recherche et la modale de remplacement d'un tome -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link active">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">🎯</span> <span class="header-title-full">Découvrir et ajouter des séries</span><span class="header-title-short">Rechercher</span></h1>
+                        <p class="subtitle">Cherchez, sélectionnez une bibliothèque, puis trouvez des sources</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+            <!-- ÉTAPE 1: Recherche sur Bedetheque -->
+            <section class="step" id="step-1">
+                <div class="step-header">
+                    <h2>📖 Étape 1: Rechercher une série</h2>
+                </div>
+
+                <div class="search-box">
+                    <input
+                        type="text"
+                        id="seriesNameInput"
+                        class="search-input"
+                        placeholder="Entrez le nom d'une série..."
+                        onkeypress="if(event.key === 'Enter') searchBedethequeSeries()"
+                    >
+                    <button class="btn-icon-search" onclick="searchBedethequeSeries()" title="Chercher sur Bedetheque">
+                        <img src="{{ url_for('static', filename='img/bedetheque-logo.png') }}" alt="Bedetheque">
+                    </button>
+                </div>
+
+                <div id="bedetheque-search-loading" class="loading" style="display:none;">
+                    Recherche en cours sur Bedetheque...
+                </div>
+
+                <div id="bedetheque-search-results" class="results-box" style="display:none;">
+                    <div class="results-header">
+                        <h3>Résultats trouvés</h3>
+                        <span id="results-count" class="results-count"></span>
+                        <input
+                            type="text"
+                            id="results-filter"
+                            class="results-filter-input"
+                            placeholder="🔍 Filtrer les résultats..."
+                            oninput="filterBedethequeResults()"
+                        >
+                    </div>
+                    <div id="results-list" class="results-list"></div>
+                </div>
+
+                <div id="bedetheque-search-error" class="error-box" style="display:none;"></div>
+            </section>
+
+            <!-- Choix de la bibliothèque : n'apparaît que s'il y en a plusieurs (suite de
+                 l'étape 1, sous les résultats - pas un écran séparé). Toutes les infos de
+                 la série (couverture, tags, auteurs...) sont déjà visibles sur sa carte
+                 dans les résultats, pas besoin de les répéter ici -->
+            <section class="step" id="step-2" style="display:none;">
+                <div class="step-header">
+                    <h2>📚 Choisir une bibliothèque</h2>
+                    <button class="btn-secondary" onclick="resetToStep1()">Changer de série</button>
+                </div>
+
+                <div class="library-selection">
+                    <div id="libraries-list" class="libraries-list"></div>
+                </div>
+
+                <div id="series-verification-loading" class="loading" style="display:none;">
+                    📁 Vérification de la série...
+                </div>
+
+                <div id="library-error" class="error-box" style="display:none;"></div>
+            </section>
+
+            <!-- ÉTAPE 3: Recherche dans les sources (EBDZ + Prowlarr) -->
+            <section class="step" id="step-3" style="display:none;">
+                <div class="step-header">
+                    <h2>🔗 Étape 2: Chercher les sources</h2>
+                    <button class="btn-secondary" onclick="resetToStep2()">Changer de bibliothèque</button>
+                </div>
+
+                <div class="sources-info">
+                    <div class="selected-summary">
+                        <h3>Résumé</h3>
+                        <div id="selection-summary" class="summary-box"></div>
+                    </div>
+
+                    <div class="sources-search">
+                        <h3>Recherche dans les sources</h3>
+                        <!-- "dans chercher les sources il faudrait aussi que je puisse modifier la
+                             recherche exacte" - même besoin/pattern déjà couvert côté fiche série
+                             (search-modal-manual-title, library.js): le titre suivi en base ne
+                             correspond pas toujours à la façon dont une release est nommée chez
+                             les indexeurs. Pré-rempli avec le titre de la série (voir
+                             displaySourceSelection), modifiable avant de lancer la recherche. -->
+                        <input type="text" id="sources-search-query" class="sources-search-query-input" placeholder="Terme de recherche" onkeydown="if(event.key==='Enter') searchSources();">
+                        <div class="source-controls">
+                            <label class="source-toggle" title="Inclure EBDZ dans la recherche">
+                                <input type="checkbox" id="search-ebdz" checked>
+                                <img src="/static/img/ebdz-logo.png" alt="" class="source-toggle-icon">
+                                <span>EBDZ</span>
+                            </label>
+                            <label class="source-toggle" title="Inclure Prowlarr dans la recherche">
+                                <input type="checkbox" id="search-prowlarr" checked>
+                                <img src="/static/img/prowlarr-logo.svg" alt="" class="source-toggle-icon">
+                                <span>Prowlarr</span>
+                            </label>
+                            <label class="source-toggle" title="Inclure Telegram dans la recherche">
+                                <input type="checkbox" id="search-telegram" checked>
+                                <img src="/static/img/telegram-logo.svg" alt="" class="source-toggle-icon">
+                                <span>Telegram</span>
+                            </label>
+                            <label class="source-toggle" title="Inclure la recherche web (fourtoutici et Anna’s Archive)">
+                                <input type="checkbox" id="search-web-archive" checked>
+                                <img src="/static/img/web-logo.svg" alt="" class="source-toggle-icon">
+                                <span>Recherche web</span>
+                            </label>
+                            <button type="button" class="btn-search-sources" onclick="searchSources()">
+                                <span aria-hidden="true"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg></span> Rechercher
+                            </button>
+                        </div>
+
+                        <!-- "met une option pour recherche automatique dans étape 2 et donc ne pas
+                             faire de recherche manuelle" - alternative à la recherche manuelle
+                             ci-dessus (voir auto_acquire.py/runAutoAcquireNow, discover.js). -->
+                        <div class="source-controls" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--color-border);">
+                            <button type="button" class="btn-search-sources" id="auto-acquire-now-btn" onclick="runAutoAcquireNow()" data-tooltip="Cherche et télécharge directement chaque tome manquant trouvé avec confiance, sans recherche manuelle">
+                                <span aria-hidden="true">🔎</span> Recherche automatique
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="sources-loading" class="loading" style="display:none;">
+                    Recherche en cours...
+                </div>
+
+                <div id="sources-results" class="results-box" style="display:none;">
+                    <div class="results-header">
+                        <h3>Résultats des sources</h3>
+                    </div>
+
+                    <!-- Tableau unique EBDZ+Prowlarr trié par pertinence (voir
+                         search-results-table.js), même style que la page Recherche et la
+                         modale de remplacement d'un tome - remplace les deux sections
+                         séparées d'avant -->
+                    <div id="sources-results-list"></div>
+                </div>
+
+                <div id="no-sources-panel" class="no-sources-panel" style="display:none;">
+                    <p>😕 Aucune source trouvée pour l'instant.</p>
+                    <p class="no-sources-tracking-note">👁️ Cette série est déjà enregistrée et surveillée : elle sera proposée automatiquement dès qu'une source sera trouvée.</p>
+                </div>
+
+                <div id="sources-error" class="error-box" style="display:none;"></div>
+            </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}?v={{ asset_version('js/search.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/search-results-table.js') }}?v={{ asset_version('js/search-results-table.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/discover.js') }}?v={{ asset_version('js/discover.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

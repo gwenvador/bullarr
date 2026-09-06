@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Vérification</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <!-- .th-filterable-row/-icon/-control (filtres colonne des 5 tableaux de cette page)
+         ne vivent QUE dans style-library-search.css (voir commentaire dans style.css) -
+         cette page ne le chargeait pas du tout, filtres sans style depuis leur ajout. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link active">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">✅</span> <span class="header-title-full">Vérification de la bibliothèque</span><span class="header-title-short">Vérification</span></h1>
+                        <p class="subtitle">Métadonnées manquantes et nommage non standard</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <p class="section-description">Lecture seule : rien n'est modifié automatiquement, chaque ligne renvoie vers son action de correction.</p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div id="verificationSummary" style="color:#666;"></div>
+                        </div>
+
+                        <!-- "les nombre sont mal aligné": le label + son compteur "(N)" sont
+                             regroupés dans un <span> unique par titre de section ci-dessous -
+                             sans ça, le gap:6px du <h3> flex s'appliquait aussi ENTRE le texte
+                             brut "(" et le <span id="...Count"> (et entre lui et ")"), rendant
+                             "Label ( 12 )" avec des espaces fantômes au lieu de "Label (12)". -->
+                        <div class="settings-card" id="verificationMetadataCard">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="verif-section-toggle" id="missingMetadataToggle" onclick="verifToggleSection('missingMetadataList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r=".5" fill="currentColor" /></svg>
+                                    <span>Métadonnées manquantes (<span id="missingMetadataCount">—</span>)</span>
+                                </h3>
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <button class="btn btn-sm" id="verifRunMissingMetadataBtn" onclick="runVerificationCategory('missing_metadata')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                    <!-- "alors que rien n'est lancer il ne faut pas que Tout sélectionner /
+                                         Corriger la sélection (0) s'affiche" - masqué tant que renderMissingMetadata
+                                         (verification.js) n'a pas au moins un résultat à sélectionner. -->
+                                    <span id="verifMetaBulkControls" style="display:none; align-items:center; gap:10px;">
+                                    <label style="display:flex; align-items:center; gap:5px; font-size:0.85em; font-weight:normal; cursor:pointer;">
+                                        <input type="checkbox" id="verifMetaSelectAll" onchange="verifToggleSelectAllMeta(this)">
+                                        Tout sélectionner
+                                    </label>
+                                    <button class="btn btn-sm" id="verifBulkUpdateBtn" onclick="verifBulkUpdateMetadata()" disabled><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r=".5" fill="currentColor" /></svg> Corriger la sélection (<span id="verifMetaSelectedCount">0</span>)</button>
+                                    </span>
+                                </div>
+                            </div>
+                            <div id="missingMetadataList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+
+                        <div class="settings-card" id="verificationNamingCard">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="verif-section-toggle" id="misnamedToggle" onclick="verifToggleSection('misnamedList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></svg>
+                                    <span>Nommage non standard (<span id="misnamedCount">—</span>)</span>
+                                </h3>
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <button class="btn btn-sm" id="verifRunMisnamedBtn" onclick="runVerificationCategory('misnamed')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                    <!-- même masquage que verifMetaBulkControls ci-dessus jusqu'au premier
+                                         résultat (renderMisnamed, verification.js). -->
+                                    <span id="verifRenameBulkControls" style="display:none; align-items:center; gap:10px;">
+                                    <label style="display:flex; align-items:center; gap:5px; font-size:0.85em; font-weight:normal; cursor:pointer;">
+                                        <input type="checkbox" id="verifRenameSelectAll" onchange="verifToggleSelectAllRename(this)">
+                                        Tout sélectionner
+                                    </label>
+                                    <button class="btn btn-sm" id="verifBulkRenameBtn" onclick="verifBulkRenameItems()" disabled><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></svg> Renommer la sélection (<span id="verifRenameSelectedCount">0</span>)</button>
+                                    </span>
+                                </div>
+                            </div>
+                            <div id="misnamedList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+
+                        <div class="settings-card" id="verificationMatchingCard">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="verif-section-toggle" id="matchingToggle" onclick="verifToggleSection('missing-table-container', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="18" cy="18" r="3" /><circle cx="6" cy="6" r="3" /><path d="M6 21V9a9 9 0 0 0 9 9" /></svg>
+                                    <span>Matching incorrect</span>
+                                </h3>
+                                <button class="btn btn-sm" id="verifRunMatchingBtn" onclick="loadMissingMatches()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                            </div>
+                            <p class="help-text" id="missing-count" style="margin-top:0;"></p>
+                            <div id="missing-bulk-actions-bar" class="volume-bulk-actions-bar" style="display:none; margin-bottom:10px;"></div>
+                            <div id="missing-table-container" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+
+                        <div class="settings-card" id="verificationInvalidCard">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="verif-section-toggle" id="invalidFilesToggle" onclick="verifToggleSection('invalidFilesList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 2v7.31" /><path d="M14 9.3V1.99" /><path d="M8.5 2h7" /><path d="M14 9.3a6.5 6.5 0 1 1-4 0" /><path d="M5.52 16h12.96" /></svg>
+                                    <span>Fichiers invalides (<span id="invalidFilesCount">—</span>)</span>
+                                </h3>
+                                <button class="btn btn-sm" id="verifRunInvalidFilesBtn" onclick="runVerificationCategory('invalid_files')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                <span id="verifInvalidBulkControls" style="display:none; align-items:center; gap:10px;">
+                                <label style="display:flex; align-items:center; gap:5px; font-size:0.85em; font-weight:normal; cursor:pointer;">
+                                    <input type="checkbox" id="verifInvalidSelectAll" onchange="verifToggleSelectAllInvalid(this)">
+                                    Tout sélectionner
+                                </label>
+                                <button class="btn btn-sm" id="verifBulkDeleteInvalidBtn" onclick="verifBulkDeleteInvalidFiles()" disabled><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg> Supprimer la sélection (<span id="verifInvalidSelectedCount">0</span>)</button>
+                                </span>
+                            </div>
+                            <p class="help-text" style="margin:0 0 8px;">Signale les fichiers que Komga a marqués en échec lors de sa propre analyse média (si Komga est configuré).</p>
+                            <div id="invalidFilesList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+
+                        <!-- "c'est pas clair... ca doit etre fichier non detecté de
+                             bedetheque. ca regarde si le volume est bien matché avec une
+                             entrée bedetheque" - remplace l'ancienne carte "doublons de
+                             tomes placeholder" (déjà nettoyée manuellement, 0 restant):
+                             un tome RÉELLEMENT possédé peut avoir un ComicInfo déjà
+                             écrit sans jamais avoir été rattaché à un album Bédéthèque
+                             précis (comicinfo.web vide) - différent de "Métadonnées
+                             manquantes" (ComicInfo absent), qui ne couvre pas ce cas. -->
+                        <div class="settings-card" id="verificationUnmatchedOwnedCard">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="verif-section-toggle" id="unmatchedOwnedToggle" onclick="verifToggleSection('unmatchedOwnedList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <span>🔗 Tomes possédés sans lien Bédéthèque (<span id="unmatchedOwnedCount">—</span>)</span>
+                                </h3>
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <button class="btn btn-sm" id="verifRunUnmatchedOwnedBtn" onclick="runVerificationCategory('unmatched_owned_volumes')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                    <!-- "tout selectionner should be in the tableau en haut à gauche. ca
+                                         toujours ete comme ca" - même convention que "Matching incorrect"
+                                         (missing-series-select-all): une vraie checkbox dans le thead,
+                                         pas un label séparé dans l'en-tête de la carte. -->
+                                    <span id="verifUnmatchedOwnedBulkControls" style="display:none; align-items:center; gap:10px;">
+                                    <button class="btn btn-sm" id="verifBulkUpdateUnmatchedOwnedBtn" onclick="verifBulkUpdateUnmatchedOwned()" disabled><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg> Rattacher à Bédéthèque (<span id="verifUnmatchedOwnedSelectedCount">0</span>)</button>
+                                    </span>
+                                </div>
+                            </div>
+                            <div id="unmatchedOwnedList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de matching manuel EBDZ (voir enrichOpenEbdzMatchModal, verification.js) -
+         n'existait pas avant la migration de "Matching incorrect": aucune autre catégorie
+         de cette page n'a besoin de matcher un thread EBDZ. -->
+    <div class="modal" id="ebdz-match-modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close-modal" onclick="closeEbdzMatchModal()">×</span>
+            <div id="ebdz-match-modal-body"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="bedetheque-match-modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close-modal" onclick="closeBedethequeMatchModal()">×</span>
+            <div id="bedetheque-match-modal-body"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/match-modal.js') }}?v={{ asset_version('js/match-modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/verification.js') }}?v={{ asset_version('js/verification.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

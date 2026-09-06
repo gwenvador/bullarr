@@ -1,0 +1,3146 @@
+/* Styles additionnels pour la recherche ED2K dans library.html */
+
+/* Titre + chemin de la bibliothèque sur la même ligne plutôt que sur deux lignes
+   (repli en colonne si l'espace manque) - scopé à cette page, ne touche pas
+   .header-left/.subtitle partagés par le header des autres pages */
+.library-title-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.library-title-row h1 {
+    margin-bottom: 0;
+}
+
+.library-title-row .subtitle {
+    margin: 0;
+}
+
+/* Chemin + actions (renommer/nouvelle bibliothèque) masqués par défaut, affichés au
+   survol du titre - l'essentiel (le nom) reste seul visible le reste du temps */
+.library-title-actions {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.library-title-row:hover .library-title-actions {
+    opacity: 1;
+}
+
+.library-title-mobile-actions {
+    display: none;
+}
+
+.library-title-mobile-action {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-accent);
+    text-decoration: none;
+    background: none;
+    border: none;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+}
+
+/* "bibliothèque et son nom... don't trop haute sur mobile. centre les dans la partie
+   header" - .library-title-actions n'est jamais visible sur mobile (pas de vrai :hover
+   au toucher), mais restait wrappée sur sa propre ligne (flex-wrap ci-dessus) tout en
+   étant à opacity:0 - une ligne INVISIBLE réservait quand même sa hauteur, gonflant le
+   header pour rien. display:none supprime cet espace réservé ; le titre est centré dans
+   le peu de largeur qui lui reste (le header mobile n'a plus que le hamburger à côté). */
+@media (max-width: 768px) {
+    .library-title-actions {
+        display: none;
+    }
+
+    .library-title-row {
+        justify-content: center;
+        text-align: center;
+    }
+
+    .header-left:has(.library-title-row) {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .library-title-mobile-actions {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        margin-top: 6px;
+    }
+}
+
+.btn-secondary-link {
+    font-size: 1.3rem;
+    line-height: 1;
+    color: var(--color-accent);
+    text-decoration: none;
+    white-space: nowrap;
+    opacity: 0.75;
+    transition: opacity 0.2s;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.btn-secondary-link:hover {
+    opacity: 1;
+}
+
+/* Stats de la bibliothèque: en petit, à gauche de la ligne du sélecteur de vue
+   ("au dessus des albums a coté des library-swithcer et aligné à gauche") - remplace
+   l'ancienne rangée de tuiles sous la grille, qui prenait toute une ligne pour la même
+   information. */
+.library-stats-row-compact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.8em;
+    color: var(--color-text-muted);
+}
+
+.library-stat-compact span:first-child {
+    font-weight: 600;
+    color: var(--color-accent);
+}
+
+/* Page de détail d'une série, façon Sonarr: couverture en colonne de gauche occupant
+   toute la hauteur du bloc (grid + align-items:stretch, plutôt qu'une taille fixe
+   alignée en haut), titre + navigation précédent/suivant en haut à droite */
+.series-detail-title {
+    margin: 0;
+    font-size: 1.6em;
+    color: var(--color-text);
+    font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+    font-weight: 400;
+}
+
+.series-detail-title-with-icon {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.series-detail-completeness-icon {
+    font-size: 0.75em;
+    cursor: default;
+}
+
+.series-detail-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.series-detail-nav {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* Rond gris avec un simple chevron plutôt que les emoji ⬅️➡️ colorés d'origine - un
+   glyphe texte (‹/›), pas une image/SVG à charger, pour un rendu net et léger */
+.series-nav-arrow {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: #e5e2da;
+    color: #57544c;
+    font-size: 1.3em;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.series-nav-arrow:hover:not(:disabled) {
+    background: #d5d1c3;
+    color: var(--color-text);
+}
+
+.series-nav-arrow:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* En haut de la fiche série (au-dessus de la couverture), pas dans l'en-tête général de
+   la page - même style que .settings-back-link (style-settings.css) mais dupliqué ici
+   plutôt que d'importer toute cette feuille pour cette seule classe. */
+.series-detail-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    font-size: 0.9em;
+    margin-bottom: 12px;
+    transition: color 0.15s ease;
+}
+
+.series-detail-back-link:hover {
+    color: var(--color-accent);
+}
+
+.series-detail-header {
+    display: grid;
+    grid-template-columns: minmax(140px, 200px) 1fr;
+    gap: 20px;
+    align-items: stretch;
+    background: var(--color-surface-alt);
+    border-radius: 10px;
+    border-left: 3px solid var(--color-accent);
+    padding: 20px;
+    margin-bottom: 15px;
+}
+
+.series-detail-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 16px;
+    padding-top: 10px;
+    border-top: 1px dashed #ddd7c9;
+}
+
+/* Une 3e colonne quand la fenêtre a la place: la colonne info elle-même dépasse alors
+   largement de quoi accueillir 3 cellules sans les compresser (voir .series-detail-header,
+   la couverture ne prend que minmax(140px,200px) sur le côté) */
+@media (min-width: 1000px) {
+    .series-detail-meta-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.series-detail-meta-cell {
+    min-width: 0;
+    font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+.series-detail-meta-cell .k {
+    display: block;
+    font-size: 0.66em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #9a978d;
+    margin-bottom: 2px;
+}
+
+.series-detail-meta-cell .v {
+    display: block;
+    font-size: 0.82em;
+    color: var(--color-text);
+    overflow-wrap: break-word;
+}
+
+.series-detail-meta-cell .v a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--color-border);
+    text-underline-offset: 2px;
+}
+
+.series-detail-meta-cell .v a:hover {
+    color: var(--color-accent);
+    text-decoration-color: var(--color-accent);
+}
+
+.author-photo-avatar {
+    width: 18px;
+    height: 18px;
+    object-fit: cover;
+    border-radius: 50%;
+    vertical-align: -4px;
+    margin-right: 4px;
+    border: 1px solid var(--color-border);
+}
+
+.author-albums-modal-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.author-albums-modal-photo {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 1px solid var(--color-border);
+}
+/* "le lien bedetheque est trop a droite. peu visible. met le lien sur le nom de
+   l'auteur" - le nom de l'auteur (dans le <h2>, voir author-albums.js) EST le lien vers
+   sa fiche Bédéthèque, plutôt qu'une flèche séparée poussée à droite par un
+   margin-left:auto - .missing-series-link (déjà color+text-decoration adaptés) suffit
+   telle quelle, aucune règle dédiée nécessaire ici.
+*/
+
+.author-albums-modal-content {
+    max-width: 950px;
+}
+
+.author-albums-list {
+    max-height: 55vh;
+    overflow-y: auto;
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.author-albums-list .overview-row:hover {
+    transform: none;
+}
+
+.author-albums-select-all-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    margin-top: 8px;
+}
+
+/* align-self: start plutôt que le stretch hérité de .series-detail-header
+   (align-items: stretch): sans ça, cette colonne prenait toute la hauteur de la colonne
+   info (qui grandit avec le résumé/les badges), et la couverture en width/height:100%
+   s'étirait d'autant - parfois bien plus grande qu'une couverture d'album normale */
+.series-detail-cover-col {
+    display: flex;
+    align-self: start;
+}
+
+.series-detail-cover {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    height: auto;
+    object-fit: cover;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.series-detail-cover-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--color-accent) 0%, #8a4e28 100%);
+    color: white;
+    font-size: 3em;
+}
+
+/* Couverture cliquable dans la bibliothèque : aperçu grand format sans quitter la
+   grille/tableau, avec des dimensions contraintes pour rester utilisable sur mobile. */
+.clickable-cover {
+    cursor: zoom-in;
+}
+
+.clickable-cover:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+}
+
+#cover-image-modal {
+    z-index: 1200;
+}
+
+#cover-image-modal .cover-image-modal-content {
+    width: auto;
+    max-width: min(96vw, 1400px);
+    max-height: 96vh;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    overflow: hidden;
+}
+
+.cover-image-modal-image {
+    display: block;
+    max-width: 92vw;
+    max-height: 88vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 6px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.28);
+}
+
+.read-also-added-btn {
+    min-width: 76px;
+    cursor: default;
+    opacity: 0.9;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.cover-image-modal-caption {
+    max-width: 92vw;
+    color: var(--color-text);
+    font-size: 0.9rem;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.cover-image-modal-close {
+    z-index: 1;
+}
+
+.series-detail-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+}
+
+.series-detail-links {
+    display: flex;
+    align-items: center;
+}
+
+.series-detail-links-trigger {
+    font-size: 0.85em;
+    color: #888;
+    cursor: pointer;
+}
+
+.series-detail-links-trigger:hover {
+    color: var(--color-accent);
+}
+
+.series-detail-links-menu {
+    min-width: auto;
+    padding: 8px 10px;
+}
+
+.series-detail-links-icons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Menu "🗂️ Métadonnées" (Bédéthèque/EBDZ/Komga): chaque source sur sa propre ligne
+   plutôt qu'alignées à l'horizontale dans la toolbar, pour tenir dans un menu déroulant */
+.series-metadata-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 240px;
+}
+
+/* Police serif dédiée pour distinguer le résumé (texte éditorial) du reste de l'UI
+   (Inter partout ailleurs) - pas de police supplémentaire à charger, une pile web-safe
+   suffit pour cet usage ponctuel */
+.series-detail-summary {
+    margin: 0;
+    color: var(--color-text);
+    line-height: 1.7;
+    font-size: 0.98em;
+    font-family: Georgia, 'Times New Roman', serif;
+}
+
+.series-detail-universe {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+    font-size: 0.85em;
+    color: var(--color-text);
+}
+
+.series-detail-universe-label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.series-detail-universe-members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.universe-member-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-size: 0.78em;
+    text-decoration: none;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.universe-member-chip:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent-hover);
+}
+
+.universe-member-chip:not(.universe-member-chip-external-wrap) {
+    border-color: #10b981;
+    color: #10b981;
+}
+
+.universe-member-chip:not(.universe-member-chip-external-wrap):hover {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: #10b981;
+    color: #10b981;
+}
+
+.universe-member-chip img {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+
+/* Pas encore possédée: un peu moins affirmé qu'un chip vers une fiche déjà en
+   bibliothèque (bordure en pointillés) - le logo Bédéthèque à côté suffit déjà à
+   distinguer un lien externe, la bordure renforce l'idée "pas encore à vous". Le pill
+   est maintenant le <span> englobant (lien + bouton +), pas le lien seul - voir
+   universe-member-chip-external ci-dessous pour le lien lui-même. */
+.universe-member-chip-external-wrap {
+    border-style: dashed;
+    color: var(--color-text-muted);
+    padding-right: 4px;
+}
+
+.universe-member-chip-external {
+    color: inherit;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.universe-member-chip-external:hover {
+    text-decoration: underline;
+}
+
+.universe-member-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--color-accent);
+    background: transparent;
+    color: var(--color-accent);
+    font-size: 0.9em;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.universe-member-add-btn:hover {
+    background: var(--color-accent);
+    color: white;
+}
+
+.universe-member-add-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Bouton "Lire plus"/"Réduire" des résumés tronqués (voir buildTruncatedHtml) */
+.truncated-text-toggle {
+    display: inline;
+    margin-left: 4px;
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--color-accent);
+    font-weight: 600;
+    font-size: 0.95em;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.truncated-text-toggle:hover {
+    color: var(--color-accent-hover);
+}
+
+.series-detail-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    color: var(--color-text-muted);
+    font-size: 0.78em;
+}
+
+/* Bandeau d'actions façon Sonarr (icône + libellé), en haut de la page de détail et dans
+   le modal de détail d'une série (celui-ci garde la navigation Précédent/Suivant sur la
+   même ligne, alignée à droite via justify-content: space-between) */
+.detail-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 20px;
+}
+
+/* Série (pas la bibliothèque): garder le bandeau d'actions sur une seule ligne même
+   une fois la fiche série ouverte, quitte à défiler horizontalement plutôt que de
+   passer à la ligne et casser la mise en page */
+.detail-toolbar:not(.detail-toolbar-stacked) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+}
+
+.detail-toolbar:not(.detail-toolbar-stacked) .detail-toolbar-actions,
+.detail-toolbar:not(.detail-toolbar-stacked) .detail-toolbar-nav {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+}
+
+/* Bibliothèque uniquement: actions et filtres/tri sur deux lignes distinctes plutôt que
+   sur une seule ligne avec les filtres repoussés à droite du même bandeau que Scanner... */
+.detail-toolbar-stacked {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+/* Groupe d'actions (Scanner, Scan complet, EBDZ...): séparateur pour marquer
+   visuellement la fin du groupe par rapport aux boutons de filtre/tri en dessous */
+.toolbar-scan-group {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.detail-toolbar-actions,
+.detail-toolbar-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Regroupe un bouton (EBDZ/Komga) et son statut de matching, pour qu'ils restent
+   visuellement collés l'un à l'autre dans la toolbar */
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-surface);
+    border-radius: 6px;
+    padding: 2px 6px 2px 2px;
+}
+
+.toolbar-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Actions de matching (lien externe, changer, retirer): masquées par défaut, affichées
+   seulement au survol du groupe EBDZ/Komga pour ne pas surcharger la toolbar */
+.toolbar-status-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0;
+    max-width: 0;
+    overflow: hidden;
+    transition: opacity 0.35s ease, max-width 0.35s ease;
+}
+
+.toolbar-group:hover .toolbar-status-actions {
+    opacity: 1;
+    max-width: 160px;
+    overflow: visible;
+}
+
+/* Modale "hub" ⚙️ Éditer (voir openSeriesEditModal): actions présentées comme des
+   rangées plates icône+libellé (même langage visuel que .toolbar-btn) plutôt que des
+   gros boutons pleins colorés façon ancienne UI (.btn) */
+.series-edit-modal-content {
+    max-width: 380px;
+}
+
+.series-edit-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.series-edit-modal-cover,
+.series-edit-modal-cover-placeholder {
+    width: 52px;
+    height: 78px;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.series-edit-modal-cover {
+    object-fit: cover;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.series-edit-modal-cover-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5em;
+    color: white;
+}
+
+.series-edit-modal-header-text {
+    min-width: 0;
+}
+
+.series-edit-modal-title {
+    margin-bottom: 4px;
+}
+
+.series-edit-modal-subtitle {
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+    margin-bottom: 0;
+}
+
+.series-edit-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.series-edit-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.95em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.series-edit-action:hover {
+    background: var(--color-surface-alt);
+    border-color: var(--color-border);
+}
+
+/* Supprimer: action destructive, distinguée du reste (rouge, même palette que
+   .btn-danger-sm dans style.css) plutôt que mêlée aux tuiles de matching neutres */
+.series-edit-action-danger {
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+.series-edit-action-danger:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+}
+
+.series-edit-action-icon {
+    font-size: 1.15em;
+}
+
+.series-edit-action-icon-img {
+    width: 17px;
+    height: 17px;
+    object-fit: contain;
+}
+
+.toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 9px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.78em;
+    font-weight: 500;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.toolbar-btn:hover {
+    background: var(--color-border);
+}
+
+.toolbar-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.toolbar-btn:disabled:hover {
+    background: transparent;
+}
+
+.toolbar-btn-icon {
+    font-size: 1.05em;
+}
+
+.toolbar-btn-logo {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+}
+
+.toolbar-btn-icon-only {
+    padding: 6px 8px;
+}
+
+/* Action destructive (suppression de série): rouge discret au repos, plus appuyé au survol */
+.toolbar-btn-danger {
+    color: #b91c1c;
+}
+
+.toolbar-btn-danger:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* "recherche auto change l'icône pour moderne. toutes les autres en gris celle ci en
+   couleur" - dans la rangée d'actions de la fiche série (.detail-toolbar-actions), l'icône
+   de chaque bouton est neutre (var(--color-text-muted)) SAUF Recherche auto (svgIcon hérite
+   déjà currentColor - voir icons.js - donc une simple couleur posée sur le conteneur du
+   bouton suffit à teinter l'icône), qui ressort en accent pour signaler l'action principale
+   plutôt qu'un choix parmi d'autres. Scopé à cette rangée précise, pas à .toolbar-btn
+   globalement (utilisé ailleurs dans l'app - colonnes du tableau de tomes, Import...). */
+.detail-toolbar-actions .toolbar-btn-icon {
+    color: var(--color-text-muted);
+}
+
+.detail-toolbar-actions .toolbar-btn-accent .toolbar-btn-icon {
+    color: var(--color-accent);
+}
+
+.toolbar-dropdown-item-danger {
+    color: #b91c1c;
+}
+
+.toolbar-dropdown-item-danger:hover {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Menus déroulants de la toolbar (Filtrer/Ordonner): une seule option active à la fois */
+.toolbar-dropdown {
+    position: relative;
+}
+
+.toolbar-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 220px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(17, 24, 39, 0.14);
+    padding: 8px;
+    z-index: 9999;
+}
+
+/* Les menus Genre/Auteur/Année ont besoin de plus de largeur que Statut/Ordonner car ils
+   contiennent des puces qui se répartissent sur plusieurs colonnes en flux plutôt que de
+   s'empiler en une longue liste verticale */
+#genre-filter-menu, #author-filter-menu, #year-filter-menu {
+    width: max-content;
+    min-width: 260px;
+    max-width: min(480px, calc(100vw - 40px));
+}
+
+/* Un des boutons de filtre par catégorie (Statut/Genre/Auteur/Année) a au moins un
+   filtre actif: le signaler même quand son dropdown est fermé, même traitement visuel
+   que .toolbar-dropdown-item.active pour rester cohérent */
+.toolbar-btn.toolbar-btn-filter-active {
+    background: #eef0ff;
+    color: var(--color-accent-hover);
+}
+
+.toolbar-btn.toolbar-btn-filter-active:hover {
+    background: #e0e3ff;
+}
+
+/* Les dropdowns de filtre par catégorie sont plus nombreux et plus étroits que l'ancien
+   mega-menu: éviter qu'ils s'écrasent trop sur mobile en resserrant l'espacement.
+   Alignés à droite sur leur propre ligne, séparés du groupe d'actions au-dessus */
+.toolbar-filter-group {
+    row-gap: 8px;
+    justify-content: flex-end;
+}
+
+/* Ordonner est le dropdown le plus à droite de la toolbar: ouvert à gauche du bouton
+   (au lieu de left:0) pour ne pas déborder hors de la fenêtre/du conteneur */
+.toolbar-dropdown-menu-right {
+    left: auto;
+    right: 0;
+}
+
+/* Étiquette de section (Statut/Genre/Auteur/Année): donne un nom à chaque groupe de
+   filtres plutôt que de laisser un simple trait de séparation parler de lui-même */
+.toolbar-dropdown-label {
+    padding: 8px 10px 4px;
+    font-size: 0.7em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #9094a6;
+}
+
+.toolbar-dropdown-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    /* gap (pas juste un espace texte entre l'icône SVG et le libellé): en display:flex,
+       un noeud texte fait uniquement d'espace entre deux enfants s'effondre et l'icône se
+       retrouve collée au libellé ("MAJ métadonnées" contre l'icône) - un espace normal
+       fonctionne dans .toolbar-btn/.btn (inline-block) mais pas ici, voir svgIcon() dans
+       icons.js pour les boutons qui l'utilisent */
+    gap: 6px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px 8px 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.85em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+/* Repère de sélection à gauche du libellé: un simple point qui s'anime en trait plein
+   une fois le filtre actif, plutôt qu'un fond teinté comme seul indice d'état */
+.toolbar-dropdown-item::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #d1d5db;
+    transform: translateY(-50%);
+    transition: background 0.12s ease, height 0.12s ease, border-radius 0.12s ease;
+}
+
+.toolbar-dropdown-item:hover {
+    background: #f5f5f7;
+}
+
+.toolbar-dropdown-item.active {
+    background: #eef0ff;
+    color: var(--color-accent-hover);
+    font-weight: 600;
+}
+
+.toolbar-dropdown-item.active::before {
+    background: var(--color-accent-hover);
+    height: 14px;
+    border-radius: 2px;
+}
+
+.toolbar-dropdown-item-reset {
+    padding-left: 10px;
+    color: #667085;
+    font-weight: 500;
+}
+
+.toolbar-dropdown-item-reset::before {
+    content: none;
+}
+
+.toolbar-dropdown-item:focus-visible,
+.toolbar-btn:focus-visible,
+.active-filter-badge-clear:focus-visible {
+    outline: 2px solid var(--color-accent-hover);
+    outline-offset: 2px;
+}
+
+.toolbar-dropdown-separator {
+    height: 1px;
+    background: var(--color-border);
+    margin: 8px 4px 2px;
+}
+
+/* Genre/Auteur/Année peuvent contenir des dizaines, voire des centaines de valeurs
+   (surtout Auteur): plutôt qu'une liste verticale d'une colonne (une option par ligne,
+   comme Statut), ces trois sections s'affichent en puces qui s'enchaînent et reviennent
+   à la ligne, pour que beaucoup d'options tiennent sans long défilement étroit */
+#genre-filter-list, #author-filter-list, #year-filter-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 4px 2px 6px;
+}
+
+#genre-filter-list .toolbar-dropdown-item,
+#author-filter-list .toolbar-dropdown-item,
+#year-filter-list .toolbar-dropdown-item {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: #f9fafb;
+}
+
+#genre-filter-list .toolbar-dropdown-item::before,
+#author-filter-list .toolbar-dropdown-item::before,
+#year-filter-list .toolbar-dropdown-item::before {
+    content: none;
+}
+
+#genre-filter-list .toolbar-dropdown-item:hover,
+#author-filter-list .toolbar-dropdown-item:hover,
+#year-filter-list .toolbar-dropdown-item:hover {
+    background: #eef0ff;
+    border-color: #c7d2fe;
+}
+
+#genre-filter-list .toolbar-dropdown-item.active,
+#author-filter-list .toolbar-dropdown-item.active,
+#year-filter-list .toolbar-dropdown-item.active {
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+    color: white;
+}
+
+/* Recherche rapide au-dessus de Genre/Auteur, les deux sections dont le nombre
+   d'options peut devenir long dans une grande bibliothèque (Année en compte peu) */
+.toolbar-filter-search {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 2px 2px 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.85em;
+    font-family: inherit;
+    color: var(--color-text);
+}
+
+.toolbar-filter-search:focus {
+    outline: none;
+    border-color: var(--color-accent-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toolbar-dropdown-item,
+    .toolbar-dropdown-item::before {
+        transition: none;
+    }
+}
+
+.active-filter-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.active-filter-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px 6px 12px;
+    background: #eef0ff;
+    color: var(--color-accent-hover);
+    border-radius: 999px;
+    font-size: 0.82em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.active-filter-badge-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(76, 81, 191, 0.15);
+    color: var(--color-accent-hover);
+    font-size: 0.85em;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+
+.active-filter-badge-clear:hover {
+    background: rgba(76, 81, 191, 0.3);
+}
+
+.active-filter-clear-all {
+    padding: 6px 10px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #888;
+    font-size: 0.8em;
+    text-decoration: underline;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.active-filter-clear-all:hover {
+    color: var(--color-accent-hover);
+}
+
+@media (max-width: 768px) {
+    /* Masqué visuellement plutôt que display:none, pour rester lisible par un lecteur
+       d'écran: un bouton icône seule sans libellé visible n'a sinon aucun nom accessible
+       (le tooltip data-tooltip n'apparaît qu'au survol/focus, pas exposé nativement) */
+    .toolbar-btn-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    /* Couverture en petite vignette à côté du titre (pas empilée au-dessus en pleine
+       largeur): reste au même niveau que le titre et les flèches précédent/suivant,
+       comme sur desktop, juste avec une colonne couverture bien plus étroite - sinon la
+       couverture pleine largeur poussait tout le reste (titre, méta, résumé) en dessous
+       d'elle sur un écran déjà peu haut */
+    .series-detail-header {
+        grid-template-columns: 70px 1fr;
+        text-align: left;
+    }
+
+    .series-detail-cover-col {
+        justify-content: flex-start;
+    }
+
+    .series-detail-cover {
+        width: 70px;
+        height: 105px;
+        min-height: 0;
+    }
+
+    .series-detail-title-row {
+        justify-content: flex-start;
+    }
+
+    .series-detail-links {
+        justify-content: flex-start;
+    }
+
+    .series-detail-stats {
+        justify-content: flex-start;
+    }
+
+    /* On garde 2 colonnes sur mobile (pas 1): repasser à 1 colonne empilait les 5
+       cellules (Auteur/Éditeur/Genre/Statut/Parus) chacune sur toute la largeur alors que
+       leur contenu (ex. "Dupuis", "3 tomes") n'occupe qu'une fraction de cette largeur -
+       ça laissait beaucoup d'espace vide à droite de chaque ligne et gonflait la hauteur
+       du bloc pour rien. Une valeur longue (statut avec dates) peut casser sur 2 lignes
+       à ~150px de large (overflow-wrap: break-word gère ce cas), c'est un compromis
+       préférable à 5 lignes pleine largeur sous-remplies. */
+    .series-detail-meta-grid {
+        gap: 6px 12px;
+    }
+
+    .series-detail-meta-cell .v {
+        font-size: 0.78em;
+    }
+}
+
+/* Résumé du volume, extrait du ComicInfo.xml embarqué dans le cbz/cbr */
+.volume-summary {
+    margin: 10px 0 0 0;
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+/* Volume "intégrale" (tag #INT): regroupe plusieurs tomes en un seul livre */
+.volume-number.volume-number-integral {
+    background: #8b5cf6;
+    color: white;
+    font-size: 0.7em;
+    border-radius: 12px;
+    width: auto;
+    min-width: 42px;
+    height: 22px;
+    padding: 0 7px;
+}
+
+.badge-integral {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
+/* Volume "hors-série" (tag #HS): en dehors de la numérotation normale de la série */
+.volume-number.volume-number-hs {
+    background: #ec4899;
+    color: white;
+    font-size: 0.7em;
+    border-radius: 12px;
+    width: auto;
+    min-width: 42px;
+    height: 22px;
+    padding: 0 7px;
+}
+
+.badge-hs {
+    background: #fce7f3;
+    color: #9d174d;
+}
+
+/* Volume "épisode" (tag Épisode): publication en épisodes, distincte des tomes qui les
+   compilent ensuite - voir CLAUDE.md/_sync_bedetheque_placeholder_volumes */
+.volume-number.volume-number-episode {
+    background: #0ea5e9;
+    color: white;
+    font-size: 0.7em;
+    border-radius: 12px;
+    width: auto;
+    min-width: 42px;
+    height: 22px;
+    padding: 0 7px;
+}
+
+.badge-episode {
+    background: #e0f2fe;
+    color: #075985;
+}
+
+/* Volume "spécial" (coffret, tirage, réédition promotionnelle...): tout ce qui n'est ni
+   un tome classique ni INT/HS/Épisode - voir _parse_special_prefix, scraper.py */
+.volume-number.volume-number-special {
+    background: #78716c;
+    color: white;
+    font-size: 0.7em;
+    border-radius: 12px;
+    width: auto;
+    min-width: 42px;
+    height: 22px;
+    padding: 0 7px;
+}
+
+.badge-special {
+    background: #f5f5f4;
+    color: #44403c;
+}
+
+/* Vignette du volume, extraite de sa première page */
+.volume-cover {
+    width: 110px;
+    height: 165px;
+    flex-shrink: 0;
+    object-fit: cover;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+.volume-cover-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--color-accent) 0%, #8a4e28 100%);
+    font-size: 2em;
+    color: white;
+}
+
+@media (max-width: 768px) {
+    .volume-cover {
+        width: 70px;
+        height: 105px;
+    }
+}
+
+.volume-cover-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+/* Titre du volume + lien direct Komga vers ce tome */
+.volume-filename-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.volume-filename-row .toolbar-dropdown {
+    flex-shrink: 0;
+}
+
+.volume-filename-row .volume-filename {
+    margin-bottom: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.volume-link-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    opacity: 0.75;
+    flex-shrink: 0;
+    /* Reset du style natif de <button> (certaines de ces icônes sont des boutons d'action,
+       pas des liens) - sans ça le navigateur affiche un cadre/fond par défaut autour */
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 1em;
+    cursor: pointer;
+}
+
+.volume-link-icon:hover {
+    opacity: 1;
+}
+
+.bd-rating-link {
+    cursor: pointer;
+    border-bottom: 1px dashed currentColor;
+}
+
+.bd-rating-link:hover {
+    opacity: 0.8;
+}
+
+.volume-link-icon img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    vertical-align: middle;
+}
+
+/* ===== Vue "poster wall" (façon Radarr) pour la grille de séries ===== */
+.series-grid.poster-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 20px;
+}
+
+.poster-card {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    /* Toujours sombre (pas var(--color-text), qui devient clair en thème sombre) - fond
+       de secours/chargement derrière la couverture, indépendant du thème */
+    background: #2b2318;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.poster-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 14px 28px rgba(0,0,0,0.3);
+}
+
+.poster-image-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+}
+
+.poster-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.poster-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    text-align: center;
+    color: white;
+}
+
+.poster-placeholder-icon {
+    font-size: 2.2em;
+    opacity: 0.85;
+}
+
+.poster-placeholder-title {
+    font-size: 0.85em;
+    font-weight: 600;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.poster-top-row {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    right: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 6px;
+    pointer-events: none;
+}
+
+.poster-actions {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 2;
+}
+
+.poster-card:hover .poster-actions {
+    opacity: 1;
+}
+
+.poster-action-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    font-size: 0.75em;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.poster-action-btn:hover {
+    background: rgba(0,0,0,0.85);
+    transform: scale(1.1);
+}
+
+.quick-action-logo {
+    width: 13px;
+    height: 13px;
+    object-fit: contain;
+}
+
+.poster-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 20px 8px 8px;
+    background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 55%, transparent 100%);
+    color: white;
+    pointer-events: none;
+}
+
+.poster-title {
+    font-size: 0.9em;
+    font-weight: 600;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.poster-subtitle {
+    font-size: 0.75em;
+    opacity: 0.85;
+    margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+    .series-grid.poster-grid {
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+        gap: 12px;
+    }
+}
+
+/* Retire le padding-top de .content (style.css) juste pour cette page - le
+   view-switcher (.search-row) doit être collé au header, sans marge au-dessus
+   ("il y a toujours une marge au dessus"). Les autres pages gardent leur padding-top
+   normal, ce n'est pas une règle globale. !important nécessaire: .content applique son
+   padding:40px en un seul raccourci (les 4 côtés dont padding-top) chargé APRÈS cette
+   feuille (style.css après style-library-search.css dans library.html) - même
+   spécificité (une classe), la règle chargée en dernier gagnerait sinon (même piège que
+   déjà documenté pour les modales de renommage/édition). */
+.library-content {
+    padding-top: 0 !important;
+}
+
+/* ===== Ligne stats + sélecteur de vue (Affiches / Aperçu / Tableau, façon Radarr) =====
+   Sous le header, collée (sans marge, ni au-dessus ni avant la grille en dessous) - pas
+   dans le header lui-même (testé, rejeté: "pas au top header"). Stats à gauche, sélecteur
+   de vue à droite (space-between) - "pas dans le header mais au dessus des albums a coté
+   des library-swithcer et aligné à gauche". */
+.search-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0;
+    margin-bottom: 0;
+}
+
+.search-row-view-switcher {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.view-switcher {
+    display: flex;
+    gap: 4px;
+    border-radius: 8px;
+    padding: 4px;
+    flex-shrink: 0;
+}
+
+.view-switch-btn {
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.view-switch-btn:hover {
+    color: var(--color-text);
+    background: rgba(0,0,0,0.06);
+}
+
+.view-switch-btn.active {
+    background: var(--color-accent);
+    color: white;
+}
+
+/* Filtre Tout/Existants/Non existants des tomes: icône seule (pas de libellé texte) pour
+   rester compact à côté d'Aperçu/Tableau qui, eux, gardent leur texte - "retire le texte
+   pour que ce soit plus petit" */
+.view-switch-btn-icon-only {
+    padding: 8px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.view-switch-btn-icon-only .icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* Bascule Aperçu/Tableau des tomes d'une série: alignée à droite de sa ligne (pas à
+   gauche comme le view-switcher par défaut de la liste des séries) et légèrement plus
+   petite, pour rester discrète au-dessus de la liste des tomes plutôt que d'attirer
+   l'œil comme un titre de section */
+#series-volumes-section .view-switcher {
+    justify-content: flex-end;
+}
+
+#series-volumes-section .view-switch-btn {
+    font-size: 0.8em;
+}
+
+/* Bouton "⚙️ Colonnes" de la vue tableau: même habillage que .view-switcher (fond gris
+   arrondi) pour rester visuellement cohérent avec les boutons de vue juste à côté, plutôt
+   que le style transparent "toolbar" par défaut de .toolbar-btn */
+#table-columns-btn {
+    background: #f0f0f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+#table-columns-btn:hover {
+    background: var(--color-border);
+}
+
+@media (max-width: 768px) {
+    .search-row {
+        flex-wrap: wrap;
+    }
+
+    .search-row-view-switcher {
+        margin-left: auto;
+    }
+
+    .view-switcher {
+        flex: 1;
+        justify-content: space-between;
+    }
+
+    .view-switch-btn {
+        flex: 1;
+        padding: 8px 4px;
+        font-size: 0.8em;
+    }
+}
+
+/* ===== Vue "aperçu" (liste avec couverture moyenne + infos) ===== */
+.series-list.overview-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.overview-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+    padding: 10px 15px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.overview-row:hover {
+    background: #f0f2f5;
+    border-color: var(--color-accent);
+    transform: translateX(2px);
+}
+
+.author-album-row {
+    padding: 8px 12px;
+}
+
+.author-album-row-owned {
+    box-shadow: inset 3px 0 0 var(--color-accent);
+    opacity: 0.85;
+}
+
+.author-album-owned-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.author-album-owned-tag .icon {
+    width: 12px;
+    height: 12px;
+}
+
+.cover-thumb-overview {
+    width: 50px;
+    height: 75px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.poster-placeholder-mini {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4em;
+    color: white;
+}
+
+.overview-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.overview-title {
+    font-weight: 600;
+    color: var(--color-text);
+    font-size: 1.05em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.overview-summary {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.88em;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.overview-tags {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.overview-tag {
+    background: #f0f0f0;
+    color: #555;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.78em;
+    white-space: nowrap;
+}
+
+.overview-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.poster-action-btn-light {
+    background: rgba(168, 103, 42, 0.1);
+    color: var(--color-accent);
+}
+
+.poster-action-btn-light:hover {
+    background: rgba(168, 103, 42, 0.2);
+    color: var(--color-accent-hover);
+}
+
+
+@media (max-width: 768px) {
+    .overview-row {
+        gap: 10px;
+        padding: 8px 10px;
+    }
+
+    .overview-summary {
+        -webkit-line-clamp: 1;
+    }
+
+    .overview-tags {
+        font-size: 0.75em;
+        gap: 6px;
+    }
+
+    .overview-actions {
+        gap: 3px;
+    }
+}
+
+/* ===== Vue "tableau" ===== */
+.series-list.series-table-wrapper {
+    overflow-x: auto;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+}
+
+.series-table {
+    width: 100%;
+    /* Contredit délibérément la règle globale `table { max-width: 100% }` (style.css) qui,
+       laissée telle quelle, empêchait ce tableau de jamais dépasser son conteneur - donc
+       aucun débordement à faire défiler, le contenu des cellules (colonnes optionnelles
+       comprises, voir TABLE_OPTIONAL_COLUMNS) se retrouvait juste écrasé/tronqué au lieu
+       de rendre le tableau scrollable horizontalement (voir overflow-x:auto sur
+       .series-list.series-table-wrapper ci-dessus, qui sans ce override n'avait jamais
+       rien à faire défiler) */
+    max-width: none;
+    min-width: 900px;
+    border-collapse: collapse;
+    color: var(--color-text);
+}
+
+.series-table.series-table-compact {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.series-table thead th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--color-surface-alt);
+    border-bottom: 2px solid var(--color-accent);
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+.col-resizable {
+    position: relative;
+}
+.col-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 2;
+}
+.col-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 15%;
+    bottom: 15%;
+    left: 50%;
+    width: 1px;
+    background: var(--color-border);
+    transform: translateX(-50%);
+}
+.col-resize-handle:hover::after,
+body.col-resizing .col-resize-handle::after {
+    width: 2px;
+    background: var(--color-accent);
+}
+.col-resize-handle:hover,
+body.col-resizing .col-resize-handle {
+    background: var(--color-accent);
+    opacity: 0.15;
+}
+table.has-resized-columns th,
+table.has-resized-columns td {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+/* Pendant le glissement: curseur cohérent partout sous la souris (pas seulement au-dessus
+   de la poignée elle-même, la souris dépasse vite ses 6px pendant un mouvement rapide) et
+   sélection de texte désactivée (sinon glisser sur le tableau sélectionne aussi son texte). */
+body.col-resizing {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+/* Même traitement que body.col-resizing ci-dessus, pour le réordonnancement de colonnes
+   par glisser (initDraggableTableColumns, réécrit en mousedown/mousemove/mouseup - voir
+   son commentaire) une fois le seuil de distance franchi (DRAG_THRESHOLD_PX). */
+body.col-reordering {
+    cursor: grabbing !important;
+    user-select: none !important;
+}
+
+/* Filtres de colonne fusionnés dans l'en-tête triable, sur une ligne SOUS le libellé
+   plutôt que sur la même ligne (ça décalait toute la ligne d'en-tête et donc les
+   colonnes du tableau en dessous à l'ouverture - retour utilisateur) ni dans une <tr>
+   séparée. Repris du pattern "badge" de Pangolin (icône entonnoir + pastille arrondie
+   pour la valeur du filtre) plutôt qu'un champ nu - toujours visible, pas de repli au
+   survol. Pattern commun aux 3 tableaux filtrables de l'app (liste des séries, tomes
+   d'une série, résultats de recherche) - .th-filterable-control est la classe
+   cosmétique commune, ajoutée EN PLUS de la classe spécifique à chaque tableau
+   (série/tomes/recherche) qui reste seule utilisée par le JS de filtrage
+   (filterSeriesTableRows/filterVolumesTableRows/_applySearchTableFilter). .has-value
+   (posée par _syncFilterControlActive) ne sert plus qu'à distinguer visuellement un
+   filtre actif d'un filtre vide, plus à le garder déplié. */
+.th-filterable-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+}
+
+.th-filterable-filter {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* "dans bibliothèque le filter c'est carré avec un icône loupe. les autres filtres que je
+   ne veux pas soit rond avec le funnel" - il existait deux définitions concurrentes de ce
+   même contrôle (celle-ci, et une seconde dans style.css qui gagnait ou perdait selon
+   l'ordre des <link> de chaque page, jamais harmonisé volontairement - juste un accident
+   d'ordre de chargement). Bibliothèque gagnait déjà cette seconde définition (carrée,
+   icône entonnoir masquée) - désormais LA seule, ici : le funnel de cette case ne s'affiche
+   jamais, la loupe visible sur les filtres texte de Bibliothèque vient d'un mécanisme
+   séparé (initClearableSearchInputs, nav.js) plutôt que de cette icône - étendu à toutes
+   les tables (voir les appels ajoutés après chaque rendu dynamique de tableau) pour que
+   CE même résultat s'applique partout, pas seulement là où l'ordre des <link> le
+   permettait par accident. */
+.th-filterable-icon {
+    display: none;
+}
+
+.th-filterable-control {
+    width: 84px;
+    box-sizing: border-box;
+    padding: 2px 10px;
+    font-size: 0.72em;
+    font-weight: 400;
+    font-family: inherit;
+    color: var(--color-text-muted);
+    background: var(--color-surface-alt);
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.th-filterable-control.has-value {
+    color: var(--color-text);
+    border-color: var(--color-accent);
+}
+
+.th-filterable-control:focus {
+    outline: none;
+    color: var(--color-text);
+    border-color: var(--color-accent);
+}
+
+@media (max-width: 768px) {
+    input.th-filterable-control {
+        width: 200px;
+        /* 0.72em (base, ci-dessus) compose avec le `<th>` ambiant (0.85em, `table thead th`
+           style.css) pour un texte réel d'environ 9.8px - illisible, et l'opposé du but de
+           l'élargissement à 200px juste au-dessus si le texte tapé reste minuscule. Taille
+           absolue plutôt que relative pour ne plus dépendre de la taille de police du `<th>`
+           parent (16px évite aussi le zoom auto au focus de Safari iOS sur un input <16px). */
+        font-size: 16px;
+    }
+
+    .search-results-filter-select {
+        width: 56px;
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+}
+
+.import-files-table input.th-filterable-control {
+    width: 130px;
+}
+
+/* "type is too big" (en-tête) - la colonne Type ne fait que 4% (icône courte, voir
+   commentaire table-layout dans style.css), mais son <select> de filtre hérite du 84px
+   fixe de .th-filterable-control (dimensionné pour Nom/Album/Volume) et déborde de cette
+   colonne étroite. Ciblé sur la 3e colonne (Type) uniquement - Volume/Extension gardent
+   .th-filterable-control par défaut car leurs options (numéros de tome, extensions) ont
+   besoin de plus de place. */
+.import-files-table > thead > tr > th:nth-child(3) select.th-filterable-control {
+    width: 44px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.series-table-row {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.series-table-row:hover {
+    background: rgba(55, 65, 81, 0.08);
+}
+
+.series-table-row td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #e0e0e0;
+    vertical-align: middle;
+    /* Police globalement réduite (comme déjà pour l'en-tête) - moins de largeur prise
+       par colonne = moins souvent besoin de scroller horizontalement pour tout voir */
+    font-size: 0.85em;
+}
+
+.series-table-scan-date {
+    font-size: 0.85em;
+    color: #888;
+    white-space: nowrap;
+}
+
+.series-table-title {
+    font-weight: 600;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.series-table-summary {
+    max-width: 260px;
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Cède de la place aux colonnes optionnelles (Année/Auteur/Genre/One-Shot, voir
+   TABLE_OPTIONAL_COLUMNS) dès qu'au moins une est active, sinon le tableau entier
+   dépassait largement son conteneur au fil des colonnes cochées */
+.series-table-summary-compact {
+    max-width: 160px;
+}
+
+/* Colonnes optionnelles du tableau: largeur bornée + ellipsis, sinon un genre/auteur un
+   peu long élargissait tout le tableau bien au-delà de son conteneur (voir
+   buildTableRowHtml côté JS) */
+.series-table-optional-cell {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9em;
+    color: #888;
+}
+
+.series-table-actions {
+    vertical-align: middle;
+}
+
+.series-table-actions-inner {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.volume-table-select-cell {
+    width: 28px;
+    text-align: center;
+}
+
+.volume-bulk-actions-bar {
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+
+.settings-card .series-table-wrapper,
+.settings-card .series-table {
+    width: 100%;
+}
+
+.volume-bulk-actions-count {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-right: 4px;
+}
+
+/* Vue "tableau" de la liste des tomes sur la fiche série (voir buildVolumesTableHtml dans
+   library.js) - même pattern que .series-table (liste des séries): nowrap partout +
+   max-width:none pour contrer la règle globale `table { max-width: 100% }` (style.css) et
+   permettre un vrai débordement scrollable plutôt qu'un contenu écrasé sur place. */
+.volumes-table-wrapper {
+    overflow-x: auto;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.volumes-table {
+    width: 100%;
+    max-width: none;
+    min-width: 900px;
+    border-collapse: collapse;
+    color: var(--color-text);
+}
+
+.volumes-table thead th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--color-surface-alt);
+    border-bottom: 2px solid var(--color-accent);
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+.volume-table-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.volume-table-sortable:hover {
+    color: var(--color-text);
+}
+
+.volume-table-sort-active {
+    color: var(--color-accent);
+    font-weight: 600;
+}
+
+.volume-table-row td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #e0e0e0;
+    vertical-align: middle;
+    white-space: nowrap;
+    /* Infos secondaires (numéro, format, taille, emplacement) - pas besoin d'une taille
+       aussi grande que le texte normal de la page */
+    font-size: 0.85em;
+}
+
+.volume-table-row:hover {
+    background: rgba(55, 65, 81, 0.08);
+}
+
+/* Même code couleur que la vue Aperçu (.volume-item/.volume-item-placeholder dans
+   style.css): vert clair = possédé, gris = pas possédé */
+.volume-table-row-placeholder {
+    opacity: 0.75;
+    background: #f4f4f4;
+}
+
+.volume-table-row-placeholder:hover {
+    background: #eee;
+}
+
+.volume-table-row-owned {
+    background: #f1f8f3;
+}
+
+.volume-table-row-owned:hover {
+    background: #e6f4e9;
+}
+
+/* Même correctif que .volume-item/.volume-item-placeholder dans style.css: ces couleurs
+   sémantiques (possédé=vert/pas possédé=gris) restaient codées en dur, entièrement
+   claires, quel que soit le thème - la vue Tableau des tomes tranchait alors en un bloc
+   quasi-blanc au milieu d'une page par ailleurs sombre. */
+[data-theme="dark"] .volume-table-row-placeholder {
+    background: #2b241c;
+}
+
+[data-theme="dark"] .volume-table-row-placeholder:hover {
+    background: #332b21;
+}
+
+[data-theme="dark"] .volume-table-row-owned {
+    background: #1e2b21;
+}
+
+[data-theme="dark"] .volume-table-row-owned:hover {
+    background: #253527;
+}
+
+[data-theme="dark"] .volumes-table thead th,
+[data-theme="dark"] .volume-table-row td {
+    border-bottom-color: var(--color-border);
+}
+
+/* Menu "molette" (.toolbar-dropdown-menu, filtres Statut/Genre/Auteur/Année, tri...):
+   même correctif que ci-dessus - survol/état actif/libellés restaient des teintes claires
+   fixes, illisibles ou trop vives une fois le fond du menu passé en sombre. */
+[data-theme="dark"] .toolbar-dropdown-item:hover {
+    background: var(--color-surface-alt);
+}
+
+[data-theme="dark"] .toolbar-dropdown-item.active {
+    background: #3a3550;
+    color: var(--color-accent);
+}
+
+[data-theme="dark"] .toolbar-dropdown-item.active::before {
+    background: var(--color-accent);
+}
+
+[data-theme="dark"] .toolbar-dropdown-label {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .toolbar-dropdown-item::before {
+    background: var(--color-border);
+}
+
+[data-theme="dark"] .toolbar-dropdown-item-reset {
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .toolbar-btn.toolbar-btn-filter-active {
+    background: #2f2c45;
+    color: var(--color-accent);
+}
+
+[data-theme="dark"] .toolbar-btn.toolbar-btn-filter-active:hover {
+    background: #3a3550;
+}
+
+.volume-table-name {
+    font-weight: 600;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.volume-table-path {
+    color: #888;
+    font-size: 0.9em;
+    max-width: 380px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+.volume-table-actions-inner {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    align-items: center;
+}
+
+/* Le menu ⚙️ (.toolbar-dropdown) n'a pas de flex-shrink:0 par défaut - dans cette cellule
+   flex, sans ça il pouvait se faire compresser/passer à la ligne avant que le min-width
+   ci-dessus ne force le tableau entier à défiler plutôt qu'à se contracter. */
+.volume-table-actions-inner .toolbar-dropdown {
+    flex-shrink: 0;
+}
+
+/* Vue tableau sur mobile: reste un vrai <table> scrollable horizontalement (voir
+   min-width sur .series-table plus haut), plutôt qu'empilé en cartes - "en mobile il
+   fait que ce soit un tableau pas des cadres pour la bibliothèque" (revient sur le
+   correctif "hyper moche" précédent, qui empilait les lignes en cartes: l'utilisateur
+   préfère finalement un vrai tableau qu'on fait défiler au doigt). La ligne de filtres
+   (.series-table-filter-row) fait partie du <thead> et défile donc avec le reste des
+   en-têtes de colonnes, plus besoin d'un panneau replié dédié. */
+
+/* Amélioration du curseur sur les cartes de volumes manquants */
+.missing-volume-card[onclick] {
+    cursor: pointer !important;
+}
+
+.missing-volume-card[onclick]:hover {
+    background: linear-gradient(135deg, #fff9e6, #ffffff);
+    border-color: var(--color-accent);
+}
+
+.missing-volume-card[onclick]:hover .missing-volume-number {
+    color: var(--color-accent);
+}
+
+/* Styles pour l'en-tête de recherche dans la modal */
+.search-header {
+    background: linear-gradient(135deg, var(--color-accent) 0%, #8a4e28 100%);
+    color: white;
+    padding: 25px;
+    border-radius: 12px 12px 0 0;
+    margin: -30px -30px 20px -30px;
+}
+
+.search-header h2 {
+    color: white;
+    margin: 0;
+    font-size: 1.8em;
+}
+
+.search-header p {
+    margin-top: 10px;
+    opacity: 0.9;
+}
+
+/* Styles pour les cartes de résultats de recherche */
+.result-card {
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 20px;
+    border: 2px solid var(--color-border);
+}
+
+.result-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    border-color: var(--color-accent);
+}
+
+.cover-container {
+    width: 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.cover-image {
+    width: 120px;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    object-fit: cover;
+}
+
+.result-content {
+    flex: 1;
+}
+
+/* display:block/text-decoration:none: .result-title est parfois un <a> (lien direct vers
+   EBDZ pour le titre d'un sujet, voir renderLatestThread dans ebdz-latest.js -
+   "permet de cliquer sur le lien ebdz sur le lien de l'album"), parfois un <div> - même
+   rendu dans les deux cas plutôt que le style <a> par défaut du navigateur (souligné,
+   bleu) */
+.result-title {
+    display: block;
+    text-decoration: none;
+    font-size: 1.4em;
+    font-weight: bold;
+    color: var(--color-text);
+    margin-bottom: 10px;
+    transition: color 0.15s ease;
+}
+
+a.result-title:hover {
+    color: var(--color-accent);
+}
+
+/* Nouveautés (ebdz-latest.js): .result-title est ici le titre d'un sujet dans une cellule
+   de tableau (.replace-results-table), pas l'en-tête d'une grosse carte comme sur les
+   autres pages qui réutilisent cette classe (Découvrir, Surveillance...) - 1.4em y est
+   démesuré dans ce contexte compact. Scopé à .replace-results-table plutôt que de changer
+   la règle .result-title elle-même, qui doit rester grande ailleurs. "le titre est trop
+   grand" */
+.replace-results-table .result-title {
+    font-size: 1em;
+    margin-bottom: 4px;
+}
+
+/* Ligne d'en-tête de sujet (titre + icône ▼/▲, voir renderLatestThread/toggleThread dans
+   ebdz-latest.js) - repliée par défaut, seul le nom de l'album reste visible tant qu'on
+   ne clique pas dessus. "tu laisses juste le nom de l'album. le reste est caché" */
+.replace-results-thread-header {
+    cursor: pointer;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+.replace-results-thread-toggle {
+    display: inline-block;
+    color: var(--color-accent);
+    font-size: 0.8em;
+    margin-right: 8px;
+    min-width: 14px;
+}
+
+.replace-results-status-cell > * {
+    display: block;
+    width: fit-content;
+    margin-bottom: 4px;
+    white-space: nowrap;
+}
+
+.replace-results-status-cell > *:last-child {
+    margin-bottom: 0;
+}
+
+/* Point de statut Nouveau/Existant - remplace l'ancien texte brut ("au lieu de existant,
+   nouveau, met une petit icone de couleur"), le sens reste accessible via le tooltip
+   (data-tooltip). Couleurs distinctes du vert "possédé"/tan "surveillé" juste en dessous
+   pour ne pas créer de confusion entre les trois indicateurs de cette colonne. */
+.replace-results-status-cell .thread-status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-bottom: 6px;
+}
+
+.thread-status-dot-new {
+    background: #3a7ca5;
+}
+
+.thread-status-dot-existing {
+    background: #b5a284;
+}
+
+/* Séparateur visuel entre deux sujets consécutifs dans le tableau ("met des seperateures
+   entre les albums") - plus marqué que le simple liseré entre lignes de fichiers d'un
+   même sujet, pour repérer d'un coup d'œil où un sujet s'arrête et où le suivant
+   commence dans une longue liste. Pas de règle sur la toute première ligne du tableau
+   (rien à séparer d'un sujet précédent). */
+.replace-results-row-group-start td {
+    border-top: 2px solid var(--color-border);
+}
+
+.replace-results-table tbody tr:first-child td {
+    border-top: none;
+}
+
+/* Sujet masqué par le filtre nom d'album (voir filterEbdzThreads dans ebdz-latest.js) -
+   !important pour rester prioritaire sur le style.display inline posé par toggleThread
+   (repli/dépli manuel d'un sujet) sans avoir à connaître/écraser cet état. */
+.thread-filtered-out {
+    display: none !important;
+}
+
+.result-category {
+    display: inline-block;
+    background: var(--color-accent);
+    color: white;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 0.9em;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.description {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 15px 0;
+    font-size: 0.95em;
+    color: #555;
+    line-height: 1.6;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.file-info {
+    display: grid;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.file-item {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid #e0e0e0;
+    transition: all 0.3s;
+}
+
+.file-item:hover {
+    background: #f0f2f5;
+    border-color: var(--color-accent);
+}
+
+.file-item-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.file-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.file-name {
+    font-weight: 500;
+    color: var(--color-text);
+    flex: 1;
+    word-break: break-word;
+    margin-right: 10px;
+    line-height: 1.4;
+    font-size: 0.95em;
+}
+
+.file-size {
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+    min-width: 80px;
+    text-align: right;
+    margin-right: 10px;
+    font-weight: 600;
+}
+
+.btn-icon {
+    font-size: 1.05em;
+}
+
+.volume-badge {
+    background: var(--color-accent);
+    color: white;
+    padding: 6px 15px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 0.9em;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Gris foncé plutôt que l'indigo/bleu de l'ancienne UI (voir .btn dans style.css) -
+   .add-button se recolore en vert juste en dessous, seul .copy-button garde ce gris. */
+.copy-button, .add-button {
+    padding: 8px 20px;
+    font-size: 0.9em;
+    background: var(--color-accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 90px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.copy-button:hover {
+    /* Toujours sombre (pas var(--color-text), qui devient clair en thème sombre) */
+    background: #2b2318;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+.add-button {
+    background: #28a745;
+    margin-left: 5px;
+}
+
+.add-button:hover {
+    background: #218838;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(40, 167, 69, 0.3);
+}
+
+.add-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.copied {
+    background: #28a745 !important;
+}
+
+/* Bloc "tome actuellement possédé" affiché au-dessus du tableau de résultats lors d'une
+   recherche de remplacement (voir displaySearchResults) - fond distinct pour ne pas le
+   confondre avec un résultat parmi d'autres, même structure de colonnes que le tableau
+   juste en dessous pour comparer directement */
+.replace-current-file {
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 14px;
+}
+
+.replace-current-file-label {
+    font-size: 0.8em;
+    font-weight: 600;
+    color: #4338ca;
+    margin-bottom: 4px;
+}
+
+/* Même bloc que ci-dessus, resté en indigo clair codé en dur même en thème sombre
+   ("Actuellement possédé" illisible sur fond sombre) - même écart de luminosité que les
+   autres overrides sombres de ce fichier (voir .volume-table-row-owned plus haut). */
+[data-theme="dark"] .replace-current-file {
+    background: #242844;
+    border-color: #3d3f6b;
+}
+
+[data-theme="dark"] .replace-current-file-label {
+    color: #a5b4fc;
+}
+
+.replace-current-file .replace-results-table {
+    font-size: 0.85em;
+}
+
+.replace-current-file .replace-results-filename {
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* Tableau compact de résultats de recherche (voir displaySearchResults dans library.js) -
+   remplace l'ancien affichage en grosses cartes séparées EBDZ/Prowlarr */
+.replace-results-table {
+    width: 100%;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    /* Même override que .series-table (voir plus haut): la règle globale
+       `table { max-width: 100% }` (style.css) empêchait ce tableau de jamais dépasser
+       son conteneur, donc le wrapper overflow-x:auto autour de lui (voir
+       displaySearchResults) n'avait jamais rien à faire défiler - le contenu se faisait
+       juste tronquer/écraser à la place */
+    max-width: none;
+    border-collapse: collapse;
+    font-size: 0.85em;
+}
+
+/* En-tête crème/cuivre, même traitement que .import-files-table (voir style.css,
+   "copie le style de historique") - couleurs de thème plutôt que du gris en dur, pour
+   rester cohérent (et lisible en thème sombre) avec les autres tableaux de l'app plutôt
+   que ce tableau ait son propre style isolé. */
+.replace-results-table thead th {
+    text-align: left;
+    padding: 6px 8px;
+    color: var(--color-text-muted);
+    font-weight: 600;
+    background: var(--color-surface-alt);
+    border-bottom: 2px solid var(--color-accent);
+    white-space: nowrap;
+}
+
+.replace-results-row td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+}
+
+/* Même survol que .series-table-row (audit "meme UI ... affichage") - ce tableau n'avait
+   jusqu'ici aucun retour visuel au survol. */
+.replace-results-row:hover {
+    background: rgba(55, 65, 81, 0.08);
+}
+
+
+/* Tri par en-tête cliquable ("pouvoir ordonner en cliquant sur le header"), même
+   principe que .volume-table-sortable (liste des tomes/séries) */
+.search-results-sort-label {
+    cursor: pointer;
+    user-select: none;
+}
+
+.search-results-sort-label:hover {
+    color: var(--color-text);
+}
+
+.search-results-sort-label.search-results-sort-active {
+    color: var(--color-accent);
+    font-weight: 600;
+}
+
+.search-results-sort-arrow {
+    display: inline-block;
+}
+
+.replace-results-row-best {
+    background: #fffbeb;
+}
+
+.replace-results-row-owned td:first-child {
+    box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.replace-results-best-marker {
+    width: 20px;
+    text-align: center;
+}
+
+.replace-results-filename {
+    max-width: 480px;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    white-space: normal;
+}
+
+.replace-results-actions {
+    white-space: nowrap;
+}
+
+.replace-results-source-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    vertical-align: -3px;
+}
+
+.btn-icon-only {
+    border: none;
+    background: #f0f0f0;
+    color: var(--color-text);
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 1em;
+    margin-right: 4px;
+    transition: background 0.15s ease;
+}
+
+.btn-icon-only:hover {
+    background: var(--color-border);
+}
+
+/* Animation pour l'ouverture de la modal de recherche */
+#search-ed2k-modal.active {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Responsive pour les résultats de recherche */
+@media (max-width: 768px) {
+    .result-card {
+        grid-template-columns: 1fr;
+    }
+    
+    .cover-container {
+        width: 100%;
+        max-width: 200px;
+        margin: 0 auto;
+    }
+    
+    .cover-image {
+        width: 100%;
+        max-width: 200px;
+    }
+    
+    .file-item {
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .file-item-main {
+        min-width: 0;
+    }
+
+    .file-name {
+        font-size: 1.15em;
+        font-weight: 700;
+        margin-right: 0;
+    }
+
+    .volume-badge {
+        font-size: 0.8em;
+        padding: 4px 10px;
+    }
+
+    .file-item-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 5px;
+        flex-shrink: 0;
+    }
+
+    .file-size {
+        font-size: 0.7em;
+        min-width: 0;
+        text-align: center;
+        margin-right: 0;
+    }
+
+    .file-item-actions .copy-button,
+    .file-item-actions .add-button {
+        width: 40px;
+        height: 40px;
+        min-width: 0;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: 0;
+        border-radius: 8px;
+    }
+
+    .btn-label {
+        display: none;
+    }
+
+    .btn-icon {
+        font-size: 1.2em;
+    }
+
+    .missing-volumes-grid {
+        grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    }
+}
+
+/* Amélioration de l'accessibilité */
+.missing-volume-card:focus {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+.copy-button:focus, .add-button:focus {
+    outline: 3px solid rgba(102, 126, 234, 0.5);
+    outline-offset: 2px;
+}
+/* ========== STYLES RENOMMAGE DE FICHIERS ========== */
+
+.rename-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1001;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.rename-modal.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.rename-modal-content {
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 900px;
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 30px;
+    position: relative;
+}
+
+.rename-modal-header {
+    margin-bottom: 25px;
+}
+
+.rename-modal-header h2 {
+    margin: 0 0 10px 0;
+    font-size: 1.8em;
+    color: var(--color-text);
+}
+
+.rename-modal-subtitle {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+}
+
+.rename-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.rename-section {
+    background: var(--color-surface-alt);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+}
+
+.rename-section h3 {
+    margin: 0 0 15px 0;
+    color: var(--color-text);
+    font-size: 1.1em;
+}
+
+/* Champ de nom personnalisé (voir #rename-custom-name): stylé ici plutôt que via
+   .form-control, qui n'est défini que dans style-missing-monitor.css - non chargé sur
+   la page série - et retombait donc sur la taille par défaut minuscule du navigateur */
+.rename-section input[type="text"] {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 1em;
+    font-family: inherit;
+    color: var(--color-text);
+    background: var(--color-surface);
+}
+
+.rename-section input[type="text"]:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.rename-help-text {
+    margin: 0 0 15px 0;
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+}
+
+.rename-section code {
+    background: var(--color-bg);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    color: var(--color-text);
+}
+
+.rename-preview-container {
+    background: var(--color-surface);
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.rename-preview-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.rename-preview-item {
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+    padding: 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 10px;
+    align-items: center;
+    font-size: 1em;
+}
+
+.rename-preview-old,
+.rename-preview-new {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rename-preview-label {
+    font-size: 0.9em;
+    color: var(--color-text-muted);
+    font-weight: 500;
+}
+
+.rename-preview-item code {
+    display: block;
+    padding: 8px 10px;
+    background: var(--color-surface);
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    word-break: break-all;
+    font-family: 'Courier New', monospace;
+    color: var(--color-text);
+    font-size: 1em;
+}
+
+.rename-preview-arrow {
+    color: #10b981;
+    font-weight: bold;
+    font-size: 1.2em;
+    text-align: center;
+}
+
+/* Fichier déjà au format standard (aucun changement pour lui): atténué pour distinguer
+   d'un coup d'oeil des fichiers qui vont réellement être renommés */
+.rename-preview-unchanged {
+    opacity: 0.55;
+}
+
+/* Ligne dédiée au renommage du dossier de la série, mise en avant par rapport aux
+   fichiers individuels */
+.rename-preview-folder {
+    border-left: 3px solid var(--color-accent);
+}
+
+.error-message {
+    background: #fee;
+    color: #c33;
+    padding: 12px 15px;
+    border-radius: 6px;
+    border: 1px solid #f99;
+    font-size: 0.95em;
+}
+
+/* Amélioration du bouton close modal */
+.rename-modal-content .close-modal {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 28px;
+    color: #999;
+    transition: color 0.2s;
+}
+
+.rename-modal-content .close-modal:hover {
+    color: var(--color-text);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .rename-modal-content {
+        width: 98%;
+        max-height: 95vh;
+        padding: 20px;
+    }
+    
+    .rename-preview-item {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .rename-preview-arrow {
+        display: none;
+    }
+
+    .rename-modal-header h2 {
+        font-size: 1.3em;
+    }
+
+    .rename-modal-content .close-modal {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        z-index: 1001;
+    }
+}
+
+/* Thème sombre: overrides ciblés (suite du bloc équivalent dans style.css) - trouvés via
+   un audit navigateur en mode sombre ("beaucoup de problème avec des icones/parties
+   claires sur l'UI"): fonds gris clair codés en dur (#f0f0f0/#e5e2da) qui ne suivent
+   jamais --color-*, produisant des pastilles/boutons clairs et des icônes quasi
+   invisibles (texte clair sur fond resté clair) une fois le reste de la page passé en
+   sombre. */
+[data-theme="dark"] .btn-icon-only {
+    background: var(--color-surface-alt);
+}
+
+[data-theme="dark"] .btn-icon-only:hover {
+    background: var(--color-border);
+}
+
+[data-theme="dark"] #table-columns-btn {
+    background: var(--color-surface-alt);
+}
+
+[data-theme="dark"] .overview-tag {
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+}
+
+/* Puces de filtre Genre/Auteur/Annee (barre d'outils bibliotheque, library.js) -
+   fond #f9fafb (etat de base, pas seulement :hover) et survol #eef0ff/#c7d2fe codes en
+   dur, jamais couverts par un override [data-theme="dark"] - restaient claires en
+   permanence sur fond sombre, texte var(--color-text) (clair en theme sombre) dessus. */
+[data-theme="dark"] #genre-filter-list .toolbar-dropdown-item,
+[data-theme="dark"] #author-filter-list .toolbar-dropdown-item,
+[data-theme="dark"] #year-filter-list .toolbar-dropdown-item {
+    background: var(--color-surface-alt);
+}
+
+[data-theme="dark"] #genre-filter-list .toolbar-dropdown-item:hover,
+[data-theme="dark"] #author-filter-list .toolbar-dropdown-item:hover,
+[data-theme="dark"] #year-filter-list .toolbar-dropdown-item:hover {
+    background: var(--color-border);
+    border-color: var(--color-accent);
+}
+
+/* ".overview-row:hover" gardait un fond gris clair codé en dur (#f0f2f5), jamais
+   couvert par un override [data-theme="dark"] contrairement à .overview-tag
+   ci-dessus - au survol en mode sombre le fond restait clair pendant que le texte
+   (var(--color-text), déjà clair en thème sombre) restait illisible dessus. Même
+   fond que le survol de .series-card/.result-item (var(--color-surface)) déjà
+   utilisé pour ce même état ailleurs sur la page en thème sombre. */
+[data-theme="dark"] .overview-row:hover {
+    background: var(--color-surface);
+}
+
+[data-theme="dark"] .series-nav-arrow {
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .series-nav-arrow:hover:not(:disabled) {
+    background: var(--color-border);
+    color: var(--color-text);
+}
+
+[data-theme="dark"] .toolbar-btn-danger,
+[data-theme="dark"] .toolbar-dropdown-item-danger,
+[data-theme="dark"] .series-edit-action-danger {
+    color: #e08a8a;
+}
+
+[data-theme="dark"] .toolbar-btn-danger:hover,
+[data-theme="dark"] .toolbar-dropdown-item-danger:hover,
+[data-theme="dark"] .series-edit-action-danger:hover {
+    background: #3d1f1f;
+    color: #f0a8a8;
+}
+
+[data-theme="dark"] .series-edit-action-danger {
+    border-color: #5c2b2b;
+}
+
+[data-theme="dark"] .series-edit-action-danger:hover {
+    border-color: #7a3838;
+}
+
+/* Modale "Fichiers EBDZ" d'un tome (openEbdzMatchModal, library.js) - en-tête violet
+   (identité EBDZ) et ligne surlignée jaune (tome absent de la collection) étaient codés
+   en dur, restant clairs quel que soit le thème. */
+.ebdz-modal-header-row {
+    background: #e9d5ff;
+    border-bottom: 1px solid #8b5cf6;
+}
+
+[data-theme="dark"] .ebdz-modal-header-row {
+    background: #352a4d;
+    border-bottom: 1px solid #8b5cf6;
+}
+
+.ebdz-modal-missing-row {
+    background: #fff3cd;
+}
+
+.ebdz-modal-missing-cell,
+.ebdz-modal-missing-hint {
+    color: #856404;
+}
+
+[data-theme="dark"] .ebdz-modal-missing-row {
+    background: #3d3113;
+}
+
+[data-theme="dark"] .ebdz-modal-missing-cell,
+[data-theme="dark"] .ebdz-modal-missing-hint {
+    color: #e0c069;
+}

@@ -1,0 +1,729 @@
+/* Style pour la page de surveillance des volumes manquants */
+
+:root {
+    /* Atelier: --primary-color/--secondary-color étaient l'ancien duo bleu/violet
+       (#667eea/#764ba2, voir .btn-primary plus bas qui en faisait un dégradé) - jamais
+       balayé lors de la refonte du reste de l'app, contrairement à style.css. Un seul
+       accent ambre plutôt qu'un dégradé deux tons, cohérent avec "Duo de tons" (pas de
+       dégradé vif, un seul accent sur l'action principale). --light-bg/--border-color/
+       --text-dark/--text-light étaient aussi des gris froids, jamais réchauffés. */
+    --primary-color: #a8672a;
+    --secondary-color: #8a5220;
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --danger-color: #ef4444;
+    --info-color: #3b82f6;
+    --light-bg: #f7f2e9;
+    --border-color: #e0d2b8;
+    --text-dark: #2b2318;
+    --text-light: #6b6355;
+    /* Fond des cartes, séparé de
+       --light-bg (fond de page) - c'était un blanc pur codé en dur */
+    --card-bg: #ffffff;
+}
+
+[data-theme="dark"] {
+    --primary-color: #c98a4b;
+    --secondary-color: #dba066;
+    --light-bg: #2b241c;
+    --border-color: #453c2f;
+    --text-dark: #ece3d3;
+    --text-light: #a89a80;
+    --card-bg: #241f18;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    border-bottom: 2px solid var(--border-color);
+    background: rgba(55, 65, 81, 0.08);
+    padding: 0 30px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.tab-button {
+    padding: 15px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-light);
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.tab-button:hover {
+    color: var(--primary-color);
+}
+
+.tab-button.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.tabs-content {
+    padding: 0;
+}
+
+.tab-pane {
+    display: none;
+    animation: fadeIn 0.3s ease;
+    padding: 30px;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, var(--light-bg) 0%, var(--card-bg) 100%);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+    box-shadow: 0 5px 20px rgba(168, 103, 42, 0.15);
+    transform: translateY(-2px);
+}
+
+.stat-icon {
+    font-size: 36px;
+}
+
+.stat-content {
+    flex: 1;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+/* Quick Actions */
+.quick-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+/* Buttons */
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--secondary-color);
+    box-shadow: 0 5px 15px rgba(80, 55, 10, 0.3);
+    transform: translateY(-2px);
+}
+
+.btn-secondary {
+    background: var(--card-bg);
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+}
+
+.btn-secondary:hover {
+    background: rgba(55, 65, 81, 0.08);
+}
+
+.btn.monitor-toggle-follow {
+    background: #a8672a;
+    color: #fff;
+    border: 1px solid #8f571f;
+}
+
+.btn.monitor-toggle-follow:hover {
+    background: #8f571f;
+}
+
+.btn.monitor-toggle-unfollow {
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+}
+
+.btn.monitor-toggle-unfollow:hover {
+    background: var(--color-border);
+    color: var(--color-text);
+}
+
+
+/* Boutons rapides de filtrage */
+.btn-small {
+    padding: 8px 16px;
+    font-size: 12px;
+    border-radius: 4px;
+    opacity: 0.6;
+    transition: all 0.3s ease;
+}
+
+.btn-small.active {
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+.btn-small:hover {
+    opacity: 1;
+}
+
+/* Section */
+.section {
+    margin-bottom: 30px;
+}
+
+.section h2 {
+    font-size: 20px;
+    margin-bottom: 15px;
+    color: var(--primary-color);
+}
+
+
+.monitor-bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+/* Même style que .volume-bulk-actions-count (style-library-search.css) - cohérence avec
+   le bandeau d'actions groupées des tomes. */
+.monitor-bulk-actions-count {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-right: 4px;
+}
+
+.monitor-select-all {
+    margin-right: auto;
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+}
+
+.monitor-select-column,
+.monitor-select-cell {
+    width: 34px;
+    text-align: center;
+}
+
+.monitor-select-cell input,
+.monitor-select-column input,
+.monitor-select-all input {
+    accent-color: var(--color-accent);
+}
+
+.btn.monitor-bulk-follow,
+.btn.monitor-bulk-unfollow {
+    padding: 6px 12px;
+    font-size: 0.85em;
+    border-radius: 6px;
+}
+
+.btn.monitor-bulk-follow {
+    background: var(--color-accent);
+    color: #fff;
+}
+
+.btn.monitor-bulk-unfollow {
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+}
+
+.monitor-status-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+}
+
+.monitor-status-icon .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.monitor-status-monitored { color: var(--color-accent); }
+.monitor-status-not-monitored { color: var(--color-text-muted); }
+
+.monitor-series-table-wrapper {
+    overflow-x: auto;
+}
+
+.monitor-series-table {
+    width: 100%;
+    max-width: none;
+    min-width: 620px;
+    border-collapse: collapse;
+    color: var(--color-text);
+}
+
+.monitor-series-table thead th {
+    text-align: left;
+    padding: 8px 12px;
+    background: var(--color-surface-alt);
+    border-bottom: 2px solid var(--color-accent);
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+.table-sort-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.table-sort-button:hover { color: var(--color-accent); }
+.sort-indicator { opacity: 0.7; font-size: 1.1em; }
+
+.monitor-series-row td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+    font-size: 0.85em;
+    overflow-wrap: anywhere;
+}
+
+.monitor-series-row:hover td {
+    background: var(--light-bg);
+}
+
+.monitor-series-row td:nth-child(1) { width: 34px; }
+.monitor-series-row td:nth-child(2) { width: 45%; }
+.monitor-series-row td:nth-child(3) { width: 25%; }
+.monitor-series-row td:nth-child(4) { width: 18%; }
+.monitor-series-row td:nth-child(5) { width: 12%; white-space: nowrap; }
+.monitor-series-row td:nth-child(6) { width: 10%; white-space: nowrap; }
+
+.monitor-series-title {
+    font-weight: 600;
+    color: var(--color-text);
+    max-width: 240px;
+    overflow-wrap: anywhere;
+}
+
+.monitor-series-title a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.monitor-series-title a:hover {
+    color: var(--color-accent);
+    text-decoration: underline;
+}
+
+.bedetheque-status {
+    white-space: nowrap;
+}
+
+.bedetheque-status-finished { color: var(--color-text); }
+.bedetheque-status-ongoing { color: var(--color-text-muted); }
+
+.series-missing {
+    color: var(--color-accent);
+    font-weight: 400;
+}
+
+/* Series Badge */
+.series-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    animation: slideInBadge 0.3s ease;
+}
+
+@keyframes slideInBadge {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.badge-monitored {
+    background: #a8672a;
+    color: #fff;
+}
+
+.badge-not-monitored {
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+}
+
+/* Search Form */
+.search-form {
+    background: var(--light-bg);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-dark);
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(168, 103, 42, 0.1);
+}
+
+textarea.form-control {
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.input-group {
+    display: flex;
+    gap: 10px;
+}
+
+.checkbox-group {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.checkbox-group label {
+    display: flex;
+    align-items: center;
+    font-weight: 400;
+    cursor: pointer;
+    gap: 8px;
+}
+
+.checkbox-group input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-color);
+}
+
+/* Results List */
+.results-list,
+.downloads-list {
+    display: grid;
+    gap: 15px;
+}
+
+.result-item,
+.download-item {
+    background: var(--light-bg);
+    border-left: 4px solid var(--primary-color);
+    padding: 15px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+}
+
+.result-item:hover,
+.download-item:hover {
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+
+.result-title {
+    font-weight: 700;
+    color: var(--text-dark);
+    margin-bottom: 5px;
+}
+
+.result-meta {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-light);
+    margin-bottom: 10px;
+}
+
+.result-meta span {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.result-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* History */
+.history-list {
+    display: grid;
+    gap: 10px;
+}
+
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: var(--light-bg);
+    border-radius: 6px;
+    border-left: 4px solid;
+}
+
+.history-item.success {
+    border-left-color: var(--success-color);
+}
+
+.history-item.error {
+    border-left-color: var(--danger-color);
+}
+
+.history-info {
+    flex: 1;
+    /* min-width:0 indispensable: un enfant flex garde par défaut min-width:auto (taille
+       du contenu), donc un titre long/sans espace (nom de fichier) forçait .history-item
+       - et par ricochet toute la page - à déborder horizontalement sur mobile au lieu de
+       laisser le texte passer à la ligne dans l'espace disponible (classique piège
+       flexbox: flex:1 seul ne suffit pas à autoriser le rétrécissement) */
+    min-width: 0;
+}
+
+.history-title {
+    font-weight: 600;
+    color: var(--text-dark);
+    overflow-wrap: break-word;
+}
+
+.history-meta {
+    font-size: 12px;
+    color: var(--text-light);
+    margin-top: 3px;
+}
+
+.history-date {
+    font-size: 12px;
+    color: var(--text-light);
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.3s ease;
+}
+
+.modal.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background-color: var(--card-bg);
+    color: var(--text-dark);
+    padding: 30px;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.modal-content h2 {
+    margin-bottom: 20px;
+    color: var(--primary-color);
+}
+
+/* Fenêtre "Télécharger le tome": style "Duo de tons" (choisi par l'utilisateur parmi
+   plusieurs propositions) plutôt que l'ancien dégradé violet/indigo hérité de
+   --primary-color/--secondary-color - aucune couleur vive, juste un fond parchemin
+   discret pour l'en-tête vs. le corps blanc, accent ambre uniquement sur le bouton
+   d'action, cohérent avec la refonte "Atelier" du reste de l'appli (voir style.css). Scopé
+   à #download-modal pour ne pas retoucher --primary-color globalement (utilisée ailleurs
+   sur cette page: onglets, bordures...) ni les autres boutons .btn-primary de la page. */
+#download-modal .modal-header {
+    background: var(--light-bg);
+    border-bottom: 1px solid var(--border-color);
+    /* -40px: neutralise le padding de .modal-content (40px, définitif car style.css se
+       charge après style-missing-monitor.css et gagne sur cette propriété malgré le
+       30px déclaré ici) pour que ce bandeau touche vraiment les bords de la fenêtre */
+    margin: -40px -40px 20px;
+    padding: 18px 40px;
+    border-radius: 20px 20px 0 0;
+}
+
+#download-modal .modal-content h2 {
+    margin: 0;
+    color: var(--text-dark);
+}
+
+#download-modal .btn-primary {
+    background: var(--primary-color);
+}
+
+#download-modal .btn-primary:hover {
+    box-shadow: 0 5px 15px rgba(80, 55, 10, 0.3);
+}
+
+.close {
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--text-light);
+    cursor: pointer;
+    line-height: 20px;
+}
+
+.close:hover {
+    color: var(--text-dark);
+}
+
+/* No Data */
+.no-data {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-light);
+    font-size: 14px;
+}
+
+.no-data-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 10px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+
+    .nav {
+        width: 100%;
+        flex-direction: column;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .tabs {
+        /* flex-wrap:nowrap indispensable: sans lui, la règle .tabs de base (flex-wrap:
+           wrap, plus haut) continuait à empiler les onglets sur 2-3 lignes malgré
+           l'overflow-x:auto ci-dessous, qui n'avait alors rien à faire défiler - même
+           bande scrollable à une ligne que .history-filter-tabs (style-settings.css) */
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 0;
+    }
+
+    .tab-button {
+        flex-shrink: 0;
+        padding: 12px 15px;
+        font-size: 12px;
+    }
+
+    .tabs-content {
+        padding: 20px;
+    }
+
+    .search-input,
+    .filter-select {
+        width: 100%;
+    }
+
+    .quick-actions {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .btn.monitor-bulk-follow,
+    .btn.monitor-bulk-unfollow {
+        width: auto;
+    }
+}

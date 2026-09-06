@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Import de Bandes Dessinées</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <!-- .btn-icon-only (base rules: border:none/background/border-radius) vit dans
+         style-library-search.css, jamais chargée ici jusqu'ici - sans elle, les ✏️/🗑️/✓
+         de import.js retombaient sur le chrome natif du bouton du navigateur (bordure 3D
+         blanche), particulièrement visible en thème sombre. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+</head>
+<body class="import-page">
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link active">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">📥</span> <span class="header-title-full">Import de Bandes Dessinées</span><span class="header-title-short">Import</span></h1>
+                        <p class="subtitle">Téléchargements en cours et fichiers prêts à importer</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+            
+            <!-- Zone de résultats (voir window.addEventListener('load', ...) dans
+                 import.js) - "for import there should be a database of all the
+                 downloads... do not display what files are on disk" / "we don't need
+                 that anymore" (à propos du scan automatique) : la page n'affiche plus
+                 QUE le cache local + les téléchargements actifs/en attente en base au
+                 chargement, un scan de répertoire ne se déclenche plus qu'via une action
+                 explicite - le bouton Actualiser ci-dessous. -->
+            <div id="scan-results" class="settings-card" style="display: none;">
+                <!-- Liste des fichiers à importer (tableau + bouton Importer généré par
+                     displayImportFiles(), voir import.js) - le bouton Actualiser
+                     (refreshImportsEnCours) est désormais le SEUL déclencheur d'un scan
+                     de répertoire (avec l'exécution d'un import/une conversion, qui
+                     rescanne après coup pour refléter le changement qu'ils viennent de
+                     faire) - ne pas réintroduire de scan automatique périodique/au
+                     chargement à côté de celui-ci. -->
+                <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+                    <button class="btn" onclick="refreshImportsEnCours(this)" data-tooltip="Actualiser" style="padding:8px 15px; font-size:14px;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                </div>
+                <div id="import-in-progress-banner" class="import-in-progress-banner" style="display:none;"></div>
+                <div id="import-files-container">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Chargement...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="import-history-section" class="settings-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h3 style="margin:0;">🕓 Historique récent des imports</h3>
+                    <button class="btn" onclick="loadImportHistorySection()" data-tooltip="Actualiser" style="padding:8px 15px; font-size:14px;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                </div>
+                <div id="import-history-loading" class="loading"><div class="spinner"></div><p>Chargement...</p></div>
+                <div id="import-history-empty" class="no-data" style="display:none;"><p>Aucun import pour le moment</p></div>
+                <div style="overflow-x:auto;">
+                    <!-- Mêmes 4 colonnes que /history (voir history.html) - rendu partagé
+                         via historyEventRowHtml, static/js/history-shared.js. En-tête sans
+                         style inline (hérite de la règle partagée `table thead th`,
+                         style.css) pour un rendu identique à /history, plutôt que le
+                         `border-bottom:#e0e0e0`/`font-size:13px` dupliqués et légèrement
+                         différents qui existaient ici avant (audit "meme UI... font"). -->
+                    <table class="history-events-table" style="display:none;" id="import-history-table">
+                        <thead>
+                            <tr>
+                                <th style="cursor:pointer; user-select:none;" data-sort-column="date" onclick="setImportHistorySort('date')">Date<span class="import-history-sort-arrow"></span></th>
+                                <th style="cursor:pointer; user-select:none;" data-sort-column="type" onclick="setImportHistorySort('type')">Type<span class="import-history-sort-arrow"></span></th>
+                                <th class="volume-table-sortable" style="user-select:none;" data-sort-column="label">
+                                    <div class="th-filterable-row">
+                                        <span class="th-filterable-label" style="cursor:pointer;" onclick="setImportHistorySort('label')">Détails<span class="import-history-sort-arrow"></span></span>
+                                        <span class="th-filterable-filter">
+                                            <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">🔎</span>
+                                            <input type="text" class="th-filterable-control" id="import-history-search-input" placeholder="Filtrer..." oninput="_syncFilterControlActive(this); filterImportHistoryBySearchText(this.value)">
+                                        </span>
+                                    </div>
+                                </th>
+                                <th style="text-align:center; cursor:pointer; user-select:none;" data-sort-column="status" onclick="setImportHistorySort('status')">Statut<span class="import-history-sort-arrow"></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="import-history-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Modal de sélection de série/bibliothèque -->
+    <div class="modal" id="select-destination-modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeDestinationModal()">×</span>
+            <h2 class="modal-title">Sélectionner la destination</h2>
+            <p class="modal-subtitle" id="file-to-assign">Fichier: ...</p>
+            
+            <div class="destination-selector">
+                <div class="form-group">
+                    <label for="destination-library">Bibliothèque</label>
+                    <select id="destination-library" onchange="loadLibrarySeries()">
+                        <option value="">-- Sélectionner une bibliothèque --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="destination-series-search">Série</label>
+                    <div class="series-combobox">
+                        <input type="text" id="destination-series-search" autocomplete="off"
+                               placeholder="Tapez pour rechercher une série..."
+                               onfocus="openSeriesCombobox()" oninput="renderSeriesComboboxOptions(this.value)">
+                        <div class="series-combobox-list" id="destination-series-list"></div>
+                        <select id="destination-series" style="display:none;" aria-label="Série">
+                            <option value="">-- Sélectionner une série --</option>
+                            <option value="__new__">➕ Créer une nouvelle série</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" id="new-series-name-group" style="display: none;">
+                    <label for="new-series-name">Nom de la nouvelle série</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="new-series-name" placeholder="Nom de la série"
+                               style="flex: 1;" oninput="updateNewSeriesBedethequeIndicator()">
+                        <button type="button" class="btn-icon-only" id="new-series-bedetheque-btn"
+                                onclick="openBedethequeImportModal('new-series-name')"
+                                data-tooltip="Matcher sur Bédéthèque">
+                            <img src="{{ url_for('static', filename='img/bedetheque-logo.png') }}" alt="Bédéthèque"
+                                 style="width: 18px; height: 18px; vertical-align: middle; filter: grayscale(1); opacity: .55;">
+                        </button>
+                    </div>
+                    <small id="new-series-bedetheque-status" style="display: block; margin-top: 4px; color: var(--color-text-muted);"></small>
+                </div>
+
+                <div class="form-group" id="volume-override-group" style="display: none;">
+                    <label for="volume-override-slot">Tome</label>
+                    <select id="volume-override-slot" onchange="updateVolumeOverrideFields()">
+                        <option value="auto">Laisser tel quel</option>
+                    </select>
+                    <small class="help-text">Corrige le tome quand le nom du fichier ne le précise pas (ex: aucun "T01"/"INT" dedans) - liste les tomes déjà connus de cette série</small>
+                    <div id="volume-override-manual-group" style="display: none; margin-top: 8px;">
+                        <select id="volume-override-type" onchange="updateVolumeOverrideFields()" aria-label="Type de tome">
+                            <option value="volume">Tome numéroté</option>
+                            <option value="integral">Intégrale</option>
+                            <option value="hs">Hors-série</option>
+                            <option value="episode">Épisode</option>
+                            <option value="special">Spécial (bonus, sans numéro)</option>
+                        </select>
+                        <input type="number" id="volume-override-number" placeholder="Numéro (laisser vide si non numéroté)" style="margin-top: 6px;" aria-label="Numéro du tome">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn" onclick="closeDestinationModal()">Annuler</button>
+                    <button class="btn btn-success" onclick="assignDestination()">Valider</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="tracking-edit-modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeTrackingEditModal()">×</span>
+            <h2 class="modal-title">Corriger la série / le tome suivis</h2>
+            <p class="modal-subtitle" id="tracking-edit-file-name">Fichier: ...</p>
+
+            <div class="destination-selector">
+                <div class="form-group" id="tracking-edit-library-group">
+                    <label for="tracking-edit-library">Bibliothèque</label>
+                    <select id="tracking-edit-library" onchange="_loadTrackingEditSeries()">
+                        <option value="">-- Sélectionner une bibliothèque --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="tracking-edit-series-search">Série</label>
+                    <div class="series-combobox">
+                        <input type="text" id="tracking-edit-series-search" autocomplete="off"
+                               placeholder="Tapez pour rechercher une série..."
+                               onfocus="openSeriesCombobox('tracking-edit-series-search', 'tracking-edit-series-list', '#tracking-edit-modal .modal-content', 'tracking-edit-series')"
+                               oninput="renderSeriesComboboxOptions(this.value)">
+                        <div class="series-combobox-list" id="tracking-edit-series-list"></div>
+                        <select id="tracking-edit-series" style="display:none;" onchange="_onTrackingEditSeriesChange()" aria-label="Série">
+                            <option value="">-- Sélectionner une série --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" id="tracking-edit-new-series-name-group" style="display:none;">
+                    <label for="tracking-edit-new-series-name">Nom de la nouvelle série</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="tracking-edit-new-series-name" placeholder="Nom de la série"
+                               style="flex: 1;" oninput="updateNewSeriesBedethequeIndicator('tracking-edit-new-series-name', 'tracking-edit-new-series-bedetheque-btn', 'tracking-edit-new-series-bedetheque-status')">
+                        <button type="button" class="btn-icon-only" id="tracking-edit-new-series-bedetheque-btn"
+                                onclick="openBedethequeImportModal('tracking-edit-new-series-name', 'tracking-edit-new-series-bedetheque-btn', 'tracking-edit-new-series-bedetheque-status')"
+                                data-tooltip="Matcher sur Bédéthèque">
+                            <img src="{{ url_for('static', filename='img/bedetheque-logo.png') }}" alt="Bédéthèque"
+                                 style="width: 18px; height: 18px; vertical-align: middle; filter: grayscale(1); opacity: .55;">
+                        </button>
+                    </div>
+                    <small id="tracking-edit-new-series-bedetheque-status" style="display: block; margin-top: 4px; color: var(--color-text-muted);"></small>
+                </div>
+
+                <div class="form-group" id="tracking-edit-volume-group">
+                    <label for="tracking-edit-volume-select">Tome</label>
+                    <select id="tracking-edit-volume-select" onchange="_applyTrackingEditVolumeSelection()">
+                        <option value="">-- Tomes connus de la série --</option>
+                    </select>
+                    <!-- "pourquoi je ne peux pas choisir intégrale, seulement le tome
+                         normal" - même correction de type (volume/intégrale/hors-série/
+                         épisode) que buildVolumeOverride côté #select-destination-modal
+                         (fichier déjà arrivé), désormais possible aussi pour un
+                         téléchargement encore EN COURS - voir _onTrackingEditTypeChange/
+                         saveTrackingEdit, update_active_download_tracking. -->
+                    <select id="tracking-edit-type" onchange="_onTrackingEditTypeChange()" style="margin-top:6px;" aria-label="Type de tome">
+                        <option value="volume">Tome numéroté</option>
+                        <option value="integral">Intégrale</option>
+                        <option value="hs">Hors-série</option>
+                        <option value="episode">Épisode</option>
+                    </select>
+                    <input type="number" id="tracking-edit-volume" placeholder="Numéro (laisser vide si non numéroté)" style="margin-top:6px;" aria-label="Numéro du tome">
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn" onclick="closeTrackingEditModal()">Annuler</button>
+                    <button class="btn btn-success" onclick="saveTrackingEdit()">Valider</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="cbz-packaging-mode-modal">
+        <div class="modal-content" style="max-width:960px;">
+            <span class="close-modal" onclick="closeCbzPackagingModeModal()">×</span>
+            <h2 class="modal-title">Empaqueter en .cbz</h2>
+            <p class="modal-subtitle" id="cbz-packaging-groups-count">...</p>
+
+            <div class="cbz-packaging-groups-toolbar" id="cbz-packaging-groups-toolbar">
+                <label class="cbz-manual-select-all-label">
+                    <input type="checkbox" id="cbz-manual-select-all" onchange="toggleAllCbzManualGroups(this.checked)">
+                    Tout sélectionner
+                </label>
+                <button type="button" class="btn btn-sm" id="cbz-manual-merge-btn" onclick="mergeCbzManualSelection()" disabled>Fusionner la sélection (<span id="cbz-manual-selected-count">0</span>)</button>
+                <button type="button" class="btn btn-sm btn-danger" id="cbz-manual-ignore-btn" onclick="ignoreCbzManualSelection()" disabled>Ignorer la sélection</button>
+            </div>
+
+            <div id="cbz-packaging-groups-list" class="cbz-manual-groups-list"></div>
+
+            <p class="cbz-packaging-mode-note">Cochez plusieurs groupes puis "Fusionner la sélection" pour n'en faire qu'un seul .cbz, ou "Ignorer" pour laisser des pages de côté (non empaquetées). Les images d'origine ne sont supprimées qu'après vérification d'intégrité du/des .cbz produit(s).</p>
+
+            <div class="form-actions">
+                <button class="btn" onclick="closeCbzPackagingModeModal()">Annuler</button>
+                <button class="btn btn-success" onclick="confirmCbzPackagingMode()">Empaqueter</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/match-modal.js') }}?v={{ asset_version('js/match-modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/history-shared.js') }}?v={{ asset_version('js/history-shared.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/import.js') }}?v={{ asset_version('js/import.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>
