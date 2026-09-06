@@ -1,0 +1,19 @@
+services:
+  bullarr:
+    image: ghcr.io/gwenvador/bullarr:latest
+    container_name: bullarr
+    ports:
+      - "4000:5000"
+    volumes:
+      - ./data:/app/data
+      - ./data/covers:/app/data/covers
+      - ./BD:/BD
+      - /path/to/amule/incoming:/downloads/amule:ro
+      - /path/to/torrents:/downloads/torrents
+      - /path/to/telegram/incoming:/downloads/telegram
+      - ./incoming:/downloads/fourtoutici
+    environment:
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env before starting Bullarr}
+      - TZ=Europe/Paris
+    restart: unless-stopped

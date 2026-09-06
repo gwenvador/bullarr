@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Surveillance des Volumes Manquants</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-missing-monitor.css') }}?v={{ asset_version('css/style-missing-monitor.css') }}">
+    <!-- .th-filterable-* (filtres de colonne carrés, voir <thead> ci-dessous) n'est défini
+         que dans cette feuille - jamais chargée ici jusqu'à présent, cette table utilisait
+         encore .search-input/.filter-select (style-missing-monitor.css), le seul tableau
+         de l'app resté sur cet ancien style. Avant style.css (même ordre que
+         library.html/search.html/history.html): style.css ne fait que resimplifier ce
+         contrôle en mobile (@media max-width:768px) - le charger après est nécessaire pour
+         que cette règle mobile prime, comme partout ailleurs. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link active">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <!-- Header -->
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">📊</span> <span class="header-title-full">Surveillance des Volumes Manquants</span><span class="header-title-short">Surveillance</span></h1>
+                        <p class="subtitle">Gérez la surveillance automatique des volumes manquants de vos séries</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <!-- Main Content -->
+                <main class="content">
+                    <div class="section">
+                        <div class="monitor-bulk-actions" id="monitor-bulk-actions" style="display: none;">
+                            <span class="monitor-bulk-actions-count" id="monitor-bulk-actions-count"></span>
+                            <button type="button" class="btn monitor-bulk-follow" id="bulk-follow" onclick="bulkSetMonitoring(true)">Surveiller</button>
+                            <button type="button" class="btn monitor-bulk-unfollow" id="bulk-unfollow" onclick="bulkSetMonitoring(false)">Ne plus surveiller</button>
+                        </div>
+                        <div class="monitor-series-table-wrapper">
+                            <table class="monitor-series-table">
+                                <thead>
+                                    <tr>
+                                        <th class="monitor-select-column"><input type="checkbox" id="select-all-series-header" aria-label="Tout sélectionner"></th>
+                                        <th>
+                                            <div class="th-filterable-row">
+                                                <button type="button" id="series-sort-button" class="table-sort-button th-filterable-label" aria-label="Trier les séries par nom">
+                                                    Série <span class="sort-indicator" aria-hidden="true">↕</span>
+                                                </button>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon icon-filter" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <input type="text" id="series-search" placeholder="Rechercher…" class="th-filterable-control">
+                                                </span>
+                                            </div>
+                                        </th>
+                                        <th>
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label">Tomes manquants</span>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon icon-filter" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <select id="missing-volumes-filter" class="th-filterable-control">
+                                                        <option value="all">Tous</option>
+                                                        <option value="with-missing">Avec tomes manquants</option>
+                                                        <option value="without-missing">Aucun tome manquant</option>
+                                                    </select>
+                                                </span>
+                                            </div>
+                                        </th>
+                                        <th>
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label">Statut Bédéthèque</span>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon icon-filter" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <select id="series-status-filter" class="th-filterable-control">
+                                                        <option value="all">Tous</option>
+                                                        <option value="finished">Terminé sur Bédéthèque</option>
+                                                        <option value="ongoing">Série en cours sur Bédéthèque</option>
+                                                    </select>
+                                                </span>
+                                            </div>
+                                        </th>
+                                        <th>
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label">Série complète</span>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon icon-filter" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <select id="series-complete-filter" class="th-filterable-control">
+                                                        <option value="all">Tous</option>
+                                                        <option value="yes">Oui</option>
+                                                        <option value="no">Non</option>
+                                                    </select>
+                                                </span>
+                                            </div>
+                                        </th>
+                                        <th>
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label">Surveillance</span>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon icon-filter" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <select id="monitored-status-filter" class="th-filterable-control">
+                                                        <option value="all">Toutes</option>
+                                                        <option value="monitored">Suivies</option>
+                                                        <option value="not-monitored">Non suivies</option>
+                                                    </select>
+                                                </span>
+                                            </div>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="series-table-body">
+                                    <tr><td colspan="6" class="no-data">Chargement des séries…</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/missing-monitor.js') }}?v={{ asset_version('js/missing-monitor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body></html>

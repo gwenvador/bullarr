@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Configuration</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link active">⚙️ Configuration</a>
+            <div class="nav-subgroup" id="settings-nav-subgroup">
+                <!-- Pas de sous-lien pour "Vue d'ensemble" (tab-overview, voir plus bas) -
+                     redondant avec le lien "⚙️ Configuration" de premier niveau, qui y
+                     mène déjà par défaut ("c'est déjà la meme chose quand tu clique sur
+                     configuration"). Reste atteignable en rechargeant /settings ou en
+                     recliquant sur Configuration depuis une autre page. -->
+                <a href="#indexeurs" class="nav-sublink" data-tab="indexeurs" onclick="switchTab('indexeurs'); return false;">🔌 Indexeurs</a>
+                <a href="#clients" class="nav-sublink" data-tab="clients" onclick="switchTab('clients'); return false;">💻 Clients</a>
+                <a href="#telegram" class="nav-sublink" data-tab="telegram" onclick="switchTab('telegram'); return false;">📱 Notifications</a>
+                <a href="#oidc" class="nav-sublink" data-tab="oidc" onclick="switchTab('oidc'); return false;">🔐 SSO / OIDC</a>
+                <a href="#monitoring" class="nav-sublink" data-tab="monitoring" onclick="switchTab('monitoring'); return false;">📊 Surveillance</a>
+                <a href="#import-auto" class="nav-sublink" data-tab="import-auto" onclick="switchTab('import-auto'); return false;">📥 Imports</a>
+                <a href="#theme" class="nav-sublink" data-tab="theme" onclick="switchTab('theme'); return false;">🌓 Thème</a>
+                <a href="#search-formats" class="nav-sublink" data-tab="search-formats" onclick="switchTab('search-formats'); return false;">🗂️ Recherche</a>
+                <a href="#libraries" class="nav-sublink" data-tab="libraries" onclick="switchTab('libraries'); return false;">✏️ Format</a>
+                <a href="#backup" class="nav-sublink" data-tab="backup" onclick="switchTab('backup'); return false;">💾 Backup</a>
+            </div>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">⚙️</span> <span class="header-title-full">Configuration</span><span class="header-title-short">Configuration</span></h1>
+                        <p class="subtitle">Paramètres de l'application</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+            <!-- Contenu des onglets -->
+            <div class="settings-content">
+                <!-- Onglet Vue d'ensemble : page d'accueil de la Configuration, une carte
+                     par catégorie ("si tu cliques sur la page configuration ca ouvre les
+                     indexeurs. ca devrait afficher l'ensemble des liens de configuration")
+                     - chaque carte fait juste basculer vers l'onglet correspondant
+                     (switchTab), toujours accessible aussi directement depuis la barre
+                     latérale. -->
+                <div class="tab-content active" id="tab-overview">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2>⚙️ Vue d'ensemble</h2>
+                            <p class="section-description">
+                                Toutes les catégories de configuration. Cliquez sur une carte pour l'ouvrir.
+                            </p>
+                        </div>
+                        <div class="integration-cards-grid">
+                            <div class="integration-card" onclick="switchTab('indexeurs')">
+                                <span class="integration-card-icon">🔌</span>
+                                <div class="integration-card-name">Indexeurs</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('clients')">
+                                <span class="integration-card-icon">💻</span>
+                                <div class="integration-card-name">Clients</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('telegram')">
+                                <img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">Notifications</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('oidc')">
+                                <span class="integration-card-icon">🔐</span>
+                                <div class="integration-card-name">SSO / OIDC</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('monitoring')">
+                                <span class="integration-card-icon">📊</span>
+                                <div class="integration-card-name">Surveillance</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('import-auto')">
+                                <span class="integration-card-icon">📥</span>
+                                <div class="integration-card-name">Imports</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('theme')">
+                                <span class="integration-card-icon">🌓</span>
+                                <div class="integration-card-name">Thème</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('search-formats')">
+                                <span class="integration-card-icon">🗂️</span>
+                                <div class="integration-card-name">Recherche</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('libraries')">
+                                <span class="integration-card-icon">✏️</span>
+                                <div class="integration-card-name">Format</div>
+                            </div>
+                            <div class="integration-card" onclick="switchTab('backup')">
+                                <span class="integration-card-icon">💾</span>
+                                <div class="integration-card-name">Backup</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Indexeurs : Prowlarr et ebdz.net fusionnés en une page de cartes
+                     cliquables ("change prowlarr, ebz à une seule page de configuration
+                     nommée indexeur... carrés et en cliquant dessus tu ouvres une fenetre
+                     modale") - chaque carte ouvre la modale de configuration complète de
+                     l'intégration correspondante (voir plus bas, .modal#tab-prowlarr/
+                     #tab-ebdz - le formulaire lui-même est inchangé, seul son conteneur
+                     est devenu une modale au lieu d'un onglet). -->
+                <div class="tab-content" id="tab-indexeurs">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>🔌 Indexeurs</h2>
+                            <p class="section-description">
+                                Sources de recherche pour trouver les tomes manquants. Cliquez sur une carte
+                                pour la configurer.
+                            </p>
+                        </div>
+                        <div class="integration-cards-grid">
+                            <div class="integration-card" onclick="openIntegrationModal('prowlarr')">
+                                <img src="{{ url_for('static', filename='img/prowlarr-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">Prowlarr</div>
+                                <span class="integration-card-status" id="card-status-prowlarr">…</span>
+                            </div>
+                            <div class="integration-card" onclick="openIntegrationModal('ebdz')">
+                                <img src="{{ url_for('static', filename='img/ebdz-logo.png') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">ebdz.net</div>
+                                <span class="integration-card-status" id="card-status-ebdz">…</span>
+                            </div>
+                            <div class="integration-card" onclick="openIntegrationModal('telegram-channels')">
+                                <img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">Telegram (canaux)</div>
+                                <span class="integration-card-status" id="card-status-telegram-channels">…</span>
+                            </div>
+                            <div class="integration-card" onclick="openIntegrationModal('komga')">
+                                <img src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">Komga</div>
+                                <span class="integration-card-status" id="card-status-komga">…</span>
+                            </div>
+                            <div class="integration-card" onclick="openIntegrationModal('web')">
+                                <img src="{{ url_for('static', filename='img/web-logo.svg') }}" alt="Web Archive" class="integration-card-logo">
+                                <div class="integration-card-name">Web Archive</div>
+                                <span class="integration-card-status" id="card-status-web">…</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Clients : aMule et qBittorrent fusionnés, même principe que
+                     l'onglet Indexeurs ci-dessus ("fait la meme chose pour les clients
+                     avec qbittorent, amule"). -->
+                <div class="tab-content" id="tab-clients">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>💻 Clients</h2>
+                            <p class="section-description">
+                                Clients de téléchargement pour récupérer les tomes trouvés.
+                                Cliquez sur une carte pour la configurer.
+                            </p>
+                        </div>
+                        <div class="integration-cards-grid">
+                            <div class="integration-card" onclick="openIntegrationModal('amule')">
+                                <img src="{{ url_for('static', filename='img/emule-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">aMule / eMule</div>
+                                <span class="integration-card-status" id="card-status-amule">…</span>
+                            </div>
+                            <div class="integration-card" onclick="openIntegrationModal('qbittorrent')">
+                                <img src="{{ url_for('static', filename='img/qbittorrent-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">qBittorrent</div>
+                                <span class="integration-card-status" id="card-status-qbittorrent">…</span>
+                            </div>
+                            <div class="integration-card" onclick="openIntegrationModal('rtorrent')">
+                                <img src="{{ url_for('static', filename='img/rtorrent-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">rTorrent</div>
+                                <span class="integration-card-status" id="card-status-rtorrent">…</span>
+                            </div>
+                            <div class="integration-card" onclick="openIntegrationModal('deluge')">
+                                <img src="{{ url_for('static', filename='img/deluge-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">Deluge</div>
+                                <span class="integration-card-status" id="card-status-deluge">…</span>
+                            </div>
+                            <div class="integration-card" onclick="openIntegrationModal('shelfmark')">
+                                <img src="{{ url_for('static', filename='img/shelfmark.svg') }}" alt="Shelfmark" class="integration-card-logo">
+                                <div class="integration-card-name">Shelfmark</div>
+                                <span class="integration-card-status" id="card-status-shelfmark">…</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modale de configuration aMule (voir tab-content "clients", cartes cliquables) -->
+                <div class="modal" id="tab-amule">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('amule')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/emule-logo.svg') }}" alt="" class="section-header-logo"> Configuration aMule</h2>
+                            <p class="section-description">
+                                Configurez la connexion à votre client aMule ou eMule pour ajouter des
+                                téléchargements depuis l'interface.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="emuleEnabled">
+                                <label for="emuleEnabled">
+                                    <strong>Activer l'intégration aMule/eMule</strong>
+                                    <span class="help-text">Permet d'ajouter des liens ED2K directement depuis l'application</span>
+                                </label>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="emuleType">Type de client</label>
+                                <select id="emuleType" class="form-select">
+                                    <option value="amule">aMule (Linux/Mac)</option>
+                                    <option value="emule">eMule (Windows)</option>
+                                </select>
+                                <small class="help-text">Sélectionnez le client que vous utilisez</small>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="emuleHost">Hôte</label>
+                                    <input type="text" id="emuleHost" value="127.0.0.1" placeholder="127.0.0.1">
+                                    <small class="help-text">Adresse IP du serveur aMule/eMule</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="emuleEcPort">Port External Connections (EC)</label>
+                                    <input type="number" id="emuleEcPort" value="4712" placeholder="4712">
+                                    <small class="help-text">Port EC configuré dans aMule (défaut: 4712)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="emulePassword">Mot de passe EC</label>
+                                <div class="password-input-group">
+                                    <input type="password" id="emulePassword" placeholder="Mot de passe External Connections">
+                                    <button type="button" class="btn-toggle-password" onclick="togglePassword()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                    </button>
+                                </div>
+                                <small class="help-text">Mot de passe configuré dans les préférences EC d'aMule</small>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testConnection()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester la connexion
+                                </button>
+                                <button class="btn" onclick="resetSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Réinitialiser
+                                </button>
+                            </div>
+
+                            <div id="settingsMessage" class="message"></div>
+                        </div>
+
+                        <!-- Aide configuration -->
+                        <div class="help-section">
+                            <h3>📖 Aide à la configuration</h3>
+                            
+                            <details class="help-details">
+                                <summary>Comment configurer aMule sur Linux ?</summary>
+                                <div class="help-content">
+                                    <ol>
+                                        <li>Ouvrez aMule</li>
+                                        <li>Allez dans <strong>Préférences > Connexions à distance</strong></li>
+                                        <li>Cochez <strong>"Activer les External Connections"</strong></li>
+                                        <li>Définissez un mot de passe EC</li>
+                                        <li>Notez le port (défaut: 4712)</li>
+                                        <li>Installez amule-utils : <code>sudo apt install amule-utils</code></li>
+                                        <li>Redémarrez aMule</li>
+                                    </ol>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>Comment configurer eMule sur Windows ?</summary>
+                                <div class="help-content">
+                                    <ol>
+                                        <li>Ouvrez eMule</li>
+                                        <li>Allez dans <strong>Options > Interface Web</strong></li>
+                                        <li>Cochez <strong>"Activer le serveur web"</strong></li>
+                                        <li>Définissez un mot de passe</li>
+                                        <li>Notez le port (défaut: 4711)</li>
+                                        <li>Redémarrez eMule</li>
+                                    </ol>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>La connexion échoue, que faire ?</summary>
+                                <div class="help-content">
+                                    <ul>
+                                        <li>✅ Vérifiez que aMule/eMule est bien démarré</li>
+                                        <li>✅ Vérifiez le mot de passe EC</li>
+                                        <li>✅ Vérifiez que le port EC est correct</li>
+                                        <li>✅ Vérifiez que le pare-feu n'est pas bloquant</li>
+                                        <li>✅ Pour aMule : vérifiez que amule-utils est installé</li>
+                                        <li>✅ Testez avec <code>amulecmd -h 127.0.0.1 -P votreMotDePasse -c status</code></li>
+                                    </ul>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Modale de configuration ebdz.net (voir tab-content "indexeurs", cartes cliquables) -->
+                <div class="modal" id="tab-ebdz">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('ebdz')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/ebdz-logo.png') }}" alt="" class="section-header-logo"> Configuration ebdz.net</h2>
+                            <p class="section-description">
+                                Configurez vos identifiants de connexion au forum et les forums à scraper 
+                                pour alimenter votre base de données ED2K.
+                            </p>
+                        </div>
+
+                        <!-- Carte identifiants -->
+                        <div class="settings-card">
+                            <h3 style="margin-bottom: 20px; color: var(--color-text);">🔐 Identifiants du forum</h3>
+
+                            <div class="form-group">
+                                <label for="ebdzUsername">Nom d'utilisateur</label>
+                                <input type="text" id="ebdzUsername" placeholder="Votre pseudo sur ebdz.net">
+                                <small class="help-text">Pseudo utilisé pour vous connecter au forum</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="ebdzPassword">Mot de passe</label>
+                                <div class="password-input-group">
+                                    <input type="password" id="ebdzPassword" placeholder="Votre mot de passe">
+                                    <button type="button" class="btn-toggle-password" onclick="toggleEbdzPassword()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                    </button>
+                                </div>
+                                <small class="help-text">Mot de passe du compte forum</small>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveEbdzConfig()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                            </div>
+                            <div id="ebdzMessage" class="message"></div>
+                        </div>
+
+                        <!-- Carte forums à scraper -->
+                        <div class="settings-card" style="margin-top: 30px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="color: var(--color-text); margin: 0;">📂 Forums à scraper</h3>
+                                <div style="display: flex; align-items: center; gap: 16px;">
+                                    <label class="select-all-label" id="selectAllLabel" style="display:none;">
+                                        <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)">
+                                        <span>Tout sélectionner</span>
+                                    </label>
+                                    <button class="btn" style="padding: 8px 18px; font-size: 0.9em;" onclick="addForumRow()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14" /><path d="M12 5v14" /></svg> Ajouter un forum
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="forumsList">
+                                <!-- Les lignes de forums sont gérées par JS -->
+                            </div>
+
+                            <div id="forumsEmptyState" class="no-forums-placeholder">
+                                <p>Aucun forum configuré. Cliquez sur <strong>➕ Ajouter un forum</strong> pour en ajouter un.</p>
+                            </div>
+
+                            <div class="form-actions" style="margin-top: 25px;">
+                                <button class="btn" onclick="saveEbdzConfig()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer tout
+                                </button>
+                                <button class="btn" onclick="runScraper()" id="btnRunScraper">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09" /><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05" /></svg> Lancer le scraper
+                                </button>
+                            </div>
+                            <div id="ebdzMessage2" class="message"></div>
+                        </div>
+
+                        <!-- Carte scraping automatique -->
+                        <div class="settings-card" style="margin-top: 30px;">
+                            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                                <span style="font-size: 24px;">⏰</span>
+                                <h3 style="margin: 0; color: var(--color-text);">Scraping automatique</h3>
+                            </div>
+
+                            <div class="form-group checkbox-group" style="margin-bottom: 20px;">
+                                <input type="checkbox" id="ebdzAutoScrapeEnabled">
+                                <label for="ebdzAutoScrapeEnabled">
+                                    <strong>Activer le scraping automatique</strong>
+                                    <span class="help-text">Le forum sera scrapy automatiquement à intervalle régulier</span>
+                                </label>
+                            </div>
+
+                            <div class="form-row" id="autoScrapeControlsDiv" style="display: none;">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="ebdzAutoScrapeInterval">Intervalle</label>
+                                    <input type="number" id="ebdzAutoScrapeInterval" value="60" min="1" placeholder="60">
+                                    <small class="help-text">Temps avant le prochain scraping</small>
+                                </div>
+
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="ebdzAutoScrapeUnit">Unité</label>
+                                    <select id="ebdzAutoScrapeUnit">
+                                        <option value="minutes">Minutes</option>
+                                        <option value="hours">Heures</option>
+                                        <option value="days">Jours</option>
+                                    </select>
+                                    <small class="help-text">Unité de temps de l'intervalle</small>
+                                </div>
+                            </div>
+
+                            <div id="autoScrapeStatusDiv" style="display: none; margin-top: 15px; padding: 12px; background: var(--color-surface-alt); border-radius: 5px; border-left: 3px solid var(--color-accent);">
+                                <p style="margin: 0 0 5px 0;">
+                                    <strong>Statut:</strong> <span id="autoScrapeStatusText">En attente...</span>
+                                </p>
+                                <p style="margin: 0; color: #666;">
+                                    <strong>Prochain scraping:</strong> <span id="autoScrapeNextRunText">-</span>
+                                </p>
+                            </div>
+
+                            <div class="form-actions" style="margin-top: 20px;">
+                                <button class="btn" onclick="saveAutoScrapeConfig()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer la config automatique
+                                </button>
+                                <button class="btn" onclick="checkAutoScrapeStatus()" id="btnCheckAutoStatus">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Vérifier le statut
+                                </button>
+                            </div>
+                            <div id="ebdzAutoMessage" class="message"></div>
+                        </div>
+
+                        <!-- Aide -->
+                        <div class="help-section">
+                            <h3>📖 Aide</h3>
+                            <details class="help-details">
+                                <summary>Où trouver le code du forum (fid) ?</summary>
+                                <div class="help-content">
+                                    <ol>
+                                        <li>Rendez-vous sur <strong>ebdz.net/forum</strong></li>
+                                        <li>Ouvrez la catégorie qui vous intéresse (ex : BD, Comics…)</li>
+                                        <li>Dans l'URL du navigateur, vous verrez un paramètre comme <code>fid=29</code></li>
+                                        <li>C'est ce nombre qu'il faut entrer dans le champ <strong>Code du forum (fid)</strong></li>
+                                    </ol>
+                                </div>
+                            </details>
+                            <details class="help-details">
+                                <summary>Combien de pages le scraper parcourt-il ?</summary>
+                                <div class="help-content">
+                                    <p>Le scraper s'arrête tout seul dès qu'il retrouve un sujet déjà connu n'ayant reçu aucune nouvelle réponse depuis le dernier passage - les sujets du forum étant classés par activité récente, tout ce qui suit est nécessairement déjà à jour. Aucune limite de pages à régler à la main.</p>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Modale de connexion Telegram "compte utilisateur" (voir tab-content "indexeurs",
+                     cartes cliquables) - MTProto via Telethon, pour lire le contenu de canaux publics
+                     (@bd_frBE...), distinct de l'onglet "Notifications" (bot, envoi seulement). -->
+                <div class="modal" id="tab-telegram-channels">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('telegram-channels')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="section-header-logo"> Telegram (canaux)</h2>
+                            <p class="section-description">
+                                Connexion à votre compte Telegram personnel pour pouvoir lire le contenu de
+                                canaux publics (comme @bd_frBE) - nécessaire pour les surveiller comme source,
+                                un bot ne pouvant pas lire l'historique d'un canal dont il n'est pas
+                                administrateur.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div id="telegramChannelsConnected" style="display:none;">
+                                <p style="margin-bottom:16px;">✅ Connecté en tant que <strong id="telegramChannelsWhoami"></strong></p>
+                                <div class="form-actions">
+                                    <button class="btn" onclick="telegramChannelsLogout()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></svg> Se déconnecter
+                                    </button>
+                                </div>
+
+                                <hr style="margin:20px 0; border:none; border-top:1px solid var(--color-border);">
+
+                                <h3 style="margin-bottom:12px;">Canaux surveillés</h3>
+                                <div id="telegramChannelsList" style="margin-bottom:12px;"></div>
+                                <div class="form-group" style="display:flex; gap:8px; align-items:flex-end;">
+                                    <div style="flex:1;">
+                                        <label for="telegramChannelsNewChannel">Ajouter un canal (nom d'utilisateur, sans @)</label>
+                                        <input type="text" id="telegramChannelsNewChannel" placeholder="bd_frBE">
+                                    </div>
+                                    <button class="btn" onclick="telegramChannelsAddChannel()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14" /><path d="M12 5v14" /></svg> Ajouter
+                                    </button>
+                                </div>
+
+                                <div class="form-actions" style="margin-top:16px;">
+                                    <button class="btn" onclick="telegramChannelsScrape()" id="telegramChannelsScrapeBtn">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Scraper maintenant
+                                    </button>
+                                </div>
+
+                                <hr style="margin:20px 0; border:none; border-top:1px solid var(--color-border);">
+
+                                <h3 style="margin-bottom:6px;">Indexation complète (recherche instantanée)</h3>
+                                <div id="telegramBackfillStatusDiv" style="display:none; margin-bottom:12px; padding:12px; background:var(--color-surface-alt); border-radius:5px; border-left:3px solid var(--color-accent);">
+                                    <div id="telegramBackfillStatusText"></div>
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn" onclick="telegramChannelsBackfillStart()" id="telegramBackfillStartBtn">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5 5 5-5" /><path d="M12 15V3" /></svg> Indexer tout l'historique
+                                    </button>
+                                    <button class="btn-danger-sm" onclick="telegramChannelsBackfillStop()" id="telegramBackfillStopBtn" style="display:none;">
+                                        Arrêter
+                                    </button>
+                                </div>
+
+                                <hr style="margin:20px 0; border:none; border-top:1px solid var(--color-border);">
+
+                                <h3 style="margin-bottom:12px;">Scraping automatique</h3>
+                                <div class="form-group checkbox-group" style="margin-bottom:20px;">
+                                    <input type="checkbox" id="telegramAutoScrapeEnabled" onchange="updateTelegramAutoScrapeUI()">
+                                    <label for="telegramAutoScrapeEnabled">
+                                        <strong>Activer le scraping automatique</strong>
+                                        <span class="help-text">Les canaux surveillés seront scrapés automatiquement à intervalle régulier</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-row" id="telegramAutoScrapeControlsDiv" style="display:none;">
+                                    <div class="form-group" style="flex:1;">
+                                        <label for="telegramAutoScrapeInterval">Intervalle</label>
+                                        <input type="number" id="telegramAutoScrapeInterval" value="6" min="1" placeholder="6">
+                                        <small class="help-text">Temps avant le prochain scraping</small>
+                                    </div>
+                                    <div class="form-group" style="flex:1;">
+                                        <label for="telegramAutoScrapeUnit">Unité</label>
+                                        <select id="telegramAutoScrapeUnit">
+                                            <option value="hours">Heures</option>
+                                            <option value="days">Jours</option>
+                                        </select>
+                                        <small class="help-text">Unité de temps de l'intervalle</small>
+                                    </div>
+                                </div>
+
+                                <div id="telegramAutoScrapeStatusDiv" style="display:none; margin-top:15px; padding:12px; background:var(--color-surface-alt); border-radius:5px; border-left:3px solid var(--color-accent);">
+                                    <p style="margin:0 0 5px 0;">
+                                        <strong>Statut:</strong> <span id="telegramAutoScrapeStatusText">En attente...</span>
+                                    </p>
+                                    <p style="margin:0; color:#666;">
+                                        <strong>Prochain scraping:</strong> <span id="telegramAutoScrapeNextRunText">-</span>
+                                    </p>
+                                </div>
+
+                                <div class="form-actions" style="margin-top:16px;">
+                                    <button class="btn" onclick="saveTelegramAutoScrapeConfig()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="telegramChannelsStepCredentials">
+                                <div class="form-group">
+                                    <label for="telegramChannelsApiId">api_id</label>
+                                    <input type="number" id="telegramChannelsApiId" placeholder="ex: 1234567">
+                                </div>
+                                <div class="form-group">
+                                    <label for="telegramChannelsApiHash">api_hash</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="telegramChannelsApiHash" placeholder="Généré avec l'api_id ci-dessus">
+                                        <button type="button" class="btn-toggle-password" onclick="toggleTelegramChannelsApiHashVisibility()">
+                                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                        </button>
+                                    </div>
+                                    <small class="help-text">api_id et api_hash s'obtiennent gratuitement sur <a href="https://my.telegram.org" target="_blank" rel="noopener">my.telegram.org</a> (section "API development tools")</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="telegramChannelsPhone">Numéro de téléphone</label>
+                                    <input type="text" id="telegramChannelsPhone" placeholder="+33612345678">
+                                    <small class="help-text">Format international, avec l'indicatif pays (+33, +1...)</small>
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn" onclick="telegramChannelsSendCode()" id="telegramChannelsSendCodeBtn">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12" /><path d="m17 8-5-5-5 5" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg> Envoyer le code
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="telegramChannelsStepCode" style="display:none;">
+                                <p class="help-text" style="margin-bottom:12px;">Un code de connexion vient d'être envoyé à votre compte Telegram (application ou SMS).</p>
+                                <div class="form-group">
+                                    <label for="telegramChannelsCode">Code reçu</label>
+                                    <input type="text" id="telegramChannelsCode" placeholder="12345" inputmode="numeric" autocomplete="one-time-code">
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn" onclick="telegramChannelsSubmitCode()" id="telegramChannelsSubmitCodeBtn">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg> Valider le code
+                                    </button>
+                                    <button class="btn btn-neutral-sm" onclick="telegramChannelsResetFlow()">Annuler</button>
+                                </div>
+                            </div>
+
+                            <div id="telegramChannelsStepPassword" style="display:none;">
+                                <p class="help-text" style="margin-bottom:12px;">La vérification en deux étapes est activée sur ce compte : entrez son mot de passe (pas le code reçu).</p>
+                                <div class="form-group">
+                                    <label for="telegramChannelsPassword">Mot de passe</label>
+                                    <input type="password" id="telegramChannelsPassword">
+                                </div>
+                                <div class="form-actions">
+                                    <button class="btn" onclick="telegramChannelsSubmitPassword()" id="telegramChannelsSubmitPasswordBtn">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5" /></svg> Valider
+                                    </button>
+                                    <button class="btn btn-neutral-sm" onclick="telegramChannelsResetFlow()">Annuler</button>
+                                </div>
+                            </div>
+
+                            <div id="telegramChannelsMessage" class="message"></div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Modale de configuration Prowlarr (voir tab-content "indexeurs", cartes cliquables) -->
+                <div class="modal" id="tab-prowlarr">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('prowlarr')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/prowlarr-logo.svg') }}" alt="" class="section-header-logo"> Configuration Prowlarr</h2>
+                            <p class="section-description">
+                                Configurez la connexion à votre serveur Prowlarr pour intégrer les indexeurs 
+                                et améliorer vos recherches de contenu.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="prowlarrEnabled">
+                                <label for="prowlarrEnabled">
+                                    <strong>Activer l'intégration Prowlarr</strong>
+                                    <span class="help-text">Permet d'utiliser les indexeurs Prowlarr dans l'application</span>
+                                </label>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="prowlarrUrl">URL du serveur</label>
+                                    <input type="text" id="prowlarrUrl" placeholder="http://localhost:9696 ou http://192.168.1.100:9696">
+                                    <small class="help-text">Adresse complète du serveur Prowlarr (avec http:// ou https://)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="prowlarrPort">Port</label>
+                                    <input type="number" id="prowlarrPort" value="9696" placeholder="9696">
+                                    <small class="help-text">Port d'accès à Prowlarr (défaut: 9696)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="prowlarrApiKey">Clé API</label>
+                                <div class="password-input-group">
+                                    <input type="password" id="prowlarrApiKey" placeholder="Votre clé API Prowlarr">
+                                    <button type="button" class="btn-toggle-password" onclick="toggleProwlarrPassword()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                    </button>
+                                </div>
+                                <small class="help-text">Clé API disponible dans les paramètres Prowlarr > Paramètres > Général > Sécurité</small>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveProwlarrSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testProwlarrConnection()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester la connexion
+                                </button>
+                                <button class="btn" onclick="resetProwlarrSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Réinitialiser
+                                </button>
+                            </div>
+
+                            <div id="prowlarrMessage" class="message"></div>
+                        </div>
+
+                        <!-- Sélection des indexeurs -->
+                        <div class="settings-card" style="margin-top: 30px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="color: var(--color-text); margin: 0;">🔎 Indexeurs à utiliser</h3>
+                                <button class="btn" style="padding: 8px 18px; font-size: 0.9em;" onclick="loadProwlarrIndexers()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></svg> Récupérer les indexeurs
+                                </button>
+                            </div>
+
+                            <div id="indexersList" style="margin-bottom: 15px;">
+                                <p style="color: #999;">Cliquez sur "Récupérer les indexeurs" pour charger la liste depuis Prowlarr</p>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveProwlarrIndexers()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer la sélection
+                                </button>
+                            </div>
+                            <div id="indexersMessage" class="message"></div>
+                        </div>
+
+                        <!-- Aide configuration -->
+                        <div class="help-section">
+                            <h3>📖 Aide à la configuration</h3>
+                            
+                            <details class="help-details">
+                                <summary>Où trouver ma clé API Prowlarr ?</summary>
+                                <div class="help-content">
+                                    <ol>
+                                        <li>Ouvrez Prowlarr dans votre navigateur</li>
+                                        <li>Allez dans <strong>Paramètres (⚙️) > Général</strong></li>
+                                        <li>Faites défiler jusqu'à <strong>Sécurité</strong></li>
+                                        <li>Vous trouvez le champ <strong>Clé API</strong></li>
+                                        <li>Copiez la clé et collez-la dans le formulaire ci-dessus</li>
+                                    </ol>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>Comment accéder à Prowlarr depuis une autre machine ?</summary>
+                                <div class="help-content">
+                                    <ul>
+                                        <li>Si Prowlarr est sur la même machine : <code>http://127.0.0.1:9696</code></li>
+                                        <li>Si Prowlarr est sur une autre machine du réseau : <code>http://192.168.1.100:9696</code> (remplacez par l'IP)</li>
+                                        <li>Assurez-vous que le port 9696 (ou celui configuré) est accessible</li>
+                                        <li>En HTTPS, utilisez <code>https://</code> au lieu de <code>http://</code></li>
+                                    </ul>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>La connexion échoue, que faire ?</summary>
+                                <div class="help-content">
+                                    <ul>
+                                        <li>✅ Vérifiez que Prowlarr est bien démarré</li>
+                                        <li>✅ Vérifiez que l'URL est correcte (avec http:// ou https://)</li>
+                                        <li>✅ Vérifiez que la clé API est correcte</li>
+                                        <li>✅ Vérifiez que le port est accessible (pare-feu)</li>
+                                        <li>✅ Essayez d'accéder à Prowlarr dans votre navigateur pour vérifier que ça fonctionne</li>
+                                    </ul>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Modale de configuration qBittorrent (voir tab-content "clients", cartes cliquables) -->
+                <div class="modal" id="tab-qbittorrent">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('qbittorrent')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/qbittorrent-logo.svg') }}" alt="" class="section-header-logo"> Configuration qBittorrent</h2>
+                            <p class="section-description">
+                                Configurez la connexion à votre serveur qBittorrent pour ajouter des
+                                torrents depuis l'interface.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="qbittorrentEnabled">
+                                <label for="qbittorrentEnabled">
+                                    <strong>Activer l'intégration qBittorrent</strong>
+                                    <span class="help-text">Permet d'ajouter des torrents directement depuis l'application</span>
+                                </label>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="qbittorrentUrl">URL du serveur</label>
+                                    <input type="text" id="qbittorrentUrl" placeholder="http://localhost">
+                                    <small class="help-text">Adresse du serveur qBittorrent (sans :port ni http://stream)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="qbittorrentPort">Port</label>
+                                    <input type="number" id="qbittorrentPort" placeholder="8080">
+                                    <small class="help-text">Port du Web UI de qBittorrent (défaut: 8080)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="qbittorrentUsername">Nom d'utilisateur</label>
+                                    <input type="text" id="qbittorrentUsername" placeholder="Optionnel">
+                                    <small class="help-text">Nom d'utilisateur du Web UI (optionnel)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="qbittorrentPassword">Mot de passe</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="qbittorrentPassword" placeholder="Optionnel">
+                                        <button type="button" class="btn-toggle-password" onclick="toggleQbittorrentPassword()">
+                                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                        </button>
+                                    </div>
+                                    <small class="help-text">Mot de passe du Web UI (optionnel)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="qbittorrentDefaultCategory">Catégorie par défaut (optionnel)</label>
+                                    <select id="qbittorrentDefaultCategory" style="
+                                        width: 100%;
+                                        padding: 10px;
+                                        border: 1px solid #ddd;
+                                        border-radius: 5px;
+                                        font-size: 1em;
+                                    ">
+                                        <option value="">-- Aucune catégorie --</option>
+                                    </select>
+                                    <small class="help-text">La catégorie utilisée par défaut pour les torrents ajoutés (chargée depuis qBittorrent)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveQbittorrentSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testQbittorrentConnection()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester la connexion
+                                </button>
+                                <button class="btn" onclick="resetQbittorrentSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Réinitialiser
+                                </button>
+                            </div>
+
+                            <div id="qbittorrentMessage" class="message"></div>
+                        </div>
+
+                        <!-- Aide configuration -->
+                        <div class="help-section">
+                            <h3>📖 Aide à la configuration</h3>
+                            
+                            <details class="help-details">
+                                <summary>Comment accéder au Web UI de qBittorrent ?</summary>
+                                <div class="help-content">
+                                    <ol>
+                                        <li>Ouvrez qBittorrent sur votre ordinateur ou serveur</li>
+                                        <li>Allez dans <strong>Outils > Options</strong></li>
+                                        <li>Sélectionnez <strong>Web UI</strong> dans le menu de gauche</li>
+                                        <li>Cochez <strong>"Activer le serveur Web"</strong></li>
+                                        <li>Notez le <strong>Port</strong> (défaut: 8080)</li>
+                                        <li>Définissez un nom d'utilisateur et un mot de passe si souhaité</li>
+                                        <li>Cliquez OK et redémarrez qBittorrent</li>
+                                    </ol>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>Comment accéder à qBittorrent depuis une autre machine ?</summary>
+                                <div class="help-content">
+                                    <ul>
+                                        <li>Si qBittorrent est sur la même machine : <code>http://localhost:8080</code> ou <code>http://127.0.0.1:8080</code></li>
+                                        <li>Si qBittorrent est sur une autre machine du réseau : <code>http://192.168.1.100:8080</code> (remplacez par l'IP)</li>
+                                        <li>Assurez-vous que le port est accessible (pare-feu)</li>
+                                        <li>En HTTPS, utilisez <code>https://</code> au lieu de <code>http://</code></li>
+                                    </ul>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>La connexion échoue, que faire ?</summary>
+                                <div class="help-content">
+                                    <ul>
+                                        <li>✅ Vérifiez que qBittorrent est bien démarré</li>
+                                        <li>✅ Vérifiez que le Web UI est activé dans les options</li>
+                                        <li>✅ Vérifiez que l'URL et le port sont corrects</li>
+                                        <li>✅ Vérifiez les identifiants (si configurés)</li>
+                                        <li>✅ Vérifiez que le port est accessible (pare-feu)</li>
+                                        <li>✅ Essayez d'accéder au Web UI dans votre navigateur pour vérifier</li>
+                                    </ul>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Modale de configuration rTorrent (voir tab-content "clients", cartes cliquables) -->
+                <div class="modal" id="tab-rtorrent">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('rtorrent')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/rtorrent-logo.svg') }}" alt="" class="section-header-logo"> Configuration rTorrent</h2>
+                            <p class="section-description">
+                                rTorrent n'a pas de Web UI native - il faut une passerelle HTTP devant son
+                                interface XML-RPC (rutorrent, xmlrpc-c scgi_to_http, un reverse-proxy...).
+                                Indiquez ici l'URL de cette passerelle.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="rtorrentEnabled">
+                                <label for="rtorrentEnabled">
+                                    <strong>Activer l'intégration rTorrent</strong>
+                                    <span class="help-text">Permet d'ajouter des torrents directement depuis l'application</span>
+                                </label>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="rtorrentUrl">URL du serveur</label>
+                                    <input type="text" id="rtorrentUrl" placeholder="http://localhost">
+                                    <small class="help-text">Adresse de la passerelle HTTP-XMLRPC (sans :port)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="rtorrentPort">Port</label>
+                                    <input type="number" id="rtorrentPort" placeholder="80">
+                                    <small class="help-text">Port de la passerelle HTTP</small>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="rtorrentRpcPath">Chemin RPC</label>
+                                    <input type="text" id="rtorrentRpcPath" placeholder="/RPC2">
+                                    <small class="help-text">Endpoint XML-RPC de la passerelle (souvent /RPC2 ou /plugins/httprpc/action.php pour rutorrent)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="rtorrentUsername">Nom d'utilisateur</label>
+                                    <input type="text" id="rtorrentUsername" placeholder="Optionnel">
+                                    <small class="help-text">Si la passerelle est protégée par Basic Auth (optionnel)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="rtorrentPassword">Mot de passe</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="rtorrentPassword" placeholder="Optionnel">
+                                        <button type="button" class="btn-toggle-password" onclick="toggleRtorrentPassword()">
+                                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                        </button>
+                                    </div>
+                                    <small class="help-text">Optionnel</small>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveRtorrentSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testRtorrentConnection()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester la connexion
+                                </button>
+                            </div>
+
+                            <div id="rtorrentMessage" class="message"></div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Modale de configuration Deluge (voir tab-content "clients", cartes cliquables) -->
+                <div class="modal" id="tab-deluge">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('deluge')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/deluge-logo.svg') }}" alt="" class="section-header-logo"> Configuration Deluge</h2>
+                            <p class="section-description">
+                                Configurez la connexion à la Web UI de Deluge (deluge-web) pour ajouter
+                                des torrents depuis l'interface.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="delugeEnabled">
+                                <label for="delugeEnabled">
+                                    <strong>Activer l'intégration Deluge</strong>
+                                    <span class="help-text">Permet d'ajouter des torrents directement depuis l'application</span>
+                                </label>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="delugeUrl">URL du serveur</label>
+                                    <input type="text" id="delugeUrl" placeholder="http://localhost">
+                                    <small class="help-text">Adresse du serveur Deluge (sans :port)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="delugePort">Port</label>
+                                    <input type="number" id="delugePort" placeholder="8112">
+                                    <small class="help-text">Port de la Web UI de Deluge (défaut: 8112)</small>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="delugePassword">Mot de passe</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="delugePassword" placeholder="Mot de passe de la Web UI">
+                                        <button type="button" class="btn-toggle-password" onclick="toggleDelugePassword()">
+                                            <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                        </button>
+                                    </div>
+                                    <small class="help-text">Deluge s'authentifie par mot de passe seul, pas de nom d'utilisateur</small>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveDelugeSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testDelugeConnection()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester la connexion
+                                </button>
+                            </div>
+
+                            <div id="delugeMessage" class="message"></div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Modale de configuration Shelfmark (client de téléchargement) -->
+                <div class="modal" id="tab-shelfmark">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('shelfmark')">×</span>
+                        <div class="settings-section">
+                            <div class="section-header">
+                                <h2><img src="{{ url_for('static', filename='img/shelfmark.svg') }}" alt="Shelfmark" class="section-header-logo"> Configuration Shelfmark</h2>
+                                <p class="section-description">Shelfmark reçoit les releases Anna et gère leur téléchargement.</p>
+                            </div>
+                            <div class="settings-card">
+                                <div class="form-group checkbox-group">
+                                    <input type="checkbox" id="shelfmarkEnabled">
+                                    <label for="shelfmarkEnabled"><strong>Activer l'intégration Shelfmark</strong><span class="help-text">Permet d'envoyer les fichiers Anna à Shelfmark</span></label>
+                                </div>
+                                <div class="form-group"><label for="shelfmarkBaseUrl">Adresse</label><input type="url" id="shelfmarkBaseUrl" placeholder="http://192.168.1.100:8084"></div>
+                                <div class="form-group"><label for="shelfmarkUsername">Utilisateur</label><input type="text" id="shelfmarkUsername" autocomplete="username" placeholder="bullar"></div>
+                                <div class="form-group"><label for="shelfmarkPassword">Mot de passe</label><div class="password-input-group"><input type="password" id="shelfmarkPassword" autocomplete="current-password" placeholder="Laisser vide pour conserver"><button type="button" class="btn-toggle-password" onclick="toggleShelfmarkPassword()">Afficher</button></div></div>
+                                <div class="form-actions"><button class="btn" onclick="saveShelfmarkSettings()">Enregistrer</button><button class="btn" onclick="testShelfmarkConnection()">Tester</button></div>
+                                <div id="shelfmarkMessage" class="message"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Komga -->
+                <!-- Modale de configuration Komga (voir tab-content "indexeurs", cartes cliquables) -->
+                <div class="modal" id="tab-komga">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('komga')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="" class="section-header-logo"> Configuration Komga</h2>
+                            <p class="section-description">
+                                Connectez votre serveur Komga : sa bibliothèque est automatiquement rescannée
+                                après chaque import, renommage ou mise à jour de métadonnées.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="komgaEnabled">
+                                <label for="komgaEnabled">
+                                    <strong>Activer l'intégration Komga</strong>
+                                    <span class="help-text">Déclenche un rescan Komga après chaque import/renommage/mise à jour de métadonnées</span>
+                                </label>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="komgaUrl">URL du serveur</label>
+                                <input type="text" id="komgaUrl" placeholder="http://localhost:25600 ou http://192.168.1.100:25600">
+                                <small class="help-text">Adresse complète du serveur Komga (avec http:// ou https://)</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="komgaApiKey">Clé API</label>
+                                <div class="password-input-group">
+                                    <input type="password" id="komgaApiKey" placeholder="Votre clé API Komga">
+                                    <button type="button" class="btn-toggle-password" onclick="toggleKomgaPassword()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                    </button>
+                                </div>
+                                <small class="help-text">Clé API générée dans Komga > Paramètres > Compte > Clés API</small>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveKomgaSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testKomgaConnection()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester la connexion
+                                </button>
+                                <button class="btn" onclick="resetKomgaSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Réinitialiser
+                                </button>
+                            </div>
+
+                            <div id="komgaMessage" class="message"></div>
+                        </div>
+
+                        <!-- Aide configuration -->
+                        <div class="help-section">
+                            <h3>📖 Aide à la configuration</h3>
+
+                            <details class="help-details">
+                                <summary>Où trouver ma clé API Komga ?</summary>
+                                <div class="help-content">
+                                    <ol>
+                                        <li>Ouvrez Komga dans votre navigateur</li>
+                                        <li>Allez dans <strong>Paramètres > Compte</strong></li>
+                                        <li>Dans la section <strong>Clés API</strong>, cliquez sur "Créer"</li>
+                                        <li>Copiez la clé et collez-la dans le formulaire ci-dessus</li>
+                                    </ol>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>Comment accéder à Komga depuis une autre machine ?</summary>
+                                <div class="help-content">
+                                    <ul>
+                                        <li>Si Komga est sur la même machine : <code>http://127.0.0.1:25600</code></li>
+                                        <li>Si Komga est sur une autre machine du réseau : <code>http://192.168.1.100:25600</code> (remplacez par l'IP)</li>
+                                        <li>Assurez-vous que le port est accessible (pare-feu)</li>
+                                        <li>En HTTPS, utilisez <code>https://</code> au lieu de <code>http://</code></li>
+                                    </ul>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>La connexion échoue, que faire ?</summary>
+                                <div class="help-content">
+                                    <ul>
+                                        <li>✅ Vérifiez que Komga est bien démarré</li>
+                                        <li>✅ Vérifiez que l'URL est correcte (avec http:// ou https://)</li>
+                                        <li>✅ Vérifiez que la clé API est correcte et non expirée</li>
+                                        <li>✅ Vérifiez que le port est accessible (pare-feu)</li>
+                                    </ul>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Modale "Web": chaque source dispose de sa propre activation,
+                     adresse et test de connexion. -->
+                <div class="modal" id="tab-web">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('web')">×</span>
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <h2><img src="{{ url_for('static', filename='img/web-logo.svg') }}" alt="" class="section-header-logo"> Sources Web</h2>
+                            <p class="section-description">
+                                Sites de recherche publics (fichiers BD téléchargeables directement en
+                                HTTP, sans client torrent/eD2K ni compte).
+                            </p>
+                        </div>
+
+                        <div class="settings-card source-row">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="fourtouticiEnabled">
+                                <label for="fourtouticiEnabled">
+                                    <img src="{{ url_for('static', filename='img/fourtoutici-favicon.svg') }}" alt="" style="width:16px; height:16px; object-fit:contain; vertical-align:-3px; margin-right:4px;">
+                                    <strong>fourtoutici.cc</strong>
+                                </label>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="fourtouticiBaseUrl">Adresse du site</label>
+                                <input type="text" id="fourtouticiBaseUrl" placeholder="https://fourtoutici.cc">
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveFourtouticiSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testFourtouticiConnection()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester la connexion
+                                </button>
+                            </div>
+
+                            <div id="fourtouticiMessage" class="message"></div>
+                        </div>
+
+                        <div class="settings-card source-row">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="annasArchiveEnabled">
+                                <label for="annasArchiveEnabled"><img src="{{ url_for('static', filename='img/annas-archive-favicon.ico') }}" alt="" style="width:16px; height:16px; object-fit:contain; vertical-align:-3px; margin-right:4px;"> <strong>Anna's Archive</strong>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="annasArchiveBaseUrl">Adresse du site</label>
+                                <input type="text" id="annasArchiveBaseUrl" placeholder="https://annas-archive.gl">
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveAnnasArchiveSettings()">Enregistrer</button>
+                                <button class="btn" onclick="testAnnasArchiveConnection()">Tester la connexion</button>
+                            </div>
+                            <div id="annasArchiveMessage" class="message"></div>
+                        </div>
+
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Notifications -->
+                <div class="tab-content" id="tab-telegram">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2><img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="section-header-logo"> Notifications Telegram</h2>
+                            <p class="section-description">
+                                Configure un bot Telegram pour recevoir des notifications (imports, tomes
+                                trouvés automatiquement...).
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="telegramEnabled">
+                                <label for="telegramEnabled">
+                                    <strong>Activer les notifications Telegram</strong>
+                                    <span class="help-text">Requis pour que "Tester" puisse envoyer un message</span>
+                                </label>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="telegramBotToken">Jeton du bot</label>
+                                <div class="password-input-group">
+                                    <input type="password" id="telegramBotToken" placeholder="123456789:AAExempleDeJetonDeBotTelegram">
+                                    <button type="button" class="btn-toggle-password" onclick="toggleTelegramPassword()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                    </button>
+                                </div>
+                                <small class="help-text">Généré par @BotFather sur Telegram</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="telegramChatId">Chat ID</label>
+                                <input type="text" id="telegramChatId" placeholder="ex: 123456789">
+                                <small class="help-text">Identifiant du chat/utilisateur destinataire des messages</small>
+                            </div>
+
+                            <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                                <label style="font-weight: 600; margin-bottom: 10px; display: block;">Notifications à envoyer</label>
+
+                                <div class="form-group checkbox-group">
+                                    <input type="checkbox" id="telegramNotifyImportCompleted">
+                                    <label for="telegramNotifyImportCompleted">
+                                        <strong>Import effectué</strong>
+                                        <span class="help-text">Quand un import (manuel ou automatique) déplace des fichiers dans la bibliothèque</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group checkbox-group">
+                                    <input type="checkbox" id="telegramNotifyImportAvailable">
+                                    <label for="telegramNotifyImportAvailable">
+                                        <strong>Import disponible</strong>
+                                        <span class="help-text">Quand de nouveaux fichiers apparaissent dans les répertoires surveillés - nécessite l'Import Automatique activé (onglet "Imports")</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveTelegramSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testTelegramNotification()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester
+                                </button>
+                            </div>
+
+                            <div id="telegramMessage" class="message"></div>
+                        </div>
+
+                        <!-- Aide configuration -->
+                        <div class="help-section">
+                            <h3>📖 Aide à la configuration</h3>
+
+                            <details class="help-details">
+                                <summary>Comment créer un bot et obtenir son jeton ?</summary>
+                                <div class="help-content">
+                                    <ol>
+                                        <li>Ouvrez une conversation avec <strong>@BotFather</strong> sur Telegram</li>
+                                        <li>Envoyez la commande <code>/newbot</code> et suivez les instructions</li>
+                                        <li>@BotFather vous donne un jeton (ex: <code>123456789:AAExemple...</code>) - copiez-le dans le formulaire ci-dessus</li>
+                                    </ol>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>Comment trouver mon Chat ID ?</summary>
+                                <div class="help-content">
+                                    <ul>
+                                        <li>Démarrez une conversation avec votre bot (cherchez-le par son nom, cliquez sur "Démarrer")</li>
+                                        <li>Envoyez-lui n'importe quel message</li>
+                                        <li>Ouvrez <code>https://api.telegram.org/bot&lt;VOTRE_JETON&gt;/getUpdates</code> dans un navigateur</li>
+                                        <li>Cherchez <code>"chat":{"id":...}</code> dans la réponse JSON - c'est votre Chat ID</li>
+                                    </ul>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet SSO / OIDC -->
+                <div class="tab-content" id="tab-oidc">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>🔐 Configuration SSO / OIDC</h2>
+                            <p class="section-description">
+                                Protégez l'accès à l'application avec votre fournisseur d'identité (OIDC).
+                                Une fois activée, une connexion sera exigée pour accéder à toutes les pages.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="oidcEnabled">
+                                <label for="oidcEnabled">
+                                    <strong>Activer l'authentification SSO / OIDC</strong>
+                                    <span class="help-text">Exige une connexion via votre fournisseur d'identité pour accéder à l'application</span>
+                                </label>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="oidcIssuer">URL de l'issuer</label>
+                                <input type="text" id="oidcIssuer" placeholder="https://mon-fournisseur.example.com/realms/mon-realm">
+                                <small class="help-text">Base de l'issuer OIDC (le document de découverte sera lu sur &lt;issuer&gt;/.well-known/openid-configuration)</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="oidcClientId">Client ID</label>
+                                <input type="text" id="oidcClientId" placeholder="Identifiant client OIDC">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="oidcClientSecret">Client Secret</label>
+                                <div class="password-input-group">
+                                    <input type="password" id="oidcClientSecret" placeholder="Secret client OIDC">
+                                    <button type="button" class="btn-toggle-password" onclick="toggleOidcPassword()">
+                                        <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg> Afficher
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="oidcScopes">Scopes</label>
+                                <input type="text" id="oidcScopes" placeholder="openid profile email">
+                                <small class="help-text">Liste de scopes séparés par des espaces</small>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveOidcSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer
+                                </button>
+                                <button class="btn" onclick="testOidcConnection()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path d="m2 22 3-3" /><path d="M7.5 13.5 10 11" /><path d="M10.5 16.5 13 14" /><path d="m18 3-4 4h6l-4 4" /></svg> Tester la découverte
+                                </button>
+                                <button class="btn" onclick="resetOidcSettings()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Réinitialiser
+                                </button>
+                            </div>
+
+                            <div id="oidcMessage" class="message"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Thème -->
+                <div class="tab-content" id="tab-theme">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>🌓 Thème</h2>
+                            <p class="section-description">
+                                Choisissez l'apparence de l'application.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="theme-switch" id="themeSwitch">
+                                <button type="button" class="theme-switch-option" data-theme-value="light" onclick="selectThemeOption('light')">
+                                    ☀️ Clair
+                                </button>
+                                <button type="button" class="theme-switch-option" data-theme-value="dark" onclick="selectThemeOption('dark')">
+                                    🌙 Sombre
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- Onglet Formats de recherche -->
+                <div class="tab-content" id="tab-search-formats">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>🗂️ Formats de recherche</h2>
+                            <p class="section-description">
+                                Ordre de préférence entre formats dans les résultats de recherche
+                                (manuelle et automatique). Décochez un format pour le déclasser :
+                                il reste affiché et reste éligible à la recherche automatique, mais
+                                en dernier.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <ul class="format-priority-list" id="searchFormatPriorityList"></ul>
+
+                            <div class="form-actions" style="margin-top: 20px;">
+                                <button class="btn" onclick="saveSearchFormatPriority()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Sauvegarder
+                                </button>
+                                <button class="btn" onclick="resetSearchFormatPriority()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Réinitialiser
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="section-header" style="margin-top: 30px;">
+                            <h2>🚫 Extensions désactivées</h2>
+                            <p class="section-description">
+                                Contrairement à la préférence de format ci-dessus, une extension cochée
+                                ici est totalement exclue : jamais affichée dans les résultats de
+                                recherche, jamais téléchargée par la recherche automatique.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div id="blockedSearchExtensionsList" style="display:flex; flex-wrap:wrap;"></div>
+
+                            <div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
+                                <input type="text" id="blockedExtensionCustomInput" placeholder="Autre extension (ex: cbr7)" style="max-width:180px; padding:6px 10px; font-size:0.85em;" onkeydown="if(event.key==='Enter'){event.preventDefault(); addCustomBlockedExtension();}">
+                                <button class="btn-neutral-sm" type="button" onclick="addCustomBlockedExtension()">+ Ajouter</button>
+                            </div>
+
+                            <div class="form-actions" style="margin-top: 20px;">
+                                <button class="btn" onclick="saveBlockedSearchExtensions()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Sauvegarder
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="section-header" style="margin-top: 30px;">
+                            <h2>🔀 Ordre des sources</h2>
+                            <p class="section-description">
+                                Entre deux résultats équivalents (même format, même qualité), la source la
+                                mieux classée est affichée en premier.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <ul class="format-priority-list" id="searchSourcePriorityList"></ul>
+
+                            <div class="form-actions" style="margin-top: 20px;">
+                                <button class="btn" onclick="saveSearchSourcePriority()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Sauvegarder
+                                </button>
+                                <button class="btn" onclick="resetSearchSourcePriority()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Réinitialiser
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Recherche automatique déclenchée par une action ⚡ explicite
+                             (Nouveautés "Ajouter automatiquement", bouton dédié de l'étape 2
+                             Découvrir, ou la molette d'un tome) - ces actions restent
+                             indépendantes du réglage ci-dessous. "auto search and download is
+                             not active only in the découvrir as there is a recherche et
+                             recherche auto option. auto download button should be there and if
+                             active auto search when adding from everything except découvrir" -
+                             ajouter une série depuis Découvrir garde sa propre étape dédiée
+                             (jamais ce réglage, toujours l'action ⚡ manuelle) ; ajouter une
+                             série depuis PARTOUT AILLEURS (fiche série, thèmes/indispensables/
+                             top auteurs...) déclenche désormais une recherche automatique si ce
+                             réglage est activé - voir blueprints/bedetheque/routes.py
+                             (add_series_from_bedetheque, from_discover). -->
+                        <div class="section-header" style="margin-top: 30px;">
+                            <h2>🔎 Recherche automatique</h2>
+                            <p class="section-description">
+                                Options appliquées quand une recherche automatique est lancée (icônes ⚡).
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="auto-acquire-on-add-enabled">
+                                <label for="auto-acquire-on-add-enabled">
+                                    <strong>Télécharger automatiquement à l'ajout</strong> - dès qu'une
+                                    série est ajoutée (fiche série, thèmes, indispensables, top
+                                    auteurs...), recherche et télécharge aussitôt ses tomes manquants.
+                                    Ne s'applique jamais à un ajout depuis Découvrir, qui garde sa
+                                    propre étape dédiée "Chercher les sources".
+                                </label>
+                            </div>
+
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="auto-acquire-pack-search-enabled">
+                                <label for="auto-acquire-pack-search-enabled">
+                                    <strong>Rechercher des packs</strong> (un seul fichier qui regroupe
+                                    plusieurs tomes, ex. "T01 à T14") plutôt que chaque tome un par un -
+                                    plus simple pour les grosses séries. Si aucun pack n'est trouvé, retombe
+                                    sur la recherche tome par tome habituelle.
+                                </label>
+                            </div>
+
+                            <div class="form-actions" style="margin-top: 20px;">
+                                <button class="btn" onclick="saveAutoImportConfig()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Sauvegarder
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- "apres ce qu'on pourrait faire c'est telecharger deja en db toutes
+                             l'index des series et chercher prendrait tres peu de temsp" - index
+                             local du catalogue Bédéthèque (titre+URL de chaque série connue,
+                             voir blueprints/bedetheque/catalog_index.py), utilisé en premier par
+                             toute recherche/matching Bédéthèque de l'app avant la recherche live
+                             (qui reste le repli si l'index n'est pas construit ou ne trouve
+                             rien). Construction manuelle uniquement, pas de planification
+                             automatique. -->
+                        <div class="section-header" style="margin-top: 30px;">
+                            <h2>📇 Index local du catalogue Bédéthèque</h2>
+                            <p class="section-description">
+                                Accélère la recherche de séries sur Bédéthèque. Construction manuelle,
+                                environ une minute.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div id="bedethequeCatalogIndexStatus" style="margin-bottom: 15px; padding:12px; background:var(--color-surface-alt); border-radius:5px; border-left:3px solid var(--color-accent);">
+                                <p style="margin:0;">Chargement du statut...</p>
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn" id="bedethequeCatalogIndexBuildBtn" onclick="buildBedethequeCatalogIndex()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg>
+                                    <span id="bedethequeCatalogIndexBuildBtnLabel">Construire l'index</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Bibliothèques -->
+                <div class="tab-content" id="tab-libraries">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>✏️ Format de renommage</h2>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 style="margin-top:0;">Tags disponibles</h3>
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%; border-collapse:collapse; font-size:14px;">
+                                    <thead>
+                                        <tr style="background:var(--color-surface-alt); border-bottom:2px solid var(--color-accent);">
+                                            <th style="padding:8px 10px; text-align:left;">Tag</th>
+                                            <th style="padding:8px 10px; text-align:left;">Explication</th>
+                                            <th style="padding:8px 10px; text-align:left;">Exemple</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="border-bottom:1px solid var(--color-border);">
+                                            <td style="padding:8px 10px;"><code>&lt;series&gt;</code></td>
+                                            <td style="padding:8px 10px;">Titre de la série</td>
+                                            <td style="padding:8px 10px; color:#666;">Dans Les Forêts De Bambous</td>
+                                        </tr>
+                                        <tr style="border-bottom:1px solid var(--color-border);">
+                                            <td style="padding:8px 10px;"><code>&lt;number2&gt;</code></td>
+                                            <td style="padding:8px 10px;">Numéro de tome, complété par des zéros sur 2 chiffres (jamais tronqué: un numéro à 3 chiffres reste sur 3 chiffres)</td>
+                                            <td style="padding:8px 10px; color:#666;">01, 12, 123</td>
+                                        </tr>
+                                        <tr style="border-bottom:1px solid var(--color-border);">
+                                            <td style="padding:8px 10px;"><code>&lt;title&gt;</code></td>
+                                            <td style="padding:8px 10px;">Titre du tome, lu dans le ComicInfo.xml (balise &lt;Title&gt;)</td>
+                                            <td style="padding:8px 10px; color:#666;">Pandas Dans La Brume</td>
+                                        </tr>
+                                        <tr style="border-bottom:1px solid var(--color-border);">
+                                            <td style="padding:8px 10px;"><code>&lt;year&gt;</code></td>
+                                            <td style="padding:8px 10px;">Année du tome (ComicInfo &lt;Year&gt;, ou l'année détectée sur le fichier à défaut)</td>
+                                            <td style="padding:8px 10px; color:#666;">2010</td>
+                                        </tr>
+                                        <tr style="border-bottom:1px solid var(--color-border);">
+                                            <td style="padding:8px 10px;"><code>&lt;quality&gt;</code></td>
+                                            <td style="padding:8px 10px;">Tag de résolution/scan détecté sur le fichier d'origine - absent si le fichier n'en portait pas</td>
+                                            <td style="padding:8px 10px; color:#666;">Digital-1734</td>
+                                        </tr>
+                                        <tr style="border-bottom:1px solid var(--color-border);">
+                                            <td style="padding:8px 10px;"><code>&lt;group&gt;</code></td>
+                                            <td style="padding:8px 10px;">Groupe de scan/release détecté sur le fichier d'origine - absent si le fichier n'en portait pas</td>
+                                            <td style="padding:8px 10px; color:#666;">NEO RIP-Club</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:8px 10px;"><code>&lt;univers&gt;</code></td>
+                                            <td style="padding:8px 10px;">Univers Bédéthèque de la série (détecté via ses "Séries liées") - absent si la série n'appartient à aucun univers connu</td>
+                                            <td style="padding:8px 10px; color:#666;">Thorgal</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <h3>Blocs optionnels</h3>
+                            <p class="help-text" style="display:block; margin-bottom:8px;">
+                                Un texte entre accolades <code>{ ... }</code> est entièrement omis (y compris les espaces/tirets
+                                qu'il contient) si l'un des tags qu'il contient n'a pas de valeur pour ce fichier - pas besoin
+                                de séparateur "orphelin" (ex: " - #" tout seul) quand l'information manque.
+                            </p>
+                            <table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:10px;">
+                                <thead>
+                                    <tr style="background:var(--color-surface-alt); border-bottom:2px solid var(--color-accent);">
+                                        <th style="padding:8px 10px; text-align:left;">Format</th>
+                                        <th style="padding:8px 10px; text-align:left;">Avec &lt;number2&gt; = 01</th>
+                                        <th style="padding:8px 10px; text-align:left;">Sans &lt;number2&gt;</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="padding:8px 10px;"><code>{ - #&lt;number2&gt;}</code></td>
+                                        <td style="padding:8px 10px; color:#666;">" - #01"</td>
+                                        <td style="padding:8px 10px; color:#666;">"" (rien)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group">
+                                <label for="renameVolumeTemplate">Nom de fichier des tomes dans une série</label>
+                                <input type="text" id="renameVolumeTemplate" placeholder="{<series>} { - #<number2>} { - <title>} { - (<year>)} { - [<quality>] } { - [<group>] }" oninput="_updateRenameTemplatePreviews()">
+                                <small class="help-text">Tags disponibles: &lt;series&gt;, &lt;number2&gt;, &lt;title&gt;, &lt;year&gt;, &lt;quality&gt;, &lt;group&gt;, &lt;univers&gt;</small>
+                                <small class="help-text" id="renameVolumeTemplatePreview" style="display:block; margin-top:4px;"></small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="renameOneshotTemplate">Nom de fichier pour des albums uniques (One-Shot)</label>
+                                <input type="text" id="renameOneshotTemplate" placeholder="{<series>} { - (<year>)} { - [<quality>] } { - [<group>] }" oninput="_updateRenameTemplatePreviews()">
+                                <small class="help-text">Utilisé uniquement pour les séries marquées « One shot ». Le titre du volume est facultatif.</small>
+                                <small class="help-text">Tags disponibles: &lt;series&gt;, &lt;number2&gt;, &lt;title&gt;, &lt;year&gt;, &lt;quality&gt;, &lt;group&gt;, &lt;univers&gt;</small>
+                                <small class="help-text" id="renameOneshotTemplatePreview" style="display:block; margin-top:4px;"></small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="renameSeriesTemplate">Nom du dossier de la série</label>
+                                <input type="text" id="renameSeriesTemplate" placeholder="{<univers>/}<series>" oninput="_updateRenameTemplatePreviews()">
+                                <small class="help-text" id="renameSeriesTemplatePreview" style="display:block; margin-top:4px;"></small>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveRenameTemplateSettings()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Enregistrer</button>
+                                <button class="btn" onclick="resetRenameTemplateSettings()">↩️ Réinitialiser</button>
+                            </div>
+                            <div id="renameTemplateMessage" class="message"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Backup -->
+                <div class="tab-content" id="tab-backup">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>💾 Backup & Restauration</h2>
+                            <p class="section-description">
+                                Sauvegarde les bases de données et tous les fichiers de configuration
+                                (secrets compris, avec leur clé de chiffrement) dans une archive .zip
+                                téléchargeable. Ne contient jamais les fichiers de la bibliothèque
+                                elle-même (trop volumineux).
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 style="margin-top:0;">Créer un backup</h3>
+                            <a class="btn" href="/api/settings/backup">⬇️ Télécharger un backup</a>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 style="margin-top:0;">Restaurer un backup</h3>
+                            <p class="help-text" style="display:block; margin-bottom:10px;">
+                                ⚠️ Écrase les bases de données et fichiers de configuration actuels
+                                (une copie de sécurité <code>.before_restore</code> de chaque fichier remplacé
+                                est gardée à côté). Un redémarrage du conteneur est nécessaire après import
+                                pour que tout reparte proprement.
+                            </p>
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                <input type="file" id="backupRestoreFile" accept=".zip" style="flex:1 1 200px; min-width:0;">
+                                <button class="btn btn-danger" onclick="restoreBackup()">⬆️ Importer et restaurer</button>
+                            </div>
+                            <div id="backupRestoreMessage" class="message"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Surveillance -->
+                <div class="tab-content" id="tab-monitoring">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>📊 Surveillance des Volumes</h2>
+                            <p class="section-description">
+                                Configurez la surveillance automatique des volumes manquants et nouveaux volumes
+                            </p>
+                        </div>
+
+                        <!-- Surveillance des Volumes Manquants -->
+                        <div class="settings-card">
+                            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                                <span style="font-size: 24px;">⚠️</span>
+                                <h3 style="margin: 0; color: var(--color-text);">Volumes Manquants</h3>
+                            </div>
+
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="settingsMonitorMissing" checked>
+                                <label for="settingsMonitorMissing">
+                                    <strong>Activer la surveillance des volumes manquants</strong>
+                                    <span class="help-text">Valable uniquement pour les séries activées dans la page Surveillance.</span>
+                                </label>
+                            </div>
+
+                            <div id="missingVolumesSettings" style="padding-left: 20px;">
+                                <div class="form-group" style="margin-top: 16px;">
+                                    <label for="settingsMissingAction">Quand un nouveau fichier correspond à un tome manquant</label>
+                                    <select id="settingsMissingAction" class="form-select">
+                                        <option value="download">Télécharger automatiquement</option>
+                                        <option value="notify">Envoyer une notification Telegram</option>
+                                    </select>
+                                </div>
+
+                                <p class="help-text" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--color-border);">
+                                    Les nouveaux fichiers détectés sur EBDZ ou Telegram sont traités automatiquement s’ils correspondent à un tome manquant d’une série surveillée.
+                                </p>
+                            </div>
+
+                            <div class="form-actions" style="margin-top: 20px;">
+                                <button class="btn" onclick="saveMonitoringConfig()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Sauvegarder
+                                </button>
+                                <a href="/missing-monitor" class="btn">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" /></svg> Aller à la surveillance
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- "je voudrais que tu rajoutes l'option meilleure qualité" -
+                             indépendante de la carte "Volumes Manquants" ci-dessus: un
+                             tome déjà possédé d'une série surveillée est remplacé
+                             automatiquement si un nouveau fichier détecté (EBDZ/Telegram)
+                             est à la fois de meilleure qualité (résolution en base) ET
+                             notablement plus gros - voir new_file_handler.py. -->
+                        <div class="settings-card">
+                            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                                <span style="font-size: 24px;">✨</span>
+                                <h3 style="margin: 0; color: var(--color-text);">Upgrade Qualité</h3>
+                            </div>
+
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="settingsQualityUpgrade">
+                                <label for="settingsQualityUpgrade">
+                                    <strong>Remplacer automatiquement un tome déjà possédé par une meilleure version</strong>
+                                    <span class="help-text">Uniquement pour les séries surveillées. Un nouveau fichier détecté doit être de meilleure qualité (résolution/scan connue en base) ET notablement plus gros que le fichier possédé pour déclencher un remplacement.</span>
+                                </label>
+                            </div>
+
+                            <div id="qualityUpgradeSettings" style="padding-left: 20px;">
+                                <div class="form-group" style="margin-top: 16px;">
+                                    <label for="settingsQualityMinIncrease">Différence de taille minimale pour considérer un remplacement</label>
+                                    <div style="display:flex; align-items:center; gap:8px; max-width:160px;">
+                                        <input type="number" id="settingsQualityMinIncrease" class="form-input" min="0" step="5" value="20">
+                                        <span>%</span>
+                                    </div>
+                                </div>
+
+                                <p class="help-text" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--color-border);">
+                                    Si aucune résolution n'est connue pour le fichier déjà possédé, tout candidat plus gros que ce seuil est considéré comme un remplacement valide.
+                                </p>
+                            </div>
+
+                            <div class="form-actions" style="margin-top: 20px;">
+                                <button class="btn" onclick="saveMonitoringConfig()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Sauvegarder
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="monitoringMessage" class="message" style="margin-top: 20px;"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-import-auto">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>📥 Imports</h2>
+                            <p class="section-description">
+                                Configurez l'import automatique et périodique des fichiers détectés dans les
+                                répertoires de téléchargement surveillés
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="auto-import-enabled">
+                                <label for="auto-import-enabled">
+                                    <strong>Activer l'import automatique</strong>
+                                    <span class="help-text">Importe automatiquement un fichier dès qu'il est prêt (assigné à une série)</span>
+                                </label>
+                            </div>
+
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="auto-assign-enabled" checked>
+                                <label for="auto-assign-enabled">
+                                    <strong>Autoriser l'auto-assignation</strong>
+                                    <span class="help-text">Les fichiers détectés seront assignés automatiquement à une série existante si possible</span>
+                                </label>
+                            </div>
+
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="auto-convert-to-cbz" checked>
+                                <label for="auto-convert-to-cbz">
+                                    <strong>Conversion automatique en CBZ</strong>
+                                    <span class="help-text">Convertit automatiquement les fichiers cbr/rar/pdf/zip en cbz avant import</span>
+                                </label>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="import-mode"><strong>Mode de transfert vers la bibliothèque</strong></label>
+                                <select id="import-mode" class="form-input" style="max-width: 460px; margin-top: 8px;">
+                                    <option value="move">Déplacer (supprime le fichier source après import)</option>
+                                    <option value="hardlink">Hardlink (conserve le fichier source, sans doubler l'espace disque)</option>
+                                </select>
+                                <span class="help-text">Le hardlink nécessite que la source et la bibliothèque soient sur le même filesystem. Sinon Bullarr utilise automatiquement une copie en conservant la source. Une conversion en CBZ est toujours copiée.</span>
+                            </div>
+
+
+                            <div class="form-actions" style="margin-top: 20px;">
+                                <button class="btn" onclick="saveAutoImportConfig()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Sauvegarder
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="autoImportMessage" class="message" style="margin-top: 20px;"></div>
+                    </div>
+                </div>
+
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/search-results-table.js') }}?v={{ asset_version('js/search-results-table.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings.js') }}?v={{ asset_version('js/settings.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Détail de la série</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">📖</span> <span class="header-title-full">Détail de la série</span><span class="header-title-short">Série</span></h1>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+                    <div id="modal-body">
+                        <div class="loading"><div class="spinner"></div><p>Chargement des détails...</p></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de recherche ED2K (recherche d'un volume manquant précis) -->
+    <div class="modal" id="search-ed2k-modal">
+        <div class="modal-content" style="max-width: 1300px;">
+            <span class="close-modal" onclick="closeSearchModal()">×</span>
+            <div id="search-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Modal de matching manuel EBDZ -->
+    <div class="modal" id="ebdz-match-modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close-modal" onclick="closeEbdzMatchModal()">×</span>
+            <div id="ebdz-match-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Modal de matching manuel Komga -->
+    <div class="modal" id="komga-match-modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close-modal" onclick="closeKomgaMatchModal()">×</span>
+            <div id="komga-match-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Modal de matching manuel Bedetheque (recherche par titre ou URL directe) -->
+    <div class="modal" id="bedetheque-match-modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close-modal" onclick="closeBedethequeMatchModal()">×</span>
+            <div id="bedetheque-match-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Modal listant les fichiers ed2k trouvés sur le thread EBDZ matché à cette série -->
+    <div class="modal" id="ebdz-files-modal">
+        <div class="modal-content" style="max-width: 960px;">
+            <span class="close-modal" onclick="closeEbdzFilesModal()">×</span>
+            <div id="ebdz-files-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Modal affichant les avis de lecteurs Bédéthèque d'un tome (clic sur sa note) -->
+    <div class="modal" id="bedetheque-reviews-modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close-modal" onclick="closeBedethequeReviewsModal()">×</span>
+            <div id="bedetheque-reviews-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Modale des recommandations « À lire aussi » de la fiche Bédéthèque -->
+    <div class="modal" id="bedetheque-read-also-modal">
+        <div class="modal-content author-albums-modal-content">
+            <span class="close-modal" onclick="closeReadAlsoModal()">×</span>
+            <div id="bedetheque-read-also-modal-body"></div>
+        </div>
+    </div>
+
+    <div class="modal cover-image-modal" id="cover-image-modal" role="dialog" aria-modal="true" aria-labelledby="cover-image-modal-caption">
+        <div class="modal-content cover-image-modal-content">
+            <button type="button" class="close-modal cover-image-modal-close" onclick="closeCoverModal()" aria-label="Fermer">×</button>
+            <img id="cover-image-modal-image" class="cover-image-modal-image" alt="">
+            <div id="cover-image-modal-caption" class="cover-image-modal-caption"></div>
+        </div>
+    </div>
+
+    <script>
+        const seriesId = {{ series_id }};
+    </script>
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/match-modal.js') }}?v={{ asset_version('js/match-modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/search-results-table.js') }}?v={{ asset_version('js/search-results-table.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/author-albums.js') }}?v={{ asset_version('js/author-albums.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/history-shared.js') }}?v={{ asset_version('js/history-shared.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/library.js') }}?v={{ asset_version('js/library.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+    <script>
+        renderSeriesDetail(seriesId).then(() => {
+            // "dans nouveautés ca a match une mauvaise serie. il faudrait pouvoir
+            // changer ca et selectionner manuellement la série" - lien direct depuis
+            // Nouveautés (voir _nouveautesMatchedHtml, ebdz-latest.js) vers cette page
+            // avec ?open_ebdz_match=1, plutôt que de dupliquer/importer tout library.js
+            // (7500+ lignes, openEbdzMatchModal) sur la page Nouveautés elle-même.
+            // Attend renderSeriesDetail (async, pose ebdz-status-card-<id> dans le DOM)
+            // avant d'ouvrir - la modale a besoin de ce conteneur pour se rafraîchir
+            // après confirmation (voir openEbdzMatchModal, context 'card').
+            if (new URLSearchParams(window.location.search).get('open_ebdz_match') === '1') {
+                openEbdzMatchModal(seriesId, 'card');
+            }
+        });
+    </script>
+</body>
+</html>

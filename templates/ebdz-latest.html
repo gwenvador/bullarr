@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Nouveautés</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-search.css') }}?v={{ asset_version('css/style-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link active">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">🆕</span> <span class="header-title-full">Nouveautés</span><span class="header-title-short">Nouveautés</span></h1>
+                        <p class="subtitle">Derniers fichiers trouvés sur EBDZ et Telegram</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+                    <div class="settings-card">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+                            <div class="history-filter-tabs" style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="tab-button history-filter-active" id="nouveautes-filter-all" onclick="filterNouveautesEvents('all')">Tout</button>
+                                <button class="tab-button" id="nouveautes-filter-ebdz" onclick="filterNouveautesEvents('ebdz')">
+                                    <img src="{{ url_for('static', filename='img/ebdz-logo.png') }}" alt="" style="width:14px; height:14px; vertical-align:-2px;"> EBDZ
+                                </button>
+                                <button class="tab-button" id="nouveautes-filter-telegram" onclick="filterNouveautesEvents('telegram')">
+                                    <img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" style="width:14px; height:14px; vertical-align:-2px;"> Telegram
+                                </button>
+                            </div>
+                            <button class="btn" onclick="loadNouveautesEvents(true)" id="nouveautesRescanBtn" data-tooltip="Scraper EBDZ + Telegram pour de nouveaux fichiers" style="padding:8px 15px; font-size:14px;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                        </div>
+
+                        <div id="nouveautes-events-wrapper">
+                            <table class="nouveautes-table">
+                                <thead>
+                                    <tr>
+                                        <th class="volume-table-sortable" data-sort-column="date" onclick="setNouveautesSort('date')">Date<span class="nouveautes-sort-arrow"></span></th>
+                                        <th class="volume-table-sortable" data-sort-column="type" onclick="setNouveautesSort('type')">Type<span class="nouveautes-sort-arrow"></span></th>
+                                        <th class="volume-table-sortable" data-sort-column="origin" onclick="setNouveautesSort('origin')">
+                                            <div class="toolbar-dropdown" style="display:inline-flex; align-items:center; gap:6px;">
+                                                Origine<span class="nouveautes-sort-arrow"></span>
+                                                <button type="button" id="nouveautesOriginFilterBtn" class="toolbar-btn" onclick="event.stopPropagation(); toggleNouveautesOriginMenu(this)" style="padding:4px 8px; font-size:0.8em;" data-tooltip="Filtrer par forum EBDZ / canal Telegram">
+                                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" style="width:14px; height:14px;"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
+                                                    <span id="nouveautesOriginFilterCount"></span>
+                                                </button>
+                                                <div class="toolbar-dropdown-menu" id="nouveautesOriginFilterMenu" style="display:none;" onclick="event.stopPropagation()"></div>
+                                            </div>
+                                        </th>
+                                        <!-- "au lieu d'avoir toutes les verifications..." non, ceci est item #1 improvement.txt
+                                             ("meme UI... les filtres") - filtre titre déplacé du <input class="search-input">
+                                             autonome au-dessus du tableau vers le même pattern .th-filterable-* (icône entonnoir
+                                             + pastille) que la colonne "Détails" équivalente de /history (voir history.html). -->
+                                        <th class="volume-table-sortable" data-sort-column="title">
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label" style="cursor:pointer;" onclick="setNouveautesSort('title')">Détails<span class="nouveautes-sort-arrow"></span></span>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <input type="text" class="th-filterable-control" id="nouveautesTitleFilter" placeholder="Filtrer..." oninput="_syncFilterControlActive(this); renderNouveautesEvents()">
+                                                </span>
+                                            </div>
+                                        </th>
+                                        <th class="volume-table-sortable" data-sort-column="matched" onclick="setNouveautesSort('matched')">
+                                            <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:inherit;" data-tooltip="N'afficher que les sujets déjà matchés à une série (comparaison directe du thread EBDZ, pas juste un titre proche)" onclick="event.stopPropagation()">
+                                                <input type="checkbox" id="nouveautesMatchedOnlyFilter" autocomplete="off" onchange="renderNouveautesEvents()">
+                                                Série
+                                            </label><span class="nouveautes-sort-arrow"></span>
+                                        </th>
+                                        <th class="volume-table-sortable" data-sort-column="status" onclick="setNouveautesSort('status')" data-tooltip="Nouveau/déjà connu, surveillé, statut d'import, ajout à la bibliothèque">
+                                            Actions<span class="nouveautes-sort-arrow"></span>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="nouveautes-events-body"></tbody>
+                            </table>
+                        </div>
+                        <div id="nouveautes-events-load-more" style="text-align:center; margin-top:15px; display:none;"></div>
+                        <div id="nouveautes-events-empty" style="padding:20px; text-align:center; color:#666; display:none;">
+                            <p>Aucun élément trouvé</p>
+                        </div>
+                        <div id="nouveautes-events-loading" style="text-align:center; padding:20px; color:#666;">
+                            <p>Chargement...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}?v={{ asset_version('js/search.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ebdz-latest.js') }}?v={{ asset_version('js/ebdz-latest.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>📖 Bédéthèque - Enrichissement de Séries</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-bedetheque-enrich.css') }}?v={{ asset_version('css/style-bedetheque-enrich.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link active">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">📖</span> <span class="header-title-full">Bédéthèque - Enrichissement de Séries</span><span class="header-title-short">Enrichir</span></h1>
+                        <p class="subtitle">Matche vos séries sur Bédéthèque et EBDZ, et repère celles à qui il manque encore l'un ou l'autre</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchTab('indispensables'); openIndispensablesTab()">Indispensables BD</button>
+                        <button class="tab" onclick="switchTab('pantheon'); openPantheonTab()">Panthéon</button>
+                        <button class="tab" onclick="switchTab('themes'); openThemesTab()">Thèmes</button>
+                        <button class="tab" onclick="switchTab('bdgest-top'); openBdgestTopTab()">Top 100 BDGest</button>
+                        <button class="tab" id="tab-by-author" onclick="switchTab('by-author')">Par auteur</button>
+                    </div>
+
+                    <!-- Tab 1: Top 100 des indispensables en BD -->
+                    <div id="indispensables" class="tab-content active">
+                        <!-- "the data does not really change much so no need to update automatic.
+                             put only update manual" - le cache serveur (bedetheque_scrape_cache,
+                             catalog_index.py) n'expire plus jamais tout seul, ce bouton est
+                             désormais le SEUL moyen de forcer un nouveau scrape. -->
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin:0 0 16px;">
+                            <p class="subtitle" style="margin:0;">Top 100 des indispensables en BD</p>
+                            <button class="btn-icon-only" onclick="refreshIndispensables(this)" data-tooltip="Actualiser depuis Bédéthèque" aria-label="Actualiser depuis Bédéthèque"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                        </div>
+                        <div class="tabs indispensable-category-tabs" style="margin-bottom:16px;">
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab active" id="indispensable-cat-tab-all" onclick="selectIndispensableCategory('all', this)">Tous<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/indispensables.html" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab" id="indispensable-cat-tab-franco-belge" onclick="selectIndispensableCategory('franco-belge', this)"><img src="/static/img/flag-france.png" alt=""> Franco-belge<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/indispensables-origine-1.html" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab" id="indispensable-cat-tab-comics" onclick="selectIndispensableCategory('comics', this)"><img src="/static/img/flag-us.png" alt=""> Comics<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/indispensables-origine-3.html" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab" id="indispensable-cat-tab-manga" onclick="selectIndispensableCategory('manga', this)"><img src="/static/img/flag-japan.png" alt=""> Manga<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/indispensables-origine-2.html" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                        </div>
+                        <div id="indispensablesMessage" class="message"></div>
+                        <div id="indispensablesList" class="series-list series-table-wrapper">Chargement...</div>
+                    </div>
+
+                    <div id="pantheon" class="tab-content">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin:0 0 16px;">
+                            <p class="subtitle" style="margin:0;">Panthéon de la BD - les auteurs consacrés par Bédéthèque</p>
+                            <button class="btn-icon-only" onclick="refreshPantheon(this)" data-tooltip="Actualiser depuis Bédéthèque" aria-label="Actualiser depuis Bédéthèque"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                        </div>
+                        <div class="tabs indispensable-category-tabs" style="margin-bottom:16px;">
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab active" id="pantheon-cat-tab-all" onclick="selectPantheonCategory('all', this)">Tous<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/pantheon" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab" id="pantheon-cat-tab-franco-belge" onclick="selectPantheonCategory('franco-belge', this)"><img src="/static/img/flag-france.png" alt=""> Franco-belge<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/pantheon/index/cat/1" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab" id="pantheon-cat-tab-comics" onclick="selectPantheonCategory('comics', this)"><img src="/static/img/flag-us.png" alt=""> Comics<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/pantheon/index/cat/2" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab" id="pantheon-cat-tab-manga" onclick="selectPantheonCategory('manga', this)"><img src="/static/img/flag-japan.png" alt=""> Manga<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/pantheon/index/cat/3" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                            <span class="indispensable-category-tab-group">
+                                <button class="tab" id="pantheon-cat-tab-fondateurs" onclick="selectPantheonCategory('fondateurs', this)">Fondateurs<span class="indispensable-cat-count"></span></button><a class="indispensable-tab-link" href="https://www.bedetheque.com/pantheon/index/cat/4" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                            </span>
+                        </div>
+                        <div id="pantheonList" class="series-list series-table-wrapper">Chargement...</div>
+                    </div>
+
+                    <div id="themes" class="tab-content">
+                        <div id="themes-groups">
+                            <div style="display:flex; align-items:center; justify-content:space-between; margin:0 0 16px;">
+                                <p class="subtitle" style="margin:0;">Thèmes de la BD - cliquez un thème pour voir les BD proposées par Bédéthèque</p>
+                                <button class="btn-icon-only" onclick="refreshThemesList(this)" data-tooltip="Actualiser depuis Bédéthèque" aria-label="Actualiser depuis Bédéthèque"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                            </div>
+                            <div id="themesGroupsList">Chargement...</div>
+                        </div>
+                        <div id="themes-detail" style="display:none;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px;">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <button class="btn-icon-only" onclick="closeThemeDetail()" data-tooltip="Retour aux thèmes" aria-label="Retour aux thèmes"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></svg></button>
+                                    <p class="subtitle" id="theme-detail-title" style="margin:0;"></p>
+                                    <a id="theme-detail-source-link" class="indispensable-tab-link" href="#" target="_blank" rel="noopener" data-tooltip="Ouvrir sur Bédéthèque">↗</a>
+                                </div>
+                                <button class="btn-icon-only" onclick="refreshThemeDetail(this)" data-tooltip="Actualiser depuis Bédéthèque" aria-label="Actualiser depuis Bédéthèque"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                            </div>
+                            <div id="theme-detail-bulk-actions-bar" class="volume-bulk-actions-bar" style="display:none; margin-bottom:15px;"></div>
+                            <div id="themeDetailList" class="series-list series-table-wrapper"></div>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Top 100 annuel BDGest (https://www.bdgest.com/top/annuel) - "de
+                         meme pour les top 100 par annee" - site différent de bedetheque.com
+                         (voir blueprints/bdgest/, son propre blueprint), mais même gabarit
+                         que Indispensables/Panthéon/Thèmes: chaque entrée renvoie vers sa
+                         fiche Bédéthèque, donc même détection "déjà possédé". Sélecteur
+                         d'année (prev/suivant comme sur la page BDGest elle-même) + sous-onglets
+                         d'origine (Général/Franco-belge/Manga/Comics, mêmes 4 catégories que
+                         BDGest propose). -->
+                    <div id="bdgest-top" class="tab-content">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin:0 0 16px;">
+                            <p class="subtitle" style="margin:0;">Top 100 des ventes BD de l'année, par origine (BDGest)</p>
+                            <button class="btn-icon-only" onclick="refreshBdgestTop(this)" data-tooltip="Actualiser depuis BDGest" aria-label="Actualiser depuis BDGest"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
+                            <select id="bdgest-year-input" class="form-control" style="width:90px;" onchange="loadBdgestTop()"></select>
+                            <div class="tabs indispensable-category-tabs" style="margin:0;">
+                                <button class="tab active" id="bdgest-origine-tab-general" onclick="selectBdgestOrigine('general', this)">Général</button>
+                                <button class="tab" id="bdgest-origine-tab-franco-belge" onclick="selectBdgestOrigine('franco-belge', this)"><img src="/static/img/flag-france.png" alt=""> Franco-belge</button>
+                                <button class="tab" id="bdgest-origine-tab-manga" onclick="selectBdgestOrigine('manga', this)"><img src="/static/img/flag-japan.png" alt=""> Manga</button>
+                                <button class="tab" id="bdgest-origine-tab-comics" onclick="selectBdgestOrigine('comics', this)"><img src="/static/img/flag-us.png" alt=""> Comics</button>
+                            </div>
+                        </div>
+                        <div id="bdgestTopList" class="series-list series-table-wrapper">Chargement...</div>
+                    </div>
+
+                    <!-- Tab 3: Recherche par auteur (item #25 improvement.txt) -->
+                    <div id="by-author" class="tab-content">
+                        <div style="background: var(--color-surface); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                            <p style="margin-top:0; margin-bottom:16px; color:#666;">Sélectionnez un auteur dans la liste filtrable pour parcourir sa bibliographie en français et ajouter directement des séries à votre bibliothèque.</p>
+                            <div class="author-picker" id="author-picker">
+                                <button type="button" class="author-picker-trigger" id="author-picker-trigger" onclick="toggleAuthorPicker()">
+                                    <span id="author-picker-label" class="author-picker-label">Choisir un auteur…</span>
+                                    <svg class="icon author-picker-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg>
+                                </button>
+                                <div class="author-picker-panel" id="author-picker-panel" style="display:none;">
+                                    <div class="author-picker-search">
+                                        <span class="author-picker-search-icon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg></span>
+                                        <input type="text" id="author-search-input" class="author-picker-search-input" placeholder="Rechercher un auteur..." autocomplete="off" oninput="renderDatabaseAuthorDropdown(this.value)">
+                                    </div>
+                                    <div id="author-search-results" class="author-picker-list"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="author-albums-table-title" class="help-text" style="margin-bottom:8px;"></div>
+                        <div id="author-albums-table-container" class="series-list series-table-wrapper"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal cover-image-modal" id="cover-image-modal" role="dialog" aria-modal="true" aria-labelledby="cover-image-modal-caption">
+        <div class="modal-content cover-image-modal-content">
+            <button type="button" class="close-modal cover-image-modal-close" onclick="closeCoverModal()" aria-label="Fermer">×</button>
+            <img id="cover-image-modal-image" class="cover-image-modal-image" alt="">
+            <div id="cover-image-modal-caption" class="cover-image-modal-caption"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/author-albums.js') }}?v={{ asset_version('js/author-albums.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bedetheque-enrich.js') }}?v={{ asset_version('js/bedetheque-enrich.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bedetheque-indispensables.js') }}?v={{ asset_version('js/bedetheque-indispensables.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bedetheque-pantheon.js') }}?v={{ asset_version('js/bedetheque-pantheon.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bedetheque-themes.js') }}?v={{ asset_version('js/bedetheque-themes.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bdgest-top.js') }}?v={{ asset_version('js/bdgest-top.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="og" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffb347"/>
+      <stop offset="45%" stop-color="#f0722e"/>
+      <stop offset="100%" stop-color="#c04d10"/>
+    </linearGradient>
+    <filter id="rough" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.065" numOctaves="3" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.8" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+  <!-- dark background rounded square -->
+  <rect width="64" height="64" rx="9" fill="#1a0800"/>
+  <!-- orange border -->
+  <rect x="2" y="2" width="60" height="60" rx="7.5" fill="none" stroke="#c04d10" stroke-width="2"/>
+  <!-- "4" glyph — retro chunky -->
+  <g filter="url(#rough)">
+    <!-- vertical left stroke of the 4 -->
+    <rect x="11" y="8" width="11" height="28" rx="2" fill="url(#og)"/>
+    <!-- horizontal crossbar -->
+    <rect x="11" y="28" width="42" height="11" rx="2" fill="url(#og)"/>
+    <!-- vertical right stroke of the 4 -->
+    <rect x="42" y="8" width="11" height="48" rx="2" fill="url(#og)"/>
+  </g>
+  <!-- subtle inner highlight -->
+  <rect x="2" y="2" width="60" height="18" rx="7.5" fill="rgba(255,220,150,0.06)"/>
+</svg>

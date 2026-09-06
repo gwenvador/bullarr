@@ -1,0 +1,509 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    min-height: 100vh;
+}
+
+/* Conteneur - géré par style.css pour le layout avec sidebar */
+
+.search-box {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.search-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 250px;
+    padding: 11px 16px;
+    font-size: 1em;
+    border: 2px solid var(--color-border);
+    border-radius: 8px;
+    transition: border-color 0.3s;
+    color: var(--color-text);
+    background: var(--color-surface);
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+.search-buttons-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.search-button {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 2px solid var(--color-border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 20px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.search-button-logo {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+
+.search-button:hover {
+    border-color: var(--color-accent);
+    background: var(--color-bg);
+}
+
+.results-section {
+    margin-bottom: 16px;
+}
+
+.results-section-title {
+    color: var(--color-accent);
+    font-size: 1.1em;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.results-section-logo {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+}
+
+/* Barre de filtrage */
+.filter-box {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.filter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.filter-header h3 {
+    color: var(--color-accent);
+    font-size: 1.2em;
+    margin: 0;
+}
+
+.clear-filter-button {
+    padding: 8px 20px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.9em;
+    transition: all 0.2s;
+}
+
+.clear-filter-button:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+}
+
+.filter-input-group {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.filter-input {
+    flex: 1;
+    padding: 12px 20px;
+    font-size: 1em;
+    border: 2px solid var(--color-border);
+    border-radius: 10px;
+    transition: all 0.3s;
+    /* Même correctif que .search-input plus haut dans ce fichier. */
+    color: var(--color-text);
+    background: var(--color-surface);
+}
+
+.filter-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.filter-stats {
+    font-size: 1em;
+    color: var(--color-text-muted);
+    font-weight: 600;
+    min-width: 120px;
+    text-align: right;
+}
+
+.filter-stats span {
+    color: var(--color-accent);
+    font-weight: bold;
+}
+
+.results {
+    display: grid;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.result-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+}
+
+.cover-container {
+    width: 56px;
+}
+
+.cover-image {
+    width: 56px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.cover-placeholder {
+    background: var(--color-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #999;
+    font-size: 0.65em;
+    text-align: center;
+    padding: 4px;
+}
+
+.cover-placeholder-icon {
+    font-size: 1.8em;
+}
+
+.thread-link-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.thread-link-icon:hover {
+    opacity: 1;
+}
+
+.thread-link-icon img {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+}
+
+.volume-badge {
+    background: var(--color-accent);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 0.8em;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.result-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.result-title {
+    display: block;
+    text-decoration: none;
+    font-size: 1.05em;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 4px;
+    transition: color 0.15s ease;
+}
+
+a.result-title:hover {
+    color: var(--color-accent);
+}
+
+/* Ligne de métadonnées compacte (catégorie, tracker, date, seeders...): texte discret
+   plutôt que des gros badges/boutons qui prenaient toute une ligne chacun */
+.result-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    font-size: 0.8em;
+    color: #777;
+    margin-bottom: 8px;
+}
+
+.result-category,
+.result-indexer,
+.result-tracker {
+    color: var(--color-accent);
+    font-weight: 600;
+}
+
+/* Option B du comparatif ("pour #5 fais option B"): icône seule, sans texte ni couleur -
+   le sens passe entièrement par l'icône + le tooltip au survol (data-tooltip) */
+.icon-owned {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--color-border);
+    color: var(--color-accent-hover);
+}
+
+.icon-owned .icon {
+    width: 12px;
+    height: 12px;
+}
+
+/* Signale un sujet qui correspond à une série sous surveillance active (voir
+   already_monitored côté API, missing_volume_monitor.enabled = 1) */
+.badge-monitored {
+    background: #f2e3cc;
+    color: #8a5220;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.85em;
+}
+
+/* Fond beige clair + texte ambre fonce codes en dur, jamais couverts par un override
+   [data-theme="dark"] - ressortait aussi clair en permanence sur fond sombre (Nouveautes,
+   ebdz-latest.js) que la version non theme du badge deja corrigee ailleurs. */
+[data-theme="dark"] .badge-monitored {
+    background: var(--color-surface-alt);
+    color: var(--color-accent);
+}
+
+/* Nouveautés: signale qu'un fichier/thread identifié (tome/intégrale/HS/épisode, voir
+   already_owned/missing_links_count côté API /api/ebdz/latest et /api/telegram-channels/
+   latest) n'est PAS déjà possédé dans la série matchée - contrairement à .icon-owned
+   (série connue) ou .badge-monitored (surveillée), celui-ci porte volontairement une
+   couleur d'alerte discrète: c'est le seul badge de cette page qui dit "ça vous manque",
+   pas juste un état neutre. */
+.badge-missing {
+    background: #f8d7da;
+    color: #842029;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.8em;
+}
+
+
+.result-tracker:hover {
+    text-decoration: underline;
+}
+
+.result-meta-muted {
+    color: #999;
+}
+
+.file-info {
+    display: grid;
+    gap: 6px;
+}
+
+.file-item {
+    padding: 6px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    border-top: 1px solid var(--color-bg);
+}
+
+.file-item:first-child {
+    border-top: none;
+}
+
+.file-item-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.file-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.file-name {
+    font-size: 0.9em;
+    color: var(--color-text);
+    flex: 1;
+    word-break: break-word;
+    line-height: 1.3;
+}
+
+.file-size {
+    color: #999;
+    font-size: 0.8em;
+    min-width: 60px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.btn-icon {
+    font-size: 1em;
+    line-height: 1;
+    display: inline-block;
+}
+
+/* Boutons d'action compacts (icône seule, libellé en tooltip via data-tooltip): à la
+   place des gros boutons icône+texte d'origine qui prenaient toute la largeur d'une
+   ligne par fichier */
+.copy-button, .add-button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    background: transparent;
+    color: #555;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    text-decoration: none;
+}
+
+.btn-label {
+    display: none;
+}
+
+.copy-button:hover,
+.add-button:hover {
+    background: var(--color-bg);
+    border-color: var(--color-accent);
+}
+
+.add-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: transparent;
+}
+
+/* .add-button-added/.add-button-error: déplacées dans style.css (chargée partout) -
+   "ca marche en ebdz mais pas en telegram", voir son commentaire: ces classes ne
+   vivaient que dans cette feuille, jamais chargée sur la fiche série où les mêmes
+   boutons (downloadTelegramFile côté library.js) apparaissent aussi. */
+
+.copied {
+    background: #28a745 !important;
+}
+
+.no-results {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 24px 20px;
+    text-align: center;
+}
+
+.no-results h2 {
+    color: var(--color-accent);
+    font-size: 1.1em;
+    margin-bottom: 6px;
+}
+
+.no-results p {
+    font-size: 0.9em;
+    color: #777;
+}
+
+.loading {
+    text-align: center;
+    padding: 24px;
+    color: var(--color-text-muted);
+    font-size: 1.1em;
+}
+
+@media (max-width: 768px) {
+    .search-box,
+    .filter-box {
+        padding: 12px;
+    }
+
+    .search-input-group {
+        flex-wrap: nowrap;
+    }
+
+    .search-input {
+        min-width: 0;
+    }
+
+    .search-buttons-group {
+        flex-wrap: nowrap;
+        flex-shrink: 0;
+    }
+
+    .filter-input-group {
+        flex-wrap: wrap;
+    }
+
+    .filter-stats {
+        text-align: left;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .result-card {
+        grid-template-columns: 1fr;
+        padding: 12px;
+    }
+
+    .file-name {
+        font-size: 1em;
+    }
+}

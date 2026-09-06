@@ -1,0 +1,252 @@
+/* /validation - file de validation des recherches automatiques trop peu fiables
+   pour être téléchargées seules (voir bedetheque/auto_acquire.py, _best_confident_result).
+   Feuille dédiée pour rejoindre la convention du reste de l'app (une page = son propre
+   style-<page>.css) plutôt qu'un <style> inline dans le template - c'était la seule page
+   à en avoir un. */
+
+.review-list {
+    display: grid;
+    gap: 14px;
+}
+
+.review-card {
+    position: relative;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+
+.review-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.review-card h2 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.25;
+    font-weight: 600;
+}
+
+.review-card h2 a {
+    color: var(--color-text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.review-group-author {
+    margin-top: 3px;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+}
+
+.review-group-items {
+    display: grid;
+    gap: 4px;
+    margin-top: 10px;
+}
+
+/* "add a general cross to close all the validation from one album. put it right after
+   number of volumes to validate" */
+.review-group-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
+.review-group-count {
+    color: var(--color-text-muted);
+    font-size: 0.76rem;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    padding: 2px 9px;
+    white-space: nowrap;
+}
+
+.review-group-close-btn {
+    width: 24px;
+    height: 24px;
+}
+
+.review-group-close-btn:hover {
+    color: var(--color-danger, #b45309);
+}
+
+.review-tome {
+    position: relative;
+    padding: 10px 30px 10px 0;
+}
+
+.review-group-items .review-tome + .review-tome {
+    border-top: 1px solid var(--color-border);
+}
+
+.review-tome-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+}
+
+.review-volume {
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+}
+
+.review-candidates-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 5px;
+}
+
+.review-candidates-toggle:hover {
+    color: var(--color-accent);
+    background: var(--color-border);
+}
+
+.review-candidates-toggle .icon {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.15s ease;
+}
+
+.review-candidates-toggle.review-candidates-toggle-open .icon {
+    transform: rotate(180deg);
+}
+
+.review-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 8px;
+    color: var(--color-text-muted);
+}
+
+.review-date .icon {
+    width: 12px;
+    height: 12px;
+}
+
+.review-candidates {
+    margin-top: 10px;
+    display: grid;
+    gap: 5px;
+}
+
+/* "Aucun candidat détaillé" (auto-acquire-review.js) - jamais stylée, même dans l'ancien
+   <style> inline : retombait sur le texte par défaut du navigateur au lieu du gris discret
+   attendu pour un texte d'état secondaire, comme .review-volume/.review-empty. */
+.review-meta {
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+}
+
+.review-candidate {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 5px 7px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+}
+
+.review-candidate-name {
+    flex: 1;
+    min-width: 0;
+    color: var(--color-text);
+    font-size: 0.82rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.review-source-icon {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    flex: 0 0 18px;
+}
+
+.review-candidate-availability {
+    flex: 0 0 auto;
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.review-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 3px;
+    border: 0;
+    border-radius: 5px;
+    color: var(--color-text-muted);
+    background: transparent;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.review-icon-btn:hover {
+    color: var(--color-accent);
+    background: var(--color-border);
+}
+
+.review-icon-btn .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.review-download-btn {
+    color: var(--color-accent);
+}
+
+.review-dismiss-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    width: 26px;
+    height: 26px;
+    padding: 4px;
+    border: 0;
+    border-radius: 5px;
+    color: var(--color-text-muted);
+    background: transparent;
+    cursor: pointer;
+}
+
+.review-dismiss-btn:hover {
+    /* Même fallback que .import-download-error (style.css) - --color-danger n'est défini
+       nulle part comme variable réelle, ce hex est donc la couleur "danger" de fait dans
+       toute l'app ; garder la même valeur ici plutôt qu'un rouge légèrement différent. */
+    color: var(--color-danger, #b45309);
+    background: var(--color-border);
+}
+
+.review-dismiss-btn .icon {
+    width: 17px;
+    height: 17px;
+}
+
+.review-empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--color-text-muted);
+}

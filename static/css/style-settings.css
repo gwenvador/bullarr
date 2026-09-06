@@ -1,0 +1,912 @@
+/* Styles pour la page de configuration */
+
+/* Navigation des sections de Configuration: sous-liens dans la colonne latérale (voir
+   #settings-nav-subgroup dans settings.html), plus discrets que le reste de la sidebar
+   (indentés, police plus petite) pour se distinguer des liens de premier niveau tout en
+   restant dans la même colonne - remplace l'ancienne barre d'onglets horizontale qui
+   débordait et rendait certains onglets inaccessibles sur les fenêtres étroites */
+.nav-subgroup {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg);
+    /* Décroché du bord gauche de la colonne (au lieu d'occuper toute sa largeur comme
+       les liens de premier niveau) + liseré vertical: lecture immédiate "ceci est
+       imbriqué sous Configuration", pas une liste de liens du même rang */
+    margin-left: 18px;
+    border-left: 2px solid var(--color-border);
+}
+
+.nav-sublink {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px 9px 22px;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    border-left: 4px solid transparent;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-sublink-icon {
+    width: 15px;
+    height: 15px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+/* La colonne latérale (180-200px, voir style.css .sidebar-nav) est trop étroite pour ces
+   sous-liens (icône + libellé + indentation) sans les couper: l'élargir seulement sur
+   les pages qui ont ce sous-menu (Configuration/Historique) plutôt que partout */
+.sidebar-nav {
+    width: 230px;
+}
+
+@media (min-width: 1920px) {
+    .sidebar-nav {
+        width: 250px;
+    }
+}
+
+.nav-sublink:hover {
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+}
+
+.nav-sublink.active {
+    background: var(--color-surface-alt);
+    color: var(--color-accent-hover);
+    font-weight: 700;
+    border-left-color: var(--color-accent);
+}
+
+.sidebar-nav.collapsed .nav-subgroup {
+    display: none;
+}
+
+/* Replié via initConfigSubgroupToggle (nav.js) - 2e clic sur "Configuration" alors qu'on
+   est déjà sur /settings */
+.nav-subgroup-collapsed {
+    display: none;
+}
+
+/* "il manque le titre. juste le numéro" (voir _volumeCellHtml, import.js) - élargi à
+   260px pour laisser la place au titre du tome en plus de son numéro dans le <select>
+   fermé, plutôt qu'un champ borné à 110px qui tronquait tout après "Tome 12". En CSS
+   (pas inline) pour pouvoir le resserrer sur mobile ci-dessous sans dupliquer la règle. */
+.import-volume-select {
+    max-width: 260px;
+    min-width: 180px;
+    width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* Réutilisé par les filtres du sous-onglet Historique (Tout/Imports/Téléchargements) */
+.tab-button {
+    padding: 15px 25px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--color-text-muted);
+    font-size: 1.05em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.tab-button:hover:not(:disabled) {
+    color: var(--color-accent);
+    background: rgba(168, 103, 42, 0.08);
+}
+
+.tab-button.active {
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+}
+
+.tab-button:disabled {
+    cursor: not-allowed;
+    color: #ccc;
+}
+
+/* Base 14px plutôt que le 16px hérité par défaut du navigateur (aucune page de l'app ne
+   fixe de font-size sur body, voir style.css) - labels/paragraphes/texte de formulaire
+   de cette page n'avaient aucun override et ressortaient nettement plus gros que le
+   reste du site, où la plupart des composants (tableaux, badges...) tournent autour de
+   0.85-0.9em. "la taille de la police est trop grande comparé au reste du site." Les
+   titres/éléments en em (ex: .section-header h2, 2.2em) restent proportionnellement
+   cohérents, juste recalculés depuis cette base. */
+.settings-content {
+    min-height: 400px;
+    font-size: 14px;
+}
+
+/* Boutons de la page Configuration (Enregistrer/Sauvegarder/Tester/Réinitialiser...):
+   le .btn par défaut (style.css, padding 12px 24px / 16px) est dimensionné pour une
+   action ponctuelle isolée (ex: "Rechercher" dans la bibliothèque) - répété une dizaine
+   de fois par onglet ici, à côté de champs de formulaire et de cases à cocher bien plus
+   compacts (voir .checkbox-group input, réduit à 17px), il paraissait disproportionné
+   ("trop gros, pas dans le style qui faut"). Scopé à .settings-content pour ne pas
+   toucher les boutons du reste de l'app (bibliothèque, modales...). Une action
+   destructrice garde son .btn-danger rouge (ex: restaurer un backup) - seule la couleur
+   "succès" (.btn-success, vert) a été retirée du HTML de cette page au profit de l'ambre
+   par défaut, pour rester cohérent avec le reste de l'Atelier plutôt que de mélanger deux
+   accents de couleur sur une même page dense en boutons. */
+.settings-content .btn {
+    padding: 4px 10px;
+    font-size: 0.95em;
+    border-radius: 6px;
+}
+
+/* Filtres du sous-onglet Historique (Tout/Imports/Téléchargements): réutilisent le
+   style .tab-button mais avec leur propre classe active plutôt que .tab-button.active
+   pour ne pas interférer avec la navigation principale par onglets */
+.history-filter-active {
+    background: var(--color-surface-alt) !important;
+    color: var(--color-accent-hover) !important;
+    border-radius: 6px;
+}
+
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease-in;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.settings-section {
+    max-width: 1400px;
+}
+
+.section-header {
+    margin-bottom: 30px;
+}
+
+/* Lien de retour vers "Vue d'ensemble" (voir switchTab('overview')) en haut de chaque
+   onglet de Configuration - la vue d'ensemble n'a plus de sous-lien dédié dans la barre
+   latérale ("c'est déjà la meme chose quand tu clique sur configuration"), donc chaque
+   onglet a besoin de son propre chemin retour ("dans chaque settings met une fleche vers
+   la gauche pour revenir en arrière au setting overview"). */
+.settings-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    font-size: 0.9em;
+    margin-bottom: 12px;
+    transition: color 0.15s ease;
+}
+
+.settings-back-link:hover {
+    color: var(--color-accent);
+}
+
+.section-header h2 {
+    color: var(--color-text);
+    font-size: 2em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.section-header-logo {
+    width: 0.85em;
+    height: 0.85em;
+    object-fit: contain;
+}
+
+[data-theme="dark"] .section-header-logo,
+[data-theme="dark"] .integration-card-logo {
+    opacity: 0.7;
+}
+
+.section-description {
+    color: var(--color-text-muted);
+    font-size: 1.05em;
+    line-height: 1.6;
+}
+
+.settings-card {
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    margin-bottom: 30px;
+}
+
+/* Cartes cliquables des onglets Indexeurs/Clients (voir openIntegrationModal) - chacune
+   ouvre la modale de configuration complète de son intégration. "carrés et en cliquant
+   dessus tu ouvres une fenetre modale" */
+.integration-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 20px;
+}
+
+.integration-card {
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: 15px;
+    padding: 24px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    aspect-ratio: 1 / 1;
+    justify-content: center;
+    text-align: center;
+}
+
+.integration-card:hover {
+    border-color: var(--color-accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+
+.integration-card-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
+.integration-card-icon {
+    font-size: 2.2em;
+    line-height: 1;
+}
+
+.integration-card-name {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.integration-card-status {
+    font-size: 0.8em;
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+}
+
+.integration-card-status-on {
+    background: #d4edda;
+    color: #155724;
+}
+
+/* Fond/texte verts codes en dur, jamais couverts par un override [data-theme="dark"] -
+   badge "Actif" (Parametres, integrations) restait clair en permanence sur fond sombre. */
+[data-theme="dark"] .integration-card-status-on {
+    background: #274030;
+    color: #a8d5b5;
+}
+
+.integration-card-status-off {
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+}
+
+/* Contenu de modale réutilisant .settings-section tel quel (voir templates/settings.html)
+   - juste un peu plus large que la modale générique de l'app pour laisser respirer les
+   grilles de cases à cocher (indexeurs/catégories Prowlarr, liste de forums EBDZ...) */
+.settings-modal-content {
+    max-width: 800px;
+    text-align: left;
+}
+
+.checkbox-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    padding: 20px;
+    background: var(--color-surface-alt);
+    border-radius: 10px;
+    border: 2px solid var(--color-border);
+    transition: all 0.3s;
+}
+
+.checkbox-group:hover {
+    border-color: var(--color-accent);
+    background: var(--color-surface-alt);
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    margin-top: 3px;
+    cursor: pointer;
+    accent-color: var(--color-accent);
+}
+
+.checkbox-group label {
+    flex: 1;
+    margin: 0;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.checkbox-group label strong {
+    font-size: 1.1em;
+    color: var(--color-text);
+}
+
+.help-text {
+    display: block;
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+    margin-top: 5px;
+    font-weight: normal;
+}
+
+.form-select {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--color-border);
+    border-radius: 8px;
+    font-size: 16px;
+    background: var(--color-surface);
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.form-select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(168, 103, 42, 0.12);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.password-input-group {
+    display: flex;
+    gap: 10px;
+}
+
+.password-input-group input {
+    flex: 1;
+}
+
+.btn-toggle-password {
+    padding: 12px 20px;
+    background: var(--color-bg);
+    border: 2px solid var(--color-border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.btn-toggle-password:hover {
+    background: var(--color-border);
+    border-color: #ccc;
+}
+
+.message {
+    padding: 15px 20px;
+    margin-top: 20px;
+    border-radius: 8px;
+    display: none;
+    font-weight: 600;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message.success {
+    background: #d4edda;
+    color: #155724;
+    border: 2px solid #c3e6cb;
+}
+
+.message.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 2px solid #f5c6cb;
+}
+
+.message.warning {
+    background: #fff3cd;
+    color: #856404;
+    border: 2px solid #ffeaa7;
+}
+
+.message.info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 2px solid #bee5eb;
+}
+
+/* Section d'aide */
+.help-section {
+    background: var(--color-surface-alt);
+    border: 2px solid var(--color-border);
+    border-radius: 15px;
+    padding: 25px;
+    margin-top: 30px;
+}
+
+.help-section h3 {
+    color: var(--color-accent);
+    margin-bottom: 20px;
+    font-size: 1.4em;
+}
+
+.help-details {
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: 10px;
+    padding: 15px 20px;
+    margin-bottom: 15px;
+    transition: all 0.3s;
+}
+
+.help-details:hover {
+    border-color: var(--color-accent);
+}
+
+.help-details summary {
+    font-weight: 600;
+    color: var(--color-text);
+    cursor: pointer;
+    padding: 5px 0;
+    font-size: 1.05em;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.help-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.help-details summary::before {
+    content: '▶';
+    color: var(--color-accent);
+    transition: transform 0.3s;
+    font-size: 0.8em;
+}
+
+.help-details[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.help-details summary:hover {
+    color: var(--color-accent);
+}
+
+.help-content {
+    padding-top: 15px;
+    color: #555;
+    line-height: 1.8;
+}
+
+.help-content ol,
+.help-content ul {
+    padding-left: 25px;
+    margin-top: 10px;
+}
+
+.help-content li {
+    margin-bottom: 8px;
+}
+
+.help-content code {
+    background: var(--color-bg);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    color: #d63384;
+}
+
+.help-content strong {
+    color: var(--color-accent);
+}
+
+/* ===== Styles forum rows ebdz.net ===== */
+.forum-row {
+    background: var(--color-surface-alt);
+    border: 2px solid var(--color-border);
+    border-radius: 10px;
+    padding: 18px 20px 16px;
+    margin-bottom: 14px;
+    transition: border-color 0.3s;
+}
+
+.forum-row:hover {
+    border-color: var(--color-accent);
+}
+
+.forum-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.forum-row-label {
+    font-weight: 700;
+    color: var(--color-accent);
+    font-size: 0.95em;
+}
+
+.btn-remove-forum {
+    background: #dc3545;
+    color: white;
+    border: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85em;
+    line-height: 28px;
+    text-align: center;
+    transition: background 0.2s;
+}
+
+.btn-remove-forum:hover {
+    background: #c82333;
+}
+
+.forum-row-fields {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.forum-row-fields .form-group {
+    margin-bottom: 0;
+}
+
+.select-all-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--color-accent);
+    cursor: pointer;
+    user-select: none;
+}
+
+.select-all-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+}
+
+.forum-row .forum-select {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.forum-row:not(.forum-selected) {
+    opacity: 0.55;
+}
+
+.no-forums-placeholder {
+    text-align: center;
+    padding: 28px 20px;
+    color: #888;
+    font-size: 0.95em;
+    border: 2px dashed var(--color-border);
+    border-radius: 10px;
+}
+
+/* Ligne d'en-tête d'Historique (onglets de filtre + bouton Actualiser, voir
+   templates/history.html) - flex-wrap:wrap ici plutôt qu'en style inline sur le <div>:
+   un style inline aurait toujours gagné sur la règle mobile ci-dessous (flex-wrap:nowrap
+   dans le media query), quelle que soit la spécificité du sélecteur CSS externe (même
+   piège que documenté dans CLAUDE.md pour .rename-section input). */
+/* "Tout/Imports/Téléchargements/Recherches/Renommages/Conversions/Suppressions is not
+   on the same line. setup a scroll lateral" - 7 boutons au padding de .tab-button
+   débordent la largeur de la carte bien avant le mobile déjà, pas seulement en dessous
+   de 768px (voir l'ancienne version de ce bloc, restreinte au media query mobile
+   ci-dessous) - une bande scrollable horizontalement sur une seule ligne est le
+   comportement voulu à toute largeur, pas seulement en mobile.
+   min-width:0/flex-shrink:0: sans ça, ce conteneur flex garde sa largeur intrinsèque
+   (celle de son contenu avant défilement) et repousse le bouton Actualiser sur une
+   ligne suivante faute de place dans .history-header-row. */
+.history-header-row {
+    flex-wrap: nowrap;
+}
+
+.history-filter-tabs {
+    flex: 1;
+    min-width: 0;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+}
+
+.history-filter-tabs .tab-button {
+    flex-shrink: 0;
+}
+
+.history-filter-tabs .tab-button:not(#history-filter-all) {
+    font-size: 0.85em;
+    padding: 8px 14px;
+}
+
+.history-header-row > .btn {
+    flex-shrink: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .forum-row-fields {
+        flex-direction: column;
+    }
+
+    .forum-row-fields .form-group {
+        flex: 1 !important;
+    }
+
+    .tab-button {
+        font-size: 0.95em;
+        padding: 12px 18px;
+    }
+
+    /* Filtres de la page Historique: boutons resserrés en plus du défilement horizontal
+       déjà en place à toute largeur (voir .history-filter-tabs plus haut) - le padding
+       généreux de .tab-button reste too much sur mobile spécifiquement. */
+    .history-filter-tabs .tab-button {
+        padding: 8px 14px;
+        font-size: 0.85em;
+    }
+
+    .import-volume-select {
+        max-width: 140px;
+    }
+
+    .settings-card {
+        padding: 20px;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .section-header h2 {
+        font-size: 1.6em;
+    }
+    
+    .password-input-group {
+        flex-direction: column;
+    }
+    
+    .btn-toggle-password {
+        width: 100%;
+    }
+}
+
+/* Animation pour les éléments interactifs */
+.form-group input:focus,
+.form-group select:focus {
+    transform: scale(1.01);
+}
+
+/* Style pour les boutons dans form-actions */
+.form-actions {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.form-actions .btn {
+    flex: 0 0 auto;
+}
+
+/* Sélecteur de thème (voir initThemeSwitch/selectThemeOption dans settings.js) - contrôle
+   segmenté à deux options plutôt que des radios brutes, même esprit que .view-switch-btn
+   (bibliothèque). Couleurs en var(--color-*) (style.css) pour que le contrôle lui-même
+   s'adapte immédiatement au thème qu'il pilote. */
+.theme-switch {
+    display: inline-flex;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.theme-switch-option {
+    padding: 10px 20px;
+    border: none;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.theme-switch-option:not(:last-child) {
+    border-right: 1px solid var(--color-border);
+}
+
+.theme-switch-option:hover {
+    background: var(--color-bg);
+}
+
+.theme-switch-option.active {
+    background: var(--color-accent);
+    color: white;
+}
+
+/* Styles pour la priorité des formats de recherche (EBDZ/Prowlarr, voir
+   initSearchFormatPriority dans settings.js) */
+.format-priority-list {
+    list-style: none;
+    margin: 0 0 20px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.format-priority-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--color-surface-alt);
+    padding: 12px 15px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+}
+
+.format-priority-item.disabled {
+    opacity: 0.55;
+}
+
+/* Checkbox CBZ/CBR/PDF/EPUB - restée bleu navigateur par défaut, pas accent-colorée
+   comme les autres cases à cocher de la page (raté lors du passage 24px->17px, celles-ci
+   n'étant pas dans un .checkbox-group) */
+.format-priority-item input[type="checkbox"] {
+    accent-color: var(--color-accent);
+}
+
+.format-priority-rank {
+    font-weight: 700;
+    color: var(--color-accent);
+    width: 22px;
+    text-align: center;
+}
+
+.format-priority-name {
+    flex: 1;
+    font-weight: 600;
+}
+
+.format-priority-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.format-priority-controls button {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.format-priority-controls button:hover:not(:disabled) {
+    border-color: var(--color-accent);
+}
+
+.format-priority-controls button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+/* Extensions désactivées (blockedSearchExtensionsList, settings.html) - "ne met pas des
+   checkbox mais des tags": pilule cliquable plutôt qu'une case à cocher, l'état
+   bloqué/pas bloqué se lit directement dans le style du tag (voir .active ci-dessous)
+   au lieu d'un carré séparé à côté du texte. */
+.ext-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 16px;
+    margin: 0 8px 8px 0;
+    border-radius: 20px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 1.05em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+}
+
+.ext-tag:hover {
+    border-color: var(--color-accent);
+}
+
+/* Rouge/rose : même paire que .badge-missing (style.css), seul autre badge "exclusion"
+   de l'app - un tag actif ici bloque un résultat, sémantique équivalente. */
+.ext-tag.active {
+    background: #ffe0e0;
+    border-color: #e0a0a0;
+    color: #a83232;
+}
+
+[data-theme="dark"] .ext-tag.active {
+    background: #3d1f1f;
+    border-color: #5c2f2f;
+    color: #e08a8a;
+}
+
+/* Boîte "Prochaine vérification" (onglet Surveillance, #nextMissingCheck/#nextNewCheck
+   dans settings.html) - couleurs de succès vert codées en dur inline (héritées d'avant le
+   mode sombre, jamais adaptées) plutôt qu'une variable --color-*, ce vert n'ayant pas
+   d'équivalent générique dans style.css. Ciblées par id plutôt que par une nouvelle classe
+   pour ne pas toucher au HTML au-delà des couleurs. Mêmes teintes que .badge-success
+   (style.css) pour rester cohérent avec le seul autre badge "succès" vert de l'app. */
+[data-theme="dark"] #nextMissingCheck,
+[data-theme="dark"] #nextNewCheck {
+    background: #1e3324;
+    border-left-color: #8fd4a3;
+    color: #8fd4a3;
+}
+
+@media (max-width: 768px) {
+    .form-actions {
+        flex-direction: row !important;
+    }
+
+    /* Taille naturelle (comme sur desktop, voir .form-actions .btn plus haut dans ce
+       fichier) plutôt qu'un étirement sur toute la largeur - width:100% rendait chaque
+       bouton disproportionné par rapport au texte compact qu'il contient. !important pour
+       la même raison que .form-actions ci-dessus: style.css a sa propre .form-actions .btn
+       (width:100%) à spécificité égale, chargé après ce fichier - gagnerait sinon la
+       parité par ordre de chargement. */
+    .form-actions .btn {
+        width: auto !important;
+    }
+}

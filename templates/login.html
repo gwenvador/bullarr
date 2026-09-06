@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Connexion</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            max-width: 420px;
+            width: 100%;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.06);
+            padding: 48px 40px;
+            text-align: center;
+        }
+        .login-container h1 {
+            font-size: 1.6em;
+            margin-bottom: 8px;
+        }
+        .login-container .subtitle {
+            color: #666;
+            margin-bottom: 32px;
+        }
+        .login-container .btn {
+            width: 100%;
+        }
+        .login-spinner {
+            width: 36px;
+            height: 36px;
+            margin: 0 auto 24px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: login-spin 0.8s linear infinite;
+        }
+        @keyframes login-spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        {% if loading %}
+        <div class="login-spinner"></div>
+        <h1>Connexion en cours…</h1>
+        <p class="subtitle">Redirection vers votre fournisseur SSO.</p>
+        <noscript><a href="/login/redirect" class="btn btn-success">Continuer</a></noscript>
+        <script>window.location.replace('/login/redirect');</script>
+        {% else %}
+        <h1>🔐 Connexion requise</h1>
+        <p class="subtitle">Authentifiez-vous via votre fournisseur SSO pour accéder à Bullarr.</p>
+
+        {% if error %}
+        <div class="message error" style="display: block; margin-bottom: 20px;">
+            ❌ {{ error }}
+        </div>
+        {% endif %}
+
+        <a href="/login" class="btn btn-success">Se connecter</a>
+        {% endif %}
+    </div>
+</body>
+</html>

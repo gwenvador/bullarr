@@ -1,0 +1,379 @@
+/**
+ * Bédéthèque Enrichment page UI Styles (restauration de l'ancienne page /nautiljon,
+ * adaptée à Bédéthèque)
+ */
+
+/* Enrichment progress modal */
+.modal.bedetheque-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal.bedetheque-progress .modal-content {
+    background: var(--color-surface);
+    border-radius: 12px;
+    padding: 30px;
+    max-width: 500px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.3s ease;
+}
+
+/* Style "Duo de tons" (choisi par l'utilisateur parmi plusieurs propositions), même
+   traitement que #download-modal (style-missing-monitor.css): bandeau parchemin discret
+   pour le titre, aucune couleur vive nulle part. Pas de <div class="modal-header">
+   dédiée ici (voir bedetheque-enrich.js) - le bandeau est simulé sur le h2 lui-même via
+   une marge négative qui neutralise le padding de .modal-content (30px, propre à cette
+   règle scopée .modal.bedetheque-progress .modal-content, pas de conflit inter-fichier
+   comme pour #download-modal). */
+.modal.bedetheque-progress h2 {
+    margin: -30px -30px 20px;
+    padding: 18px 30px;
+    background: var(--color-surface-alt);
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
+    color: #201d16;
+    font-weight: 400;
+    text-align: center;
+}
+
+.modal.bedetheque-progress .progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--color-border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 20px 0;
+}
+
+.modal.bedetheque-progress .progress-fill {
+    height: 100%;
+    background: var(--color-accent);
+    transition: width 0.3s ease;
+}
+
+.modal.bedetheque-progress .progress-text {
+    text-align: center;
+    font-weight: 500;
+    color: #4a453c;
+    margin: 15px 0;
+}
+
+.help-text {
+    display: block;
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+    margin-top: 5px;
+    font-weight: normal;
+}
+
+.btn.enrich-match-button {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+
+.modal.bedetheque-progress button {
+    width: 100%;
+    padding: 12px;
+    background: var(--color-accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    margin-top: 15px;
+    transition: background 0.3s ease;
+}
+
+.modal.bedetheque-progress button:hover {
+    background: var(--color-accent-hover);
+}
+
+/* Enrichment buttons - dégradé bleu/violet jamais balayé lors de la refonte Atelier du
+   reste de l'app (voir style.css), détonnait à côté des boutons ambre unis de cette même
+   page. Amber uni, cohérent avec "Duo de tons" (pas de dégradé vif). */
+.btn-enrichment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--color-accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-enrichment:hover {
+    background: var(--color-accent-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(80, 55, 10, 0.3);
+}
+
+.btn-enrichment:active {
+    transform: translateY(0);
+}
+
+/* Page-specific layout (tabs, forms) */
+.tabs {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--color-border);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.tab {
+    padding: 12px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: 500;
+    color: #6b7280;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.tab.active {
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+}
+
+.tab:hover {
+    color: var(--color-accent);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.series-select-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.series-select-item {
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: 8px;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.series-select-item:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 4px 12px rgba(168, 103, 42, 0.2);
+}
+
+.series-select-item.selected {
+    border-color: var(--color-accent);
+    background: var(--color-surface-alt);
+}
+
+.series-select-item input[type="checkbox"] {
+    margin-right: 10px;
+    accent-color: var(--color-accent);
+}
+
+.series-select-item label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin: 0;
+}
+
+.action-bar {
+    background: var(--color-surface);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.search-and-enrich {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.search-form {
+    background: var(--color-surface);
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.enrich-panel {
+    background: var(--color-surface);
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.results-container {
+    background: var(--color-surface);
+    padding: 20px;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+.result-item {
+    padding: 15px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.result-item:hover {
+    background: var(--color-surface-alt);
+    border-color: var(--color-accent);
+}
+
+.result-title {
+    font-weight: bold;
+    color: var(--color-accent);
+    margin-bottom: 5px;
+}
+
+.result-url {
+    font-size: 0.85em;
+    color: #6b7280;
+}
+
+.enrichment-result {
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.enrichment-result.success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.enrichment-result.error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 1000px) {
+    .search-and-enrich {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .modal.bedetheque-progress .modal-content {
+        margin: 20px;
+        max-width: calc(100% - 40px);
+    }
+
+    .header-left {
+        min-width: 0;
+    }
+
+    .header-left .subtitle {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+/* Thème sombre du modal de progression - remplace l'ancien bloc
+   @media(prefers-color-scheme:dark) (couleurs violettes/grises sans rapport avec la
+   palette Atelier, et basé sur la préférence OS plutôt que sur le choix explicite de
+   l'utilisateur dans /settings, voir data-theme sur <html>) : un utilisateur en "Clair"
+   dans l'app mais OS en sombre se retrouvait avec ce seul modal sombre alors que tout le
+   reste de la page restait clair. */
+[data-theme="dark"] .modal.bedetheque-progress .modal-content {
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+[data-theme="dark"] .modal.bedetheque-progress h2 {
+    background: var(--color-surface-alt);
+    border-bottom-color: var(--color-border);
+    color: var(--color-text);
+}
+
+[data-theme="dark"] .modal.bedetheque-progress .progress-bar {
+    background: var(--color-border);
+}
+
+[data-theme="dark"] .modal.bedetheque-progress .progress-text {
+    color: var(--color-text-muted);
+}
+
+/* .missing-series-link a déménagé dans style.css (chargé partout) - voir son commentaire
+   là-bas: cette feuille-ci n'est pas chargée sur /verification, qui utilise aussi cette
+   classe (verification.js). */
+
+.missing-match-status-cell {
+    width: 110px;
+    text-align: center;
+}
+
+/* "dans top 100 le scrolldown n'est pas en UI comparable au auteur. met le en couleur
+   adapté" - #bdgest-year-input utilisait la classe .form-control, définie uniquement
+   dans style-missing-monitor.css (non chargée sur cette page) - retombait donc sur le
+   rendu natif du navigateur au lieu des couleurs de thème du reste de l'app (même bug de
+   classe silencieusement absente que .rename-section input, voir style-library-search.css).
+   Stylé ici directement plutôt que de charger toute une feuille juste pour cette classe. */
+#bdgest-year-input {
+    padding: 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-family: inherit;
+    color: var(--color-text);
+    background: var(--color-surface);
+}
+#bdgest-year-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}

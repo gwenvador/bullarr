@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Historique</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <!-- "met le [la recherche] au niveau de details dans la barre de recherche. un filtre
+         comme dans les autres tableaux du site" - même pattern .th-filterable-* que les
+         tableaux série/tomes/résultats de recherche (voir CLAUDE.md), pas encore chargé
+         sur cette page jusqu'ici. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Import</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link active">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon">🕓</span> <span class="header-title-full">Historique</span><span class="header-title-short">Historique</span></h1>
+                        <p class="subtitle">Imports, téléchargements, recherches, renommages, conversions et suppressions</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+                    <div class="settings-card">
+                        <div class="history-header-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px;">
+                            <div class="history-filter-tabs" style="display:flex; gap:8px;">
+                                <button class="tab-button history-filter-active" id="history-filter-all" onclick="filterHistoryEvents('all')">Tout</button>
+                                <button class="tab-button" id="history-filter-import" onclick="filterHistoryEvents('import')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><polyline points="3.29 7 12 12 20.71 7" /><path d="m7.5 4.27 9 5.15" /></svg> Imports</button>
+                                <button class="tab-button" id="history-filter-download" onclick="filterHistoryEvents('download')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></svg> Téléchargements</button>
+                                <button class="tab-button" id="history-filter-search" onclick="filterHistoryEvents('search')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Recherches</button>
+                                <button class="tab-button" id="history-filter-rename" onclick="filterHistoryEvents('rename')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></svg> Renommages</button>
+                                <button class="tab-button" id="history-filter-convert" onclick="filterHistoryEvents('convert')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg> Conversions</button>
+                                <button class="tab-button" id="history-filter-delete" onclick="filterHistoryEvents('delete')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg> Suppressions</button>
+                            </div>
+                            <button class="btn" onclick="loadHistoryEvents()" data-tooltip="Actualiser" style="padding:8px 15px; font-size:14px;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                        </div>
+
+                        <div id="history-events-wrapper">
+                            <!-- En-tête sans style inline (padding/fond/bordure/taille de police) -
+                                 hérite de la règle partagée `table thead th` (style.css), la même
+                                 que tout autre tableau de l'app (audit "meme UI ... font"), plutôt
+                                 que de la dupliquer/redéfinir ici. Seuls cursor/user-select
+                                 (nécessaires au tri au clic) et le text-align:center de "Statut"
+                                 restent en inline, propres à cette page. -->
+                            <table class="history-events-table" style="width:100%; border-collapse:collapse;">
+                                <thead>
+                                    <tr>
+                                        <th style="cursor:pointer; user-select:none;" data-sort-column="date" onclick="setHistorySort('date')">Date<span class="history-sort-arrow"></span></th>
+                                        <th class="volume-table-sortable" style="user-select:none;" data-sort-column="type">
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label" style="cursor:pointer;" onclick="setHistorySort('type')">Type<span class="history-sort-arrow"></span></span>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <!-- "all" est le sentinel "pas de filtre" ici (même convention que les
+                                                         boutons d'onglet ci-dessus), pas une chaîne vide - _syncFilterControlActive
+                                                         générique (qui traite toute valeur non vide comme "filtre actif")
+                                                         afficherait donc ce select comme actif en permanence. -->
+                                                    <select class="th-filterable-control" id="history-type-select" onchange="this.classList.toggle('has-value', this.value !== 'all'); filterHistoryEvents(this.value)">
+                                                        <option value="all">Tout</option>
+                                                        <option value="import">Imports</option>
+                                                        <option value="download">Téléchargements</option>
+                                                        <option value="search">Recherches</option>
+                                                        <option value="rename">Renommages</option>
+                                                        <option value="convert">Conversions</option>
+                                                        <option value="delete">Suppressions</option>
+                                                    </select>
+                                                </span>
+                                            </div>
+                                        </th>
+                                        <th class="volume-table-sortable" style="user-select:none;" data-sort-column="label">
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label" style="cursor:pointer;" onclick="setHistorySort('label')">Détails<span class="history-sort-arrow"></span></span>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <input type="text" class="th-filterable-control" id="history-search-input" placeholder="Filtrer..." oninput="_syncFilterControlActive(this); filterHistoryBySearchText(this.value)">
+                                                </span>
+                                            </div>
+                                        </th>
+                                        <th class="volume-table-sortable" style="text-align:center; user-select:none;" data-sort-column="status">
+                                            <div class="th-filterable-row" style="align-items:center;">
+                                                <span class="th-filterable-label" style="cursor:pointer;" onclick="setHistorySort('status')">Statut<span class="history-sort-arrow"></span></span>
+                                                <span class="th-filterable-filter">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <select class="th-filterable-control" id="history-status-select" onchange="_syncFilterControlActive(this); filterHistoryByStatus(this.value)">
+                                                        <option value="">Tous</option>
+                                                        <option value="progress">En cours</option>
+                                                        <option value="ok">OK</option>
+                                                        <option value="failed">Échec</option>
+                                                    </select>
+                                                </span>
+                                            </div>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-events-body"></tbody>
+                            </table>
+                        </div>
+                        <div id="history-events-empty" style="padding:20px; text-align:center; color:#666; display:none;">
+                            <p>Aucun événement trouvé</p>
+                        </div>
+                        <div id="history-events-loading" style="text-align:center; padding:20px; color:#666;">
+                            <p>Chargement de l'historique...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/history-shared.js') }}?v={{ asset_version('js/history-shared.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/history.js') }}?v={{ asset_version('js/history.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>
