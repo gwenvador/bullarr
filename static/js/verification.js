@@ -687,7 +687,7 @@ function renderDuplicateSeries(data) {
     document.getElementById('verifCleanupDuplicateSeriesCount').textContent = 0;
     cleanupBtn.disabled = cleanupItems.length === 0;
     if (items.length === 0) {
-        list.innerHTML = `<p class="help-text">${svgIcon('check')} Aucun doublon de série vide détecté.</p>`;
+        list.innerHTML = `<p class="help-text">${svgIcon('check')} Aucun doublon de série détecté.</p>`;
         return;
     }
     list.innerHTML = `

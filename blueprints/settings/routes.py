@@ -522,6 +522,12 @@ def _verify_unmatched_owned_volumes(series_rows, volumes_by_series):
     return unmatched
 
 
+def _normalized_duplicate_title(title):
+    value = unicodedata.normalize('NFKD', title or '')
+    value = ''.join(char for char in value if not unicodedata.combining(char))
+    return ''.join(char.casefold() for char in value if char.isalnum())
+
+
 def _verify_duplicate_empty_series(series_rows, volumes_by_series):
     """Repère les fiches locales vides qui partagent un identifiant Komga, ainsi que
     les séries dont le titre devient identique après normalisation de la casse, des
@@ -653,14 +659,9 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
     # Variantes de casse/accents/séparateurs : "I.R.$", "I.R.$." et
     # "I R $" deviennent la même clé, sans rapprocher "Blueberry" de
     # "Blueberry (La Jeunesse de)" puisque les mots restent différents.
-    def normalized_title(title):
-        value = unicodedata.normalize('NFKD', title or '')
-        value = ''.join(char for char in value if not unicodedata.combining(char))
-        return ''.join(char.casefold() for char in value if char.isalnum())
-
     by_normalized_title = {}
     for series in series_rows:
-        key = normalized_title(series['title'])
+        key = _normalized_duplicate_title(series['title'])
         if key:
             by_normalized_title.setdefault(key, []).append(series)
 
@@ -671,30 +672,46 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
     for key, same_title_series in by_normalized_title.items():
         if len(same_title_series) < 2:
             continue
-        for index, first in enumerate(same_title_series[:-1]):
-            for duplicate in same_title_series[index + 1:]:
-                pair = tuple(sorted((first['id'], duplicate['id'])))
-                if pair in reported_pairs:
-                    continue
-                duplicates.append({
-                    'duplicate_series_id': duplicate['id'],
-                    'duplicate_series_title': duplicate['title'],
-                    'duplicate_series_path': duplicate['path'],
-                    'cleanup_eligible': False,
-                    'cleanup_mode': 'title_match',
-                    'populated_series': [
-                        {
-                            'id': series['id'],
-                            'title': series['title'],
-                            'path': series['path'],
-                            'volume_count': len(volumes_by_series.get(series['id'], [])),
-                        }
-                        for series in (first, duplicate)
-                    ],
-                    'komga_series_id': 'Titres équivalents',
-                    'reason': 'Titres identiques après normalisation de la casse, des accents et des séparateurs.',
-                })
-                reported_pairs.add(pair)
+        counts = {
+            series['id']: sum(1 for volume in volumes_by_series.get(series['id'], []) if volume['filepath'])
+            for series in same_title_series
+        }
+        smallest_count = min(counts.values())
+        smallest = [series for series in same_title_series if counts[series['id']] == smallest_count]
+        # Il n'y a pas de created_at dédié dans le schéma : l'id croissant est
+        # l'ordre d'insertion, donc l'id le plus élevé désigne la fiche la plus neuve.
+        removable = smallest[0] if len(smallest) == 1 else max(smallest, key=lambda series: series['id'])
+        populated_series = [
+            {
+                'id': series['id'],
+                'title': series['title'],
+                'path': series['path'],
+                'volume_count': counts[series['id']],
+            }
+            for series in same_title_series
+        ]
+        if removable:
+            duplicates.append({
+                'duplicate_series_id': removable['id'],
+                'duplicate_series_title': removable['title'],
+                'duplicate_series_path': removable['path'],
+                'cleanup_eligible': True,
+                'cleanup_mode': 'title_match',
+                'populated_series': populated_series,
+                'komga_series_id': 'Titres équivalents',
+                'reason': f'Titres équivalents ; cette série contient le moins de fichiers ({smallest_count}).',
+            })
+        else:
+            duplicates.append({
+                'duplicate_series_id': removable['id'],
+                'duplicate_series_title': removable['title'],
+                'duplicate_series_path': removable['path'],
+                'cleanup_eligible': True,
+                'cleanup_mode': 'title_match',
+                'populated_series': populated_series,
+                'komga_series_id': 'Titres équivalents',
+                'reason': 'Titres équivalents et même nombre de fichiers ; la fiche la plus récente est proposée à la suppression.',
+            })
 
     duplicates.sort(key=lambda item: item['duplicate_series_title'].casefold())
     return duplicates
@@ -756,6 +773,44 @@ def cleanup_duplicate_empty_series():
                     ).fetchall() if row['filepath']} == file_paths
                     for row in matching_file_series
                 )
+            title_key = _normalized_duplicate_title(candidate['title'])
+            title_peers = conn.execute('''
+                SELECT s.id, s.title, s.path
+                FROM series s
+                JOIN libraries l ON l.id = s.library_id
+                WHERE s.id != ?
+            ''', (candidate['id'],)).fetchall()
+            title_peers = [peer for peer in title_peers
+                           if _normalized_duplicate_title(peer['title']) == title_key]
+            title_cleanup_eligible = False
+            if title_key and title_peers:
+                group = [candidate] + title_peers
+                counts = {}
+                for series in group:
+                    counts[series['id']] = conn.execute(
+                        'SELECT COUNT(*) FROM volumes WHERE series_id = ? AND filepath IS NOT NULL',
+                        (series['id'],)
+                    ).fetchone()[0]
+                min_count = min(counts.values())
+                min_ids = [series_id for series_id, count in counts.items() if count == min_count]
+                removable_id = max(min_ids)
+                title_cleanup_eligible = candidate['id'] == removable_id
+
+            if title_cleanup_eligible:
+                series_path = candidate['path']
+                if series_path and os.path.isdir(series_path):
+                    real_series_path = os.path.realpath(series_path)
+                    real_library_path = os.path.realpath(candidate['library_path'])
+                    if os.path.commonpath([real_series_path, real_library_path]) != real_library_path:
+                        skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'Chemin hors bibliothèque'})
+                        continue
+                    shutil.rmtree(real_series_path)
+                conn.execute('DELETE FROM volumes WHERE series_id = ?', (candidate['id'],))
+                conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
+                conn.commit()
+                log_action('delete', candidate['id'], candidate['title'], f"Doublon de titre équivalent · {series_path}")
+                removed.append({'id': candidate['id'], 'title': candidate['title']})
+                continue
             if not ((same_komga_populated_match and not file_paths) or (file_paths and matching_file_series)):
                 skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'La condition de doublon n’est plus valide'})
                 continue
