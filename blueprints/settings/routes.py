@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 import tempfile
 import zipfile
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from flask import render_template, request, jsonify, current_app, send_file
@@ -271,7 +272,7 @@ def _check_volume_file_validity(filepath, fmt):
 
 
 def _load_verification_series_and_volumes():
-    """Fetch commun aux 4 catégories de /verification (voir VERIFICATION_TYPES plus bas) -
+    """Fetch commun aux catégories de /verification (voir VERIFICATION_TYPES plus bas) -
     une seule requête rapide (pas d'I/O disque, pas de test d'intégrité), partagée pour
     ne pas répéter ces deux SELECT à chaque clic sur une catégorie différente."""
     conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
@@ -282,18 +283,21 @@ def _load_verification_series_and_volumes():
         SELECT s.id, s.library_id, s.title, s.path, s.is_oneshot, s.bedetheque_url, s.komga_series_id,
                s.ebdz_thread_id, s.ebdz_matched_title, s.ebdz_match_status, s.ebdz_volumes_count,
                u.name AS universe_name
-        FROM series s
+    FROM series s
+        JOIN libraries l ON l.id = s.library_id
         LEFT JOIN universes u ON u.id = s.universe_id
         ORDER BY s.title COLLATE NOCASE
     ''')
     series_rows = cursor.fetchall()
 
     cursor.execute('''
-        SELECT id, series_id, filename, filepath, volume_number, is_integral, integral_number,
+        SELECT v.id, v.series_id, v.filename, v.filepath, v.volume_number, v.is_integral, v.integral_number,
                is_hs, hs_number, year, comicinfo, format, komga_book_id,
                validated_size, validation_valid, validation_error, resolution, release_group
-        FROM volumes
-        ORDER BY series_id, volume_number
+        FROM volumes v
+        JOIN series s ON s.id = v.series_id
+        JOIN libraries l ON l.id = s.library_id
+        ORDER BY v.series_id, v.volume_number
     ''')
     volume_rows = cursor.fetchall()
     conn.close()
@@ -465,6 +469,26 @@ def _verify_invalid_files(series_rows, volume_rows):
     return invalid_files, True
 
 
+def _verify_unmatched_owned_komga(series_rows, volumes_by_series):
+    """Tomes possédés sans identifiant de livre Komga, si Komga est actif."""
+    from blueprints.komga.config_store import is_komga_configured
+
+    if not is_komga_configured():
+        return [], False
+
+    unmatched = []
+    for series in series_rows:
+        for volume in volumes_by_series.get(series['id'], []):
+            if not volume['filepath'] or volume['komga_book_id']:
+                continue
+            unmatched.append({
+                'series_id': series['id'], 'series_title': series['title'],
+                'volume_id': volume['id'], 'filename': volume['filename'],
+            })
+    unmatched.sort(key=lambda item: (item['series_title'].casefold(), item['filename'] or ''))
+    return unmatched, True
+
+
 def _verify_unmatched_owned_volumes(series_rows, volumes_by_series):
     """Tomes RÉELLEMENT possédés (un vrai fichier sur disque) dont le ComicInfo n'a
     aucun lien Bédéthèque (comicinfo.web) - "ca doit etre fichier non detecté de
@@ -498,6 +522,335 @@ def _verify_unmatched_owned_volumes(series_rows, volumes_by_series):
     return unmatched
 
 
+def _normalized_duplicate_title(title):
+    value = unicodedata.normalize('NFKD', title or '')
+    value = ''.join(char for char in value if not unicodedata.combining(char))
+    return ''.join(char.casefold() for char in value if char.isalnum())
+
+
+def _verify_duplicate_empty_series(series_rows, volumes_by_series):
+    """Repère les fiches locales vides qui partagent un identifiant Komga, ainsi que
+    les séries dont le titre devient identique après normalisation de la casse, des
+    accents et de la ponctuation.
+
+    Une fiche vide n'est signalée que lorsqu'une autre fiche portant le même
+    identifiant Komga possède des tomes. Deux fiches alimentées sont également
+    signalées si elles référencent exactement les mêmes chemins de fichiers.
+    Un titre équivalent est signalé comme doublon probable, mais n'est jamais éligible
+    au nettoyage automatique : une validation humaine reste nécessaire.
+    """
+    by_komga_id = {}
+    for series in series_rows:
+        komga_series_id = (series['komga_series_id'] or '').strip()
+        if komga_series_id:
+            by_komga_id.setdefault(komga_series_id, []).append(series)
+
+    duplicates = []
+    for komga_series_id, matching_series in by_komga_id.items():
+        if len(matching_series) < 2:
+            continue
+        populated = [
+            series for series in matching_series
+            if volumes_by_series.get(series['id'])
+        ]
+        if not populated:
+            continue
+        kept = max(populated, key=lambda series: len(volumes_by_series[series['id']]))
+        for duplicate in matching_series:
+            if duplicate['id'] == kept['id'] or volumes_by_series.get(duplicate['id']):
+                continue
+            duplicates.append({
+                'duplicate_series_id': duplicate['id'],
+                'duplicate_series_title': duplicate['title'],
+                'duplicate_series_path': duplicate['path'],
+                'cleanup_eligible': True,
+                'populated_series': [
+                    {
+                        'id': series['id'],
+                        'title': series['title'],
+                        'path': series['path'],
+                        'volume_count': len(volumes_by_series[series['id']]),
+                    }
+                    for series in populated
+                ],
+                'komga_series_id': komga_series_id,
+                'reason': 'Même identifiant Komga qu’une fiche locale contenant des tomes.',
+            })
+
+        populated_by_paths = {}
+        for series in populated:
+            file_paths = tuple(sorted(
+                v['filepath'] for v in volumes_by_series[series['id']] if v['filepath']
+            ))
+            if file_paths:
+                populated_by_paths.setdefault(file_paths, []).append(series)
+        for file_paths, same_file_series in populated_by_paths.items():
+            if len(same_file_series) < 2:
+                continue
+            first = same_file_series[0]
+            for duplicate in same_file_series[1:]:
+                removable = min(
+                    (series for series in (first, duplicate)),
+                    key=lambda series: (
+                        bool(series['bedetheque_url']),
+                        len(volumes_by_series[series['id']]),
+                    ),
+                )
+                duplicates.append({
+                    'duplicate_series_id': removable['id'],
+                    'duplicate_series_title': removable['title'],
+                    'duplicate_series_path': removable['path'],
+                    'cleanup_eligible': True,
+                    'cleanup_mode': 'shared_files',
+                    'populated_series': [
+                        {
+                            'id': series['id'],
+                            'title': series['title'],
+                            'path': series['path'],
+                            'volume_count': len(volumes_by_series[series['id']]),
+                        }
+                        for series in (first, duplicate)
+                    ],
+                    'komga_series_id': komga_series_id,
+                    'reason': 'Même identifiant Komga et exactement les mêmes fichiers référencés.',
+                })
+
+    # Même fichier réel référencé par plusieurs séries, y compris si Komga leur
+    # a attribué des identifiants de série différents.
+    populated_by_paths = {}
+    for series in series_rows:
+        file_paths = tuple(sorted(
+            v['filepath'] for v in volumes_by_series.get(series['id'], []) if v['filepath']
+        ))
+        if file_paths:
+            populated_by_paths.setdefault(file_paths, []).append(series)
+    reported_pairs = {
+        tuple(sorted(series['id'] for series in item['populated_series']))
+        for item in duplicates if item.get('cleanup_mode') == 'shared_files'
+    }
+    for file_paths, same_file_series in populated_by_paths.items():
+        if len(same_file_series) < 2:
+            continue
+        for index, first in enumerate(same_file_series[:-1]):
+            for duplicate in same_file_series[index + 1:]:
+                pair = tuple(sorted((first['id'], duplicate['id'])))
+                if pair in reported_pairs:
+                    continue
+                removable = min(
+                    (first, duplicate),
+                    key=lambda series: (bool(series['bedetheque_url']), len(volumes_by_series[series['id']])),
+                )
+                duplicates.append({
+                    'duplicate_series_id': removable['id'],
+                    'duplicate_series_title': removable['title'],
+                    'duplicate_series_path': removable['path'],
+                    'cleanup_eligible': True,
+                    'cleanup_mode': 'shared_files',
+                    'populated_series': [
+                        {'id': series['id'], 'title': series['title'], 'path': series['path'],
+                         'volume_count': len(volumes_by_series[series['id']])}
+                        for series in (first, duplicate)
+                    ],
+                    'komga_series_id': 'Identifiants Komga différents',
+                    'reason': 'Même fichier réel référencé par deux séries, malgré des identifiants Komga différents.',
+                })
+                reported_pairs.add(pair)
+
+    # Les variantes de casse, accents et séparateurs deviennent la même clé, sans
+    # rapprocher des titres dont les mots diffèrent.
+    by_normalized_title = {}
+    for series in series_rows:
+        key = _normalized_duplicate_title(series['title'])
+        if key:
+            by_normalized_title.setdefault(key, []).append(series)
+
+    reported_pairs = {
+        tuple(sorted(series['id'] for series in item['populated_series']))
+        for item in duplicates if item.get('cleanup_mode') == 'shared_files'
+    }
+    for key, same_title_series in by_normalized_title.items():
+        if len(same_title_series) < 2:
+            continue
+        counts = {
+            series['id']: sum(1 for volume in volumes_by_series.get(series['id'], []) if volume['filepath'])
+            for series in same_title_series
+        }
+        smallest_count = min(counts.values())
+        smallest = [series for series in same_title_series if counts[series['id']] == smallest_count]
+        # Il n'y a pas de created_at dédié dans le schéma : l'id croissant est
+        # l'ordre d'insertion, donc l'id le plus élevé désigne la fiche la plus neuve.
+        removable = smallest[0] if len(smallest) == 1 else max(smallest, key=lambda series: series['id'])
+        populated_series = [
+            {
+                'id': series['id'],
+                'title': series['title'],
+                'path': series['path'],
+                'volume_count': counts[series['id']],
+            }
+            for series in same_title_series
+        ]
+        if removable:
+            duplicates.append({
+                'duplicate_series_id': removable['id'],
+                'duplicate_series_title': removable['title'],
+                'duplicate_series_path': removable['path'],
+                'cleanup_eligible': True,
+                'cleanup_mode': 'title_match',
+                'populated_series': populated_series,
+                'komga_series_id': 'Titres équivalents',
+                'reason': f'Titres équivalents ; cette série contient le moins de fichiers ({smallest_count}).',
+            })
+        else:
+            duplicates.append({
+                'duplicate_series_id': removable['id'],
+                'duplicate_series_title': removable['title'],
+                'duplicate_series_path': removable['path'],
+                'cleanup_eligible': True,
+                'cleanup_mode': 'title_match',
+                'populated_series': populated_series,
+                'komga_series_id': 'Titres équivalents',
+                'reason': 'Titres équivalents et même nombre de fichiers ; la fiche la plus récente est proposée à la suppression.',
+            })
+
+    duplicates.sort(key=lambda item: item['duplicate_series_title'].casefold())
+    return duplicates
+
+
+@settings_bp.route('/api/settings/verification/duplicate-series/cleanup', methods=['POST'])
+def cleanup_duplicate_empty_series():
+    """Supprime uniquement les fiches de séries vides validées comme doublons.
+
+    La condition est recalculée au moment de l'action afin qu'un ancien résultat
+    de vérification ne puisse pas supprimer une fiche devenue active entre-temps.
+    """
+    from blueprints.library.action_history import log_action
+
+    requested_ids = (request.get_json(silent=True) or {}).get('series_ids')
+    if not isinstance(requested_ids, list) or not requested_ids:
+        return jsonify({'success': False, 'error': 'Aucune série sélectionnée'}), 400
+    try:
+        requested_ids = {int(series_id) for series_id in requested_ids}
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Identifiant de série invalide'}), 400
+
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        candidates = conn.execute('''
+            SELECT s.id, s.title, s.path, s.library_id, s.komga_series_id, l.path AS library_path
+            FROM series s
+            JOIN libraries l ON l.id = s.library_id
+            WHERE s.id IN ({})
+        '''.format(','.join('?' for _ in requested_ids)), tuple(requested_ids)).fetchall()
+        removed = []
+        skipped = []
+        for candidate in candidates:
+            same_komga_populated_match = conn.execute('''
+                SELECT 1 FROM series s
+                JOIN volumes v ON v.series_id = s.id
+                JOIN libraries l ON l.id = s.library_id
+                WHERE s.komga_series_id = ? AND s.id != ?
+                LIMIT 1
+            ''', (candidate['komga_series_id'], candidate['id'])).fetchone()
+            volume_rows = conn.execute(
+                'SELECT filepath FROM volumes WHERE series_id = ?', (candidate['id'],)
+            ).fetchall()
+            file_paths = {row['filepath'] for row in volume_rows if row['filepath']}
+            matching_file_series = None
+            if file_paths:
+                matching_file_series = conn.execute('''
+                    SELECT s.id FROM series s
+                    JOIN volumes v ON v.series_id = s.id
+                    JOIN libraries l ON l.id = s.library_id
+                    WHERE s.id != ?
+                    GROUP BY s.id
+                    HAVING COUNT(v.filepath) = ?
+                ''', (candidate['id'], len(file_paths))).fetchall()
+                matching_file_series = any(
+                    {row['filepath'] for row in conn.execute(
+                        'SELECT filepath FROM volumes WHERE series_id = ?', (row['id'],)
+                    ).fetchall() if row['filepath']} == file_paths
+                    for row in matching_file_series
+                )
+            title_key = _normalized_duplicate_title(candidate['title'])
+            title_peers = conn.execute('''
+                SELECT s.id, s.title, s.path
+                FROM series s
+                JOIN libraries l ON l.id = s.library_id
+                WHERE s.id != ?
+            ''', (candidate['id'],)).fetchall()
+            title_peers = [peer for peer in title_peers
+                           if _normalized_duplicate_title(peer['title']) == title_key]
+            title_cleanup_eligible = False
+            if title_key and title_peers:
+                group = [candidate] + title_peers
+                counts = {}
+                for series in group:
+                    counts[series['id']] = conn.execute(
+                        'SELECT COUNT(*) FROM volumes WHERE series_id = ? AND filepath IS NOT NULL',
+                        (series['id'],)
+                    ).fetchone()[0]
+                min_count = min(counts.values())
+                min_ids = [series_id for series_id, count in counts.items() if count == min_count]
+                removable_id = max(min_ids)
+                title_cleanup_eligible = candidate['id'] == removable_id
+
+            if title_cleanup_eligible:
+                series_path = candidate['path']
+                if series_path and os.path.isdir(series_path):
+                    real_series_path = os.path.realpath(series_path)
+                    real_library_path = os.path.realpath(candidate['library_path'])
+                    if os.path.commonpath([real_series_path, real_library_path]) != real_library_path:
+                        skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'Chemin hors bibliothèque'})
+                        continue
+                    shutil.rmtree(real_series_path)
+                conn.execute('DELETE FROM volumes WHERE series_id = ?', (candidate['id'],))
+                conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
+                conn.commit()
+                log_action('delete', candidate['id'], candidate['title'], f"Doublon de titre équivalent · {series_path}")
+                removed.append({'id': candidate['id'], 'title': candidate['title']})
+                continue
+            if not ((same_komga_populated_match and not file_paths) or (file_paths and matching_file_series)):
+                skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'La condition de doublon n’est plus valide'})
+                continue
+
+            series_path = candidate['path']
+            if file_paths:
+                conn.execute('DELETE FROM volumes WHERE series_id = ?', (candidate['id'],))
+                conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
+                conn.commit()
+                log_action('delete', candidate['id'], candidate['title'], 'Doublon exact · références retirées, fichiers conservés')
+                removed.append({'id': candidate['id'], 'title': candidate['title']})
+                continue
+
+            if not same_komga_populated_match:
+                continue
+
+            series_path = candidate['path']
+            if series_path and os.path.isdir(series_path):
+                real_series_path = os.path.realpath(series_path)
+                real_library_path = os.path.realpath(candidate['library_path'])
+                if os.path.commonpath([real_series_path, real_library_path]) != real_library_path:
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'Chemin hors bibliothèque'})
+                    continue
+                if any(files for _root, _dirs, files in os.walk(real_series_path)):
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'Le dossier contient des fichiers'})
+                    continue
+
+            conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
+            if series_path and os.path.isdir(series_path):
+                shutil.rmtree(series_path)
+            conn.commit()
+            log_action('delete', candidate['id'], candidate['title'], f"Doublon vide · {series_path}")
+            removed.append({'id': candidate['id'], 'title': candidate['title']})
+        return jsonify({'success': True, 'removed': removed, 'skipped': skipped})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(exc)}), 500
+    finally:
+        conn.close()
+
+
 @settings_bp.route('/api/settings/verification', methods=['GET'])
 def run_verification():
     """Scanne toute la bibliothèque pour repérer les tomes/séries à métadonnées
@@ -510,12 +863,12 @@ def run_verification():
 
     "au lieu d'avoir toutes les verifications lancés en meme temps. groupe par different
     types de verification et on peut cliquer dans chacune d'une" - ?type=<...> permet de
-    ne (re)calculer qu'UNE des 4 catégories (voir _verify_* ci-dessus) plutôt que les 4 à
+    ne (re)calculer qu'UNE des catégories (voir _verify_* ci-dessus) plutôt que toutes à
     chaque appel, notamment invalid_files, la plus lente (I/O disque + décompression) - un
     clic sur "métadonnées manquantes" n'a plus à l'attendre. Sans ?type (compatibilité
-    d'éventuels autres appelants), les 4 sont calculées et renvoyées comme avant."""
+    d'éventuels autres appelants), toutes les catégories sont calculées et renvoyées comme avant."""
     verif_type = request.args.get('type')
-    valid_types = {'missing_metadata', 'misnamed', 'invalid_files', 'unmatched_owned_volumes'}
+    valid_types = {'missing_metadata', 'misnamed', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
     if verif_type is not None and verif_type not in valid_types:
         return jsonify({'error': f"type invalide, attendu l'un de {sorted(valid_types)}"}), 400
 
@@ -537,5 +890,11 @@ def run_verification():
         result['komga_configured'] = komga_configured
     if verif_type in (None, 'unmatched_owned_volumes'):
         result['unmatched_owned_volumes'] = _verify_unmatched_owned_volumes(series_rows, volumes_by_series)
+    if verif_type in (None, 'unmatched_owned_komga'):
+        unmatched_komga, komga_configured = _verify_unmatched_owned_komga(series_rows, volumes_by_series)
+        result['unmatched_owned_komga'] = unmatched_komga
+        result['komga_configured'] = komga_configured
+    if verif_type in (None, 'duplicate_series'):
+        result['duplicate_series'] = _verify_duplicate_empty_series(series_rows, volumes_by_series)
 
     return jsonify(result)
