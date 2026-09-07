@@ -494,6 +494,9 @@ function renderUnmatchedOwnedKomga(data) {
     card.style.display = '';
     const items = data.unmatched_owned_komga || [];
     document.getElementById('unmatchedOwnedKomgaCount').textContent = items.length;
+    document.getElementById('verifKomgaSelectAll').checked = false;
+    document.getElementById('verifKomgaSelectAll').disabled = items.length === 0;
+    verifUpdateKomgaSelectionCount();
     if (items.length === 0) {
         list.innerHTML = `<p class="help-text">${svgIcon('check')} Tous les tomes possédés sont liés à Komga.</p>`;
         return;
@@ -515,14 +518,119 @@ function renderUnmatchedOwnedKomga(data) {
                 <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this); event.preventDefault(); event.stopPropagation();">${svgIcon('refresh-cw')} Réparer</button>
             </summary>
             <table class="series-table series-table-compact unmatched-owned-komga-table">
-                <thead><tr><th>Fichier</th></tr></thead>
+                <thead><tr><th class="volume-table-select-cell"><input type="checkbox" class="verif-komga-series-select-all" aria-label="Sélectionner tous les fichiers de cette série" onchange="verifToggleKomgaSeries(this)"></th><th>Fichier</th></tr></thead>
                 <tbody>${series.items.map(item => `
                     <tr class="series-table-row">
+                        <td class="volume-table-select-cell"><input type="checkbox" class="verif-komga-select" data-series-id="${seriesId}" data-series-title="${escapeForAttribute(series.title)}" onchange="verifUpdateKomgaSelectionCount()" aria-label="Sélectionner ${escapeHtml(item.filename || '')}"></td>
                         <td><span class="help-text">${escapeHtml(item.filename || '')}</span></td>
                     </tr>`).join('')}
                 </tbody>
             </table>
+            <div class="verification-series-actions">
+                <button class="btn btn-sm" type="button" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}')">${svgIcon('search')} Matcher manuellement</button>
+            </div>
         </details>`).join('');
+}
+
+function verifToggleKomgaSeries(checkboxEl) {
+    const details = checkboxEl.closest('details');
+    details.querySelectorAll('.verif-komga-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateKomgaSelectionCount();
+}
+
+function verifToggleSelectAllKomga(checkboxEl) {
+    document.querySelectorAll('.verif-komga-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    document.querySelectorAll('.verif-komga-series-select-all').forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateKomgaSelectionCount();
+}
+
+function verifUpdateKomgaSelectionCount() {
+    const selected = document.querySelectorAll('.verif-komga-select:checked');
+    const count = selected.length;
+    const countEl = document.getElementById('verifKomgaSelectedCount');
+    const button = document.getElementById('verifBulkRepairKomgaBtn');
+    if (countEl) countEl.textContent = count;
+    if (button) button.disabled = count === 0;
+    const all = document.querySelectorAll('.verif-komga-select');
+    const master = document.getElementById('verifKomgaSelectAll');
+    if (master) {
+        master.checked = all.length > 0 && count === all.length;
+        master.indeterminate = count > 0 && count < all.length;
+    }
+}
+
+async function verifBulkRepairKomga() {
+    const selected = [...document.querySelectorAll('.verif-komga-select:checked')];
+    const seriesIds = [...new Set(selected.map(cb => Number(cb.dataset.seriesId)))];
+    if (!seriesIds.length) return;
+    if (!confirm(`Réparer les liens Komga de ${seriesIds.length} série(s) sélectionnée(s) ?`)) return;
+    const button = document.getElementById('verifBulkRepairKomgaBtn');
+    button.disabled = true;
+    const failed = [];
+    for (const seriesId of seriesIds) {
+        try {
+            const response = await fetch(`/api/series/${seriesId}/komga-enrich`, { method: 'POST' });
+            const data = await response.json();
+            if (!data.success || data.match_status === 'unmatched') failed.push(seriesId);
+        } catch (error) {
+            failed.push(seriesId);
+        }
+    }
+    await runVerificationCategory('unmatched_owned_komga');
+    if (failed.length) alert(`⚠️ ${failed.length} série(s) n'ont pas pu être réparée(s). Utilisez le matching manuel.`);
+}
+
+async function openVerificationKomgaMatcher(seriesId, seriesTitle) {
+    const modal = document.getElementById('komga-match-modal');
+    const body = document.getElementById('komga-match-modal-body');
+    modal.dataset.seriesId = seriesId;
+    modal.classList.add('active');
+    body.innerHTML = buildMatchModalBodyHtml({
+        logoSrc: '/static/img/komga-logo.svg',
+        title: 'Matcher manuellement sur Komga',
+        queryId: 'verification-komga-match-query',
+        queryPlaceholder: 'Titre de la série Komga',
+        prefillValue: seriesTitle,
+        resultsId: 'verification-komga-match-results',
+        searchOnclick: `searchVerificationKomgaCandidates(${seriesId})`,
+        autoSearch: true,
+    });
+    wireMatchModalEnterKeys('verification-komga-match-query', () => searchVerificationKomgaCandidates(seriesId));
+    await searchVerificationKomgaCandidates(seriesId);
+}
+
+async function searchVerificationKomgaCandidates(seriesId) {
+    const query = document.getElementById('verification-komga-match-query').value.trim();
+    const results = document.getElementById('verification-komga-match-results');
+    results.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+        const response = await fetch(`/api/series/${seriesId}/komga-candidates?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        if (!data.success) { results.innerHTML = matchModalErrorHtml(data.error || 'Erreur inconnue'); return; }
+        if (!data.candidates.length) { results.innerHTML = matchModalNoResultsHtml('Aucune série Komga trouvée'); return; }
+        results.innerHTML = data.candidates.map(candidate => `
+            <button type="button" class="series-card match-candidate-card" style="width:100%; text-align:left; cursor:pointer; margin-bottom:8px;" onclick="selectVerificationKomgaCandidate(${seriesId}, '${escapeForAttribute(candidate.komga_series_id)}')">
+                <div class="series-title">${escapeHtml(candidate.title || '(sans titre)')}</div>
+                <div class="series-info">${candidate.total_volumes ?? '?'} tomes${candidate.status ? ` · ${escapeHtml(candidate.status)}` : ''}</div>
+            </button>`).join('');
+    } catch (error) {
+        results.innerHTML = matchModalErrorHtml(error.message);
+    }
+}
+
+async function selectVerificationKomgaCandidate(seriesId, komgaSeriesId) {
+    try {
+        const response = await fetch(`/api/series/${seriesId}/komga-match`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ komga_series_id: komgaSeriesId })
+        });
+        const data = await response.json();
+        if (!data.success) { alert('❌ ' + (data.error || 'Matching Komga impossible')); return; }
+        document.getElementById('komga-match-modal').classList.remove('active');
+        await runVerificationCategory('unmatched_owned_komga');
+    } catch (error) {
+        alert('❌ Erreur pendant le matching Komga');
+    }
 }
 
 async function repairUnmatchedKomgaSeries(seriesId, button) {
