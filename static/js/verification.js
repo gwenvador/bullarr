@@ -696,7 +696,7 @@ function renderDuplicateSeries(data) {
             <tbody>
                 ${items.map(item => `
                     <tr class="series-table-row">
-                        <td><div class="duplicate-series-entry">${item.cleanup_eligible ? `<input type="checkbox" class="verif-duplicate-select" value="${item.duplicate_series_id}" aria-label="Sélectionner ${escapeHtml(item.duplicate_series_title)}" onchange="verifUpdateDuplicateSelectionCount()"> ` : ''}<a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-meta">${item.cleanup_eligible ? 'Nettoyable — cette entrée sera supprimée' : 'À vérifier manuellement'}</span><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
+                        <td><div class="duplicate-series-entry">${item.cleanup_eligible ? `<input type="checkbox" class="verif-duplicate-select" value="${item.duplicate_series_id}" aria-label="Sélectionner ${escapeHtml(item.duplicate_series_title)}" onchange="verifUpdateDuplicateSelectionCount()"> ` : ''}<a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-meta">${item.cleanup_eligible ? `Nettoyable — cette entrée sera supprimée (n°${duplicateSeriesNumber(item)})` : 'À vérifier manuellement'}</span><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
                         <td>${(item.populated_series || []).map((series, index) => `<div class="duplicate-series-entry"><strong>${index + 1} :</strong> <a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a><span class="help-text duplicate-series-meta">${series.volume_count} fichiers</span><span class="help-text duplicate-series-path">${escapeHtml(series.path || '')}</span></div>`).join('')}</td>
                         <td><span class="help-text">${escapeHtml(item.komga_series_id)}</span></td>
                     </tr>
@@ -713,8 +713,16 @@ function duplicateSeriesNumber(item) {
 }
 
 async function cleanupDuplicateSeries() {
-    const selected = [...document.querySelectorAll('.verif-duplicate-select:checked')].map(cb => Number(cb.value));
-    if (!selected.length || !confirm(`Supprimer ${selected.length} série(s) en doublon ?\n\nLa série numérotée indiquée comme supprimable sera supprimée avec son dossier et ses fichiers.`)) return;
+    const selectedCheckboxes = [...document.querySelectorAll('.verif-duplicate-select:checked')];
+    const selected = selectedCheckboxes.map(cb => Number(cb.value));
+    if (!selected.length) return;
+    const selectedDescription = selectedCheckboxes.map(cb => {
+        const row = cb.closest('tr');
+        const title = row?.querySelector('.missing-series-link')?.textContent?.trim() || `ID ${cb.value}`;
+        const itemNumber = row?.querySelector('.duplicate-series-meta')?.textContent?.match(/n°(\d+)/)?.[1] || '?';
+        return `- n°${itemNumber} : ${title}`;
+    }).join('\n');
+    if (!confirm(`Les séries suivantes seront supprimées avec leur dossier et leurs fichiers :\n\n${selectedDescription}\n\nConfirmer la suppression ?`)) return;
     const button = document.getElementById('verifCleanupDuplicateSeriesBtn');
     button.disabled = true;
     try {
