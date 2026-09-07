@@ -1679,7 +1679,7 @@ def komga_match_candidates(series_id):
 
         query = request.args.get('q', '').strip() or series_row['title']
 
-        from blueprints.komga.client import KomgaClient, KomgaError
+        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
         try:
             client = KomgaClient()
             candidates = client.search_series(query)
@@ -1717,7 +1717,7 @@ def komga_match_series(series_id):
         if not exists:
             return jsonify({'success': False, 'error': 'Série introuvable'}), 404
 
-        from blueprints.komga.client import KomgaClient, KomgaError
+        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
         try:
             client = KomgaClient()
             series_info = client.get_series(komga_series_id)
@@ -1809,7 +1809,7 @@ def komga_enrich_series(series_id):
         series_title = series_row['title']
         matched_id = series_row['komga_series_id']
 
-        from blueprints.komga.client import KomgaClient, KomgaError
+        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
         try:
             client = KomgaClient()
         except KomgaError as e:
@@ -1817,12 +1817,17 @@ def komga_enrich_series(series_id):
 
         try:
             if matched_id:
-                series_info = client.get_series(matched_id)
-                result = _apply_komga_match(series_id, series_info, client)
-                if result.get('matched_books', 0) == 0:
-                    return jsonify({'success': False, 'error': 'Aucun tome local ne correspond aux livres de cette série Komga.', 'match_status': 'unmatched'})
-                result.update({'success': True, 'candidates': []})
-                return jsonify(result)
+                try:
+                    series_info = client.get_series(matched_id)
+                    result = _apply_komga_match(series_id, series_info, client)
+                    if result.get('matched_books', 0) == 0:
+                        return jsonify({'success': False, 'error': 'Aucun tome local ne correspond aux livres de cette série Komga.', 'match_status': 'unmatched'})
+                    result.update({'success': True, 'candidates': []})
+                    return jsonify(result)
+                except KomgaSeriesNotFoundError:
+                    # L’identifiant peut devenir obsolète après une recréation de série
+                    # côté Komga : reprendre la recherche par titre au lieu d’abandonner.
+                    matched_id = None
 
             candidates = []
             result = _try_komga_title_match(series_id, series_title, client, out_candidates=candidates)
