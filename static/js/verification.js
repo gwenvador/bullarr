@@ -512,17 +512,20 @@ function renderUnmatchedOwnedKomga(data) {
         <details class="verification-series-collapse" ${index === 0 ? 'open' : ''}>
             <summary>
                 <span class="verification-series-collapse-title">
+                    <input type="checkbox" class="verif-komga-series-checkbox" data-series-id="${seriesId}" onchange="verifToggleKomgaSeries(this)" onclick="event.stopPropagation()" aria-label="Sélectionner la série ${escapeHtml(series.title)}">
                     <a href="/series/${seriesId}" class="missing-series-link" onclick="event.stopPropagation()">${escapeHtml(series.title)}</a>
                     <span class="verification-series-collapse-count">${series.items.length} ${pluralize(series.items.length, 'fichier')}</span>
                 </span>
-                <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this); event.preventDefault(); event.stopPropagation();">${svgIcon('refresh-cw')} Réparer</button>
+                <span class="verification-series-actions">
+                    <button class="btn btn-sm" type="button" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}'); event.preventDefault(); event.stopPropagation();">${svgIcon('search')} Matcher manuellement</button>
+                    <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this); event.preventDefault(); event.stopPropagation();">${svgIcon('refresh-cw')} Réparer</button>
+                </span>
             </summary>
             <table class="series-table series-table-compact unmatched-owned-komga-table">
-                <thead><tr><th class="volume-table-select-cell"><input type="checkbox" class="verif-komga-series-select-all" aria-label="Sélectionner tous les fichiers de cette série" onchange="verifToggleKomgaSeries(this)"></th><th>Fichier</th></tr></thead>
+                <thead><tr><th>Fichier</th></tr></thead>
                 <tbody>${series.items.map(item => `
                     <tr class="series-table-row">
-                        <td class="volume-table-select-cell"><input type="checkbox" class="verif-komga-select" data-series-id="${seriesId}" data-series-title="${escapeForAttribute(series.title)}" onchange="verifUpdateKomgaSelectionCount()" aria-label="Sélectionner ${escapeHtml(item.filename || '')}"></td>
-                        <td><span class="help-text">${escapeHtml(item.filename || '')}</span></td>
+                        <td><input type="checkbox" class="verif-komga-select" data-series-id="${seriesId}" data-series-title="${escapeForAttribute(series.title)}" onchange="verifUpdateKomgaSelectionCount()" aria-label="Sélectionner ${escapeHtml(item.filename || '')}"> <span class="help-text">${escapeHtml(item.filename || '')}</span></td>
                     </tr>`).join('')}
                 </tbody>
             </table>
@@ -557,6 +560,13 @@ function verifUpdateKomgaSelectionCount() {
         master.checked = all.length > 0 && count === all.length;
         master.indeterminate = count > 0 && count < all.length;
     }
+    document.querySelectorAll('.verif-komga-series-checkbox').forEach(seriesCheckbox => {
+        const details = seriesCheckbox.closest('details');
+        const seriesFiles = details ? details.querySelectorAll('.verif-komga-select') : [];
+        const seriesSelected = details ? details.querySelectorAll('.verif-komga-select:checked') : [];
+        seriesCheckbox.checked = seriesFiles.length > 0 && seriesSelected.length === seriesFiles.length;
+        seriesCheckbox.indeterminate = seriesSelected.length > 0 && seriesSelected.length < seriesFiles.length;
+    });
 }
 
 async function verifBulkRepairKomga() {
