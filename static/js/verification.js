@@ -31,6 +31,7 @@ const VERIFICATION_CATEGORIES = {
     misnamed: { runBtnId: 'verifRunMisnamedBtn', render: renderMisnamed },
     invalid_files: { runBtnId: 'verifRunInvalidFilesBtn', render: renderInvalidFiles },
     unmatched_owned_volumes: { runBtnId: 'verifRunUnmatchedOwnedBtn', render: renderUnmatchedOwnedVolumes },
+    unmatched_owned_komga: { runBtnId: 'verifRunUnmatchedOwnedKomgaBtn', render: renderUnmatchedOwnedKomga },
     duplicate_series: { runBtnId: 'verifRunDuplicateSeriesBtn', render: renderDuplicateSeries },
 };
 
@@ -481,6 +482,70 @@ function renderUnmatchedOwnedVolumes(data) {
     selectAllEl.disabled = false;
     document.getElementById('verifUnmatchedOwnedBulkControls').style.display = 'flex';
     verifUpdateUnmatchedOwnedSelectionCount();
+}
+
+function renderUnmatchedOwnedKomga(data) {
+    const card = document.getElementById('verificationUnmatchedOwnedKomgaCard');
+    const list = document.getElementById('unmatchedOwnedKomgaList');
+    if (!data.komga_configured) {
+        card.style.display = 'none';
+        return;
+    }
+    card.style.display = '';
+    const items = data.unmatched_owned_komga || [];
+    document.getElementById('unmatchedOwnedKomgaCount').textContent = items.length;
+    if (items.length === 0) {
+        list.innerHTML = `<p class="help-text">${svgIcon('check')} Tous les tomes possédés sont liés à Komga.</p>`;
+        return;
+    }
+    const bySeries = new Map();
+    items.forEach(item => {
+        if (!bySeries.has(item.series_id)) {
+            bySeries.set(item.series_id, { title: item.series_title, items: [] });
+        }
+        bySeries.get(item.series_id).items.push(item);
+    });
+    list.innerHTML = Array.from(bySeries.entries()).map(([seriesId, series], index) => `
+        <details class="verification-series-collapse" ${index === 0 ? 'open' : ''}>
+            <summary>
+                <span class="verification-series-collapse-title">
+                    <a href="/series/${seriesId}" class="missing-series-link" onclick="event.stopPropagation()">${escapeHtml(series.title)}</a>
+                    <span class="verification-series-collapse-count">${series.items.length} ${pluralize(series.items.length, 'fichier')}</span>
+                </span>
+                <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this); event.preventDefault(); event.stopPropagation();">${svgIcon('refresh-cw')} Réparer</button>
+            </summary>
+            <table class="series-table series-table-compact unmatched-owned-komga-table">
+                <thead><tr><th>Fichier</th></tr></thead>
+                <tbody>${series.items.map(item => `
+                    <tr class="series-table-row">
+                        <td><span class="help-text">${escapeHtml(item.filename || '')}</span></td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </details>`).join('');
+}
+
+async function repairUnmatchedKomgaSeries(seriesId, button) {
+    const originalHtml = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = `<span class="btn-icon">${svgIcon('loader-circle', 'icon-spin')}</span>`;
+    try {
+        const response = await fetch(`/api/series/${seriesId}/komga-enrich`, { method: 'POST' });
+        const data = await response.json();
+        if (!data.success) {
+            alert('❌ ' + (data.error || 'Impossible de réparer le lien Komga'));
+            return;
+        }
+        if (data.match_status === 'unmatched') {
+            alert('⚠️ Aucun match Komga unique trouvé pour cette série.');
+        }
+        await runVerificationCategory('unmatched_owned_komga');
+    } catch (error) {
+        alert('❌ Erreur pendant la réparation Komga');
+    } finally {
+        button.disabled = false;
+        button.innerHTML = originalHtml;
+    }
 }
 
 function renderDuplicateSeries(data) {
@@ -1397,6 +1462,7 @@ function verifCollapseAllSections() {
         ['missing-table-container', 'matchingToggle'],
         ['invalidFilesList', 'invalidFilesToggle'],
         ['unmatchedOwnedList', 'unmatchedOwnedToggle'],
+        ['unmatchedOwnedKomgaList', 'unmatchedOwnedKomgaToggle'],
         ['duplicateSeriesList', 'duplicateSeriesToggle'],
     ].forEach(([listId, buttonId]) => {
         const list = document.getElementById(listId);
@@ -1431,6 +1497,7 @@ document.addEventListener('DOMContentLoaded', () => {
     runVerificationCategory('misnamed');
     runVerificationCategory('invalid_files');
     runVerificationCategory('unmatched_owned_volumes');
+    runVerificationCategory('unmatched_owned_komga');
     runVerificationCategory('duplicate_series');
     loadMissingMatches();
     _verifResumeLinkVolumesBatchIfRunning();
