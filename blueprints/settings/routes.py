@@ -559,11 +559,19 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                 continue
             first = same_file_series[0]
             for duplicate in same_file_series[1:]:
+                removable = min(
+                    (series for series in (first, duplicate)),
+                    key=lambda series: (
+                        bool(series['bedetheque_url']),
+                        len(volumes_by_series[series['id']]),
+                    ),
+                )
                 duplicates.append({
-                    'duplicate_series_id': duplicate['id'],
-                    'duplicate_series_title': duplicate['title'],
-                    'duplicate_series_path': duplicate['path'],
-                    'cleanup_eligible': False,
+                    'duplicate_series_id': removable['id'],
+                    'duplicate_series_title': removable['title'],
+                    'duplicate_series_path': removable['path'],
+                    'cleanup_eligible': True,
+                    'cleanup_mode': 'shared_files',
                     'populated_series': [
                         {
                             'id': series['id'],
@@ -590,6 +598,14 @@ def cleanup_duplicate_empty_series():
     """
     from blueprints.library.action_history import log_action
 
+    requested_ids = (request.get_json(silent=True) or {}).get('series_ids')
+    if not isinstance(requested_ids, list) or not requested_ids:
+        return jsonify({'success': False, 'error': 'Aucune série sélectionnée'}), 400
+    try:
+        requested_ids = {int(series_id) for series_id in requested_ids}
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Identifiant de série invalide'}), 400
+
     conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
@@ -597,18 +613,51 @@ def cleanup_duplicate_empty_series():
             SELECT s.id, s.title, s.path, s.library_id, s.komga_series_id, l.path AS library_path
             FROM series s
             JOIN libraries l ON l.id = s.library_id
-            WHERE s.komga_series_id IS NOT NULL AND TRIM(s.komga_series_id) != ''
-              AND NOT EXISTS (SELECT 1 FROM volumes v WHERE v.series_id = s.id)
-        ''').fetchall()
+            WHERE s.id IN ({})
+        '''.format(','.join('?' for _ in requested_ids)), tuple(requested_ids)).fetchall()
         removed = []
         skipped = []
         for candidate in candidates:
             has_populated_match = conn.execute('''
                 SELECT 1 FROM series s
                 JOIN volumes v ON v.series_id = s.id
+                JOIN libraries l ON l.id = s.library_id
                 WHERE s.komga_series_id = ? AND s.id != ?
                 LIMIT 1
             ''', (candidate['komga_series_id'], candidate['id'])).fetchone()
+            volume_rows = conn.execute(
+                'SELECT filepath FROM volumes WHERE series_id = ?', (candidate['id'],)
+            ).fetchall()
+            file_paths = {row['filepath'] for row in volume_rows if row['filepath']}
+            matching_file_series = None
+            if file_paths:
+                matching_file_series = conn.execute('''
+                    SELECT s.id FROM series s
+                    JOIN volumes v ON v.series_id = s.id
+                    JOIN libraries l ON l.id = s.library_id
+                    WHERE s.komga_series_id = ? AND s.id != ?
+                    GROUP BY s.id
+                    HAVING COUNT(v.filepath) = ?
+                ''', (candidate['komga_series_id'], candidate['id'], len(file_paths))).fetchall()
+                matching_file_series = any(
+                    {row['filepath'] for row in conn.execute(
+                        'SELECT filepath FROM volumes WHERE series_id = ?', (row['id'],)
+                    ).fetchall() if row['filepath']} == file_paths
+                    for row in matching_file_series
+                )
+            if not (has_populated_match and (not file_paths or matching_file_series)):
+                skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'La condition de doublon n’est plus valide'})
+                continue
+
+            series_path = candidate['path']
+            if file_paths:
+                conn.execute('DELETE FROM volumes WHERE series_id = ?', (candidate['id'],))
+                conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
+                conn.commit()
+                log_action('delete', candidate['id'], candidate['title'], 'Doublon exact · références retirées, fichiers conservés')
+                removed.append({'id': candidate['id'], 'title': candidate['title']})
+                continue
+
             if not has_populated_match:
                 continue
 
