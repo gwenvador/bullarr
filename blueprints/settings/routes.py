@@ -585,6 +585,47 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                     'reason': 'Même identifiant Komga et exactement les mêmes fichiers référencés.',
                 })
 
+    # Même fichier réel référencé par plusieurs séries, y compris si Komga leur
+    # a attribué des identifiants de série différents.
+    populated_by_paths = {}
+    for series in series_rows:
+        file_paths = tuple(sorted(
+            v['filepath'] for v in volumes_by_series.get(series['id'], []) if v['filepath']
+        ))
+        if file_paths:
+            populated_by_paths.setdefault(file_paths, []).append(series)
+    reported_pairs = {
+        tuple(sorted(series['id'] for series in item['populated_series']))
+        for item in duplicates if item.get('cleanup_mode') == 'shared_files'
+    }
+    for file_paths, same_file_series in populated_by_paths.items():
+        if len(same_file_series) < 2:
+            continue
+        for index, first in enumerate(same_file_series[:-1]):
+            for duplicate in same_file_series[index + 1:]:
+                pair = tuple(sorted((first['id'], duplicate['id'])))
+                if pair in reported_pairs:
+                    continue
+                removable = min(
+                    (first, duplicate),
+                    key=lambda series: (bool(series['bedetheque_url']), len(volumes_by_series[series['id']])),
+                )
+                duplicates.append({
+                    'duplicate_series_id': removable['id'],
+                    'duplicate_series_title': removable['title'],
+                    'duplicate_series_path': removable['path'],
+                    'cleanup_eligible': True,
+                    'cleanup_mode': 'shared_files',
+                    'populated_series': [
+                        {'id': series['id'], 'title': series['title'], 'path': series['path'],
+                         'volume_count': len(volumes_by_series[series['id']])}
+                        for series in (first, duplicate)
+                    ],
+                    'komga_series_id': 'Identifiants Komga différents',
+                    'reason': 'Même fichier réel référencé par deux séries, malgré des identifiants Komga différents.',
+                })
+                reported_pairs.add(pair)
+
     duplicates.sort(key=lambda item: item['duplicate_series_title'].casefold())
     return duplicates
 
@@ -618,7 +659,7 @@ def cleanup_duplicate_empty_series():
         removed = []
         skipped = []
         for candidate in candidates:
-            has_populated_match = conn.execute('''
+            same_komga_populated_match = conn.execute('''
                 SELECT 1 FROM series s
                 JOIN volumes v ON v.series_id = s.id
                 JOIN libraries l ON l.id = s.library_id
@@ -635,17 +676,17 @@ def cleanup_duplicate_empty_series():
                     SELECT s.id FROM series s
                     JOIN volumes v ON v.series_id = s.id
                     JOIN libraries l ON l.id = s.library_id
-                    WHERE s.komga_series_id = ? AND s.id != ?
+                    WHERE s.id != ?
                     GROUP BY s.id
                     HAVING COUNT(v.filepath) = ?
-                ''', (candidate['komga_series_id'], candidate['id'], len(file_paths))).fetchall()
+                ''', (candidate['id'], len(file_paths))).fetchall()
                 matching_file_series = any(
                     {row['filepath'] for row in conn.execute(
                         'SELECT filepath FROM volumes WHERE series_id = ?', (row['id'],)
                     ).fetchall() if row['filepath']} == file_paths
                     for row in matching_file_series
                 )
-            if not (has_populated_match and (not file_paths or matching_file_series)):
+            if not ((same_komga_populated_match and not file_paths) or (file_paths and matching_file_series)):
                 skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'La condition de doublon n’est plus valide'})
                 continue
 
@@ -658,7 +699,7 @@ def cleanup_duplicate_empty_series():
                 removed.append({'id': candidate['id'], 'title': candidate['title']})
                 continue
 
-            if not has_populated_match:
+            if not same_komga_populated_match:
                 continue
 
             series_path = candidate['path']
