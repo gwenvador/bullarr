@@ -271,7 +271,7 @@ def _check_volume_file_validity(filepath, fmt):
 
 
 def _load_verification_series_and_volumes():
-    """Fetch commun aux 4 catégories de /verification (voir VERIFICATION_TYPES plus bas) -
+    """Fetch commun aux catégories de /verification (voir VERIFICATION_TYPES plus bas) -
     une seule requête rapide (pas d'I/O disque, pas de test d'intégrité), partagée pour
     ne pas répéter ces deux SELECT à chaque clic sur une catégorie différente."""
     conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
@@ -466,6 +466,26 @@ def _verify_invalid_files(series_rows, volume_rows):
         })
 
     return invalid_files, True
+
+
+def _verify_unmatched_owned_komga(series_rows, volumes_by_series):
+    """Tomes possédés sans identifiant de livre Komga, si Komga est actif."""
+    from blueprints.komga.config_store import is_komga_configured
+
+    if not is_komga_configured():
+        return [], False
+
+    unmatched = []
+    for series in series_rows:
+        for volume in volumes_by_series.get(series['id'], []):
+            if not volume['filepath'] or volume['komga_book_id']:
+                continue
+            unmatched.append({
+                'series_id': series['id'], 'series_title': series['title'],
+                'volume_id': volume['id'], 'filename': volume['filename'],
+            })
+    unmatched.sort(key=lambda item: (item['series_title'].casefold(), item['filename'] or ''))
+    return unmatched, True
 
 
 def _verify_unmatched_owned_volumes(series_rows, volumes_by_series):
@@ -739,12 +759,12 @@ def run_verification():
 
     "au lieu d'avoir toutes les verifications lancés en meme temps. groupe par different
     types de verification et on peut cliquer dans chacune d'une" - ?type=<...> permet de
-    ne (re)calculer qu'UNE des 5 catégories (voir _verify_* ci-dessus) plutôt que les 5 à
+    ne (re)calculer qu'UNE des catégories (voir _verify_* ci-dessus) plutôt que toutes à
     chaque appel, notamment invalid_files, la plus lente (I/O disque + décompression) - un
     clic sur "métadonnées manquantes" n'a plus à l'attendre. Sans ?type (compatibilité
-    d'éventuels autres appelants), les 5 sont calculées et renvoyées comme avant."""
+    d'éventuels autres appelants), toutes les catégories sont calculées et renvoyées comme avant."""
     verif_type = request.args.get('type')
-    valid_types = {'missing_metadata', 'misnamed', 'invalid_files', 'unmatched_owned_volumes', 'duplicate_series'}
+    valid_types = {'missing_metadata', 'misnamed', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
     if verif_type is not None and verif_type not in valid_types:
         return jsonify({'error': f"type invalide, attendu l'un de {sorted(valid_types)}"}), 400
 
@@ -766,6 +786,10 @@ def run_verification():
         result['komga_configured'] = komga_configured
     if verif_type in (None, 'unmatched_owned_volumes'):
         result['unmatched_owned_volumes'] = _verify_unmatched_owned_volumes(series_rows, volumes_by_series)
+    if verif_type in (None, 'unmatched_owned_komga'):
+        unmatched_komga, komga_configured = _verify_unmatched_owned_komga(series_rows, volumes_by_series)
+        result['unmatched_owned_komga'] = unmatched_komga
+        result['komga_configured'] = komga_configured
     if verif_type in (None, 'duplicate_series'):
         result['duplicate_series'] = _verify_duplicate_empty_series(series_rows, volumes_by_series)
 
