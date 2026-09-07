@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 import tempfile
 import zipfile
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from flask import render_template, request, jsonify, current_app, send_file
@@ -522,12 +523,15 @@ def _verify_unmatched_owned_volumes(series_rows, volumes_by_series):
 
 
 def _verify_duplicate_empty_series(series_rows, volumes_by_series):
-    """Repère les fiches locales vides qui partagent un identifiant Komga.
+    """Repère les fiches locales vides qui partagent un identifiant Komga, ainsi que
+    les séries dont le titre devient identique après normalisation de la casse, des
+    accents et de la ponctuation.
 
     Une fiche vide n'est signalée que lorsqu'une autre fiche portant le même
     identifiant Komga possède des tomes. Deux fiches alimentées sont également
     signalées si elles référencent exactement les mêmes chemins de fichiers.
-    Le contrôle ne déduit pas un doublon à partir d'un simple titre similaire.
+    Un titre équivalent est signalé comme doublon probable, mais n'est jamais éligible
+    au nettoyage automatique : une validation humaine reste nécessaire.
     """
     by_komga_id = {}
     for series in series_rows:
@@ -643,6 +647,52 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                     ],
                     'komga_series_id': 'Identifiants Komga différents',
                     'reason': 'Même fichier réel référencé par deux séries, malgré des identifiants Komga différents.',
+                })
+                reported_pairs.add(pair)
+
+    # Variantes de casse/accents/séparateurs : "I.R.$", "I.R.$." et
+    # "I R $" deviennent la même clé, sans rapprocher "Blueberry" de
+    # "Blueberry (La Jeunesse de)" puisque les mots restent différents.
+    def normalized_title(title):
+        value = unicodedata.normalize('NFKD', title or '')
+        value = ''.join(char for char in value if not unicodedata.combining(char))
+        return ''.join(char.casefold() for char in value if char.isalnum())
+
+    by_normalized_title = {}
+    for series in series_rows:
+        key = normalized_title(series['title'])
+        if key:
+            by_normalized_title.setdefault(key, []).append(series)
+
+    reported_pairs = {
+        tuple(sorted(series['id'] for series in item['populated_series']))
+        for item in duplicates if item.get('cleanup_mode') == 'shared_files'
+    }
+    for key, same_title_series in by_normalized_title.items():
+        if len(same_title_series) < 2:
+            continue
+        for index, first in enumerate(same_title_series[:-1]):
+            for duplicate in same_title_series[index + 1:]:
+                pair = tuple(sorted((first['id'], duplicate['id'])))
+                if pair in reported_pairs:
+                    continue
+                duplicates.append({
+                    'duplicate_series_id': duplicate['id'],
+                    'duplicate_series_title': duplicate['title'],
+                    'duplicate_series_path': duplicate['path'],
+                    'cleanup_eligible': False,
+                    'cleanup_mode': 'title_match',
+                    'populated_series': [
+                        {
+                            'id': series['id'],
+                            'title': series['title'],
+                            'path': series['path'],
+                            'volume_count': len(volumes_by_series.get(series['id'], [])),
+                        }
+                        for series in (first, duplicate)
+                    ],
+                    'komga_series_id': 'Titres équivalents',
+                    'reason': 'Titres identiques après normalisation de la casse, des accents et des séparateurs.',
                 })
                 reported_pairs.add(pair)
 
