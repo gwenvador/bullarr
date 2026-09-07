@@ -258,6 +258,10 @@
     padding: 0 10px 8px;
 }
 
+.verification-komga-filename {
+    display: inline;
+}
+
 .verification-series-group {
     margin: 0 0 8px;
 }
