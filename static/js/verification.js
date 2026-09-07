@@ -516,11 +516,11 @@ function renderUnmatchedOwnedKomga(data) {
                     <a href="/series/${seriesId}" class="missing-series-link" onclick="event.stopPropagation()">${escapeHtml(series.title)}</a>
                     <span class="verification-series-collapse-count">${series.items.length} ${pluralize(series.items.length, 'fichier')}</span>
                 </span>
-                <span class="verification-series-actions">
-                    <button class="btn btn-sm" type="button" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}'); event.preventDefault(); event.stopPropagation();">${svgIcon('search')} Matcher manuellement</button>
-                    <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this); event.preventDefault(); event.stopPropagation();">${svgIcon('refresh-cw')} Réparer</button>
-                </span>
             </summary>
+            <div class="verification-series-actions">
+                <button class="btn btn-sm verif-komga-manual-match" type="button" style="display:none;" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}')">${svgIcon('search')} Matcher manuellement</button>
+                <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this)">${svgIcon('refresh-cw')} Réparer</button>
+            </div>
             <table class="series-table series-table-compact unmatched-owned-komga-table">
                 <thead><tr><th>Fichier</th></tr></thead>
                 <tbody>${series.items.map(item => `
@@ -645,16 +645,19 @@ async function selectVerificationKomgaCandidate(seriesId, komgaSeriesId) {
 
 async function repairUnmatchedKomgaSeries(seriesId, button) {
     const originalHtml = button.innerHTML;
+    const manualButton = button.closest('details').querySelector('.verif-komga-manual-match');
     button.disabled = true;
     button.innerHTML = `<span class="btn-icon">${svgIcon('loader-circle', 'icon-spin')}</span>`;
     try {
         const response = await fetch(`/api/series/${seriesId}/komga-enrich`, { method: 'POST' });
         const data = await response.json();
         if (!data.success) {
+            if (manualButton) manualButton.style.display = 'inline-flex';
             alert('❌ ' + (data.error || 'Impossible de réparer le lien Komga'));
             return;
         }
         if (data.match_status === 'unmatched') {
+            if (manualButton) manualButton.style.display = 'inline-flex';
             alert('⚠️ Aucun match Komga unique trouvé pour cette série.');
         }
         await runVerificationCategory('unmatched_owned_komga');
