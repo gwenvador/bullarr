@@ -510,9 +510,10 @@ function renderUnmatchedOwnedKomga(data) {
         }
         bySeries.get(item.series_id).items.push(item);
     });
-    list.innerHTML = Array.from(bySeries.entries()).map(([seriesId, series], index) => `
+    list.innerHTML = Array.from(bySeries.entries()).map(([seriesId, series]) => `
         <div class="verification-series-group">
-        <details class="verification-series-collapse" ${index === 0 ? 'open' : ''}>
+        <div class="verification-series-header">
+        <details class="verification-series-collapse">
             <summary>
                 <span class="verification-series-collapse-title">
                     <input type="checkbox" class="verif-komga-series-checkbox" data-series-id="${seriesId}" onchange="verifToggleKomgaSeries(this)" onclick="event.stopPropagation()" aria-label="Sélectionner la série ${escapeHtml(series.title)}">
@@ -528,13 +529,11 @@ function renderUnmatchedOwnedKomga(data) {
                     </tr>`).join('')}
                 </tbody>
             </table>
-            <div class="verification-series-actions">
-                <button class="btn btn-sm" type="button" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}')">${svgIcon('search')} Matcher manuellement</button>
-            </div>
         </details>
         <div class="verification-series-actions">
             <button class="btn btn-sm verif-komga-manual-match" type="button" style="display:${verificationKomgaManualSeriesIds.has(Number(seriesId)) ? 'inline-flex' : 'none'};" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}')">${svgIcon('search')} Matcher manuellement</button>
             <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this)">${svgIcon('refresh-cw')} Réparer</button>
+        </div>
         </div>
         </div>`).join('');
 }
@@ -1289,6 +1288,7 @@ async function verifBulkRenameItems() {
 // bedetheque-enrich.js (enrichOpenEbdzMatchModal etc., noms inchangés: aucune collision
 // possible puisqu'ils n'existaient pas ici).
 let _ebdzConfigured = false;
+let _komgaConfigured = false;
 let missingSeriesSort = {field: 'title', dir: 1};
 
 async function loadMissingMatches() {
@@ -1306,11 +1306,12 @@ async function loadMissingMatches() {
         }
 
         _ebdzConfigured = !!data.ebdz_configured;
+        _komgaConfigured = !!data.komga_configured;
         const series = data.series || [];
         countEl.textContent = `${series.length} ${pluralize(series.length, 'série')} à matcher.`;
 
         if (series.length === 0) {
-            container.innerHTML = `<p class="help-text">${svgIcon('check')} Toutes les séries sont matchées sur Bédéthèque${_ebdzConfigured ? ' et EBDZ' : ''}.</p>`;
+            container.innerHTML = `<p class="help-text">${svgIcon('check')} Toutes les séries sont matchées sur les sources configurées.</p>`;
             return;
         }
 
@@ -1322,6 +1323,7 @@ async function loadMissingMatches() {
                         <th class="volume-table-sortable" onclick="sortMissingSeries()"><div class="th-filterable-row"><span class="th-filterable-label">Série <span id="missing-sort-arrow">↕</span></span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><input class="series-table-filter-input th-filterable-control" type="text" value="${escapeHtml(window.missingTitleFilter || '')}" placeholder="Filtrer..." aria-label="Filtrer les séries" oninput="_syncFilterControlActive(this); filterMissingSeriesTable(this.value)"></span></div></th>
                         <th class="missing-match-status-cell">${_missingStatusFilterHeaderHtml('bedetheque', 'Bédéthèque')}</th>
                         ${_ebdzConfigured ? `<th class="missing-match-status-cell">${_missingStatusFilterHeaderHtml('ebdz', 'EBDZ')}</th>` : ''}
+                        ${_komgaConfigured ? `<th class="missing-match-status-cell">${_missingStatusFilterHeaderHtml('komga', 'Komga')}</th>` : ''}
                     </tr>
                 </thead>
                 <tbody id="missing-table-body">
@@ -1373,6 +1375,9 @@ function _missingMatchRowHtml(s) {
             ${_ebdzConfigured ? `<td class="missing-match-status-cell" data-matched="${s.ebdz_matched ? '1' : '0'}">${s.ebdz_matched
                 ? `<span style="color:#28a745;">${svgIcon('check')}</span>${s.ebdz_thread_url ? ` <a href="${escapeHtml(s.ebdz_thread_url)}" target="_blank" rel="noopener" class="indispensable-source-link" data-tooltip="Ouvrir le thread EBDZ">↗</a>` : ''}`
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur EBDZ" aria-label="Matcher sur EBDZ" onclick="enrichOpenEbdzMatchModal(${s.id}, '${escapeForAttribute(s.title)}')"><img src="/static/img/ebdz-logo.png" alt="EBDZ" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>` : ''}
+            ${_komgaConfigured ? `<td class="missing-match-status-cell" data-matched="${s.komga_matched ? '1' : '0'}">${s.komga_matched
+                ? `<span style="color:#28a745;">${svgIcon('check')}</span>${s.komga_url ? ` <a href="${escapeHtml(s.komga_url)}" target="_blank" rel="noopener" class="indispensable-source-link" data-tooltip="Ouvrir Komga">↗</a>` : ''}`
+                : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur Komga" aria-label="Matcher sur Komga" onclick="openVerificationKomgaMatcher(${s.id}, '${escapeForAttribute(s.title)}')"><img src="/static/img/komga-logo.svg" alt="Komga" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>` : ''}
         </tr>
     `;
 }
