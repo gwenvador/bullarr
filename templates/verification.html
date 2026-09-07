@@ -152,7 +152,7 @@
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
                                     <button type="button" class="verif-section-toggle" id="unmatchedOwnedToggle" onclick="verifToggleSection('unmatchedOwnedList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
-                                    <span>🔗 Tomes possédés sans lien Bédéthèque (<span id="unmatchedOwnedCount">—</span>)</span>
+                                    <span><img src="{{ url_for('static', filename='img/bedetheque-logo.png') }}" alt="Bédéthèque" class="section-header-logo"> Tomes possédés sans lien Bédéthèque (<span id="unmatchedOwnedCount">—</span>)</span>
                                 </h3>
                                 <div style="display:flex; align-items:center; gap:10px;">
                                     <button class="btn btn-sm" id="verifRunUnmatchedOwnedBtn" onclick="runVerificationCategory('unmatched_owned_volumes')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
@@ -167,6 +167,34 @@
                             </div>
                             <div id="unmatchedOwnedList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
                         </div>
+
+                        <div class="settings-card" id="verificationUnmatchedOwnedKomgaCard" style="display:none;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="verif-section-toggle" id="unmatchedOwnedKomgaToggle" onclick="verifToggleSection('unmatchedOwnedKomgaList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <span><img src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="Komga" class="section-header-logo"> Tomes possédés sans lien Komga (<span id="unmatchedOwnedKomgaCount">—</span>)</span>
+                                </h3>
+                                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                    <label class="verification-select-all-label"><input type="checkbox" id="verifKomgaSelectAll" onchange="verifToggleSelectAllKomga(this)" aria-label="Sélectionner tous les fichiers Komga"> Tout sélectionner</label>
+                                    <button class="btn btn-sm" id="verifBulkRepairKomgaBtn" onclick="verifBulkRepairKomga()" disabled><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg> Réparer la sélection (<span id="verifKomgaSelectedCount">0</span>)</button>
+                                    <button class="btn btn-sm" id="verifRunUnmatchedOwnedKomgaBtn" onclick="runVerificationCategory('unmatched_owned_komga')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg> Lancer</button>
+                                </div>
+                            </div>
+                            <p class="help-text" style="margin:0 0 8px;">Signale les fichiers présents dans la bibliothèque qui n’ont pas encore été associés à un livre Komga. Les fichiers sont regroupés par série ; « Réparer » resynchronise le match et les liens vers les livres Komga.</p>
+                            <div id="unmatchedOwnedKomgaList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+
+                        <div class="settings-card" id="verificationDuplicateSeriesCard">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="verif-section-toggle" id="duplicateSeriesToggle" onclick="verifToggleSection('duplicateSeriesList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <span>♻️ Séries en doublon (<span id="duplicateSeriesCount">—</span>)</span>
+                                </h3>
+                                <div style="display:flex; gap:8px;"><button class="btn btn-sm" id="verifRunDuplicateSeriesBtn" onclick="runVerificationCategory('duplicate_series')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button><button class="btn btn-sm btn-icon-danger" id="verifCleanupDuplicateSeriesBtn" onclick="cleanupDuplicateSeries()" disabled>Nettoyer (<span id="verifCleanupDuplicateSeriesCount">0</span>)</button></div>
+                            </div>
+                            <p class="help-text" style="margin:0 0 8px;">Signale les fiches vides, les séries qui référencent les mêmes fichiers et les titres équivalents. Le nettoyage supprime la fiche clairement la plus petite ou, à égalité, la plus récente, avec son dossier et ses fichiers.</p>
+                            <div id="duplicateSeriesList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -180,6 +208,13 @@
         <div class="modal-content" style="max-width: 700px;">
             <span class="close-modal" onclick="closeEbdzMatchModal()">×</span>
             <div id="ebdz-match-modal-body"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="komga-match-modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close-modal" onclick="document.getElementById('komga-match-modal').classList.remove('active')">×</span>
+            <div id="komga-match-modal-body"></div>
         </div>
     </div>
 

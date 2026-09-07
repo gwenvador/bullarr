@@ -904,7 +904,7 @@ def enrich_series(series_id):
         }), 500
 
 
-def _get_series_missing_match(library_id=None, ebdz_configured=True):
+def _get_series_missing_match(library_id=None, ebdz_configured=True, komga_configured=False):
     """Séries avec au moins un fichier réellement possédé ("match existing folders on
     disk" - pas les tomes placeholder d'une série ajoutée depuis Bédéthèque sans aucun
     fichier, voir add_series_from_bedetheque) qui n'ont pas de match Bédéthèque et/ou
@@ -919,14 +919,19 @@ def _get_series_missing_match(library_id=None, ebdz_configured=True):
     conn = get_db_connection()
     cursor = conn.cursor()
     sql = '''
-        SELECT id, title, library_id, bedetheque_url, ebdz_match_status, ebdz_thread_url
+        SELECT series.id, series.title, series.library_id, series.bedetheque_url,
+               series.ebdz_match_status, series.ebdz_thread_url,
+               series.komga_series_id, series.komga_url
         FROM series
-        WHERE total_volumes > 0
+        JOIN libraries ON libraries.id = series.library_id
+        WHERE series.total_volumes > 0
     '''
+    missing_conditions = ['bedetheque_url IS NULL']
     if ebdz_configured:
-        sql += " AND (bedetheque_url IS NULL OR ebdz_match_status IS NULL OR ebdz_match_status != 'matched')"
-    else:
-        sql += ' AND bedetheque_url IS NULL'
+        missing_conditions.append("ebdz_match_status IS NULL OR ebdz_match_status != 'matched'")
+    if komga_configured:
+        missing_conditions.append("komga_series_id IS NULL OR komga_series_id = ''")
+    sql += ' AND (' + ' OR '.join(missing_conditions) + ')'
     params = []
     if library_id:
         sql += ' AND library_id = ?'
@@ -948,20 +953,26 @@ def get_series_missing_matches():
     colonne EBDZ plutôt que de l'afficher toujours à "✗" (jamais actionnable tant que
     rien n'est configuré)."""
     from blueprints.ebdz.routes import is_ebdz_configured
+    from blueprints.komga.config_store import is_komga_configured
     library_id = request.args.get('library_id', type=int)
     ebdz_configured = is_ebdz_configured()
-    rows = _get_series_missing_match(library_id, ebdz_configured=ebdz_configured)
+    komga_configured = is_komga_configured()
+    rows = _get_series_missing_match(library_id, ebdz_configured=ebdz_configured, komga_configured=komga_configured)
     return jsonify({
         'success': True,
         'ebdz_configured': ebdz_configured,
+        'komga_configured': komga_configured,
         'series': [
             {
                 'id': row['id'],
                 'title': row['title'],
                 'library_id': row['library_id'],
                 'bedetheque_matched': bool(row['bedetheque_url']),
+                'bedetheque_url': row['bedetheque_url'],
                 'ebdz_matched': row['ebdz_match_status'] == 'matched',
                 'ebdz_thread_url': row['ebdz_thread_url'],
+                'komga_matched': bool(row['komga_series_id']),
+                'komga_url': row['komga_url'],
             }
             for row in rows
         ]

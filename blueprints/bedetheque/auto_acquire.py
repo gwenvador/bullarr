@@ -675,7 +675,7 @@ def _is_live_torrent(result):
     return result.get('source') in ('prowlarr', 'torrent') and _availability_count(result) > 0
 
 
-def _best_confident_result(results, vol_num, title):
+def _best_confident_result(results, vol_num, title, source_order=None):
     """Résultat à télécharger automatiquement, ou None si aucun n'est assez confiant.
 
     Pour un tome numéroté (vol_num défini), réutilise le flag unconfirmed_volume déjà
@@ -687,11 +687,19 @@ def _best_confident_result(results, vol_num, title):
     pour un téléchargement sans supervision. Repli sur une similarité de titre (même
     fonction que le matching de série Bédéthèque, BedethequeScraper._match_score) entre
     le titre recherché et celui/le nom de fichier du résultat, pour ne jamais télécharger
-    à l'aveugle le premier résultat venu sur un titre générique."""
+    à l'aveugle le premier résultat venu sur un titre générique.
+
+    source_order est l'ordre de préférence configuré par l'utilisateur. Il ne départage
+    que des candidats de confiance équivalente : la disponibilité d'une source ne doit
+    pas annuler une préférence explicite (ex. Telegram avant EBDZ)."""
     from blueprints.bedetheque.scraper import BedethequeScraper
     best, best_score = None, 0.0
     best_rank = None
     scored_results = []
+    source_priority = {
+        source: (len(source_order) - index)
+        for index, source in enumerate(source_order or [])
+    }
     for r in results:
         if not _is_auto_download_eligible(r):
             continue
@@ -729,6 +737,7 @@ def _best_confident_result(results, vol_num, title):
         scored_results.append((r, effective_score))
         rank = (
             effective_score,
+            source_priority.get(r.get('source'), 0),
             not _is_black_and_white_release(candidate),
             _availability_count(r),
         )
@@ -1047,7 +1056,7 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
                 ]
                 # Le premier résultat n'est pas une preuve d'identité. L'automatisation
                 # applique un score de titre renforcé; les cas ambigus sont mis en revue.
-                best = _best_confident_result(candidates, vol_num, title) if candidates else None
+                best = _best_confident_result(candidates, vol_num, title, source_order=sources) if candidates else None
 
                 if best:
                     try:
@@ -1094,7 +1103,7 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
 
                 # Même recherche que l'interface manuelle, mais l'automatisation exige
                 # un score de confiance renforcé avant d'envoyer un fichier.
-                best = _best_confident_result(results, vol_num, title) if results else None
+                best = _best_confident_result(results, vol_num, title, source_order=sources) if results else None
 
                 if best:
                     try:

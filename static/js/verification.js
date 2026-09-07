@@ -17,7 +17,7 @@ function escapeForAttribute(text) {
 }
 
 // ===== VÉRIFICATION DE LA BIBLIOTHÈQUE (métadonnées manquantes + nommage + fichiers
-// invalides + volumes possédés non rattachés), une catégorie à la fois =====
+// invalides + volumes possédés non rattachés + doublons), une catégorie à la fois =====
 // "au lieu d'avoir toutes les verifications lancés en meme temps. groupe par different
 // types de verification et on peut cliquer dans chacune d'une" - remplace l'ancien
 // runVerification() unique (calculait/affichait les 4 catégories d'un coup à chaque appel,
@@ -31,6 +31,8 @@ const VERIFICATION_CATEGORIES = {
     misnamed: { runBtnId: 'verifRunMisnamedBtn', render: renderMisnamed },
     invalid_files: { runBtnId: 'verifRunInvalidFilesBtn', render: renderInvalidFiles },
     unmatched_owned_volumes: { runBtnId: 'verifRunUnmatchedOwnedBtn', render: renderUnmatchedOwnedVolumes },
+    unmatched_owned_komga: { runBtnId: 'verifRunUnmatchedOwnedKomgaBtn', render: renderUnmatchedOwnedKomga },
+    duplicate_series: { runBtnId: 'verifRunDuplicateSeriesBtn', render: renderDuplicateSeries },
 };
 
 function _updateVerificationSummary(data) {
@@ -452,7 +454,7 @@ function renderUnmatchedOwnedVolumes(data) {
     }
     const query = window.verifUnmatchedOwnedTitleFilter || '';
     list.innerHTML = `
-        <table class="series-table series-table-compact">
+        <table class="series-table series-table-compact unmatched-owned-table">
             <thead>
                 <tr>
                     <th class="volume-table-select-cell"><input type="checkbox" id="verifUnmatchedOwnedSelectAll" aria-label="Sélectionner tous les tomes visibles" onchange="verifToggleSelectAllUnmatchedOwned(this)"></th>
@@ -466,7 +468,7 @@ function renderUnmatchedOwnedVolumes(data) {
                     <tr class="series-table-row" id="verif-unmatched-owned-${item.volume_id}">
                         <td class="volume-table-select-cell"><input type="checkbox" class="verif-unmatched-owned-select" data-series-id="${item.series_id}" data-volume-id="${item.volume_id}" data-title="${escapeHtml(item.series_title)}" aria-label="Sélectionner ${escapeHtml(item.series_title)}" onchange="verifUpdateUnmatchedOwnedSelectionCount()"></td>
                         <td><a href="/series/${item.series_id}" class="missing-series-link">${escapeHtml(item.series_title)}</a></td>
-                        <td class="help-text">${escapeHtml(item.filename)}</td>
+                        <td><span class="help-text">${escapeHtml(item.filename)}</span></td>
                         <td><button class="btn-icon-only" onclick="verifLinkVolume(${item.volume_id}, ${item.series_id}, '${escapeForAttribute(item.series_title)}', this)" data-tooltip="Rattacher à son album Bédéthèque" aria-label="Rattacher à son album Bédéthèque">${svgIcon('link')}</button></td>
                     </tr>
                 `).join('')}
@@ -480,6 +482,270 @@ function renderUnmatchedOwnedVolumes(data) {
     selectAllEl.disabled = false;
     document.getElementById('verifUnmatchedOwnedBulkControls').style.display = 'flex';
     verifUpdateUnmatchedOwnedSelectionCount();
+}
+
+const verificationKomgaManualSeriesIds = new Set();
+
+function renderUnmatchedOwnedKomga(data) {
+    const card = document.getElementById('verificationUnmatchedOwnedKomgaCard');
+    const list = document.getElementById('unmatchedOwnedKomgaList');
+    if (!data.komga_configured) {
+        card.style.display = 'none';
+        return;
+    }
+    card.style.display = '';
+    const items = data.unmatched_owned_komga || [];
+    document.getElementById('unmatchedOwnedKomgaCount').textContent = items.length;
+    document.getElementById('verifKomgaSelectAll').checked = false;
+    document.getElementById('verifKomgaSelectAll').disabled = items.length === 0;
+    verifUpdateKomgaSelectionCount();
+    if (items.length === 0) {
+        list.innerHTML = `<p class="help-text">${svgIcon('check')} Tous les tomes possédés sont liés à Komga.</p>`;
+        return;
+    }
+    const bySeries = new Map();
+    items.forEach(item => {
+        if (!bySeries.has(item.series_id)) {
+            bySeries.set(item.series_id, { title: item.series_title, items: [] });
+        }
+        bySeries.get(item.series_id).items.push(item);
+    });
+    list.innerHTML = Array.from(bySeries.entries()).map(([seriesId, series]) => `
+        <div class="verification-series-group">
+        <div class="verification-series-header">
+        <details class="verification-series-collapse">
+            <summary>
+                <span class="verification-series-collapse-title">
+                    <input type="checkbox" class="verif-komga-series-checkbox" data-series-id="${seriesId}" onchange="verifToggleKomgaSeries(this)" onclick="event.stopPropagation()" aria-label="Sélectionner la série ${escapeHtml(series.title)}">
+                    <a href="/series/${seriesId}" class="missing-series-link" onclick="event.stopPropagation()">${escapeHtml(series.title)}</a>
+                    <span class="verification-series-collapse-count">${series.items.length} ${pluralize(series.items.length, 'fichier')}</span>
+                </span>
+            </summary>
+            <table class="series-table series-table-compact unmatched-owned-komga-table">
+                <thead><tr><th>Fichier</th></tr></thead>
+                <tbody>${series.items.map(item => `
+                    <tr class="series-table-row">
+                        <td><input type="checkbox" class="verif-komga-select" data-series-id="${seriesId}" data-series-title="${escapeForAttribute(series.title)}" onchange="verifUpdateKomgaSelectionCount()" aria-label="Sélectionner ${escapeHtml(item.filename || '')}"> <span class="verification-komga-filename">${escapeHtml(item.filename || '')}</span></td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </details>
+        <div class="verification-series-actions">
+            <button class="btn btn-sm verif-komga-manual-match" type="button" style="display:${verificationKomgaManualSeriesIds.has(Number(seriesId)) ? 'inline-flex' : 'none'};" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}')">${svgIcon('search')} Matcher manuellement</button>
+            <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this)">${svgIcon('refresh-cw')} Réparer</button>
+        </div>
+        </div>
+        </div>`).join('');
+}
+
+function verifToggleKomgaSeries(checkboxEl) {
+    const details = checkboxEl.closest('details');
+    details.querySelectorAll('.verif-komga-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateKomgaSelectionCount();
+}
+
+function verifToggleSelectAllKomga(checkboxEl) {
+    document.querySelectorAll('.verif-komga-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    document.querySelectorAll('.verif-komga-series-select-all').forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateKomgaSelectionCount();
+}
+
+function verifUpdateKomgaSelectionCount() {
+    const selected = document.querySelectorAll('.verif-komga-select:checked');
+    const count = selected.length;
+    const countEl = document.getElementById('verifKomgaSelectedCount');
+    const button = document.getElementById('verifBulkRepairKomgaBtn');
+    if (countEl) countEl.textContent = count;
+    if (button) button.disabled = count === 0;
+    const all = document.querySelectorAll('.verif-komga-select');
+    const master = document.getElementById('verifKomgaSelectAll');
+    if (master) {
+        master.checked = all.length > 0 && count === all.length;
+        master.indeterminate = count > 0 && count < all.length;
+    }
+    document.querySelectorAll('.verif-komga-series-checkbox').forEach(seriesCheckbox => {
+        const details = seriesCheckbox.closest('details');
+        const seriesFiles = details ? details.querySelectorAll('.verif-komga-select') : [];
+        const seriesSelected = details ? details.querySelectorAll('.verif-komga-select:checked') : [];
+        seriesCheckbox.checked = seriesFiles.length > 0 && seriesSelected.length === seriesFiles.length;
+        seriesCheckbox.indeterminate = seriesSelected.length > 0 && seriesSelected.length < seriesFiles.length;
+    });
+}
+
+async function verifBulkRepairKomga() {
+    const selected = [...document.querySelectorAll('.verif-komga-select:checked')];
+    const seriesIds = [...new Set(selected.map(cb => Number(cb.dataset.seriesId)))];
+    if (!seriesIds.length) return;
+    if (!confirm(`Réparer les liens Komga de ${seriesIds.length} série(s) sélectionnée(s) ?`)) return;
+    const button = document.getElementById('verifBulkRepairKomgaBtn');
+    button.disabled = true;
+    const failed = [];
+    for (const seriesId of seriesIds) {
+        try {
+            const response = await fetch(`/api/series/${seriesId}/komga-enrich`, { method: 'POST' });
+            const data = await response.json();
+            if (!data.success || data.match_status === 'unmatched') failed.push(seriesId);
+        } catch (error) {
+            failed.push(seriesId);
+        }
+    }
+    await runVerificationCategory('unmatched_owned_komga');
+    if (failed.length) alert(`⚠️ ${failed.length} série(s) n'ont pas pu être réparée(s). Utilisez le matching manuel.`);
+}
+
+async function openVerificationKomgaMatcher(seriesId, seriesTitle) {
+    const modal = document.getElementById('komga-match-modal');
+    const body = document.getElementById('komga-match-modal-body');
+    modal.dataset.seriesId = seriesId;
+    modal.classList.add('active');
+    body.innerHTML = buildMatchModalBodyHtml({
+        logoSrc: '/static/img/komga-logo.svg',
+        title: 'Matcher manuellement sur Komga',
+        queryId: 'verification-komga-match-query',
+        queryPlaceholder: 'Titre de la série Komga',
+        prefillValue: seriesTitle,
+        resultsId: 'verification-komga-match-results',
+        searchOnclick: `searchVerificationKomgaCandidates(${seriesId})`,
+        autoSearch: true,
+    });
+    wireMatchModalEnterKeys('verification-komga-match-query', () => searchVerificationKomgaCandidates(seriesId));
+    await searchVerificationKomgaCandidates(seriesId);
+}
+
+async function searchVerificationKomgaCandidates(seriesId) {
+    const query = document.getElementById('verification-komga-match-query').value.trim();
+    const results = document.getElementById('verification-komga-match-results');
+    results.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+        const response = await fetch(`/api/series/${seriesId}/komga-candidates?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        if (!data.success) { results.innerHTML = matchModalErrorHtml(data.error || 'Erreur inconnue'); return; }
+        if (!data.candidates.length) { results.innerHTML = matchModalNoResultsHtml('Aucune série Komga trouvée'); return; }
+        results.innerHTML = data.candidates.map(candidate => `
+            <button type="button" class="series-card match-candidate-card" style="width:100%; text-align:left; cursor:pointer; margin-bottom:8px;" onclick="selectVerificationKomgaCandidate(${seriesId}, '${escapeForAttribute(candidate.komga_series_id)}')">
+                <div class="series-title">${escapeHtml(candidate.title || '(sans titre)')}</div>
+                <div class="series-info">${candidate.total_volumes ?? '?'} tomes${candidate.status ? ` · ${escapeHtml(candidate.status)}` : ''}</div>
+            </button>`).join('');
+    } catch (error) {
+        results.innerHTML = matchModalErrorHtml(error.message);
+    }
+}
+
+async function selectVerificationKomgaCandidate(seriesId, komgaSeriesId) {
+    try {
+        const response = await fetch(`/api/series/${seriesId}/komga-match`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ komga_series_id: komgaSeriesId })
+        });
+        const data = await response.json();
+        if (!data.success) { alert('❌ ' + (data.error || 'Matching Komga impossible')); return; }
+        document.getElementById('komga-match-modal').classList.remove('active');
+        await runVerificationCategory('unmatched_owned_komga');
+    } catch (error) {
+        alert('❌ Erreur pendant le matching Komga');
+    }
+}
+
+async function repairUnmatchedKomgaSeries(seriesId, button) {
+    const originalHtml = button.innerHTML;
+    const seriesGroup = button.closest('.verification-series-group');
+    const seriesTitle = seriesGroup?.querySelector('.missing-series-link')?.textContent.trim() || '';
+    let repairFailed = false;
+    button.disabled = true;
+    button.innerHTML = `<span class="btn-icon">${svgIcon('loader-circle', 'icon-spin')}</span>`;
+    try {
+        const response = await fetch(`/api/series/${seriesId}/komga-enrich`, { method: 'POST' });
+        const data = await response.json();
+        if (!data.success) {
+            verificationKomgaManualSeriesIds.add(Number(seriesId));
+            repairFailed = true;
+            alert('❌ ' + (data.error || 'Impossible de réparer le lien Komga'));
+        } else if (data.match_status === 'unmatched') {
+            verificationKomgaManualSeriesIds.add(Number(seriesId));
+            repairFailed = true;
+            alert('⚠️ Aucun match Komga unique trouvé pour cette série.');
+        } else {
+            verificationKomgaManualSeriesIds.delete(Number(seriesId));
+        }
+        await runVerificationCategory('unmatched_owned_komga');
+        if (repairFailed) await openVerificationKomgaMatcher(seriesId, seriesTitle);
+    } catch (error) {
+        verificationKomgaManualSeriesIds.add(Number(seriesId));
+        alert('❌ Erreur pendant la réparation Komga');
+    } finally {
+        button.disabled = false;
+        button.innerHTML = originalHtml;
+    }
+}
+
+function renderDuplicateSeries(data) {
+    const list = document.getElementById('duplicateSeriesList');
+    const items = data.duplicate_series || [];
+    document.getElementById('duplicateSeriesCount').textContent = items.length;
+    const cleanupBtn = document.getElementById('verifCleanupDuplicateSeriesBtn');
+    const cleanupItems = items.filter(item => item.cleanup_eligible);
+    document.getElementById('verifCleanupDuplicateSeriesCount').textContent = 0;
+    cleanupBtn.disabled = cleanupItems.length === 0;
+    if (items.length === 0) {
+        list.innerHTML = `<p class="help-text">${svgIcon('check')} Aucun doublon de série détecté.</p>`;
+        return;
+    }
+    list.innerHTML = `
+        <table class="series-table series-table-compact duplicate-series-table">
+            <thead><tr><th><input type="checkbox" id="verifDuplicateSelectAll" aria-label="Sélectionner tous les doublons nettoyables" onchange="verifToggleSelectAllDuplicate(this)"> Série en doublon</th><th>Correspondance</th><th>Identifiant Komga</th></tr></thead>
+            <tbody>
+                ${items.map(item => `
+                    <tr class="series-table-row">
+                        <td><div class="duplicate-series-entry">${item.cleanup_eligible ? `<input type="checkbox" class="verif-duplicate-select" value="${item.duplicate_series_id}" aria-label="Sélectionner ${escapeHtml(item.duplicate_series_title)}" onchange="verifUpdateDuplicateSelectionCount()"> ` : ''}<a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-meta">${item.cleanup_eligible ? `Nettoyable — cette entrée sera supprimée (n°${duplicateSeriesNumber(item)})` : 'À vérifier manuellement'}</span><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
+                        <td>${(item.populated_series || []).map((series, index) => `<div class="duplicate-series-entry"><strong>${index + 1} :</strong> <a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a><span class="help-text duplicate-series-meta">${series.volume_count} fichiers</span><span class="help-text duplicate-series-path">${escapeHtml(series.path || '')}</span></div>`).join('')}</td>
+                        <td><span class="help-text">${escapeHtml(item.komga_series_id)}</span></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    verifUpdateDuplicateSelectionCount();
+}
+
+function duplicateSeriesNumber(item) {
+    const index = (item.populated_series || []).findIndex(series => series.id === item.duplicate_series_id);
+    return index >= 0 ? index + 1 : '?';
+}
+
+async function cleanupDuplicateSeries() {
+    const selectedCheckboxes = [...document.querySelectorAll('.verif-duplicate-select:checked')];
+    const selected = selectedCheckboxes.map(cb => Number(cb.value));
+    if (!selected.length) return;
+    const selectedDescription = selectedCheckboxes.map(cb => {
+        const row = cb.closest('tr');
+        const title = row?.querySelector('.missing-series-link')?.textContent?.trim() || `ID ${cb.value}`;
+        const itemNumber = row?.querySelector('.duplicate-series-meta')?.textContent?.match(/n°(\d+)/)?.[1] || '?';
+        return `- n°${itemNumber} : ${title}`;
+    }).join('\n');
+    if (!confirm(`Les séries suivantes seront supprimées avec leur dossier et leurs fichiers :\n\n${selectedDescription}\n\nConfirmer la suppression ?`)) return;
+    const button = document.getElementById('verifCleanupDuplicateSeriesBtn');
+    button.disabled = true;
+    try {
+        const response = await fetch('/api/settings/verification/duplicate-series/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ series_ids: selected }) });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Erreur inconnue');
+        alert(`${data.removed.length} fiche(s) supprimée(s).${data.skipped.length ? ` ${data.skipped.length} ignorée(s).` : ''}`);
+        runVerificationCategory('duplicate_series');
+    } catch (error) {
+        alert('❌ Erreur lors du nettoyage: ' + error.message);
+        button.disabled = false;
+    }
+}
+
+function verifToggleSelectAllDuplicate(checkboxEl) {
+    document.querySelectorAll('.verif-duplicate-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateDuplicateSelectionCount();
+}
+
+function verifUpdateDuplicateSelectionCount() {
+    const count = document.querySelectorAll('.verif-duplicate-select:checked').length;
+    document.getElementById('verifCleanupDuplicateSeriesCount').textContent = count;
+    document.getElementById('verifCleanupDuplicateSeriesBtn').disabled = count === 0;
 }
 
 function filterVerifUnmatchedOwnedTable(query) {
@@ -1039,6 +1305,7 @@ async function verifBulkRenameItems() {
 // bedetheque-enrich.js (enrichOpenEbdzMatchModal etc., noms inchangés: aucune collision
 // possible puisqu'ils n'existaient pas ici).
 let _ebdzConfigured = false;
+let _komgaConfigured = false;
 let missingSeriesSort = {field: 'title', dir: 1};
 
 async function loadMissingMatches() {
@@ -1056,11 +1323,12 @@ async function loadMissingMatches() {
         }
 
         _ebdzConfigured = !!data.ebdz_configured;
+        _komgaConfigured = !!data.komga_configured;
         const series = data.series || [];
         countEl.textContent = `${series.length} ${pluralize(series.length, 'série')} à matcher.`;
 
         if (series.length === 0) {
-            container.innerHTML = `<p class="help-text">${svgIcon('check')} Toutes les séries sont matchées sur Bédéthèque${_ebdzConfigured ? ' et EBDZ' : ''}.</p>`;
+            container.innerHTML = `<p class="help-text">${svgIcon('check')} Toutes les séries sont matchées sur les sources configurées.</p>`;
             return;
         }
 
@@ -1069,9 +1337,10 @@ async function loadMissingMatches() {
                 <thead>
                     <tr>
                         <th class="volume-table-select-cell"><input type="checkbox" id="missing-series-select-all" aria-label="Sélectionner toutes les séries visibles" onchange="toggleAllMissingSeries(this.checked)"></th>
-                        <th class="volume-table-sortable" onclick="sortMissingSeries()"><div class="th-filterable-row"><span class="th-filterable-label">Série <span id="missing-sort-arrow">↕</span></span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><input class="series-table-filter-input th-filterable-control" type="text" value="${escapeHtml(window.missingTitleFilter || '')}" placeholder="Filtrer..." aria-label="Filtrer les séries" oninput="_syncFilterControlActive(this); filterMissingSeriesTable(this.value)"></span></div></th>
+                        <th class="volume-table-sortable" onclick="sortMissingSeries()"><div class="th-filterable-row"><span class="th-filterable-label">Série</span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><input class="series-table-filter-input th-filterable-control" type="text" value="${escapeHtml(window.missingTitleFilter || '')}" placeholder="Filtrer..." aria-label="Filtrer les séries" oninput="_syncFilterControlActive(this); filterMissingSeriesTable(this.value)"></span></div></th>
                         <th class="missing-match-status-cell">${_missingStatusFilterHeaderHtml('bedetheque', 'Bédéthèque')}</th>
                         ${_ebdzConfigured ? `<th class="missing-match-status-cell">${_missingStatusFilterHeaderHtml('ebdz', 'EBDZ')}</th>` : ''}
+                        ${_komgaConfigured ? `<th class="missing-match-status-cell">${_missingStatusFilterHeaderHtml('komga', 'Komga')}</th>` : ''}
                     </tr>
                 </thead>
                 <tbody id="missing-table-body">
@@ -1118,11 +1387,14 @@ function _missingMatchRowHtml(s) {
             <td class="volume-table-select-cell"><input type="checkbox" class="missing-series-checkbox" value="${s.id}" aria-label="Sélectionner ${escapeHtml(s.title)}" onchange="syncMissingSeriesSelectAll()"></td>
             <td><a class="missing-series-link" href="/series/${s.id}">${escapeHtml(s.title)}</a></td>
             <td class="missing-match-status-cell" data-matched="${s.bedetheque_matched ? '1' : '0'}">${s.bedetheque_matched
-                ? `<span style="color:#28a745;">${svgIcon('check')}</span>`
+                ? (s.bedetheque_url ? `<a href="${escapeHtml(s.bedetheque_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir sur Bédéthèque" aria-label="Ouvrir sur Bédéthèque"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur Bédéthèque" aria-label="Matcher sur Bédéthèque" onclick="verifMatchingBedethequeButtonClick(${s.id}, '${escapeForAttribute(s.title)}', this)"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>
             ${_ebdzConfigured ? `<td class="missing-match-status-cell" data-matched="${s.ebdz_matched ? '1' : '0'}">${s.ebdz_matched
-                ? `<span style="color:#28a745;">${svgIcon('check')}</span>${s.ebdz_thread_url ? ` <a href="${escapeHtml(s.ebdz_thread_url)}" target="_blank" rel="noopener" class="indispensable-source-link" data-tooltip="Ouvrir le thread EBDZ">↗</a>` : ''}`
+                ? (s.ebdz_thread_url ? `<a href="${escapeHtml(s.ebdz_thread_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir le thread EBDZ" aria-label="Ouvrir le thread EBDZ"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur EBDZ" aria-label="Matcher sur EBDZ" onclick="enrichOpenEbdzMatchModal(${s.id}, '${escapeForAttribute(s.title)}')"><img src="/static/img/ebdz-logo.png" alt="EBDZ" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>` : ''}
+            ${_komgaConfigured ? `<td class="missing-match-status-cell" data-matched="${s.komga_matched ? '1' : '0'}">${s.komga_matched
+                ? (s.komga_url ? `<a href="${escapeHtml(s.komga_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir Komga" aria-label="Ouvrir Komga"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
+                : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur Komga" aria-label="Matcher sur Komga" onclick="openVerificationKomgaMatcher(${s.id}, '${escapeForAttribute(s.title)}')"><img src="/static/img/komga-logo.svg" alt="Komga" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>` : ''}
         </tr>
     `;
 }
@@ -1339,6 +1611,8 @@ function verifCollapseAllSections() {
         ['missing-table-container', 'matchingToggle'],
         ['invalidFilesList', 'invalidFilesToggle'],
         ['unmatchedOwnedList', 'unmatchedOwnedToggle'],
+        ['unmatchedOwnedKomgaList', 'unmatchedOwnedKomgaToggle'],
+        ['duplicateSeriesList', 'duplicateSeriesToggle'],
     ].forEach(([listId, buttonId]) => {
         const list = document.getElementById(listId);
         const button = document.getElementById(buttonId);
@@ -1372,6 +1646,8 @@ document.addEventListener('DOMContentLoaded', () => {
     runVerificationCategory('misnamed');
     runVerificationCategory('invalid_files');
     runVerificationCategory('unmatched_owned_volumes');
+    runVerificationCategory('unmatched_owned_komga');
+    runVerificationCategory('duplicate_series');
     loadMissingMatches();
     _verifResumeLinkVolumesBatchIfRunning();
 });

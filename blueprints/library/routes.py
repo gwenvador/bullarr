@@ -1431,9 +1431,9 @@ def _sync_komga_books(series_id, komga_series_id, client):
         books = client.get_series_books(komga_series_id)
     except KomgaSeriesNotFoundError:
         _resync_stale_match()
-        return
+        return 0
     except KomgaError:
-        return
+        return 0
 
     if not books:
         # Une série avec un komga_series_id périmé (recréée sous un nouvel id côté Komga)
@@ -1450,7 +1450,7 @@ def _sync_komga_books(series_id, komga_series_id, client):
                 client.get_series(komga_series_id)
             except KomgaSeriesNotFoundError:
                 _resync_stale_match()
-                return
+                return 0
             except KomgaError:
                 pass
 
@@ -1466,6 +1466,7 @@ def _sync_komga_books(series_id, komga_series_id, client):
 
     import os as _os
     from blueprints.bedetheque.scraper import _local_title_from_filename, BedethequeScraper
+    matched_count = 0
 
     books_by_exact_name = {}
     for book in books:
@@ -1500,9 +1501,11 @@ def _sync_komga_books(series_id, komga_series_id, client):
                 'UPDATE volumes SET komga_book_id = ?, komga_book_url = ? WHERE id = ?',
                 (book['komga_book_id'], book['url'], vol['id'])
             )
+            matched_count += 1
 
     conn.commit()
     conn.close()
+    return matched_count
 
 
 def _apply_komga_match(series_id, series_info, client):
@@ -1531,7 +1534,7 @@ def _apply_komga_match(series_id, series_info, client):
     conn.commit()
     conn.close()
 
-    _sync_komga_books(series_id, series_info['komga_series_id'], client)
+    matched_books = _sync_komga_books(series_id, series_info['komga_series_id'], client)
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1549,6 +1552,7 @@ def _apply_komga_match(series_id, series_info, client):
         'matched_title': row['komga_matched_title'],
         'komga_url': row['komga_url'],
         'komga_cover_path': row['komga_cover_path']
+        , 'matched_books': matched_books
     }
 
 
@@ -1675,7 +1679,7 @@ def komga_match_candidates(series_id):
 
         query = request.args.get('q', '').strip() or series_row['title']
 
-        from blueprints.komga.client import KomgaClient, KomgaError
+        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
         try:
             client = KomgaClient()
             candidates = client.search_series(query)
@@ -1713,7 +1717,7 @@ def komga_match_series(series_id):
         if not exists:
             return jsonify({'success': False, 'error': 'Série introuvable'}), 404
 
-        from blueprints.komga.client import KomgaClient, KomgaError
+        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
         try:
             client = KomgaClient()
             series_info = client.get_series(komga_series_id)
@@ -1805,7 +1809,7 @@ def komga_enrich_series(series_id):
         series_title = series_row['title']
         matched_id = series_row['komga_series_id']
 
-        from blueprints.komga.client import KomgaClient, KomgaError
+        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
         try:
             client = KomgaClient()
         except KomgaError as e:
@@ -1813,10 +1817,17 @@ def komga_enrich_series(series_id):
 
         try:
             if matched_id:
-                series_info = client.get_series(matched_id)
-                result = _apply_komga_match(series_id, series_info, client)
-                result.update({'success': True, 'candidates': []})
-                return jsonify(result)
+                try:
+                    series_info = client.get_series(matched_id)
+                    result = _apply_komga_match(series_id, series_info, client)
+                    if result.get('matched_books', 0) == 0:
+                        return jsonify({'success': False, 'error': 'Aucun tome local ne correspond aux livres de cette série Komga.', 'match_status': 'unmatched'})
+                    result.update({'success': True, 'candidates': []})
+                    return jsonify(result)
+                except KomgaSeriesNotFoundError:
+                    # L’identifiant peut devenir obsolète après une recréation de série
+                    # côté Komga : reprendre la recherche par titre au lieu d’abandonner.
+                    matched_id = None
 
             candidates = []
             result = _try_komga_title_match(series_id, series_title, client, out_candidates=candidates)
@@ -7082,13 +7093,8 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
 
     try:
         raw_name = custom_name if custom_name else render_series_folder_name(series_title, series_template, universe_name)
-        # "{<univers>/}<series>" (défaut depuis l'ajout du tag <univers>) rend un chemin à
-        # PLUSIEURS segments ("Thorgal/Dans Les Forêts De Bambous"), pas un simple nom de
-        # dossier - sanitize_path_component rejette justement tout "/" (protection anti-
-        # évasion pour un nom à UN SEUL composant), donc validé ici segment par segment
-        # à la place, puis rejoints. "Titre de série invalide: 'Les schtroumpfs/Les
-        # schtroumpfs'" - le bug était de valider tout le chemin rendu comme un seul
-        # composant au lieu de chaque dossier qu'il contient.
+        # Les modèles peuvent produire plusieurs segments : valider chaque composant
+        # séparément conserve la protection contre l'évasion du dossier de bibliothèque.
         folder_segments = [sanitize_path_component(part, 'Titre de série') for part in raw_name.split('/') if part]
         if not folder_segments:
             raise UnsafePathError(f"Titre de série invalide: {raw_name!r}")
@@ -7108,20 +7114,11 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
         }
 
     try:
-        # os.rename() ne crée pas les dossiers intermédiaires (contrairement à
-        # os.makedirs) - nécessaire dès qu'un <univers> introduit un niveau de dossier
-        # supplémentaire qui n'existe pas encore (première série de cet univers à être
-        # renommée).
+        # os.rename() ne crée pas les dossiers intermédiaires : les créer avant le
+        # déplacement permet aux modèles comportant un niveau supplémentaire de fonctionner.
         os.makedirs(os.path.dirname(new_series_path), exist_ok=True)
-        # "[Errno 22] Invalid argument: '/BD/Lanfeust de Troy' -> '/BD/Lanfeust de
-        # Troy/Lanfeust de Troy'" puis "I still want to have" ce résultat quand même -
-        # l'univers d'une série peut porter EXACTEMENT son propre nom (voir
-        # sync_series_universe, nommé d'après la première série qui l'a détecté) : la
-        # destination est alors un sous-dossier du dossier actuel lui-même, ce qu'un
-        # simple os.rename() ne permet jamais en un seul appel (le noyau refuse de
-        # déplacer un répertoire dans l'un de ses propres descendants). Contournement
-        # classique en 2 étapes via un nom temporaire: on libère d'abord le nom actuel,
-        # PUIS on recrée le dossier parent et on y déplace l'ancien contenu.
+        # Si la destination se trouve dans le dossier actuel, le noyau refuse le
+        # déplacement direct ; une étape temporaire permet de libérer l'ancien chemin.
         if os.path.commonpath([current_path_real, new_series_path]) == current_path_real:
             tmp_path = current_path_real + '.rename_tmp'
             os.rename(current_path_real, tmp_path)
