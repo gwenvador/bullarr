@@ -262,6 +262,22 @@
     margin: 0 0 8px;
 }
 
+.verification-series-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.verification-series-header .verification-series-collapse {
+    flex: 1;
+    margin: 0;
+}
+
+.verification-series-header .verification-series-actions {
+    flex-shrink: 0;
+    padding: 7px 0 0;
+}
+
 .verification-series-collapse > table {
     margin: 0;
 }
