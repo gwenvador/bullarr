@@ -547,6 +547,62 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
     return duplicates
 
 
+@settings_bp.route('/api/settings/verification/duplicate-series/cleanup', methods=['POST'])
+def cleanup_duplicate_empty_series():
+    """Supprime uniquement les fiches de séries vides validées comme doublons.
+
+    La condition est recalculée au moment de l'action afin qu'un ancien résultat
+    de vérification ne puisse pas supprimer une fiche devenue active entre-temps.
+    """
+    from blueprints.library.action_history import log_action
+
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        candidates = conn.execute('''
+            SELECT s.id, s.title, s.path, s.library_id, s.komga_series_id, l.path AS library_path
+            FROM series s
+            JOIN libraries l ON l.id = s.library_id
+            WHERE s.komga_series_id IS NOT NULL AND TRIM(s.komga_series_id) != ''
+              AND NOT EXISTS (SELECT 1 FROM volumes v WHERE v.series_id = s.id)
+        ''').fetchall()
+        removed = []
+        skipped = []
+        for candidate in candidates:
+            has_populated_match = conn.execute('''
+                SELECT 1 FROM series s
+                JOIN volumes v ON v.series_id = s.id
+                WHERE s.komga_series_id = ? AND s.id != ?
+                LIMIT 1
+            ''', (candidate['komga_series_id'], candidate['id'])).fetchone()
+            if not has_populated_match:
+                continue
+
+            series_path = candidate['path']
+            if series_path and os.path.isdir(series_path):
+                real_series_path = os.path.realpath(series_path)
+                real_library_path = os.path.realpath(candidate['library_path'])
+                if os.path.commonpath([real_series_path, real_library_path]) != real_library_path:
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'Chemin hors bibliothèque'})
+                    continue
+                if any(files for _root, _dirs, files in os.walk(real_series_path)):
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'Le dossier contient des fichiers'})
+                    continue
+
+            conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
+            if series_path and os.path.isdir(series_path):
+                shutil.rmtree(series_path)
+            conn.commit()
+            log_action('delete', candidate['id'], candidate['title'], f"Doublon vide · {series_path}")
+            removed.append({'id': candidate['id'], 'title': candidate['title']})
+        return jsonify({'success': True, 'removed': removed, 'skipped': skipped})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(exc)}), 500
+    finally:
+        conn.close()
+
+
 @settings_bp.route('/api/settings/verification', methods=['GET'])
 def run_verification():
     """Scanne toute la bibliothèque pour repérer les tomes/séries à métadonnées
