@@ -489,7 +489,7 @@ function renderDuplicateSeries(data) {
     document.getElementById('duplicateSeriesCount').textContent = items.length;
     const cleanupBtn = document.getElementById('verifCleanupDuplicateSeriesBtn');
     const cleanupItems = items.filter(item => item.cleanup_eligible);
-    document.getElementById('verifCleanupDuplicateSeriesCount').textContent = cleanupItems.length;
+    document.getElementById('verifCleanupDuplicateSeriesCount').textContent = 0;
     cleanupBtn.disabled = cleanupItems.length === 0;
     if (items.length === 0) {
         list.innerHTML = `<p class="help-text">${svgIcon('check')} Aucun doublon de série vide détecté.</p>`;
@@ -497,11 +497,11 @@ function renderDuplicateSeries(data) {
     }
     list.innerHTML = `
         <table class="series-table series-table-compact duplicate-series-table">
-            <thead><tr><th>Série en doublon</th><th>Correspondance</th><th>Identifiant Komga</th></tr></thead>
+            <thead><tr><th><input type="checkbox" id="verifDuplicateSelectAll" aria-label="Sélectionner tous les doublons nettoyables" onchange="verifToggleSelectAllDuplicate(this)"> Série en doublon</th><th>Correspondance</th><th>Identifiant Komga</th></tr></thead>
             <tbody>
                 ${items.map(item => `
                     <tr class="series-table-row">
-                        <td><div class="duplicate-series-entry"><a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-meta">${item.cleanup_eligible ? 'Fiche vide' : 'Fiche avec fichiers'}</span><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
+                        <td><div class="duplicate-series-entry">${item.cleanup_eligible ? `<input type="checkbox" class="verif-duplicate-select" value="${item.duplicate_series_id}" aria-label="Sélectionner ${escapeHtml(item.duplicate_series_title)}" onchange="verifUpdateDuplicateSelectionCount()"> ` : ''}<a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-meta">${item.cleanup_eligible ? 'Nettoyable' : 'Fiche avec fichiers'}</span><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
                         <td>${(item.populated_series || []).map(series => `<div class="duplicate-series-entry"><a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a><span class="help-text duplicate-series-meta">${series.volume_count} tomes</span><span class="help-text duplicate-series-path">${escapeHtml(series.path || '')}</span></div>`).join('')}</td>
                         <td><span class="help-text">${escapeHtml(item.komga_series_id)}</span></td>
                     </tr>
@@ -509,15 +509,16 @@ function renderDuplicateSeries(data) {
             </tbody>
         </table>
     `;
+    verifUpdateDuplicateSelectionCount();
 }
 
 async function cleanupDuplicateSeries() {
-    const count = Number(document.getElementById('duplicateSeriesCount').textContent) || 0;
-    if (!count || !confirm(`Supprimer les ${count} fiches de séries vides détectées comme doublons ?\n\nLes séries contenant des tomes ne seront pas supprimées.`)) return;
+    const selected = [...document.querySelectorAll('.verif-duplicate-select:checked')].map(cb => Number(cb.value));
+    if (!selected.length || !confirm(`Nettoyer ${selected.length} série(s) en doublon ?\n\nLes fichiers partagés seront conservés. Seules les références de la fiche sélectionnée seront retirées.`)) return;
     const button = document.getElementById('verifCleanupDuplicateSeriesBtn');
     button.disabled = true;
     try {
-        const response = await fetch('/api/settings/verification/duplicate-series/cleanup', { method: 'POST' });
+        const response = await fetch('/api/settings/verification/duplicate-series/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ series_ids: selected }) });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Erreur inconnue');
         alert(`${data.removed.length} fiche(s) supprimée(s).${data.skipped.length ? ` ${data.skipped.length} ignorée(s).` : ''}`);
@@ -526,6 +527,17 @@ async function cleanupDuplicateSeries() {
         alert('❌ Erreur lors du nettoyage: ' + error.message);
         button.disabled = false;
     }
+}
+
+function verifToggleSelectAllDuplicate(checkboxEl) {
+    document.querySelectorAll('.verif-duplicate-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateDuplicateSelectionCount();
+}
+
+function verifUpdateDuplicateSelectionCount() {
+    const count = document.querySelectorAll('.verif-duplicate-select:checked').length;
+    document.getElementById('verifCleanupDuplicateSeriesCount').textContent = count;
+    document.getElementById('verifCleanupDuplicateSeriesBtn').disabled = count === 0;
 }
 
 function filterVerifUnmatchedOwnedTable(query) {
