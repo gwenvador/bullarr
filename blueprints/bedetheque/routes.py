@@ -919,9 +919,11 @@ def _get_series_missing_match(library_id=None, ebdz_configured=True):
     conn = get_db_connection()
     cursor = conn.cursor()
     sql = '''
-        SELECT id, title, library_id, bedetheque_url, ebdz_match_status, ebdz_thread_url
+        SELECT series.id, series.title, series.library_id, series.bedetheque_url,
+               series.ebdz_match_status, series.ebdz_thread_url
         FROM series
-        WHERE total_volumes > 0
+        JOIN libraries ON libraries.id = series.library_id
+        WHERE series.total_volumes > 0
     '''
     if ebdz_configured:
         sql += " AND (bedetheque_url IS NULL OR ebdz_match_status IS NULL OR ebdz_match_status != 'matched')"
