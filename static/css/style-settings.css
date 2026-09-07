@@ -255,7 +255,11 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    padding: 8px 10px 0;
+    padding: 0 10px 8px;
+}
+
+.verification-series-group {
+    margin: 0 0 8px;
 }
 
 .verification-series-collapse > table {
