@@ -1431,9 +1431,9 @@ def _sync_komga_books(series_id, komga_series_id, client):
         books = client.get_series_books(komga_series_id)
     except KomgaSeriesNotFoundError:
         _resync_stale_match()
-        return
+        return 0
     except KomgaError:
-        return
+        return 0
 
     if not books:
         # Une série avec un komga_series_id périmé (recréée sous un nouvel id côté Komga)
@@ -1450,7 +1450,7 @@ def _sync_komga_books(series_id, komga_series_id, client):
                 client.get_series(komga_series_id)
             except KomgaSeriesNotFoundError:
                 _resync_stale_match()
-                return
+                return 0
             except KomgaError:
                 pass
 
@@ -1466,6 +1466,7 @@ def _sync_komga_books(series_id, komga_series_id, client):
 
     import os as _os
     from blueprints.bedetheque.scraper import _local_title_from_filename, BedethequeScraper
+    matched_count = 0
 
     books_by_exact_name = {}
     for book in books:
@@ -1500,9 +1501,11 @@ def _sync_komga_books(series_id, komga_series_id, client):
                 'UPDATE volumes SET komga_book_id = ?, komga_book_url = ? WHERE id = ?',
                 (book['komga_book_id'], book['url'], vol['id'])
             )
+            matched_count += 1
 
     conn.commit()
     conn.close()
+    return matched_count
 
 
 def _apply_komga_match(series_id, series_info, client):
@@ -1531,7 +1534,7 @@ def _apply_komga_match(series_id, series_info, client):
     conn.commit()
     conn.close()
 
-    _sync_komga_books(series_id, series_info['komga_series_id'], client)
+    matched_books = _sync_komga_books(series_id, series_info['komga_series_id'], client)
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1549,6 +1552,7 @@ def _apply_komga_match(series_id, series_info, client):
         'matched_title': row['komga_matched_title'],
         'komga_url': row['komga_url'],
         'komga_cover_path': row['komga_cover_path']
+        , 'matched_books': matched_books
     }
 
 
@@ -1815,6 +1819,8 @@ def komga_enrich_series(series_id):
             if matched_id:
                 series_info = client.get_series(matched_id)
                 result = _apply_komga_match(series_id, series_info, client)
+                if result.get('matched_books', 0) == 0:
+                    return jsonify({'success': False, 'error': 'Aucun tome local ne correspond aux livres de cette série Komga.', 'match_status': 'unmatched'})
                 result.update({'success': True, 'candidates': []})
                 return jsonify(result)
 
