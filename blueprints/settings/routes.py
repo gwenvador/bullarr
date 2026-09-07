@@ -282,18 +282,21 @@ def _load_verification_series_and_volumes():
         SELECT s.id, s.library_id, s.title, s.path, s.is_oneshot, s.bedetheque_url, s.komga_series_id,
                s.ebdz_thread_id, s.ebdz_matched_title, s.ebdz_match_status, s.ebdz_volumes_count,
                u.name AS universe_name
-        FROM series s
+    FROM series s
+        JOIN libraries l ON l.id = s.library_id
         LEFT JOIN universes u ON u.id = s.universe_id
         ORDER BY s.title COLLATE NOCASE
     ''')
     series_rows = cursor.fetchall()
 
     cursor.execute('''
-        SELECT id, series_id, filename, filepath, volume_number, is_integral, integral_number,
+        SELECT v.id, v.series_id, v.filename, v.filepath, v.volume_number, v.is_integral, v.integral_number,
                is_hs, hs_number, year, comicinfo, format, komga_book_id,
                validated_size, validation_valid, validation_error, resolution, release_group
-        FROM volumes
-        ORDER BY series_id, volume_number
+        FROM volumes v
+        JOIN series s ON s.id = v.series_id
+        JOIN libraries l ON l.id = s.library_id
+        ORDER BY v.series_id, v.volume_number
     ''')
     volume_rows = cursor.fetchall()
     conn.close()
