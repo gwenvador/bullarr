@@ -17,7 +17,7 @@ function escapeForAttribute(text) {
 }
 
 // ===== VÉRIFICATION DE LA BIBLIOTHÈQUE (métadonnées manquantes + nommage + fichiers
-// invalides + volumes possédés non rattachés), une catégorie à la fois =====
+// invalides + volumes possédés non rattachés + doublons), une catégorie à la fois =====
 // "au lieu d'avoir toutes les verifications lancés en meme temps. groupe par different
 // types de verification et on peut cliquer dans chacune d'une" - remplace l'ancien
 // runVerification() unique (calculait/affichait les 4 catégories d'un coup à chaque appel,
@@ -31,6 +31,7 @@ const VERIFICATION_CATEGORIES = {
     misnamed: { runBtnId: 'verifRunMisnamedBtn', render: renderMisnamed },
     invalid_files: { runBtnId: 'verifRunInvalidFilesBtn', render: renderInvalidFiles },
     unmatched_owned_volumes: { runBtnId: 'verifRunUnmatchedOwnedBtn', render: renderUnmatchedOwnedVolumes },
+    duplicate_series: { runBtnId: 'verifRunDuplicateSeriesBtn', render: renderDuplicateSeries },
 };
 
 function _updateVerificationSummary(data) {
@@ -480,6 +481,30 @@ function renderUnmatchedOwnedVolumes(data) {
     selectAllEl.disabled = false;
     document.getElementById('verifUnmatchedOwnedBulkControls').style.display = 'flex';
     verifUpdateUnmatchedOwnedSelectionCount();
+}
+
+function renderDuplicateSeries(data) {
+    const list = document.getElementById('duplicateSeriesList');
+    const items = data.duplicate_series || [];
+    document.getElementById('duplicateSeriesCount').textContent = items.length;
+    if (items.length === 0) {
+        list.innerHTML = `<p class="help-text">${svgIcon('check')} Aucun doublon de série vide détecté.</p>`;
+        return;
+    }
+    list.innerHTML = `
+        <table class="series-table series-table-compact">
+            <thead><tr><th>Fiche vide</th><th>Fiche avec fichiers</th><th>Identifiant Komga</th></tr></thead>
+            <tbody>
+                ${items.map(item => `
+                    <tr class="series-table-row">
+                        <td><a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><br><span class="help-text">${escapeHtml(item.duplicate_series_path || '')}</span></td>
+                        <td>${(item.populated_series || []).map(series => `<a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a> <span class="help-text">(${series.volume_count} tomes)<br>${escapeHtml(series.path || '')}</span>`).join('<br><br>')}</td>
+                        <td class="help-text">${escapeHtml(item.komga_series_id)}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
 }
 
 function filterVerifUnmatchedOwnedTable(query) {
@@ -1339,6 +1364,7 @@ function verifCollapseAllSections() {
         ['missing-table-container', 'matchingToggle'],
         ['invalidFilesList', 'invalidFilesToggle'],
         ['unmatchedOwnedList', 'unmatchedOwnedToggle'],
+        ['duplicateSeriesList', 'duplicateSeriesToggle'],
     ].forEach(([listId, buttonId]) => {
         const list = document.getElementById(listId);
         const button = document.getElementById(buttonId);
@@ -1372,6 +1398,7 @@ document.addEventListener('DOMContentLoaded', () => {
     runVerificationCategory('misnamed');
     runVerificationCategory('invalid_files');
     runVerificationCategory('unmatched_owned_volumes');
+    runVerificationCategory('duplicate_series');
     loadMissingMatches();
     _verifResumeLinkVolumesBatchIfRunning();
 });

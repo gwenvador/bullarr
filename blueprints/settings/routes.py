@@ -498,6 +498,55 @@ def _verify_unmatched_owned_volumes(series_rows, volumes_by_series):
     return unmatched
 
 
+def _verify_duplicate_empty_series(series_rows, volumes_by_series):
+    """Repère les fiches locales vides qui partagent un identifiant Komga.
+
+    Une fiche vide n'est signalée que lorsqu'une autre fiche portant le même
+    identifiant Komga possède des tomes. Le contrôle est volontairement
+    conservateur : il ne déduit pas un doublon à partir d'un simple titre ou
+    d'un chemin similaire.
+    """
+    by_komga_id = {}
+    for series in series_rows:
+        komga_series_id = (series['komga_series_id'] or '').strip()
+        if komga_series_id:
+            by_komga_id.setdefault(komga_series_id, []).append(series)
+
+    duplicates = []
+    for komga_series_id, matching_series in by_komga_id.items():
+        if len(matching_series) < 2:
+            continue
+        populated = [
+            series for series in matching_series
+            if volumes_by_series.get(series['id'])
+        ]
+        if not populated:
+            continue
+        kept = max(populated, key=lambda series: len(volumes_by_series[series['id']]))
+        for duplicate in matching_series:
+            if duplicate['id'] == kept['id'] or volumes_by_series.get(duplicate['id']):
+                continue
+            duplicates.append({
+                'duplicate_series_id': duplicate['id'],
+                'duplicate_series_title': duplicate['title'],
+                'duplicate_series_path': duplicate['path'],
+                'populated_series': [
+                    {
+                        'id': series['id'],
+                        'title': series['title'],
+                        'path': series['path'],
+                        'volume_count': len(volumes_by_series[series['id']]),
+                    }
+                    for series in populated
+                ],
+                'komga_series_id': komga_series_id,
+                'reason': 'Même identifiant Komga qu’une fiche locale contenant des tomes.',
+            })
+
+    duplicates.sort(key=lambda item: item['duplicate_series_title'].casefold())
+    return duplicates
+
+
 @settings_bp.route('/api/settings/verification', methods=['GET'])
 def run_verification():
     """Scanne toute la bibliothèque pour repérer les tomes/séries à métadonnées
@@ -510,12 +559,12 @@ def run_verification():
 
     "au lieu d'avoir toutes les verifications lancés en meme temps. groupe par different
     types de verification et on peut cliquer dans chacune d'une" - ?type=<...> permet de
-    ne (re)calculer qu'UNE des 4 catégories (voir _verify_* ci-dessus) plutôt que les 4 à
+    ne (re)calculer qu'UNE des 5 catégories (voir _verify_* ci-dessus) plutôt que les 5 à
     chaque appel, notamment invalid_files, la plus lente (I/O disque + décompression) - un
     clic sur "métadonnées manquantes" n'a plus à l'attendre. Sans ?type (compatibilité
-    d'éventuels autres appelants), les 4 sont calculées et renvoyées comme avant."""
+    d'éventuels autres appelants), les 5 sont calculées et renvoyées comme avant."""
     verif_type = request.args.get('type')
-    valid_types = {'missing_metadata', 'misnamed', 'invalid_files', 'unmatched_owned_volumes'}
+    valid_types = {'missing_metadata', 'misnamed', 'invalid_files', 'unmatched_owned_volumes', 'duplicate_series'}
     if verif_type is not None and verif_type not in valid_types:
         return jsonify({'error': f"type invalide, attendu l'un de {sorted(valid_types)}"}), 400
 
@@ -537,5 +586,7 @@ def run_verification():
         result['komga_configured'] = komga_configured
     if verif_type in (None, 'unmatched_owned_volumes'):
         result['unmatched_owned_volumes'] = _verify_unmatched_owned_volumes(series_rows, volumes_by_series)
+    if verif_type in (None, 'duplicate_series'):
+        result['duplicate_series'] = _verify_duplicate_empty_series(series_rows, volumes_by_series)
 
     return jsonify(result)
