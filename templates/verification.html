@@ -172,11 +172,11 @@
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
                                     <button type="button" class="verif-section-toggle" id="duplicateSeriesToggle" onclick="verifToggleSection('duplicateSeriesList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
-                                    <span>♻️ Séries en doublon — fiche vide (<span id="duplicateSeriesCount">—</span>)</span>
+                                    <span>♻️ Séries en doublon (<span id="duplicateSeriesCount">—</span>)</span>
                                 </h3>
                                 <div style="display:flex; gap:8px;"><button class="btn btn-sm" id="verifRunDuplicateSeriesBtn" onclick="runVerificationCategory('duplicate_series')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button><button class="btn btn-sm btn-icon-danger" id="verifCleanupDuplicateSeriesBtn" onclick="cleanupDuplicateSeries()" disabled>Nettoyer (<span id="verifCleanupDuplicateSeriesCount">0</span>)</button></div>
                             </div>
-                            <p class="help-text" style="margin:0 0 8px;">Compare les identifiants Komga et signale uniquement une fiche locale vide lorsqu’une autre fiche correspondante contient des fichiers. Rien n’est supprimé automatiquement.</p>
+                            <p class="help-text" style="margin:0 0 8px;">Compare les identifiants Komga et signale les fiches vides correspondantes ou les fiches qui référencent exactement les mêmes fichiers. Le nettoyage ne concerne que les fiches vides.</p>
                             <div id="duplicateSeriesList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
                         </div>
                     </div>

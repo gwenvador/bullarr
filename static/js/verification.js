@@ -488,19 +488,20 @@ function renderDuplicateSeries(data) {
     const items = data.duplicate_series || [];
     document.getElementById('duplicateSeriesCount').textContent = items.length;
     const cleanupBtn = document.getElementById('verifCleanupDuplicateSeriesBtn');
-    document.getElementById('verifCleanupDuplicateSeriesCount').textContent = items.length;
-    cleanupBtn.disabled = items.length === 0;
+    const cleanupItems = items.filter(item => item.cleanup_eligible);
+    document.getElementById('verifCleanupDuplicateSeriesCount').textContent = cleanupItems.length;
+    cleanupBtn.disabled = cleanupItems.length === 0;
     if (items.length === 0) {
         list.innerHTML = `<p class="help-text">${svgIcon('check')} Aucun doublon de série vide détecté.</p>`;
         return;
     }
     list.innerHTML = `
         <table class="series-table series-table-compact duplicate-series-table">
-            <thead><tr><th>Fiche vide</th><th>Fiche avec fichiers</th><th>Identifiant Komga</th></tr></thead>
+            <thead><tr><th>Série en doublon</th><th>Correspondance</th><th>Identifiant Komga</th></tr></thead>
             <tbody>
                 ${items.map(item => `
                     <tr class="series-table-row">
-                        <td><div class="duplicate-series-entry"><a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
+                        <td><div class="duplicate-series-entry"><a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-meta">${item.cleanup_eligible ? 'Fiche vide' : 'Fiche avec fichiers'}</span><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
                         <td>${(item.populated_series || []).map(series => `<div class="duplicate-series-entry"><a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a><span class="help-text duplicate-series-meta">${series.volume_count} tomes</span><span class="help-text duplicate-series-path">${escapeHtml(series.path || '')}</span></div>`).join('')}</td>
                         <td><span class="help-text">${escapeHtml(item.komga_series_id)}</span></td>
                     </tr>

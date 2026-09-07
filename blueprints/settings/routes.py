@@ -505,9 +505,9 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
     """Repère les fiches locales vides qui partagent un identifiant Komga.
 
     Une fiche vide n'est signalée que lorsqu'une autre fiche portant le même
-    identifiant Komga possède des tomes. Le contrôle est volontairement
-    conservateur : il ne déduit pas un doublon à partir d'un simple titre ou
-    d'un chemin similaire.
+    identifiant Komga possède des tomes. Deux fiches alimentées sont également
+    signalées si elles référencent exactement les mêmes chemins de fichiers.
+    Le contrôle ne déduit pas un doublon à partir d'un simple titre similaire.
     """
     by_komga_id = {}
     for series in series_rows:
@@ -533,6 +533,7 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                 'duplicate_series_id': duplicate['id'],
                 'duplicate_series_title': duplicate['title'],
                 'duplicate_series_path': duplicate['path'],
+                'cleanup_eligible': True,
                 'populated_series': [
                     {
                         'id': series['id'],
@@ -545,6 +546,36 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                 'komga_series_id': komga_series_id,
                 'reason': 'Même identifiant Komga qu’une fiche locale contenant des tomes.',
             })
+
+        populated_by_paths = {}
+        for series in populated:
+            file_paths = tuple(sorted(
+                v['filepath'] for v in volumes_by_series[series['id']] if v['filepath']
+            ))
+            if file_paths:
+                populated_by_paths.setdefault(file_paths, []).append(series)
+        for file_paths, same_file_series in populated_by_paths.items():
+            if len(same_file_series) < 2:
+                continue
+            first = same_file_series[0]
+            for duplicate in same_file_series[1:]:
+                duplicates.append({
+                    'duplicate_series_id': duplicate['id'],
+                    'duplicate_series_title': duplicate['title'],
+                    'duplicate_series_path': duplicate['path'],
+                    'cleanup_eligible': False,
+                    'populated_series': [
+                        {
+                            'id': series['id'],
+                            'title': series['title'],
+                            'path': series['path'],
+                            'volume_count': len(volumes_by_series[series['id']]),
+                        }
+                        for series in (first, duplicate)
+                    ],
+                    'komga_series_id': komga_series_id,
+                    'reason': 'Même identifiant Komga et exactement les mêmes fichiers référencés.',
+                })
 
     duplicates.sort(key=lambda item: item['duplicate_series_title'].casefold())
     return duplicates
