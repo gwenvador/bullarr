@@ -968,6 +968,7 @@ def get_series_missing_matches():
                 'title': row['title'],
                 'library_id': row['library_id'],
                 'bedetheque_matched': bool(row['bedetheque_url']),
+                'bedetheque_url': row['bedetheque_url'],
                 'ebdz_matched': row['ebdz_match_status'] == 'matched',
                 'ebdz_thread_url': row['ebdz_thread_url'],
                 'komga_matched': bool(row['komga_series_id']),
