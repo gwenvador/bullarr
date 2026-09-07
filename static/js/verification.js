@@ -484,6 +484,8 @@ function renderUnmatchedOwnedVolumes(data) {
     verifUpdateUnmatchedOwnedSelectionCount();
 }
 
+const verificationKomgaManualSeriesIds = new Set();
+
 function renderUnmatchedOwnedKomga(data) {
     const card = document.getElementById('verificationUnmatchedOwnedKomgaCard');
     const list = document.getElementById('unmatchedOwnedKomgaList');
@@ -509,6 +511,7 @@ function renderUnmatchedOwnedKomga(data) {
         bySeries.get(item.series_id).items.push(item);
     });
     list.innerHTML = Array.from(bySeries.entries()).map(([seriesId, series], index) => `
+        <div class="verification-series-group">
         <details class="verification-series-collapse" ${index === 0 ? 'open' : ''}>
             <summary>
                 <span class="verification-series-collapse-title">
@@ -517,10 +520,6 @@ function renderUnmatchedOwnedKomga(data) {
                     <span class="verification-series-collapse-count">${series.items.length} ${pluralize(series.items.length, 'fichier')}</span>
                 </span>
             </summary>
-            <div class="verification-series-actions">
-                <button class="btn btn-sm verif-komga-manual-match" type="button" style="display:none;" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}')">${svgIcon('search')} Matcher manuellement</button>
-                <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this)">${svgIcon('refresh-cw')} Réparer</button>
-            </div>
             <table class="series-table series-table-compact unmatched-owned-komga-table">
                 <thead><tr><th>Fichier</th></tr></thead>
                 <tbody>${series.items.map(item => `
@@ -532,7 +531,12 @@ function renderUnmatchedOwnedKomga(data) {
             <div class="verification-series-actions">
                 <button class="btn btn-sm" type="button" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}')">${svgIcon('search')} Matcher manuellement</button>
             </div>
-        </details>`).join('');
+        </details>
+        <div class="verification-series-actions">
+            <button class="btn btn-sm verif-komga-manual-match" type="button" style="display:${verificationKomgaManualSeriesIds.has(Number(seriesId)) ? 'inline-flex' : 'none'};" onclick="openVerificationKomgaMatcher(${seriesId}, '${escapeForAttribute(series.title)}')">${svgIcon('search')} Matcher manuellement</button>
+            <button class="btn btn-sm" type="button" onclick="repairUnmatchedKomgaSeries(${seriesId}, this)">${svgIcon('refresh-cw')} Réparer</button>
+        </div>
+        </div>`).join('');
 }
 
 function verifToggleKomgaSeries(checkboxEl) {
@@ -645,23 +649,25 @@ async function selectVerificationKomgaCandidate(seriesId, komgaSeriesId) {
 
 async function repairUnmatchedKomgaSeries(seriesId, button) {
     const originalHtml = button.innerHTML;
-    const manualButton = button.closest('details').querySelector('.verif-komga-manual-match');
     button.disabled = true;
     button.innerHTML = `<span class="btn-icon">${svgIcon('loader-circle', 'icon-spin')}</span>`;
     try {
         const response = await fetch(`/api/series/${seriesId}/komga-enrich`, { method: 'POST' });
         const data = await response.json();
         if (!data.success) {
-            if (manualButton) manualButton.style.display = 'inline-flex';
+            verificationKomgaManualSeriesIds.add(Number(seriesId));
             alert('❌ ' + (data.error || 'Impossible de réparer le lien Komga'));
             return;
         }
         if (data.match_status === 'unmatched') {
-            if (manualButton) manualButton.style.display = 'inline-flex';
+            verificationKomgaManualSeriesIds.add(Number(seriesId));
             alert('⚠️ Aucun match Komga unique trouvé pour cette série.');
+        } else {
+            verificationKomgaManualSeriesIds.delete(Number(seriesId));
         }
         await runVerificationCategory('unmatched_owned_komga');
     } catch (error) {
+        verificationKomgaManualSeriesIds.add(Number(seriesId));
         alert('❌ Erreur pendant la réparation Komga');
     } finally {
         button.disabled = false;
