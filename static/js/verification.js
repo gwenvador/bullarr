@@ -467,7 +467,7 @@ function renderUnmatchedOwnedVolumes(data) {
                     <tr class="series-table-row" id="verif-unmatched-owned-${item.volume_id}">
                         <td class="volume-table-select-cell"><input type="checkbox" class="verif-unmatched-owned-select" data-series-id="${item.series_id}" data-volume-id="${item.volume_id}" data-title="${escapeHtml(item.series_title)}" aria-label="Sélectionner ${escapeHtml(item.series_title)}" onchange="verifUpdateUnmatchedOwnedSelectionCount()"></td>
                         <td><a href="/series/${item.series_id}" class="missing-series-link">${escapeHtml(item.series_title)}</a></td>
-                        <td class="help-text">${escapeHtml(item.filename)}</td>
+                        <td><span class="help-text">${escapeHtml(item.filename)}</span></td>
                         <td><button class="btn-icon-only" onclick="verifLinkVolume(${item.volume_id}, ${item.series_id}, '${escapeForAttribute(item.series_title)}', this)" data-tooltip="Rattacher à son album Bédéthèque" aria-label="Rattacher à son album Bédéthèque">${svgIcon('link')}</button></td>
                     </tr>
                 `).join('')}
@@ -502,7 +502,7 @@ function renderDuplicateSeries(data) {
                     <tr class="series-table-row">
                         <td><div class="duplicate-series-entry"><a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
                         <td>${(item.populated_series || []).map(series => `<div class="duplicate-series-entry"><a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a><span class="help-text duplicate-series-meta">${series.volume_count} tomes</span><span class="help-text duplicate-series-path">${escapeHtml(series.path || '')}</span></div>`).join('')}</td>
-                        <td class="help-text">${escapeHtml(item.komga_series_id)}</td>
+                        <td><span class="help-text">${escapeHtml(item.komga_series_id)}</span></td>
                     </tr>
                 `).join('')}
             </tbody>
