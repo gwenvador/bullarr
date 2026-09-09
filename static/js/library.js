@@ -4863,7 +4863,8 @@ function buildEbdzStatusHtml({ seriesId, context, ownedCount, ebdzCount, missing
     // existe): le rafraîchissement du matching se fait ici, dans les actions au survol
     const rematchHtml = `
         <span class="toolbar-status-actions">
-            <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Recomparer avec EBDZ">${svgIcon('refresh-cw')}</button>
+            <button class="btn" onclick="rescrapeEbdzThread(${seriesId}, this)" style="padding: 4px 8px; font-size: 0.75em;" title="Rescraper ce thread EBDZ">${svgIcon('download')}</button>
+            <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Recomparer avec le cache EBDZ">${svgIcon('refresh-cw')}</button>
             <button class="btn" onclick="openEbdzMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Changer le match EBDZ">${svgIcon('pencil')}</button>
             <button class="btn" onclick="unmatchEbdzSeries(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #ef4444;" title="Retirer le match EBDZ">${svgIcon('ban')}</button>
         </span>
