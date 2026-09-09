@@ -4139,7 +4139,9 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
         # Chaque raison complète maintenant directement la phrase du préfixe, sans se
         # répéter elle-même.
         'auto_import_skip_reason': (
-            "assignation faite à la main - cliquez sur « Importer » pour valider"
+            f"mauvaise série détectée : « {parsed.get('title') or 'titre inconnu'} » au lieu de « {file_destination.get('series_title')} » — choisissez la bonne série avant d’importer"
+            if file_destination and not _pack_file_matches_destination(parsed, file_destination)
+            else "assignation faite à la main - cliquez sur « Importer » pour valider"
             if filepath in manual_override_filepaths
             else _repeated_failure_skip_reason(filepath)
             or ("désactivé dans les paramètres" if not import_config.get('auto_import_enabled', False) else None)
