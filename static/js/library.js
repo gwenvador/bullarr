@@ -5982,6 +5982,7 @@ function renderManualEditModal(data, focusVolumeId) {
             <button class="btn-neutral-sm" onclick="closeManualEditModal(); openEbdzMatchModal(${data.id}, 'modal', ${editReturnCtx})">
                 <img src="/static/img/ebdz-logo.png" alt="" style="width:14px;height:14px;">EBDZ ${data.ebdz.thread_url ? '✅' : '❌'}
             </button>
+            ${data.ebdz.thread_url ? `<button class="btn-neutral-sm" onclick="rescrapeEbdzThread(${data.id}, this)" title="Relit ce thread EBDZ et met à jour ses liens"><img src="/static/img/ebdz-logo.png" alt="" style="width:14px;height:14px;">Rescraper</button>` : ''}
             <button class="btn-neutral-sm" onclick="closeManualEditModal(); openKomgaMatchModal(${data.id}, 'modal', ${editReturnCtx})">
                 <img src="/static/img/komga-logo.svg" alt="" style="width:14px;height:14px;">Komga ${data.komga.url ? '✅' : '❌'}
             </button>
@@ -6352,6 +6353,21 @@ async function deleteVolume(volumeId, seriesId, label, isPlaceholder = false) {
         }, 500);
     } catch (error) {
         alert('❌ Erreur de connexion: ' + error.message);
+    }
+}
+
+
+async function rescrapeEbdzThread(seriesId, button) {
+    const original = button.innerHTML;
+    button.disabled = true; button.textContent = '⏳ Rescrape…';
+    try {
+        const response = await fetch(`/api/series/${seriesId}/ebdz-rescrape`, {method: 'POST'});
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Erreur inconnue');
+        button.textContent = `✓ ${data.links_inserted || 0} lien ajouté`;
+        await renderSeriesDetail(seriesId);
+    } catch (error) {
+        button.innerHTML = original; button.disabled = false; alert('❌ ' + error.message);
     }
 }
 
