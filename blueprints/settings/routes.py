@@ -371,9 +371,14 @@ def _verify_missing_metadata(series_rows, volumes_by_series):
 
 
 def _verify_misnamed(series_rows, volumes_by_series):
-    """Fichiers/dossiers dont le nom ne correspond pas au format configuré (voir
-    rename_handler.FileRenamer)."""
-    from rename_handler import FileRenamer, render_series_folder_name
+    """Fichiers dont le nom ne correspond pas au format configuré.
+
+    This verification endpoint is deliberately read-only: it may suggest a
+    per-file rename, but it must never expose a series-folder rename. Moving a
+    series directory relocates every contained file and is an explicit action
+    outside the verification workflow.
+    """
+    from rename_handler import FileRenamer
 
     rename_cfg = load_rename_config()
     misnamed = []
@@ -410,23 +415,6 @@ def _verify_misnamed(series_rows, volumes_by_series):
                         })
             except Exception:
                 pass
-
-        if s['path']:
-            # render_series_folder_name peut rendre un chemin à plusieurs segments quand
-            # le format utilise <univers> (ex: "Nordheim/Dans Les Forêts De Bambous", voir
-            # _rename_series_folder côté library/routes.py qui gère réellement ce niveau
-            # de dossier supplémentaire) - seul le DERNIER segment (le nom du dossier de
-            # la série elle-même) est comparé ici : ce diagnostic ne vérifie donc que le
-            # nom du dossier, pas son EMPLACEMENT sous le bon dossier d'univers.
-            expected_folder = render_series_folder_name(s['title'], rename_cfg['series_template'], s['universe_name'])
-            expected_folder = expected_folder.rsplit('/', 1)[-1] if expected_folder else expected_folder
-            current_folder = os.path.basename(s['path'].rstrip('/'))
-            if expected_folder and current_folder != expected_folder:
-                misnamed.append({
-                    'is_folder': True, 'series_id': s['id'], 'series_title': s['title'],
-                    'volume_id': None,
-                    'current_name': current_folder, 'expected_name': expected_folder,
-                })
 
     return misnamed
 
