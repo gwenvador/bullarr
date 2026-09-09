@@ -4041,6 +4041,15 @@ def _download_folder_identities(download, torrent_names_by_hash):
     return list(identities)
 
 
+def _pack_file_matches_destination(parsed, destination):
+    """Only auto-import a pack member when its parsed series is exact."""
+    parsed_title = (parsed or {}).get('title')
+    series_title = (destination or {}).get('series_title')
+    if not parsed_title or not series_title:
+        return False
+    return _normalize_title_for_match(parsed_title) == _normalize_title_for_match(series_title)
+
+
 def _append_scanned_file(filepath, import_root, filename, destination, scanner, telegram_filenames,
                           manual_override_filepaths, import_config, files_found, pack_download_id=None,
                           validate_file=True):
