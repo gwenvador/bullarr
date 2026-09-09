@@ -1214,6 +1214,32 @@ def _ebdz_enrich_series(series_id):
     }
 
 
+@library_bp.route('/api/series/<int:series_id>/ebdz-rescrape', methods=['POST'])
+def rescrape_series_ebdz_thread(series_id):
+    """Refresh only the EBDZ thread explicitly matched to this series."""
+    try:
+        conn = get_db_connection()
+        row = conn.execute("SELECT ebdz_thread_id, ebdz_thread_url, ebdz_matched_title FROM series WHERE id = ?", (series_id,)).fetchone()
+        conn.close()
+        if not row:
+            return jsonify({'success': False, 'error': 'Série introuvable'}), 404
+        if not row['ebdz_thread_id'] or not row['ebdz_thread_url']:
+            return jsonify({'success': False, 'error': 'Aucun thread EBDZ n’est associé à cette série'}), 400
+        from blueprints.ebdz.routes import load_ebdz_config
+        from blueprints.ebdz.scraper import MyBBScraper
+        config = load_ebdz_config()
+        scraper = MyBBScraper('https://ebdz.net/forum/forumdisplay.php?fid=23', current_app.config['DB_FILE'], config.get('username', ''), config.get('password_decrypted', ''), 'Bande Dessinées')
+        if not scraper.login():
+            return jsonify({'success': False, 'error': 'Connexion EBDZ impossible'}), 502
+        links = scraper.scrape_thread(row['ebdz_thread_url'], row['ebdz_matched_title'] or '')
+        inserted = scraper.save_to_db(links) or 0
+        result = _ebdz_enrich_series(series_id)
+        return jsonify({'success': True, 'links_found': len(links), 'links_inserted': inserted, **result})
+    except Exception as e:
+        current_app.logger.exception('EBDZ thread refresh failed for series #%s', series_id)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @library_bp.route('/api/series/<int:series_id>/ebdz-enrich', methods=['POST'])
 def enrich_series_ebdz(series_id):
     """Compare les volumes possédés d'une série au nombre d'entrées uniques trouvées sur EBDZ
