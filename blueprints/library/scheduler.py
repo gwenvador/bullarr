@@ -385,10 +385,12 @@ class LibraryImportScheduler:
                                 # Repli par nom de torrent (voir même ordre côté
                                 # scan_import_directory) avant le repli le plus faible par
                                 # nom de dossier/fichier reparsé.
+                                matched_by_torrent_container = False
                                 if not destination and folder_name:
                                     destination = routes.find_active_download_destination_by_torrent_name(
                                         folder_name, trackable_downloads, torrent_names_by_hash
                                     )
+                                    matched_by_torrent_container = bool(destination)
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None
                                 # Repli supplémentaire par dossier RACINE (voir root_folder_name
@@ -400,6 +402,7 @@ class LibraryImportScheduler:
                                     destination = routes.find_active_download_destination_by_torrent_name(
                                         root_folder_name, trackable_downloads, torrent_names_by_hash
                                     )
+                                    matched_by_torrent_container = bool(destination)
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None
                                 if not destination:
@@ -408,6 +411,10 @@ class LibraryImportScheduler:
                                     )
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None
+                                if matched_by_torrent_container and destination and not routes._pack_file_matches_destination(parsed, destination):
+                                    from .import_history import mark_import_file_manual
+                                    mark_import_file_manual(filepath)
+                                    destination = None
                                 # Sécurité : l’auto-import ne devine jamais une série à
                                 # partir d’un titre ou d’un dossier local. Seuls les fichiers
                                 # rattachés à un téléchargement suivi (nom de fichier ou nom
