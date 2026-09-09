@@ -1430,30 +1430,9 @@ def _align_title_and_start_metadata_write(series_id, series_title, info, write_v
 
     conn.commit()
 
-    if bd_title:
-        try:
-            from blueprints.library.routes import _fetch_series_for_rename, _rename_series_folder, _log_rename_action
-            from blueprints.settings.rename_config_store import load_rename_config
-            series_for_rename = _fetch_series_for_rename(cursor, series_id)
-            if series_for_rename and series_for_rename['path']:
-                rename_cfg = load_rename_config()
-                folder_result = _rename_series_folder(
-                    conn, series_id, series_for_rename['path'], bd_title,
-                    series_for_rename['library_path'], {}, rename_cfg['series_template'],
-                    universe_name=series_for_rename['universe_name']
-                )
-                if folder_result and folder_result.get('success') and folder_result.get('changed'):
-                    _log_rename_action(series_id, bd_title, [], folder_result)
-                    # Mutation disque hors des chemins qui déclenchent déjà leur propre
-                    # rescan Komga plus loin (voir CLAUDE.md, tout chemin qui touche au
-                    # système de fichiers doit le faire) - pas conditionné à write_volumes,
-                    # ce déplacement a lieu même en scope "série uniquement".
-                    from blueprints.komga.client import trigger_scan_async
-                    trigger_scan_async()
-                elif not (folder_result and folder_result.get('success')):
-                    logger.warning(f"Renommage automatique du dossier échoué pour la série #{series_id}: {folder_result}")
-        except Exception as e:
-            logger.warning(f"Renommage automatique du dossier échoué pour la série #{series_id}: {e}")
+    # A Bédéthèque refresh may update reference metadata and the display title, but
+    # it must never move a series directory. Folder relocation is an explicit
+    # rename action because it moves every file below that directory.
 
     conn.close()
 

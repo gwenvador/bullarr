@@ -2805,7 +2805,6 @@ def update_series_manual_metadata(series_id):
             cursor.execute(f"UPDATE series SET {', '.join(updates)} WHERE id = ?", params)
             conn.commit()
 
-        folder_result = None
         if 'universe_id' in data:
             raw_universe_id = data.get('universe_id')
             universe_id = int(raw_universe_id) if raw_universe_id not in (None, '') else None
@@ -2817,41 +2816,9 @@ def update_series_manual_metadata(series_id):
                 conn.close()
                 return jsonify({'success': False, 'error': str(e)}), 400
 
-            # "assigner un univers via _set_series_universe devrait déplacer les
-            # fichiers. Pourquoi c'est pas?" - INCOHÉRENCE CORRIGÉE (2026-09-03):
-            # _set_series_universe() ne fait QUE poser series.universe_id, jamais de
-            # déplacement disque - alors que le matching Bédéthèque
-            # (_align_title_and_start_metadata_write, blueprints/bedetheque/routes.py)
-            # DÉPLACE bien automatiquement le dossier vers <univers>/<série> à chaque
-            # changement d'univers, via le même _rename_series_folder que le bouton
-            # "Renommer la série". Deux points d'entrée qui posent universe_id, un
-            # seul qui en tirait les conséquences sur le disque - repris ici à
-            # l'identique (même fonction, même signature, même best-effort: un
-            # renommage échoué ne fait jamais échouer l'assignation d'univers déjà
-            # commitée juste au-dessus).
-            try:
-                from blueprints.library.routes import _fetch_series_for_rename, _rename_series_folder, _log_rename_action
-                from blueprints.settings.rename_config_store import load_rename_config
-                series_for_rename = _fetch_series_for_rename(cursor, series_id)
-                if series_for_rename and series_for_rename['path']:
-                    rename_cfg = load_rename_config()
-                    folder_result = _rename_series_folder(
-                        conn, series_id, series_for_rename['path'], series_for_rename['title'],
-                        series_for_rename['library_path'], {}, rename_cfg['series_template'],
-                        universe_name=series_for_rename['universe_name']
-                    )
-                    if folder_result and folder_result.get('success') and folder_result.get('changed'):
-                        _log_rename_action(series_id, series_for_rename['title'], [], folder_result)
-                    elif not (folder_result and folder_result.get('success')):
-                        current_app.logger.warning(
-                            f"Renommage automatique du dossier échoué pour la série #{series_id} "
-                            f"après changement d'univers: {folder_result}"
-                        )
-            except Exception as e:
-                current_app.logger.warning(
-                    f"Renommage automatique du dossier échoué pour la série #{series_id} "
-                    f"après changement d'univers: {e}"
-                )
+            # Assigning metadata is deliberately database-only. A series-folder move
+            # is destructive at directory scope and must be requested through the
+            # dedicated rename action, never as a side effect of an edit.
 
         conn.close()
 
