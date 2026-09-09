@@ -459,11 +459,12 @@ class LibraryScanner:
         # classification here (that remains metadata-driven at import time); it only
         # delimits the album title from release metadata. Keeping its preceding title
         # number is essential for names such as `Corse, Été 42_OS_Author_2015`.
-        os_suffix = re.search(r'_(\d{1,3})_OS(?:_|$)', name_without_ext, re.IGNORECASE)
-        os_album_title_number = int(os_suffix.group(1)) if os_suffix else None
+        os_suffix = re.search(r'_OS(?:_|$)', name_without_ext, re.IGNORECASE)
+        is_os_album = os_suffix is not None
         if os_suffix:
-            # Keep the number as title text; remove only the `_OS_…` release suffix.
-            name_without_ext = name_without_ext[:os_suffix.start() + len(os_suffix.group(1)) + 1]
+            # OS makes this a one-shot album: never parse any text in its filename
+            # as a volume. Retain everything before the suffix as the album title.
+            name_without_ext = name_without_ext[:os_suffix.start()]
 
         # Retirer un préfixe de source/langue de type "BD.FR", "BD FR", "BD-FR" en tête du
         # nom de fichier (convention de scan de bandes dessinées, ex: "BD.FR.-.Titre...")
@@ -489,8 +490,6 @@ class LibraryScanner:
         # AVANT la normalisation: Extraire les résolutions depuis les crochets
         # Patterns: [Digital-XXX], [XXX] où XXX >= 300, etc.
         excluded_numbers = set()  # Nombres à exclure de la détection de volume (résolutions)
-        if os_album_title_number is not None:
-            excluded_numbers.add(os_album_title_number)
 
         # Pattern 1: tag de résolution/format de scan entre crochets OU parenthèses, avec
         # un suffixe "px" explicite (ex: "[Digital-2511px]", "(UpScale 3420px)",
@@ -745,13 +744,15 @@ class LibraryScanner:
         # Si on a une partie, chercher d'abord un volume explicite APRÈS la partie
         used_underscore_volume = False
         used_leading_number_volume = False
-        if info['part_number'] and not info['is_integral'] and not info['is_hs'] and not info['is_episode']:
+        if (not is_os_album and info['part_number'] and not info['is_integral']
+                and not info['is_hs'] and not info['is_episode']):
             after_part = re.search(r'(?:Part|Arc|Partie)\s+\d+(?:\s*-\s*[^T-]*?)?\s*-?\s*T[\s\.]?(\d+)', normalized_name, re.IGNORECASE)
             if after_part:
                 info['volume'] = int(after_part.group(1))
 
         # Si pas encore trouvé de volume, utiliser les patterns standard
-        if not info['volume'] and not generic_integrale_pack and not info['is_integral'] and not info['is_hs'] and not info['is_episode']:
+        if (not is_os_album and not info['volume'] and not generic_integrale_pack
+                and not info['is_integral'] and not info['is_hs'] and not info['is_episode']):
             volume_patterns = [
                 r'#(\d+)',                        # #4 — tag explicite et prioritaire: certains titres
                                                    # contiennent aussi un numéro de tome/partie interne à
@@ -835,7 +836,11 @@ class LibraryScanner:
                     used_leading_number_volume = True
 
         # Extraire le titre (avant Part/Arc ou avant le numéro de tome)
-        if info['part_number']:
+        # An OS album never has a parsed volume, so numbers such as `T02` remain
+        # title text rather than acting as title delimiters.
+        if is_os_album:
+            title_match = None
+        elif info['part_number']:
             title_match = re.match(r'^(.+?)\s+(?:Part|Arc|Partie)\s*\d+', normalized_name, re.IGNORECASE)
         else:
             # Essayer progressivement différents patterns pour extraire le titre
