@@ -411,7 +411,11 @@ class LibraryImportScheduler:
                                     )
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None
-                                if matched_by_torrent_container and destination and not routes._pack_file_matches_destination(parsed, destination):
+                                # Every auto-import, regardless of client or whether it was
+                                # found by a direct filename or a torrent-folder fallback, must
+                                # prove that its parsed series title is the tracked series. A
+                                # download association establishes provenance, never identity.
+                                if destination and not routes._pack_file_matches_destination(parsed, destination):
                                     from .import_history import mark_import_file_manual
                                     mark_import_file_manual(filepath)
                                     destination = None
