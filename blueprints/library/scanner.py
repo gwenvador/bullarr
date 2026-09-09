@@ -455,6 +455,16 @@ class LibraryScanner:
         # Retirer l'extension pour faciliter le parsing
         name_without_ext = os.path.splitext(filename)[0]
 
+        # `_OS_` is a release suffix for a one-shot album. It is not a series
+        # classification here (that remains metadata-driven at import time); it only
+        # delimits the album title from release metadata. Keeping its preceding title
+        # number is essential for names such as `Corse, Été 42_OS_Author_2015`.
+        os_suffix = re.search(r'_(\d{1,3})_OS(?:_|$)', name_without_ext, re.IGNORECASE)
+        os_album_title_number = int(os_suffix.group(1)) if os_suffix else None
+        if os_suffix:
+            # Keep the number as title text; remove only the `_OS_…` release suffix.
+            name_without_ext = name_without_ext[:os_suffix.start() + len(os_suffix.group(1)) + 1]
+
         # Retirer un préfixe de source/langue de type "BD.FR", "BD FR", "BD-FR" en tête du
         # nom de fichier (convention de scan de bandes dessinées, ex: "BD.FR.-.Titre...")
         # - éventuellement entre crochets ("[BD.Fr].Titre...", constaté sur un one-shot
@@ -479,6 +489,8 @@ class LibraryScanner:
         # AVANT la normalisation: Extraire les résolutions depuis les crochets
         # Patterns: [Digital-XXX], [XXX] où XXX >= 300, etc.
         excluded_numbers = set()  # Nombres à exclure de la détection de volume (résolutions)
+        if os_album_title_number is not None:
+            excluded_numbers.add(os_album_title_number)
 
         # Pattern 1: tag de résolution/format de scan entre crochets OU parenthèses, avec
         # un suffixe "px" explicite (ex: "[Digital-2511px]", "(UpScale 3420px)",
@@ -587,7 +599,12 @@ class LibraryScanner:
         # contrairement à cette convention de nommage. Constaté sur "Atalante_La_Légende_
         # 06_Le_labyrinthe_d'Hades_Crisse@9_art_BD.cbr" (volume jamais détecté sans ça) -
         # utilisé plus bas seulement si aucun pattern normal n'a rien trouvé.
-        underscore_volume_match = re.search(r'_(\d{1,3})_', name_without_ext)
+        # `_NN_OS_` is an OS-album release suffix, not a volume marker.  Preserve
+        # NN as part of the album title (e.g. `Corse, Été 42_OS_...`) while
+        # keeping the ordinary `_NN_subtitle` convention as a volume fallback.
+        underscore_volume_match = re.search(
+            r'_(\d{1,3})_(?!OS(?:_|$))', name_without_ext, re.IGNORECASE
+        )
 
         leading_number_match = re.match(r'^(\d{1,3})\s+([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜŸÇ])', name_without_ext)
 
