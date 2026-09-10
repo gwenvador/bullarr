@@ -1567,6 +1567,9 @@ class BedethequeDatabase:
 
         try:
             conn = sqlite3.connect(self.db_path, timeout=30.0)
+            # The shared folder-reconciliation helper reads named columns; keep
+            # positional access valid too (sqlite3.Row supports both styles).
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
             if series_url:
@@ -1583,6 +1586,13 @@ class BedethequeDatabase:
                 # ancien universe_id (jamais remis à NULL avant ce correctif).
                 cursor.execute('UPDATE series SET universe_id = NULL WHERE id = ?', (series_id,))
                 conn.commit()
+                try:
+                    from blueprints.library.routes import _move_series_folder_for_universe
+                    result = _move_series_folder_for_universe(conn, series_id)
+                    if not result.get('success'):
+                        logger.warning(f"Déplacement après retrait d'univers échoué pour série #{series_id}: {result}")
+                except Exception as exc:
+                    logger.warning(f"Déplacement après retrait d'univers échoué pour série #{series_id}: {exc}")
                 conn.close()
                 return
 
@@ -1625,6 +1635,20 @@ class BedethequeDatabase:
                     cursor.execute('UPDATE series SET universe_id = ? WHERE id = ?', (universe_id, matched_series_id))
 
             conn.commit()
+            # Universe detection can occur after a series has already been created at
+            # the library root. Reconcile its persisted folder immediately so creation,
+            # manual assignment and later Bédéthèque enrichment share one layout rule.
+            try:
+                from blueprints.library.routes import _move_series_folder_for_universe
+                for matched_series_id in {row[2] for row in cursor.execute(
+                    'SELECT universe_id, bedetheque_url, series_id FROM universe_series WHERE universe_id = ?',
+                    (universe_id,)
+                ) if row[2]}:
+                    result = _move_series_folder_for_universe(conn, matched_series_id)
+                    if not result.get('success'):
+                        logger.warning(f"Déplacement après synchronisation univers échoué pour série #{matched_series_id}: {result}")
+            except Exception as exc:
+                logger.warning(f"Déplacement après synchronisation univers échoué: {exc}")
             conn.close()
         except Exception as e:
             logger.warning(f"Erreur synchronisation univers pour série #{series_id}: {e}")

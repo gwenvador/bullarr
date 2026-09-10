@@ -2581,6 +2581,29 @@ def _set_series_universe(conn, series_id, universe_id):
         ''', (universe_id, bedetheque_url, title, series_id))
 
 
+def _move_series_folder_for_universe(conn, series_id):
+    """Apply the configured universe-aware folder layout to one existing series.
+
+    This is the sole filesystem consequence of changing ``series.universe_id``.
+    Imports remain copy-only; this helper is invoked only after an explicit or
+    Bédéthèque-derived universe assignment has committed to the database.
+    """
+    from blueprints.settings.rename_config_store import load_rename_config
+
+    cursor = conn.cursor()
+    series = _fetch_series_for_rename(cursor, series_id)
+    if not series or not series['path']:
+        return {'success': True, 'changed': False}
+    config = load_rename_config()
+    result = _rename_series_folder(
+        conn, series_id, series['path'], series['title'], series['library_path'], {},
+        config['series_template'], universe_name=series['universe_name'],
+    )
+    if result.get('success') and result.get('changed'):
+        _log_rename_action(series_id, series['title'], [], result)
+    return result
+
+
 @library_bp.route('/api/series/<int:series_id>')
 def get_series_details(series_id):
     try:
@@ -2842,9 +2865,18 @@ def update_series_manual_metadata(series_id):
                 conn.close()
                 return jsonify({'success': False, 'error': str(e)}), 400
 
-            # Assigning metadata is deliberately database-only. A series-folder move
-            # is destructive at directory scope and must be requested through the
-            # dedicated rename action, never as a side effect of an edit.
+            # An universe assignment is structural: keep the persisted path aligned
+            # immediately. This never applies to imports, which remain copy-only.
+            try:
+                folder_result = _move_series_folder_for_universe(conn, series_id)
+                if not folder_result.get('success'):
+                    current_app.logger.warning(
+                        f"Déplacement après changement d'univers échoué pour la série #{series_id}: {folder_result}"
+                    )
+            except Exception as exc:
+                current_app.logger.warning(
+                    f"Déplacement après changement d'univers échoué pour la série #{series_id}: {exc}"
+                )
 
         conn.close()
 
