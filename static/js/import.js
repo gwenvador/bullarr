@@ -1892,14 +1892,14 @@ function _importFileRowHtml(file, index) {
         <tr style="border-bottom:1px solid #f0f0f0;">
             <td>${hasDestination ? `
                 <input type="checkbox" class="import-file-select"
-                       ${_isFileSelected(file) ? 'checked' : ''} ${(file.validation_error && !file.forceImport) ? 'disabled' : ''}
+                       ${_isFileSelected(file) ? 'checked' : ''}
                        onchange="toggleFileSelection(${index}, this.checked)"
-                       data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - import impossible' : 'Inclure dans l\'import'}">
+                       data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour importer ou assigner plusieurs fichiers à une même série'}">
             ` : `
                 <input type="checkbox" class="import-file-select"
-                       ${file._bulkSelected ? 'checked' : ''} ${(file.validation_error && !file.forceImport) ? 'disabled' : ''}
+                       ${file._bulkSelected ? 'checked' : ''}
                        onchange="toggleUnassignedSelection(${index}, this.checked)"
-                       data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - import impossible' : 'Sélectionner pour assigner plusieurs fichiers à la même série d\'un coup'}">
+                       data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour assigner plusieurs fichiers à la même série d\'un coup'}">
             `}</td>
             <td class="import-date-cell">${escapeHtml(_importDateForFile(file) || '—')}</td>
             <td>${clientBadgeHtml(file.client)}</td>
@@ -2324,16 +2324,20 @@ function toggleUnassignedSelection(index, checked) {
     _updateImportBulkAssignBar();
 }
 
-function _selectedUnassignedFileIndices() {
+function _selectedFileIndicesForBulkAssignment() {
+    // La même checkbox sert à sélectionner les fichiers déjà assignés (file.selected)
+    // et ceux sans destination (file._bulkSelected). Les deux doivent pouvoir être
+    // réassignés en masse, quelle que soit la raison qui a conduit à la revue manuelle.
     return importFiles
         .map((f, i) => i)
-        .filter(i => importFiles[i]._bulkSelected && !importFiles[i].destination);
+        .filter(i => (importFiles[i].destination && importFiles[i].selected)
+            || (!importFiles[i].destination && importFiles[i]._bulkSelected));
 }
 
 function _updateImportBulkAssignBar() {
     const bar = document.getElementById('import-bulk-assign-bar');
     if (!bar) return;
-    const count = _selectedUnassignedFileIndices().length;
+    const count = _selectedFileIndicesForBulkAssignment().length;
     if (count === 0) {
         bar.style.display = 'none';
         bar.innerHTML = '';
@@ -2348,12 +2352,17 @@ function _updateImportBulkAssignBar() {
 }
 
 function clearUnassignedSelection() {
-    importFiles.forEach(f => { f._bulkSelected = false; });
+    // La barre regroupe aussi les fichiers déjà assignés: réinitialiser les deux
+    // formes de sélection, sinon une ligne déjà liée resterait cochée après « Annuler ».
+    importFiles.forEach(f => {
+        f._bulkSelected = false;
+        f.selected = false;
+    });
     displayImportFiles();
 }
 
 function openBulkAssignDestinationModal() {
-    const indices = _selectedUnassignedFileIndices();
+    const indices = _selectedFileIndicesForBulkAssignment();
     if (indices.length === 0) return;
     openDestinationModal(indices);
 }
@@ -2409,6 +2418,7 @@ function _isFileSelected(file) {
 function toggleFileSelection(fileIndex, checked) {
     importFiles[fileIndex].selected = checked;
     updateImportStats();
+    _updateImportBulkAssignBar();
 }
 
 function forceImportCorruptedFile(fileIndex) {
