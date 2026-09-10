@@ -236,7 +236,22 @@ function renderMisplacedFolders(data) {
     if (!items.length) {
         list.innerHTML = '<p class="help-text">Tous les dossiers correspondent au template et à leur univers.</p>';
     } else {
-        list.innerHTML = `<table class="series-table"><thead><tr><th></th><th>Série</th><th>Actuel</th><th>Attendu</th><th>État</th><th>Action</th></tr></thead><tbody>${items.map(_folderPlacementRowHtml).join('')}</tbody></table>`;
+        const universeGroups = new Map();
+        items.forEach(item => {
+            const universeName = item.universe_name || 'Sans univers';
+            if (!universeGroups.has(universeName)) universeGroups.set(universeName, []);
+            universeGroups.get(universeName).push(item);
+        });
+        list.innerHTML = [...universeGroups.entries()]
+            .sort(([a], [b]) => a.localeCompare(b, 'fr'))
+            .map(([universeName, groupItems]) => `
+                <details class="verification-series-collapse" style="margin-bottom:8px;">
+                    <summary class="verification-series-collapse-title">
+                        ${svgIcon('folder')} ${escapeHtml(universeName)}
+                        <span class="verification-series-collapse-count">${groupItems.length} dossier(s)</span>
+                    </summary>
+                    <table class="series-table"><thead><tr><th></th><th>Série</th><th>Actuel</th><th>Attendu</th><th>État</th><th>Action</th></tr></thead><tbody>${groupItems.map(_folderPlacementRowHtml).join('')}</tbody></table>
+                </details>`).join('');
     }
     const controls = document.getElementById('verifFolderMoveBulkControls');
     controls.style.display = items.some(item => item.can_reconcile) ? 'flex' : 'none';

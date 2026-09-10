@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-WORKTREE = Path('/home/gwen/worktrees/bullarr-verification-folders')
+WORKTREE = Path('/home/gwen/worktrees/bullarr-verification-folder-collapse')
 sys.path.insert(0, str(WORKTREE))
 
 
@@ -32,6 +32,7 @@ class VerificationMisplacedFoldersTest(unittest.TestCase):
         self.assertEqual([{
             'series_id': 1206,
             'series_title': 'Kriss de Valnor',
+            'universe_name': 'Thorgal',
             'current_path': str(current),
             'expected_path': str(self.library / 'Thorgal' / 'Kriss de Valnor'),
             'can_reconcile': True,
@@ -51,6 +52,18 @@ class VerificationMisplacedFoldersTest(unittest.TestCase):
             result = self.routes._verify_misplaced_series_folders([series])
         self.assertFalse(result[0]['can_reconcile'])
         self.assertEqual('Un dossier existe déjà à la destination attendue', result[0]['reason'])
+
+
+class VerificationFolderCollapseUiTest(unittest.TestCase):
+    def test_folder_placement_renderer_groups_items_by_universe_in_details(self):
+        source = (WORKTREE / 'static/js/verification.js').read_text()
+        start = source.index('function renderMisplacedFolders(data)')
+        end = source.index('async function _verifRequestFolderReconciliation', start)
+        renderer = source[start:end]
+        self.assertIn('item.universe_name || \'Sans univers\'', renderer)
+        self.assertIn('new Map()', renderer)
+        self.assertIn('<details', renderer)
+        self.assertIn('universeGroups', renderer)
 
 
 if __name__ == '__main__':
