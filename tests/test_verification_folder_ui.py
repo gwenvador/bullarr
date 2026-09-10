@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-WORKTREE = Path('/home/gwen/worktrees/bullarr-verification-folder-ui')
+WORKTREE = Path(__file__).resolve().parents[1]
 
 
 class VerificationFolderUiTest(unittest.TestCase):
