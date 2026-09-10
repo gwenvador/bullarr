@@ -106,6 +106,23 @@
                             <div id="misnamedList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
                         </div>
 
+                        <div class="settings-card" id="verificationFolderPlacementCard">
+                            <div class="settings-card-header">
+                                <div>
+                                    <h3>Emplacement des dossiers (<span id="misplacedFoldersCount">—</span>)</h3>
+                                    <p class="help-text">Vérifie que chaque dossier de série correspond au template et à son univers. Le scan ne déplace rien ; seules les séries sélectionnées sont déplacées après action explicite.</p>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    <button class="btn btn-sm" id="verifRunMisplacedFoldersBtn" onclick="runVerificationCategory('misplaced_folders')">Lancer</button>
+                                    <span id="verifFolderMoveBulkControls" style="display:none; align-items:center; gap:8px;">
+                                        <label class="verification-select-all-label"><input type="checkbox" id="verifFolderMoveSelectAll" onchange="verifToggleSelectAllFolderMoves(this)"> Tout sélectionner</label>
+                                        <button class="btn btn-sm" id="verifBulkFolderMoveBtn" onclick="verifBulkReconcileFolders()" disabled>Déplacer la sélection (<span id="verifFolderMoveSelectedCount">0</span>)</button>
+                                    </span>
+                                </div>
+                            </div>
+                            <div id="misplacedFoldersList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+
                         <div class="settings-card" id="verificationMatchingCard">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <h3 style="margin:0; display:flex; align-items:center; gap:6px;">

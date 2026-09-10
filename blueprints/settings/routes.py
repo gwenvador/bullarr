@@ -282,7 +282,7 @@ def _load_verification_series_and_volumes():
     cursor.execute('''
         SELECT s.id, s.library_id, s.title, s.path, s.is_oneshot, s.bedetheque_url, s.komga_series_id,
                s.ebdz_thread_id, s.ebdz_matched_title, s.ebdz_match_status, s.ebdz_volumes_count,
-               u.name AS universe_name
+               l.path AS library_path, u.name AS universe_name
     FROM series s
         JOIN libraries l ON l.id = s.library_id
         LEFT JOIN universes u ON u.id = s.universe_id
@@ -369,6 +369,56 @@ def _verify_missing_metadata(series_rows, volumes_by_series):
 
     return missing_metadata
 
+
+
+def _verify_misplaced_series_folders(series_rows):
+    """Liste, sans modifier le disque, les dossiers de séries qui ne correspondent
+    plus au template et à leur univers. L'action reste volontairement explicite côté UI:
+    l'audit ne déplace jamais une bibliothèque simplement parce qu'il a été lancé.
+
+    Une collision ou un chemin source manquant reste visible, mais n'est pas actionnable;
+    l'utilisateur peut alors traiter le conflit avant tout déplacement.
+    """
+    from blueprints.library.routes import UnsafePathError, resolve_within, sanitize_path_component
+    from rename_handler import render_series_folder_name
+
+    rename_cfg = load_rename_config()
+    misplaced = []
+    for series in series_rows:
+        current_path = series['path']
+        library_path = series['library_path']
+        if not current_path or not library_path:
+            continue
+        try:
+            raw_name = render_series_folder_name(
+                series['title'], rename_cfg['series_template'], series['universe_name']
+            )
+            segments = [sanitize_path_component(part, 'Titre de série') for part in raw_name.split('/') if part]
+            if not segments:
+                raise UnsafePathError(f"Titre de série invalide: {raw_name!r}")
+            expected_path = resolve_within(os.path.join(library_path, *segments), library_path)
+        except UnsafePathError as exc:
+            misplaced.append({
+                'series_id': series['id'], 'series_title': series['title'],
+                'current_path': current_path, 'expected_path': None,
+                'can_reconcile': False, 'reason': str(exc),
+            })
+            continue
+
+        if os.path.realpath(current_path) == expected_path:
+            continue
+        if not os.path.isdir(current_path):
+            reason, can_reconcile = 'Dossier source introuvable', False
+        elif os.path.exists(expected_path):
+            reason, can_reconcile = 'Un dossier existe déjà à la destination attendue', False
+        else:
+            reason, can_reconcile = 'Dossier hors de l’univers ou du template configuré', True
+        misplaced.append({
+            'series_id': series['id'], 'series_title': series['title'],
+            'current_path': current_path, 'expected_path': expected_path,
+            'can_reconcile': can_reconcile, 'reason': reason,
+        })
+    return misplaced
 
 def _verify_misnamed(series_rows, volumes_by_series):
     """Fichiers dont le nom ne correspond pas au format configuré.
@@ -857,7 +907,7 @@ def run_verification():
     clic sur "métadonnées manquantes" n'a plus à l'attendre. Sans ?type (compatibilité
     d'éventuels autres appelants), toutes les catégories sont calculées et renvoyées comme avant."""
     verif_type = request.args.get('type')
-    valid_types = {'missing_metadata', 'misnamed', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
+    valid_types = {'missing_metadata', 'misnamed', 'misplaced_folders', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
     if verif_type is not None and verif_type not in valid_types:
         return jsonify({'error': f"type invalide, attendu l'un de {sorted(valid_types)}"}), 400
 
@@ -873,6 +923,8 @@ def run_verification():
         result['missing_metadata'] = _verify_missing_metadata(series_rows, volumes_by_series)
     if verif_type in (None, 'misnamed'):
         result['misnamed'] = _verify_misnamed(series_rows, volumes_by_series)
+    if verif_type in (None, 'misplaced_folders'):
+        result['misplaced_folders'] = _verify_misplaced_series_folders(series_rows)
     if verif_type in (None, 'invalid_files'):
         invalid_files, komga_configured = _verify_invalid_files(series_rows, volume_rows)
         result['invalid_files'] = invalid_files
