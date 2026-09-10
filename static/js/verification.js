@@ -29,6 +29,7 @@ function escapeForAttribute(text) {
 const VERIFICATION_CATEGORIES = {
     missing_metadata: { runBtnId: 'verifRunMissingMetadataBtn', render: renderMissingMetadata },
     misnamed: { runBtnId: 'verifRunMisnamedBtn', render: renderMisnamed },
+    misplaced_folders: { runBtnId: 'verifRunMisplacedFoldersBtn', render: renderMisplacedFolders },
     invalid_files: { runBtnId: 'verifRunInvalidFilesBtn', render: renderInvalidFiles },
     unmatched_owned_volumes: { runBtnId: 'verifRunUnmatchedOwnedBtn', render: renderUnmatchedOwnedVolumes },
     unmatched_owned_komga: { runBtnId: 'verifRunUnmatchedOwnedKomgaBtn', render: renderUnmatchedOwnedKomga },
@@ -211,6 +212,82 @@ function _verifRenameItemRowHtml(item, groupKey = null, isDetail = false) {
             <td><button class="btn-icon-only" onclick="verifRenameItem(${item.series_id}, ${item.volume_id ?? 'null'}, ${item.is_folder ? 'true' : 'false'}, this)" data-tooltip="Renommer" aria-label="Renommer">${svgIcon('pencil')}</button></td>
         </tr>
     `;
+}
+
+
+function _folderPlacementRowHtml(item) {
+    const action = item.can_reconcile
+        ? `<button class="btn-icon-only" onclick="verifReconcileFolder(${item.series_id}, this)" data-tooltip="Déplacer vers le dossier attendu" aria-label="Déplacer vers le dossier attendu">${svgIcon('folder')}</button>`
+        : '<span class="help-text">Conflit à résoudre</span>';
+    return `<tr class="series-table-row">
+        <td class="volume-table-select-cell">${item.can_reconcile ? `<input type="checkbox" class="verif-folder-move-select" data-series-id="${item.series_id}" aria-label="Sélectionner ${escapeHtml(item.series_title)}" onchange="verifUpdateFolderMoveSelectionCount()">` : ''}</td>
+        <td><a href="/series/${item.series_id}" class="missing-series-link">${escapeHtml(item.series_title)}</a></td>
+        <td><code>${escapeHtml(item.current_path || '')}</code></td>
+        <td>${item.expected_path ? `<code>${escapeHtml(item.expected_path)}</code>` : '—'}</td>
+        <td>${escapeHtml(item.reason)}</td>
+        <td>${action}</td>
+    </tr>`;
+}
+
+function renderMisplacedFolders(data) {
+    const list = document.getElementById('misplacedFoldersList');
+    const items = data.misplaced_folders || [];
+    document.getElementById('misplacedFoldersCount').textContent = items.length;
+    if (!items.length) {
+        list.innerHTML = '<p class="help-text">Tous les dossiers correspondent au template et à leur univers.</p>';
+    } else {
+        list.innerHTML = `<table class="series-table"><thead><tr><th></th><th>Série</th><th>Actuel</th><th>Attendu</th><th>État</th><th>Action</th></tr></thead><tbody>${items.map(_folderPlacementRowHtml).join('')}</tbody></table>`;
+    }
+    const controls = document.getElementById('verifFolderMoveBulkControls');
+    controls.style.display = items.some(item => item.can_reconcile) ? 'flex' : 'none';
+    document.getElementById('verifFolderMoveSelectAll').checked = false;
+    verifUpdateFolderMoveSelectionCount();
+}
+
+async function _verifRequestFolderReconciliation(seriesId) {
+    const response = await fetch(`/api/series/${seriesId}/rename/execute`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.success || !payload.folder?.success) {
+        throw new Error(payload.error || payload.folder?.error || 'Déplacement impossible');
+    }
+    return payload;
+}
+
+async function verifReconcileFolder(seriesId, buttonEl) {
+    buttonEl.disabled = true;
+    try {
+        await _verifRequestFolderReconciliation(seriesId);
+        showToast('Dossier déplacé vers son emplacement attendu.', 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally {
+        await runVerificationCategory('misplaced_folders');
+    }
+}
+
+function verifToggleSelectAllFolderMoves(checkboxEl) {
+    document.querySelectorAll('.verif-folder-move-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateFolderMoveSelectionCount();
+}
+
+function verifUpdateFolderMoveSelectionCount() {
+    const count = document.querySelectorAll('.verif-folder-move-select:checked').length;
+    document.getElementById('verifFolderMoveSelectedCount').textContent = count;
+    document.getElementById('verifBulkFolderMoveBtn').disabled = count === 0;
+}
+
+async function verifBulkReconcileFolders() {
+    const ids = [...document.querySelectorAll('.verif-folder-move-select:checked')].map(cb => Number(cb.dataset.seriesId));
+    const button = document.getElementById('verifBulkFolderMoveBtn');
+    button.disabled = true;
+    let failed = 0;
+    for (const seriesId of ids) {
+        try { await _verifRequestFolderReconciliation(seriesId); } catch (error) { failed += 1; }
+    }
+    showToast(failed ? `${ids.length - failed} déplacé(s), ${failed} échec(s).` : `${ids.length} dossier(s) déplacé(s).`, failed ? 'error' : 'success');
+    await runVerificationCategory('misplaced_folders');
 }
 
 function renderMisnamed(data) {
