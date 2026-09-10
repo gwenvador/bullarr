@@ -400,6 +400,7 @@ def _verify_misplaced_series_folders(series_rows):
         except UnsafePathError as exc:
             misplaced.append({
                 'series_id': series['id'], 'series_title': series['title'],
+                'universe_name': series['universe_name'] or 'Sans univers',
                 'current_path': current_path, 'expected_path': None,
                 'can_reconcile': False, 'reason': str(exc),
             })
@@ -415,6 +416,7 @@ def _verify_misplaced_series_folders(series_rows):
             reason, can_reconcile = 'Dossier hors de l’univers ou du template configuré', True
         misplaced.append({
             'series_id': series['id'], 'series_title': series['title'],
+            'universe_name': series['universe_name'] or 'Sans univers',
             'current_path': current_path, 'expected_path': expected_path,
             'can_reconcile': can_reconcile, 'reason': reason,
         })
