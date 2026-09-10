@@ -981,3 +981,10 @@
         width: auto !important;
     }
 }
+
+/* Les univers de l'audit de placement restent lisibles à gauche; le chevron
+   est tourné par l'état natif <details>, sans icône de dossier redondante. */
+.verification-folder-universe-summary { gap: 8px; }
+.verification-folder-universe-summary .verification-folder-universe-chevron { flex: 0 0 auto; transition: transform .15s ease; }
+.verification-series-collapse[open] .verification-folder-universe-chevron { transform: rotate(180deg); }
+.verification-folder-universe-summary .verification-series-collapse-count { margin-left: 0; }

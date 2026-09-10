@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-WORKTREE = Path('[REDACTED_PATH]')
+WORKTREE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WORKTREE))
 
 

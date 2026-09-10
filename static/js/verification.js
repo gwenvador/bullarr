@@ -244,14 +244,20 @@ function renderMisplacedFolders(data) {
         });
         list.innerHTML = [...universeGroups.entries()]
             .sort(([a], [b]) => a.localeCompare(b, 'fr'))
-            .map(([universeName, groupItems]) => `
-                <details class="verification-series-collapse" style="margin-bottom:8px;">
-                    <summary class="verification-series-collapse-title">
-                        ${svgIcon('folder')} ${escapeHtml(universeName)}
-                        <span class="verification-series-collapse-count">${groupItems.length} dossier(s)</span>
-                    </summary>
-                    <table class="series-table"><thead><tr><th></th><th>Série</th><th>Actuel</th><th>Attendu</th><th>État</th><th>Action</th></tr></thead><tbody>${groupItems.map(_folderPlacementRowHtml).join('')}</tbody></table>
-                </details>`).join('');
+            .map(([universeName, groupItems], index) => {
+                const groupKey = `folder-universe-${index}`;
+                const selectableCount = groupItems.filter(item => item.can_reconcile).length;
+                return `
+                    <details class="verification-series-collapse" style="margin-bottom:8px;">
+                        <summary class="verification-series-collapse-title verification-folder-universe-summary" style="justify-content:flex-start; text-align:left;">
+                            <svg class="icon verification-folder-universe-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                            ${selectableCount ? `<input type="checkbox" class="verif-folder-move-group-select" data-group="${groupKey}" aria-label="Sélectionner les dossiers de ${escapeHtml(universeName)}" onclick="event.stopPropagation()" onchange="verifToggleFolderMoveGroup(this, '${groupKey}')">` : ''}
+                            <span>${escapeHtml(universeName)}</span>
+                            <span class="verification-series-collapse-count">${groupItems.length} dossier(s)</span>
+                        </summary>
+                        <table class="series-table"><thead><tr><th></th><th>Série</th><th>Actuel</th><th>Attendu</th><th>État</th><th>Action</th></tr></thead><tbody>${groupItems.map(item => _folderPlacementRowHtml(item).replace('class="verif-folder-move-select"', `class="verif-folder-move-select" data-group="${groupKey}"`)).join('')}</tbody></table>
+                    </details>`;
+            }).join('');
     }
     const controls = document.getElementById('verifFolderMoveBulkControls');
     controls.style.display = items.some(item => item.can_reconcile) ? 'flex' : 'none';
@@ -280,6 +286,11 @@ async function verifReconcileFolder(seriesId, buttonEl) {
     } finally {
         await runVerificationCategory('misplaced_folders');
     }
+}
+
+function verifToggleFolderMoveGroup(checkboxEl, groupKey) {
+    document.querySelectorAll(`.verif-folder-move-select[data-group="${groupKey}"]`).forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateFolderMoveSelectionCount();
 }
 
 function verifToggleSelectAllFolderMoves(checkboxEl) {
@@ -1736,6 +1747,7 @@ document.addEventListener('DOMContentLoaded', () => {
     verifCollapseAllSections();
     runVerificationCategory('missing_metadata');
     runVerificationCategory('misnamed');
+    runVerificationCategory('misplaced_folders');
     runVerificationCategory('invalid_files');
     runVerificationCategory('unmatched_owned_volumes');
     runVerificationCategory('unmatched_owned_komga');
