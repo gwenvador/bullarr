@@ -722,12 +722,16 @@ def remove_import_file_manual(filepath):
             conn.close()
 
 
-def mark_import_file_packaged(filepath):
+def mark_import_file_packaged(filepath, destination=None):
     conn = None
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
         conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)')
-        conn.execute('INSERT OR IGNORE INTO import_packaged_files (filepath) VALUES (?)', (filepath,))
+        import json
+        encoded = json.dumps(destination, ensure_ascii=False) if destination else None
+        conn.execute('INSERT OR IGNORE INTO import_packaged_files (filepath, destination_json) VALUES (?, ?)', (filepath, encoded))
+        if encoded:
+            conn.execute('UPDATE import_packaged_files SET destination_json = ? WHERE filepath = ?', (encoded, filepath))
         conn.commit()
         return True
     except Exception as e:
