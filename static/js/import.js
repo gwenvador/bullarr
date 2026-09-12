@@ -1781,8 +1781,11 @@ async function viewArchiveContent(importRoot, relativePath) {
     const summary = document.getElementById('archive-content-summary');
     const list = document.getElementById('archive-content-list');
     modal.classList.add('active');
+    modal.dataset.importRoot = importRoot;
+    modal.dataset.relativePath = relativePath;
     title.textContent = relativePath.split('/').pop();
     summary.textContent = 'Lecture de la table des matières…';
+    document.getElementById('archive-content-actions').innerHTML = '';
     list.innerHTML = `<div style="padding:10px;">${svgIcon('loader-circle', 'icon-spin')} Chargement…</div>`;
     try {
         const params = new URLSearchParams({import_root: importRoot, relative_path: relativePath});
@@ -1790,12 +1793,27 @@ async function viewArchiveContent(importRoot, relativePath) {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
         summary.textContent = `${data.format.toUpperCase()} · ${data.total_count} entrée(s)${data.truncated ? ' · liste plafonnée' : ''}`;
+        if (data.format === 'zip') document.getElementById('archive-content-actions').innerHTML = '<button type="button" class="btn btn-sm" onclick="packageArchiveAsCbz()">📦 Empaqueter en CBZ</button>';
         list.innerHTML = data.entries.map(entry => `<div style="padding:3px 8px; border-bottom:1px solid var(--color-border, #eee); white-space:pre-wrap; overflow-wrap:anywhere;">${entry.kind === 'directory' ? '📁' : entry.kind === 'file' ? '📄' : '🔗'} ${escapeHtml(entry.path)}${entry.kind === 'file' ? ` <span style="color:var(--color-text-muted);">(${formatBytes(entry.size)})</span>` : ''}</div>`).join('') || '<p>Aucune entrée.</p>';
     } catch (error) {
         summary.textContent = 'Erreur';
         list.innerHTML = `<div style="padding:10px; color:#dc3545;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</div>`;
     }
 }
+
+async function packageArchiveAsCbz() {
+    const modal = document.getElementById('archive-content-modal');
+    const actions = document.getElementById('archive-content-actions');
+    try {
+        const response = await fetch('/api/import/convert', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath})});
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
+        actions.innerHTML = '<span style="color:#198754; font-weight:600;">✓ CBZ créé. Actualisez Import pour le voir.</span>';
+    } catch (error) {
+        actions.innerHTML = `<span style="color:#dc3545; font-weight:600;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</span>`;
+    }
+}
+
 function closeArchiveContentModal() { document.getElementById('archive-content-modal')?.classList.remove('active'); }
 
 function _convertActionHtml(file) {
@@ -1944,6 +1962,7 @@ function _importFileRowHtml(file, index) {
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
                 ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}</div>` : ''}
                 ${_convertActionHtml(file)}
+                ${file.existing_conflict ? `<div class="import-auto-skip-explanation">⚠️ Fichier existant : ${escapeHtml(file.existing_conflict.path)} — ${file.existing_conflict.will_replace ? 'sera remplacé selon les règles actuelles' : 'conservé selon les règles actuelles'}${file.existing_conflict.will_replace ? '' : ' (cochez « Forcer le remplacement » dans Modifier pour outrepasser la règle)'}</div>` : ''}
                 ${_archiveContentActionHtml(file)}
             </td>
             <td><div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">${albumHtml}${bedethequeLinkHtml || ''}</div></td>
@@ -2835,6 +2854,7 @@ function _populateDestinationModal() {
     const isBulk = currentFileIndices.length > 1;
     const file = importFiles[currentFileIndices[0]];
 
+    document.getElementById('force-replace-existing').checked = !isBulk && !!(file.destination && file.destination.force_replace);
     document.getElementById('file-to-assign').textContent = isBulk
         ? `${currentFileIndices.length} fichiers sélectionnés`
         : `Fichier: ${file.filename}`;
@@ -2896,6 +2916,7 @@ function closeDestinationModal() {
     document.getElementById('volume-override-group').style.display = 'none';
     document.getElementById('volume-override-manual-group').style.display = 'none';
     document.getElementById('volume-override-number').value = '';
+    document.getElementById('force-replace-existing').checked = false;
     volumeOverrideSlots = [];
     currentFileIndices = [];
 }
@@ -3286,6 +3307,7 @@ async function assignDestination() {
             series_id: null,
             series_title: newSeriesName,
             is_new_series: true,
+            force_replace: document.getElementById('force-replace-existing').checked,
             bedetheque_url: getBedethequeMatchForTitle(newSeriesName)
         };
     } else if (seriesValue.startsWith(PENDING_SERIES_PREFIX)) {
@@ -3302,6 +3324,7 @@ async function assignDestination() {
             series_id: null,
             series_title: pendingTitle,
             is_new_series: true,
+            force_replace: document.getElementById('force-replace-existing').checked,
             bedetheque_url: getBedethequeMatchForTitle(pendingTitle)
         };
 
@@ -3326,7 +3349,8 @@ async function assignDestination() {
             library_path: library.path,
             series_id: seriesId,
             series_title: series.title,
-            is_new_series: false
+            is_new_series: false,
+            force_replace: document.getElementById('force-replace-existing').checked
         };
 
         const volumeOverride = buildVolumeOverride();
