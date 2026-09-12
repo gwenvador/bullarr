@@ -4334,9 +4334,10 @@ def _scan_tracked_import_files(validate_files=True):
         for identity in _download_folder_identities(d, torrent_names_by_hash):
             downloads_by_folder_name.setdefault(identity, d)
 
-    from .import_history import get_manual_override_filepaths, get_packaged_filepaths, get_finalized_import_source_paths
+    from .import_history import get_manual_override_filepaths, get_packaged_filepaths, get_packaged_destinations, get_finalized_import_source_paths
     manual_override_filepaths = get_manual_override_filepaths()
     packaged_filepaths = get_packaged_filepaths()
+    packaged_destinations = get_packaged_destinations()
     finalized_import_paths = get_finalized_import_source_paths()
     manual_override_filepaths -= finalized_import_paths
 
@@ -4414,7 +4415,7 @@ def _scan_tracked_import_files(validate_files=True):
                 continue
             if os.path.realpath(entry.path) not in manual_override_filepaths and entry.path not in packaged_filepaths:
                 continue
-            _append_scanned_file(entry.path, package_temp, entry.name, None, scanner, telegram_filenames, manual_override_filepaths, import_config, files_found, validate_file=validate_files, packaged_filepaths=packaged_filepaths)
+            _append_scanned_file(entry.path, package_temp, entry.name, packaged_destinations.get(entry.path), scanner, telegram_filenames, manual_override_filepaths, import_config, files_found, validate_file=validate_files, packaged_filepaths=packaged_filepaths)
 
     return files_found, incompatible_folders
 

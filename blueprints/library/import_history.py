@@ -726,7 +726,7 @@ def mark_import_file_packaged(filepath):
     conn = None
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
-        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)')
         conn.execute('INSERT OR IGNORE INTO import_packaged_files (filepath) VALUES (?)', (filepath,))
         conn.commit()
         return True
@@ -741,7 +741,7 @@ def get_packaged_filepaths():
     conn = None
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
-        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)')
         rows = [row[0] for row in conn.execute('SELECT filepath FROM import_packaged_files').fetchall()]
         stale = [p for p in rows if not os.path.exists(p)]
         if stale:
@@ -754,6 +754,24 @@ def get_packaged_filepaths():
     finally:
         if conn: conn.close()
 
+
+def get_packaged_destinations():
+    import json
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute("CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)")
+        cols = {row[1] for row in conn.execute('PRAGMA table_info(import_packaged_files)').fetchall()}
+        if 'destination_json' not in cols: conn.execute('ALTER TABLE import_packaged_files ADD COLUMN destination_json TEXT')
+        result = {}
+        for filepath, encoded in conn.execute('SELECT filepath, destination_json FROM import_packaged_files').fetchall():
+            if os.path.exists(filepath) and encoded:
+                try: result[filepath] = json.loads(encoded)
+                except (TypeError, ValueError): pass
+        return result
+    except Exception as e: print(f'Erreur lecture destinations empaquetées: {e}'); return {}
+    finally:
+        if conn: conn.close()
 
 def get_finalized_import_source_paths():
     conn = None
