@@ -7635,7 +7635,11 @@ async function executeRename() {
         const renamedFiles = (data.files || []).filter(f => f.success && !f.skipped).length;
         const failedFiles = (data.files || []).filter(f => !f.success).length;
 
-        let resultMessage = '✅ Renommage terminé !';
+        // Any file or folder error makes the whole operation a failure in the
+        // result dialog. Do not show the green validation when only part succeeded.
+        const folderFailed = Boolean(data.folder && !data.folder.success);
+        const renameFailed = failedFiles > 0 || folderFailed;
+        let resultMessage = renameFailed ? '❌ Renommage échoué !' : '✅ Renommage terminé !';
         if (currentRenameVolumeId || currentRenameAllVolumes || alsoVolumes) {
             resultMessage += `\n\n${renamedFiles} ${pluralize(renamedFiles, 'fichier')} ${pluralize(renamedFiles, 'renommé')}`;
             if (failedFiles > 0) {
