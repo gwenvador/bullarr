@@ -1947,7 +1947,7 @@ class LibraryScanner:
             ):
                 expected_volumes = bedetheque_album_numbers
             elif bedetheque_album_numbers:
-                expected_volumes = set(range(1, max(max_vol, max(bedetheque_album_numbers)) + 1))
+                expected_volumes = set(range(1, max(max_vol, max(bedetheque_album_numbers), bedetheque_total or 0) + 1))
             elif bedetheque_total:
                 expected_volumes = set(range(1, max(max_vol, bedetheque_total) + 1))
             else:
