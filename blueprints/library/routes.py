@@ -7148,10 +7148,49 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
     if current_path_real == new_series_path:
         return {'success': True, 'changed': False, 'old_path': series_path, 'new_path': series_path}
 
-    if os.path.exists(new_series_path):
+    destination_dir_exists = os.path.isdir(new_series_path)
+    if os.path.exists(new_series_path) and not destination_dir_exists:
         return {
             'success': False, 'old_path': series_path, 'new_path': new_series_path,
-            'error': 'Un dossier existe déjà à cet emplacement'
+            'error': 'Un fichier existe déjà à cet emplacement'
+        }
+
+    # If the destination directory already exists, merge this series folder into it:
+    # move direct files only, after checking every name so nothing is overwritten.
+    if destination_dir_exists:
+        source_dir_obj = Path(current_path_real)
+        destination_dir_obj = Path(new_series_path)
+        source_files = [entry for entry in source_dir_obj.iterdir() if entry.is_file()]
+        collisions = [entry.name for entry in source_files
+                      if (destination_dir_obj / entry.name).exists()]
+        if collisions:
+            return {
+                'success': False, 'old_path': series_path, 'new_path': new_series_path,
+                'error': 'Fichier destination existe déjà: ' + ', '.join(collisions)
+            }
+        try:
+            for source_file in source_files:
+                destination_file = destination_dir_obj / source_file.name
+                shutil.move(source_file, destination_file)
+        except OSError as e:
+            return {
+                'success': False, 'old_path': series_path, 'new_path': new_series_path,
+                'error': f'Erreur lors du déplacement vers le dossier existant: {e}'
+            }
+        cursor.execute('UPDATE series SET path = ? WHERE id = ?', (new_series_path, series_id))
+        cursor.execute('SELECT id, filename FROM volumes WHERE series_id = ?', (series_id,))
+        for row in cursor.fetchall():
+            filename = final_name_by_volume.get(row['id'], row['filename'])
+            if filename is not None:
+                cursor.execute(
+                    'UPDATE volumes SET filepath = ? WHERE id = ?',
+                    (os.path.join(new_series_path, filename), row['id'])
+                )
+        conn.commit()
+        return {
+            'success': True, 'changed': True, 'merged_into_existing': True,
+            'old_path': series_path, 'new_path': new_series_path,
+            'moved_files': len(source_files)
         }
 
     try:
