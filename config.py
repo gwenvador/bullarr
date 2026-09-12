@@ -108,7 +108,10 @@ class Config:
     # SSO / OIDC par défaut (désactivé : aucun changement de comportement tant que
     # l'utilisateur ne configure pas son fournisseur dans les paramètres)
     OIDC_CONFIG = {
+        'mode': 'none',
         'enabled': False,
+        'username': '',
+        'password_hash': '',
         'issuer': '',
         'client_id': '',
         'client_secret': '',

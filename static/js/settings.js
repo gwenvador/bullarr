@@ -1167,7 +1167,9 @@ async function loadOidcSettings() {
         const response = await fetch('/api/auth/config');
         const config = await response.json();
 
-        document.getElementById('oidcEnabled').checked = config.enabled;
+        document.getElementById('authMode').value = config.mode || (config.enabled ? 'oidc' : 'none');
+        document.getElementById('loginUsername').value = config.username || '';
+        updateAuthModeFields();
         document.getElementById('oidcIssuer').value = config.issuer || '';
         document.getElementById('oidcClientId').value = config.client_id || '';
         document.getElementById('oidcScopes').value = config.scopes || 'openid profile email';
@@ -1183,19 +1185,22 @@ async function loadOidcSettings() {
 
 async function saveOidcSettings() {
     const config = {
-        enabled: document.getElementById('oidcEnabled').checked,
+        mode: document.getElementById('authMode').value,
+        username: document.getElementById('loginUsername').value.trim(),
+        password: document.getElementById('loginPassword').value,
+        enabled: document.getElementById('authMode').value !== 'none',
         issuer: document.getElementById('oidcIssuer').value.trim(),
         client_id: document.getElementById('oidcClientId').value.trim(),
         client_secret: document.getElementById('oidcClientSecret').value,
         scopes: document.getElementById('oidcScopes').value.trim() || 'openid profile email'
     };
 
-    if (config.enabled && !config.issuer) {
+    if (config.mode === 'oidc' && !config.issuer) {
         showMessage('oidcMessage', "⚠️ Veuillez entrer l'URL de l'issuer OIDC", 'warning');
         return;
     }
 
-    if (config.enabled && !config.client_id) {
+    if (config.mode === 'oidc' && !config.client_id) {
         showMessage('oidcMessage', '⚠️ Veuillez entrer le Client ID OIDC', 'warning');
         return;
     }
@@ -1241,7 +1246,10 @@ async function testOidcConnection() {
 
 function resetOidcSettings() {
     if (!confirm('Voulez-vous réinitialiser la configuration SSO ?')) return;
-    document.getElementById('oidcEnabled').checked = false;
+    document.getElementById('authMode').value = 'none';
+    updateAuthModeFields();
+    document.getElementById('loginUsername').value = '';
+    document.getElementById('loginPassword').value = '';
     document.getElementById('oidcIssuer').value = '';
     document.getElementById('oidcClientId').value = '';
     document.getElementById('oidcClientSecret').value = '';
@@ -1255,6 +1263,17 @@ function toggleOidcPassword() {
     oidcPasswordVisible = !oidcPasswordVisible;
     input.type = oidcPasswordVisible ? 'text' : 'password';
     btn.innerHTML = oidcPasswordVisible ? `${svgIcon('eye-off')} Masquer` : `${svgIcon('eye')} Afficher`;
+}
+
+function updateAuthModeFields() {
+    const mode = document.getElementById('authMode').value;
+    document.getElementById('passwordAuthFields').style.display = mode === 'password' ? '' : 'none';
+    ['oidcIssuer', 'oidcClientId', 'oidcClientSecret', 'oidcScopes'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.closest('.form-group').style.display = mode === 'oidc' ? '' : 'none';
+    });
+    const testButton = document.querySelector('[onclick="testOidcConnection()"]');
+    if (testButton) testButton.style.display = mode === 'oidc' ? '' : 'none';
 }
 
 // ===== PROWLARR INDEXERS =====

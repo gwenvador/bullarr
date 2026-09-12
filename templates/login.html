@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
-    <title>Connexion</title>
+    <title>Login</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
     <style>
@@ -51,7 +51,16 @@
 </head>
 <body>
     <div class="login-container">
-        {% if loading %}
+        {% if mode == 'password' %}
+        <h1>🔐 Login</h1>
+        <p class="subtitle">Connectez-vous pour accéder à Bullarr.</p>
+        {% if error %}<div class="message error" style="display:block; margin-bottom:20px;">❌ {{ error }}</div>{% endif %}
+        <form method="post" action="/login/password">
+            <input type="text" name="username" placeholder="Identifiant" autocomplete="username" required style="width:100%; margin-bottom:12px;">
+            <input type="password" name="password" placeholder="Mot de passe" autocomplete="current-password" required style="width:100%; margin-bottom:20px;">
+            <button type="submit" class="btn btn-success">Se connecter</button>
+        </form>
+        {% elif loading %}
         <div class="login-spinner"></div>
         <h1>Connexion en cours…</h1>
         <p class="subtitle">Redirection vers votre fournisseur SSO.</p>
@@ -59,7 +68,7 @@
         <script>window.location.replace('/login/redirect');</script>
         {% else %}
         <h1>🔐 Connexion requise</h1>
-        <p class="subtitle">Authentifiez-vous via votre fournisseur SSO pour accéder à Bullarr.</p>
+        <p class="subtitle">Authentifiez-vous via votre fournisseur OIDC pour accéder à Bullarr.</p>
 
         {% if error %}
         <div class="message error" style="display: block; margin-bottom: 20px;">
