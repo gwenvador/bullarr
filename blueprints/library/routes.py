@@ -5818,7 +5818,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
     # Slow preparation runs without the shared scan lock. Atomic per-file claims below
     # prevent duplicate work across scheduler/manual triggers; the shared lock is acquired
     # only for each file's short final destination/SQLite mutation.
-    import_roots = current_app.config['IMPORT_DIRECTORIES']
+    import_roots = list(current_app.config['IMPORT_DIRECTORIES']) + ['/tmp/bullarr-package-temp']
     import_config = load_library_import_config()
     hardlink_requested = import_config.get('import_mode') == 'hardlink'
     cleanup_stale_staging(_import_staging_directory())
