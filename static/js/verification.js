@@ -743,7 +743,10 @@ async function selectVerificationKomgaCandidate(seriesId, komgaSeriesId) {
         const data = await response.json();
         if (!data.success) { alert('❌ ' + (data.error || 'Matching Komga impossible')); return; }
         document.getElementById('komga-match-modal').classList.remove('active');
-        await runVerificationCategory('unmatched_owned_komga');
+        // Cette modale appartient à la table « Matching incorrect », pas à la
+        // catégorie « Tomes possédés sans lien Komga ». Rafraîchir la ligne réelle
+        // conserve les filtres actifs et reflète immédiatement le match choisi.
+        _refreshMissingRowOrRemove(seriesId);
     } catch (error) {
         alert('❌ Erreur pendant le matching Komga');
     }
@@ -1489,13 +1492,13 @@ function _missingMatchRowHtml(s) {
         <tr class="series-table-row" id="missing-row-${s.id}">
             <td class="volume-table-select-cell"><input type="checkbox" class="missing-series-checkbox" value="${s.id}" aria-label="Sélectionner ${escapeHtml(s.title)}" onchange="syncMissingSeriesSelectAll()"></td>
             <td><a class="missing-series-link" href="/series/${s.id}">${escapeHtml(s.title)}</a></td>
-            <td class="missing-match-status-cell" data-matched="${s.bedetheque_matched ? '1' : '0'}">${s.bedetheque_matched
+            <td class="missing-match-status-cell" data-source="bedetheque" data-matched="${s.bedetheque_matched ? '1' : '0'}">${s.bedetheque_matched
                 ? (s.bedetheque_url ? `<a href="${escapeHtml(s.bedetheque_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir sur Bédéthèque" aria-label="Ouvrir sur Bédéthèque"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur Bédéthèque" aria-label="Matcher sur Bédéthèque" onclick="verifMatchingBedethequeButtonClick(${s.id}, '${escapeForAttribute(s.title)}', this)"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>
-            ${_ebdzConfigured ? `<td class="missing-match-status-cell" data-matched="${s.ebdz_matched ? '1' : '0'}">${s.ebdz_matched
+            ${_ebdzConfigured ? `<td class="missing-match-status-cell" data-source="ebdz" data-matched="${s.ebdz_matched ? '1' : '0'}">${s.ebdz_matched
                 ? (s.ebdz_thread_url ? `<a href="${escapeHtml(s.ebdz_thread_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir le thread EBDZ" aria-label="Ouvrir le thread EBDZ"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur EBDZ" aria-label="Matcher sur EBDZ" onclick="enrichOpenEbdzMatchModal(${s.id}, '${escapeForAttribute(s.title)}')"><img src="/static/img/ebdz-logo.png" alt="EBDZ" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>` : ''}
-            ${_komgaConfigured ? `<td class="missing-match-status-cell" data-matched="${s.komga_matched ? '1' : '0'}">${s.komga_matched
+            ${_komgaConfigured ? `<td class="missing-match-status-cell" data-source="komga" data-matched="${s.komga_matched ? '1' : '0'}">${s.komga_matched
                 ? (s.komga_url ? `<a href="${escapeHtml(s.komga_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir Komga" aria-label="Ouvrir Komga"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur Komga" aria-label="Matcher sur Komga" onclick="openVerificationKomgaMatcher(${s.id}, '${escapeForAttribute(s.title)}')"><img src="/static/img/komga-logo.svg" alt="Komga" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>` : ''}
         </tr>
@@ -1517,6 +1520,8 @@ function _refreshMissingRowOrRemove(seriesId) {
             if (remaining === 0) loadMissingMatches();
         } else {
             row.outerHTML = _missingMatchRowHtml(s);
+            // La ligne recréée doit respecter immédiatement les filtres encore actifs.
+            filterMissingSeriesTable();
         }
     });
 }
@@ -1677,14 +1682,14 @@ function filterMissingSeriesTable(query) {
     const statusFilters = window.missingStatusFilters || {};
     document.querySelectorAll('#missing-table-body tr').forEach(row => {
         const title = row.querySelector('.missing-series-link')?.textContent?.toLowerCase() || '';
-        // Ordre des colonnes de statut = ordre des <th> (Bédéthèque puis EBDZ si présent,
-        // voir loadMissingMatches) - même index pour retrouver la bonne cellule.
+        // Les colonnes sont dynamiques: EBDZ et Komga peuvent être absents
+        // indépendamment. Lire le champ via data-source évite que le filtre Komga
+        // utilise par erreur la deuxième colonne (ou qu'il ne soit jamais appliqué).
         const statusCells = row.querySelectorAll('.missing-match-status-cell');
-        const bedethequeMatched = statusCells[0]?.dataset.matched || '';
-        const ebdzMatched = statusCells[1]?.dataset.matched || '';
+        const statusBySource = {};
+        statusCells.forEach(cell => { statusBySource[cell.dataset.source] = cell.dataset.matched || ''; });
         row.hidden = (!!needle && !title.includes(needle))
-            || (!!statusFilters.bedetheque && bedethequeMatched !== statusFilters.bedetheque)
-            || (!!statusFilters.ebdz && ebdzMatched !== statusFilters.ebdz);
+            || Object.entries(statusFilters).some(([source, expected]) => expected && statusBySource[source] !== expected);
     });
     syncMissingSeriesSelectAll();
 }
