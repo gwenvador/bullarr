@@ -285,5 +285,8 @@
     <script src="{{ url_for('static', filename='js/history-shared.js') }}?v={{ asset_version('js/history-shared.js') }}"></script>
     <script src="{{ url_for('static', filename='js/import.js') }}?v={{ asset_version('js/import.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+
+    <div class="modal" id="archive-content-modal"><div class="modal-content" style="max-width:1100px;"><span class="close-modal" onclick="closeArchiveContentModal()">×</span><h2 class="modal-title" id="archive-content-title">Contenu de l’archive</h2><p class="modal-subtitle" id="archive-content-summary">Chargement…</p><div id="archive-content-list" style="max-height:65vh; overflow:auto; font-family:monospace; font-size:0.9em;"></div></div></div>
+
 </body>
 </html>

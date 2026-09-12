@@ -1767,6 +1767,37 @@ async function deleteIncompatibleFolder(importRoot, relativePath, button) {
 // le bouton groupé. Le fichier reste importable tel quel sans conversion (pdf est un
 // format supporté par l'import, juste pas par l'écriture ComicInfo.xml, voir
 // WRITABLE_FORMATS côté serveur) - c'est une amélioration proposée, pas un blocage.
+
+
+function _archiveContentActionHtml(file) {
+    const ext = (file.filename || '').toLowerCase().split('.').pop();
+    if (!['zip', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst'].includes(ext)) return '';
+    return `<button type="button" class="btn-icon-only" onclick="viewArchiveContent('${escapeForAttribute(file.import_root)}', '${escapeForAttribute(file.relative_path)}')" data-tooltip="Voir les dossiers et fichiers de l’archive">${svgIcon('folder-open')} Voir le contenu</button>`;
+}
+
+async function viewArchiveContent(importRoot, relativePath) {
+    const modal = document.getElementById('archive-content-modal');
+    const title = document.getElementById('archive-content-title');
+    const summary = document.getElementById('archive-content-summary');
+    const list = document.getElementById('archive-content-list');
+    modal.classList.add('active');
+    title.textContent = relativePath.split('/').pop();
+    summary.textContent = 'Lecture de la table des matières…';
+    list.innerHTML = `<div style="padding:10px;">${svgIcon('loader-circle', 'icon-spin')} Chargement…</div>`;
+    try {
+        const params = new URLSearchParams({import_root: importRoot, relative_path: relativePath});
+        const response = await fetch(`/api/import/archive-content?${params}`);
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
+        summary.textContent = `${data.format.toUpperCase()} · ${data.total_count} entrée(s)${data.truncated ? ' · liste plafonnée' : ''}`;
+        list.innerHTML = data.entries.map(entry => `<div style="padding:3px 8px; border-bottom:1px solid var(--color-border, #eee); white-space:pre-wrap; overflow-wrap:anywhere;">${entry.kind === 'directory' ? '📁' : entry.kind === 'file' ? '📄' : '🔗'} ${escapeHtml(entry.path)}${entry.kind === 'file' ? ` <span style="color:var(--color-text-muted);">(${formatBytes(entry.size)})</span>` : ''}</div>`).join('') || '<p>Aucune entrée.</p>';
+    } catch (error) {
+        summary.textContent = 'Erreur';
+        list.innerHTML = `<div style="padding:10px; color:#dc3545;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</div>`;
+    }
+}
+function closeArchiveContentModal() { document.getElementById('archive-content-modal')?.classList.remove('active'); }
+
 function _convertActionHtml(file) {
     if (!file.convertible) return '';
     const label = file.convertible === 'pdf'
@@ -1913,6 +1944,7 @@ function _importFileRowHtml(file, index) {
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
                 ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}</div>` : ''}
                 ${_convertActionHtml(file)}
+                ${_archiveContentActionHtml(file)}
             </td>
             <td><div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">${albumHtml}${bedethequeLinkHtml || ''}</div></td>
             <td>${_volumeCellHtml(file, index, isImportingNow)}</td>

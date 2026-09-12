@@ -1133,7 +1133,7 @@ class LibraryScanner:
             raise Exception(f"Le chemin n'est pas un répertoire: '{library_path}'")
 
         # Extensions supportées
-        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
+        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
 
         # Structure pour grouper les fichiers par série
         # Clé = nom du sous-répertoire (= nom de la série)
@@ -1567,7 +1567,7 @@ class LibraryScanner:
         print(f"\n📂 Scan de la série: {series_title}")
         
         # Extensions supportées
-        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
+        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
         
         # Lister les fichiers dans le répertoire de la série
         volumes_data = []
