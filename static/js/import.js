@@ -476,7 +476,7 @@ function _pendingDownloadRowHtml(pending) {
                     : `<div style="font-size:0.85em;">${svgIcon('loader-circle', 'icon-spin')} En attente...</div>`;
     return `
         <tr${hasProgress ? ` data-pending-key="${pending.id}"` : ''}>
-            <td><input type="checkbox" class="import-file-select" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
+            <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">${escapeHtml(_importDateForPending(pending) || '—')}</td>
             <td>${clientBadgeHtml(pending.client)}</td>
             <td>
@@ -798,7 +798,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
         : '';
     const activeKey = _activeDownloadKey(clientKey, item);
     const selectCheckboxHtml = activeKey
-        ? `<input type="checkbox" class="import-file-select" ${selectedActiveKeys.has(activeKey) ? 'checked' : ''} onchange="toggleActiveRowSelection('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse">`
+        ? `<input type="checkbox" class="import-file-select" data-active-client="${escapeForAttribute(clientKey)}" data-active-id="${escapeForAttribute(String(item.id))}" ${selectedActiveKeys.has(activeKey) ? 'checked' : ''} onchange="toggleActiveRowSelection('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse">`
         : '';
     // data-active-key: "make the update for the download a 5s but only for the
     // downloading files" - identifiant stable retrouvé par refreshDownloadingProgress
@@ -1470,7 +1470,7 @@ function _incompatibleFolderRowHtml(folder, index) {
     const folderKey = _incompatibleFolderKey(folder);
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
-            <td><input type="checkbox" class="import-file-select" ${selectedIncompatibleFolderKeys.has(folderKey) ? 'checked' : ''} onchange="toggleIncompatibleFolderSelection('${escapeForAttribute(folderKey)}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
+            <td><input type="checkbox" class="import-file-select" data-folder-key="${escapeForAttribute(folderKey)}" ${selectedIncompatibleFolderKeys.has(folderKey) ? 'checked' : ''} onchange="toggleIncompatibleFolderSelection('${escapeForAttribute(folderKey)}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">—</td>
             <td>${svgIcon('ban')}</td>
             <td class="import-files-table-filename">
@@ -1995,12 +1995,12 @@ function _importFileRowHtml(file, index) {
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
             <td>${hasDestination ? `
-                <input type="checkbox" class="import-file-select"
+                <input type="checkbox" class="import-file-select" data-import-file-index="${index}"
                        ${_isFileSelected(file) ? 'checked' : ''}
                        onchange="toggleFileSelection(${index}, this.checked)"
                        data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour importer ou assigner plusieurs fichiers à une même série'}">
             ` : `
-                <input type="checkbox" class="import-file-select"
+                <input type="checkbox" class="import-file-select" data-import-file-index="${index}"
                        ${file._bulkSelected ? 'checked' : ''}
                        onchange="toggleUnassignedSelection(${index}, this.checked)"
                        data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour assigner plusieurs fichiers à la même série d\'un coup'}">
@@ -2134,7 +2134,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
         : '—';
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
-            <td><input type="checkbox" class="import-file-select" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
+            <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">${escapeHtml(_importDateForPending(pending) || '—')}</td>
             <td>${clientBadgeHtml(pending.client)}</td>
             <td class="import-files-table-filename">
@@ -2693,40 +2693,32 @@ function updateFileVolumeSlot(fileIndex, value) {
 }
 
 function toggleSelectAllFiles(checked) {
-    // "I cannot select all the album from import when some are ready and some in
-    // waiting. I want to be able to select all and deselect the one I don't want
-    // manually" - un fichier pas encore assigné à une série (voir hasDestination,
-    // toggleUnassignedSelection) utilise sa propre case _bulkSelected, jamais touchée
-    // ici jusqu'ici: "tout sélectionner" ne cochait donc que les fichiers déjà prêts,
-    // en ignorant silencieusement tous ceux "en attente" d'assignation.
-    // "ce checkbox doit selectionner tous les fichiers quel que soit c'est special,
-    // normal ou autres" - la garde _hasKnownVolume (qui excluait un fichier sans tome
-    // reconnu, ex: un bonus pas encore corrigé en "Spécial") est retirée: "tout
-    // sélectionner" coche désormais TOUT fichier déjà assigné à une série, prêt ou non -
-    // à l'utilisateur de décocher ensuite ceux qu'il ne veut pas importer tel quel.
-    // Exception: un fichier corrompu (validation_error) ne peut de toute façon jamais
-    // être importé (rejeté côté serveur, voir _execute_import_batch) - pas la même
-    // ambiguïté qu'un type de tome pas encore classifié, un blocage technique, jamais
-    // coché même par "tout sélectionner".
-    importFiles.forEach(f => {
-        if (f.validation_error) return;
-        if (f.destination) f.selected = checked;
-        else f._bulkSelected = checked;
-    });
-    // _visiblePendingDownloads: une ligne "pending" masquée (fichier déjà retrouvé comme
-    // vrai fichier importFiles, voir son commentaire) n'a plus de case à cocher visible,
-    // "tout sélectionner" ne doit donc pas non plus la marquer sélectionnée.
-    _visiblePendingDownloads().forEach(p => {
-        if (checked) selectedPendingIds.add(p.id); else selectedPendingIds.delete(p.id);
-    });
-    activeDownloads.forEach(({ clientKey, item }) => {
-        if (item.id == null) return;
-        const key = `${clientKey}:${item.id}`;
-        if (checked) selectedActiveKeys.add(key); else selectedActiveKeys.delete(key);
-    });
-    incompatibleFolders.forEach(folder => {
-        const key = _incompatibleFolderKey(folder);
-        if (checked) selectedIncompatibleFolderKeys.add(key); else selectedIncompatibleFolderKeys.delete(key);
+    // Le bouton général agit uniquement sur les lignes actuellement rendues et visibles.
+    // Ainsi un filtre actif ne sélectionne pas les entrées masquées par ce filtre.
+    const checkboxes = [...document.querySelectorAll('#import-files-container tbody input.import-file-select')]
+        .filter(cb => cb.closest('tr')?.getClientRects().length);
+    checkboxes.forEach(cb => {
+        const fileIndex = cb.dataset.importFileIndex;
+        if (fileIndex != null) {
+            const file = importFiles[Number(fileIndex)];
+            if (!file || file.validation_error) return;
+            if (file.destination) file.selected = checked;
+            else file._bulkSelected = checked;
+            return;
+        }
+        if (cb.dataset.pendingId != null) {
+            const id = Number(cb.dataset.pendingId);
+            if (checked) selectedPendingIds.add(id); else selectedPendingIds.delete(id);
+            return;
+        }
+        if (cb.dataset.activeId != null) {
+            const key = `${cb.dataset.activeClient}:${cb.dataset.activeId}`;
+            if (checked) selectedActiveKeys.add(key); else selectedActiveKeys.delete(key);
+            return;
+        }
+        if (cb.dataset.folderKey != null) {
+            if (checked) selectedIncompatibleFolderKeys.add(cb.dataset.folderKey); else selectedIncompatibleFolderKeys.delete(cb.dataset.folderKey);
+        }
     });
     displayImportFiles();
 }
