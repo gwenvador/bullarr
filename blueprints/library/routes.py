@@ -3834,7 +3834,7 @@ def upload_series_file(series_id):
     if not uploaded or not uploaded.filename:
         return jsonify({'success': False, 'error': 'Aucun fichier reçu'}), 400
 
-    import_roots = current_app.config['IMPORT_DIRECTORIES']
+    import_roots = list(current_app.config['IMPORT_DIRECTORIES']) + ['/tmp/bullarr-package-temp']
     if not import_roots:
         return jsonify({'success': False, 'error': "Aucun répertoire d'import configuré"}), 500
 
