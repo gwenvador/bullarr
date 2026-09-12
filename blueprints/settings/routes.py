@@ -757,6 +757,52 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
     return duplicates
 
 
+def _verify_duplicate_komga_series(series_rows, komga_series_rows):
+    """Signale les séries Komga distinctes qui portent le même titre normalisé."""
+    by_title = {}
+    for series in komga_series_rows or []:
+        key = _normalized_duplicate_title(series.get('title'))
+        if key:
+            by_title.setdefault(key, []).append(series)
+
+    local_by_title = {}
+    for series in series_rows:
+        key = _normalized_duplicate_title(series['title'])
+        if key:
+            local_by_title.setdefault(key, []).append(series)
+
+    duplicates = []
+    for key, matching_komga in by_title.items():
+        if len(matching_komga) < 2 or len(local_by_title.get(key, [])) != 1:
+            continue
+        local = local_by_title[key][0]
+        duplicates.append({
+            'duplicate_series_id': local['id'],
+            'duplicate_series_title': local['title'],
+            'duplicate_series_path': local['path'],
+            'cleanup_eligible': False,
+            'cleanup_mode': 'komga_duplicate',
+            'populated_series': [],
+            'komga_series_id': 'Doublons Komga',
+            'komga_series': [
+                {'id': item.get('komga_series_id'), 'title': item.get('title'), 'url': item.get('url')}
+                for item in matching_komga
+            ],
+            'reason': 'Plusieurs séries Komga ont le même titre normalisé ; vérification manuelle nécessaire.',
+        })
+    return duplicates
+
+
+def _load_komga_duplicate_series(series_rows):
+    """Charge les séries Komga en une seule requête pour détecter les titres répétés."""
+    try:
+        from blueprints.komga.client import KomgaClient
+        # Komga accepte une recherche vide et renvoie l'ensemble du catalogue courant.
+        return KomgaClient().search_series('', size=1000)
+    except Exception:
+        return []
+
+
 @settings_bp.route('/api/settings/verification/duplicate-series/cleanup', methods=['POST'])
 def cleanup_duplicate_empty_series():
     """Supprime uniquement les fiches de séries vides validées comme doublons.
@@ -939,5 +985,9 @@ def run_verification():
         result['komga_configured'] = komga_configured
     if verif_type in (None, 'duplicate_series'):
         result['duplicate_series'] = _verify_duplicate_empty_series(series_rows, volumes_by_series)
+        result['duplicate_series'].extend(
+            _verify_duplicate_komga_series(series_rows, _load_komga_duplicate_series(series_rows))
+        )
+        result['duplicate_series'].sort(key=lambda item: item['duplicate_series_title'].casefold())
 
     return jsonify(result)
