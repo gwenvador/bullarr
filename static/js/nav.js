@@ -1347,6 +1347,7 @@ function initMobileNav(navLinks) {
 // complète une seule fois (à la première ouverture), puis filtre localement à chaque
 // frappe plutôt que de refaire un appel réseau par caractère tapé
 let navHeaderSearchAllSeries = null;
+let navHeaderSearchLoadingPromise = null;
 
 // Pose/retire .has-value (voir .th-filterable-control.has-value, style-library-search.css)
 // sur un contrôle de filtre de colonne selon qu'il a une valeur ou non. Vivait auparavant
@@ -1468,21 +1469,34 @@ async function toggleHeaderSearch() {
 
 async function ensureHeaderSearchDataLoaded() {
     if (navHeaderSearchAllSeries) return;
+    if (navHeaderSearchLoadingPromise) return navHeaderSearchLoadingPromise;
+
     const resultsEl = document.getElementById('header-search-results');
-    try {
-        const libResponse = await fetch('/api/libraries');
-        const libraries = await libResponse.json();
-        const all = [];
-        for (const lib of libraries) {
-            const response = await fetch(`/api/library/${lib.id}/series`);
-            if (!response.ok) continue;
-            const series = await response.json();
-            series.forEach(s => all.push({ ...s, library_name: lib.name }));
+    navHeaderSearchLoadingPromise = (async () => {
+        try {
+            const libResponse = await fetch('/api/libraries');
+            if (!libResponse.ok) throw new Error(`Chargement des bibliothèques impossible (${libResponse.status})`);
+            const librariesPayload = await libResponse.json();
+            const libraries = Array.isArray(librariesPayload)
+                ? librariesPayload : (librariesPayload.libraries || []);
+            const all = [];
+            for (const lib of libraries) {
+                const response = await fetch(`/api/library/${lib.id}/series`);
+                if (!response.ok) continue;
+                const seriesPayload = await response.json();
+                const series = Array.isArray(seriesPayload)
+                    ? seriesPayload : (seriesPayload.series || []);
+                series.forEach(s => all.push({ ...s, library_name: lib.name }));
+            }
+            navHeaderSearchAllSeries = all;
+            handleHeaderSearchInput();
+        } catch (error) {
+            resultsEl.innerHTML = `<div style="padding: 10px; color: #c33; font-size: 0.85em;">Erreur de chargement: ${navEscapeHtml(error.message)}</div>`;
+        } finally {
+            navHeaderSearchLoadingPromise = null;
         }
-        navHeaderSearchAllSeries = all;
-    } catch (error) {
-        resultsEl.innerHTML = `<div style="padding: 10px; color: #c33; font-size: 0.85em;">Erreur de chargement: ${navEscapeHtml(error.message)}</div>`;
-    }
+    })();
+    return navHeaderSearchLoadingPromise;
 }
 
 function handleHeaderSearchInput() {
