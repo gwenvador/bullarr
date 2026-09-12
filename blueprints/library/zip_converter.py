@@ -86,11 +86,13 @@ def convert_zip_to_cbz(filepath):
 
 
 
-def package_zip_folders_to_cbz(filepath, output_dir, match_tome_numbers=True, selected_folder_paths=None):
-    """Create one CBZ copy per image-bearing folder in a ZIP; never alters source."""
+def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None):
     from pathlib import Path
     import re
     os.makedirs(output_dir, exist_ok=True)
+    selected = set(selected_folder_paths or [])
+    if not selected:
+        raise ZipConversionError("Aucun dossier sélectionné")
     try:
         zf = zipfile.ZipFile(filepath)
     except Exception as exc:
@@ -104,32 +106,22 @@ def package_zip_folders_to_cbz(filepath, output_dir, match_tome_numbers=True, se
             raise ZipConversionError("Cette archive zip ne contient aucune image")
         parts = [Path(n).parts for n in members]
         common = parts[0][:-1]
-        for p in parts[1:]:
-            limit = min(len(common), len(p) - 1)
-            i = 0
-            while i < limit and common[i] == p[i]: i += 1
+        for part in parts[1:]:
+            limit = min(len(common), len(part) - 1); i = 0
+            while i < limit and common[i] == part[i]: i += 1
             common = common[:i]
         groups = {}
-        for n in members:
-            p = Path(n).parts
-            key = p[len(common)] if len(p) > len(common) + 1 else '__root__'
-            groups.setdefault(key, []).append(n)
-        base = Path(filepath).stem
-        created = []
-        used = set()
-        selected_folder_paths = set(selected_folder_paths or [])
-        for index, (folder, names) in enumerate(sorted(groups.items())):
+        for name in members:
+            part = Path(name).parts
+            folder = part[len(common)] if len(part) > len(common) + 1 else '__root__'
+            groups.setdefault(folder, []).append(name)
+        created = []; used = set()
+        for folder, names in sorted(groups.items()):
             folder_path = '/'.join((*common, folder)) if folder != '__root__' else ''
-            if selected_folder_paths and folder_path not in selected_folder_paths:
-                continue
-            match = re.search(r'(?i)(?:^|[ _.-])(?:t(?:ome)?|vol(?:ume)?)[ _.-]*(\d{1,3})(?:$|[ _.-])', folder)
-            if not match:
-                match = re.match(r'^(\d{1,3})(?:$|[ _.-])', folder)
-            tome = int(match.group(1)) if match else None
-            label = f"{base} - #{tome:02d}" if match_tome_numbers and tome is not None else f"{base} - {folder}"
-            safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', label).strip(' .')
-            out = Path(output_dir) / f"{safe}.cbz"
-            suffix = 2
+            if folder_path not in selected and folder not in selected: continue
+            label = folder if folder != '__root__' else Path(filepath).stem
+            safe = re.sub(r'[<>:"/\|?*\x00-]', '_', label).strip(' .')
+            out = Path(output_dir) / f"{safe}.cbz"; suffix = 2
             while str(out) in used or out.exists():
                 out = Path(output_dir) / f"{safe} ({suffix}).cbz"; suffix += 1
             used.add(str(out))
@@ -137,5 +129,6 @@ def package_zip_folders_to_cbz(filepath, output_dir, match_tome_numbers=True, se
                 for name in names:
                     rel = Path(*Path(name).parts[len(common)+1:]) if folder != '__root__' else Path(name)
                     dest.writestr(str(rel), zf.read(name))
-            created.append({'path': str(out), 'folder': folder_path or folder, 'tome_number': tome, 'file_count': len(names)})
+            created.append({'path': str(out), 'folder': folder_path or folder, 'file_count': len(names)})
+        if not created: raise ZipConversionError("Aucun des dossiers sélectionnés ne contient d'image")
         return created

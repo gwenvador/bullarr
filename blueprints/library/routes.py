@@ -4697,7 +4697,7 @@ def list_import_archive_content():
     relative_path = request.args.get('relative_path', '')
     if not import_root or not relative_path:
         return jsonify({'error': 'import_root et relative_path requis'}), 400
-    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES']]
+    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
     root = os.path.realpath(import_root)
     if root not in roots:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
@@ -4711,7 +4711,7 @@ def list_import_archive_content():
     except Exception as exc:
         return jsonify({'error': str(exc)}), 422
     result['filename'] = os.path.basename(filepath)
-    result['writable_roots'] = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.access(d, os.W_OK)]
+    result['writable_roots'] = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents' and os.access(d, os.W_OK)]
     return jsonify({'success': True, **result})
 
 
@@ -4723,7 +4723,7 @@ def package_import_archive_folders():
     import_root, relative_path = data.get('import_root', ''), data.get('relative_path', '')
     output_root = data.get('output_root', '')
     root = os.path.realpath(import_root)
-    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES']]
+    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
     if root not in roots or not output_root or os.path.realpath(output_root) not in roots:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
     output_root = os.path.realpath(output_root)
@@ -4733,7 +4733,7 @@ def package_import_archive_folders():
     if os.path.commonpath([filepath, root]) != root or not os.path.isfile(filepath):
         return jsonify({'error': 'Archive introuvable'}), 404
     try:
-        created = package_zip_folders_to_cbz(filepath, output_root, bool(data.get('match_tome_numbers', True)), data.get('folder_paths'))
+        created = package_zip_folders_to_cbz(filepath, output_root, data.get('folder_paths'))
     except (ZipConversionError, OSError) as exc:
         return jsonify({'error': str(exc)}), 422
     return jsonify({'success': True, 'created': created, 'output_root': output_root})
