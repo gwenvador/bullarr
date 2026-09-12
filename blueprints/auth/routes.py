@@ -53,6 +53,10 @@ def enforce_login():
     if request.endpoint is None or request.endpoint in _PUBLIC_ENDPOINTS:
         return None
 
+    # Explicit emergency recovery switch, supplied only through .env/container env.
+    if current_app.config.get('AUTH_BYPASS_LOGIN', False):
+        return None
+
     config = load_oidc_config()
     mode = config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')
     if mode == 'none':

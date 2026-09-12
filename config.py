@@ -9,6 +9,8 @@ class Config:
     
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    # Emergency recovery switch for a misconfigured OIDC/password setup. Keep false in normal use.
+    AUTH_BYPASS_LOGIN = os.environ.get('BULLARR_AUTH_BYPASS_LOGIN', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
     DEBUG = False
     
     # Chemins

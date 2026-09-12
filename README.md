@@ -114,7 +114,10 @@ python app.py   # FLASK_ENV=development par défaut
 ```bash
 SECRET_KEY=your-secure-secret-key-here   # clé secrète Flask - à changer en production
 FLASK_ENV=production
+BULLARR_AUTH_BYPASS_LOGIN=false  # dépannage uniquement : contourne temporairement le login
 ```
+
+`BULLARR_AUTH_BYPASS_LOGIN=true` désactive temporairement la garde d'authentification pour récupérer l'accès après une mauvaise configuration OIDC. Redémarrez Bullarr, corrigez le réglage depuis **Configuration → Login**, remettez la variable à `false`, puis redémarrez à nouveau. Ne laissez pas cette variable activée en fonctionnement normal.
 
 La configuration aMule/eMule (ainsi que les indexeurs, clients de téléchargement, Komga,
 Telegram, SSO...) se fait depuis l'application, page **Configuration**. Chaque intégration
