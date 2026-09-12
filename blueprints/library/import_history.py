@@ -706,6 +706,22 @@ def mark_import_file_manual(filepath):
                 pass
 
 
+def remove_import_file_manual(filepath):
+    # Un fichier finalisé ne doit plus rester retenu par le hold manuel.
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute('DELETE FROM import_manual_overrides WHERE filepath = ?', (filepath,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors du retrait de l'assignation manuelle de {filepath}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 def get_manual_override_filepaths():
     """Ensemble des chemins actuellement marqués "assignation manuelle" - nettoie au
     passage les entrées dont le fichier n'existe plus (déjà importé/déplacé/supprimé
