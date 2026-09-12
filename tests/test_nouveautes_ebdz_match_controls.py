@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-WORKTREE = Path('/home/gwen/worktrees/bullarr-nouveautes-match-modal')
+WORKTREE = Path(__file__).resolve().parents[1]
 
 
 class NouveautesEbdzMatchControlsTest(unittest.TestCase):
