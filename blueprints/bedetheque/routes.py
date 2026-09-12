@@ -871,6 +871,13 @@ def enrich_series(series_id):
         return jsonify({'error': 'search_by doit être "title" ou "url"'}), 400
 
     try:
+        # Le matching manuel peut être demandé alors que de nouveaux fichiers sont déjà présents dans le dossier mais absents de `volumes`. Recharger la série depuis le disque avant d'appliquer la fiche Bédéthèque garantit que le thread de métadonnées travaille sur les lignes réelles et que les nouveaux fichiers sont disponibles en base. Ce scan ciblé ne déplace aucun fichier.
+        from blueprints.library.scanner import LibraryScanner
+        try:
+            LibraryScanner(current_app.config['DATABASE']).scan_single_series(series_id)
+        except Exception as e:
+            logger.warning(f"Rescan préalable au matching Bédéthèque ignoré pour la série #{series_id}: {e}")
+
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT title FROM series WHERE id = ?', (series_id,))
