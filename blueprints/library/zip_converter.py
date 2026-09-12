@@ -90,7 +90,7 @@ def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None)
     from pathlib import Path
     import re
     os.makedirs(output_dir, exist_ok=True)
-    selected = {str(Path(x)).strip('/') for x in (selected_folder_paths or []) if str(x).strip('/')}
+    selected = {str(Path(x)).replace(chr(92), '/').strip('/') for x in (selected_folder_paths or []) if str(x).strip('/')}
     if not selected: raise ZipConversionError('Aucun dossier sélectionné')
     try: zf = zipfile.ZipFile(filepath)
     except Exception as exc: raise ZipConversionError(f'Archive zip illisible ou corrompue: {exc}')
@@ -99,6 +99,14 @@ def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None)
         if bad_file is not None: raise ZipConversionError(f'Archive zip corrompue (membre invalide: {bad_file})')
         members = [n for n in zf.namelist() if not n.endswith('/') and os.path.splitext(n)[1].lower() in IMAGE_EXTENSIONS]
         created = []; used = set()
+        # Accepter aussi le basename envoyé par une ancienne version du rendu
+        # de l’arbre, si ce basename est unique dans l’archive.
+        archive_dirs = {n.rsplit('/', 1)[0] for n in members if '/' in n}
+        for value in list(selected):
+            if '/' not in value:
+                matches = [d for d in archive_dirs if Path(d).name == value]
+                if len(matches) == 1:
+                    selected.remove(value); selected.add(matches[0])
         expanded = set(selected)
         # Une sélection peut contenir uniquement un dossier parent (par exemple
         # « Cubitus »). Dans ce cas, développer ses sous-dossiers d'images au
