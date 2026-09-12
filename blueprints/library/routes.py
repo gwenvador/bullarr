@@ -4103,7 +4103,7 @@ def _pack_file_matches_destination(parsed, destination):
 
 def _append_scanned_file(filepath, import_root, filename, destination, scanner, telegram_filenames,
                           manual_override_filepaths, import_config, files_found, pack_download_id=None,
-                          validate_file=True):
+                          validate_file=True, packaged_filepaths=None):
     """Construit et ajoute une entrée files_found - factorisé entre le fichier isolé (à
     la racine d'un répertoire surveillé) et chaque fichier trouvé dans le dossier d'un
     téléchargement (voir _collect_download_folder_files)."""
@@ -4155,7 +4155,10 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
     if file_destination:
         gate_passed = apply_tracked_volume_and_gate(parsed, file_destination)
 
-    if filename in telegram_filenames:
+    packaged_filepaths = packaged_filepaths or set()
+    if filepath in packaged_filepaths:
+        client = 'packaged'
+    elif filename in telegram_filenames:
         client = 'telegram'
     elif import_root == current_app.config.get('TELEGRAM_IMPORT_DIRECTORY'):
         # Filet de sécurité si jamais absent de telegram_filenames (ex: base
@@ -4333,8 +4336,9 @@ def _scan_tracked_import_files(validate_files=True):
         for identity in _download_folder_identities(d, torrent_names_by_hash):
             downloads_by_folder_name.setdefault(identity, d)
 
-    from .import_history import get_manual_override_filepaths
+    from .import_history import get_manual_override_filepaths, get_packaged_filepaths
     manual_override_filepaths = get_manual_override_filepaths()
+    packaged_filepaths = get_packaged_filepaths()
 
     files_found = []
     incompatible_folders = []
@@ -4400,7 +4404,7 @@ def _scan_tracked_import_files(validate_files=True):
                     entry.path, import_path, entry.name, match, scanner, telegram_filenames,
                     manual_override_filepaths, import_config, files_found,
                     pack_download_id=match.get('tracking_id') if match else None,
-                    validate_file=validate_files
+                    validate_file=validate_files, packaged_filepaths=packaged_filepaths
                 )
 
     return files_found, incompatible_folders
@@ -4762,9 +4766,10 @@ def package_import_archive_folders():
         return jsonify({'error': 'Archive introuvable'}), 404
     try:
         created = package_zip_folders_to_cbz(filepath, output_root, data.get('folder_paths'))
-        from .import_history import mark_import_file_manual
+        from .import_history import mark_import_file_manual, mark_import_file_packaged
         for item in created:
             mark_import_file_manual(item['path'])
+            mark_import_file_packaged(item['path'])
     except (ZipConversionError, OSError) as exc:
         return jsonify({'error': str(exc)}), 422
 
