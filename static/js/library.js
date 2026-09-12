@@ -1181,7 +1181,7 @@ function _seriesBadgeInfo(series) {
     }
 
     // 1. "Terminé" : rien ne manque dans la séquence possédée ET série terminée sur Bédéthèque
-    if (isFullyOwned && isBedethequeComplete) {
+    if (isFullyOwned && !hasMissingVolumes) {
         // "584 explique pourquoi c'est complet... explique mieux" - même texte que la
         // fiche série (series.bedetheque_complete_reason, calculé une seule fois côté
         // serveur), plutôt qu'un ratio brut ici (trompeur si la série n'est possédée
