@@ -2621,6 +2621,10 @@ function _volumeCellHtml(file, index, disabled = false) {
     const volumes = seriesId != null ? _seriesVolumesCache[seriesId] : null;
     const disabledAttr = disabled ? ' disabled' : '';
 
+    if (file.destination?.is_oneshot) {
+        return `<span style="font-size:0.9em;">One Shot</span>`;
+    }
+
     if (!volumes || volumes.length === 0) {
         // "pourquoi dans import je vois pas le numéro du volume mais pourtant dans
         // l'historique c'est bien le bon tome importé" - une intégrale/HS/épisode
@@ -3398,6 +3402,8 @@ async function assignDestination() {
             series_id: seriesId,
             series_title: series.title,
             is_new_series: false,
+            is_oneshot: !!series.is_oneshot,
+            is_single_album: Number(series.bedetheque_total_volumes) === 1,
             force_replace: document.getElementById('force-replace-existing').checked
         };
 
@@ -3443,6 +3449,13 @@ async function assignDestination() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filepath: importFiles[idx].filepath })
+        }).catch(() => {});
+        fetch('/api/import/check-conflict', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath: importFiles[idx].filepath, destination, parsed: importFiles[idx].parsed })
+        }).then(r => r.json()).then(result => {
+            if (result.success) importFiles[idx].existing_conflict = result.existing_conflict || null;
+            displayImportFiles();
         }).catch(() => {});
         // Sélection groupée "à assigner" désormais sans objet (le fichier a sa
         // destination), voir toggleUnassignedSelection/_updateImportBulkAssignBar.

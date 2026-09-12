@@ -5493,6 +5493,23 @@ def mark_import_file_manual_route():
     return jsonify({'success': False, 'error': 'Erreur lors de l\'enregistrement'}), 500
 
 
+@library_bp.route('/api/import/check-conflict', methods=['POST'])
+def check_import_file_conflict():
+    data = request.get_json(silent=True) or {}
+    filepath = data.get('filepath', '')
+    destination = data.get('destination') or {}
+    parsed = data.get('parsed') or {}
+    filepath_real = os.path.realpath(filepath)
+    roots = [os.path.realpath(r) for r in current_app.config['IMPORT_DIRECTORIES']]
+    if not filepath or not any(os.path.commonpath([filepath_real, root]) == root for root in roots):
+        return jsonify({'success': False, 'error': "Chemin d'import invalide"}), 400
+    if not os.path.isfile(filepath_real):
+        return jsonify({'success': False, 'error': 'Fichier introuvable'}), 404
+    if not destination.get('series_id') and not destination.get('is_new_series'):
+        return jsonify({'success': True, 'existing_conflict': None})
+    return jsonify({'success': True, 'existing_conflict': _existing_import_conflict(destination, parsed, os.path.getsize(filepath_real))})
+
+
 @library_bp.route('/api/import/rescan-file', methods=['POST'])
 def rescan_import_file_route():
     """"add a manual rescan. why the import automatic was triggered if the file was not
