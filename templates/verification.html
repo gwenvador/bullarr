@@ -109,7 +109,10 @@
                         <div class="settings-card" id="verificationFolderPlacementCard">
                             <div class="settings-card-header">
                                 <div>
-                                    <h3>Emplacement des dossiers (<span id="misplacedFoldersCount">—</span>)</h3>
+                                    <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                        <button type="button" class="verif-section-toggle" id="folderPlacementToggle" onclick="verifToggleSection('misplacedFoldersList', this)" data-tooltip="Replier/déplier" aria-label="Replier ou déplier l'emplacement des dossiers" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button>
+                                        <span>Emplacement des dossiers (<span id="misplacedFoldersCount">—</span>)</span>
+                                    </h3>
                                     <p class="help-text">Vérifie que chaque dossier de série correspond au template et à son univers.</p>
                                 </div>
                                 <div style="display:flex; gap:8px; align-items:center;">
