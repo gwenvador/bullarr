@@ -2502,6 +2502,12 @@ function _hasKnownVolume(file) {
     if (file.parsed.volume != null || file.parsed.is_integral || file.parsed.is_hs || file.parsed.is_oneshot_tag || file.parsed.is_episode || file.parsed.is_special) {
         return true;
     }
+    // Une destination issue de Bédéthèque peut déjà certifier qu'il s'agit d'un
+    // one-shot ou d'une série à album unique, même si le nom de release ne contient
+    // aucun numéro/type et que le cache des volumes n'est pas encore chargé.
+    if (file.destination?.is_oneshot || file.destination?.is_single_album) {
+        return true;
+    }
     // "Moon River... ⚠ Tome manquant / c'est un one-shot donc pas de need d'avoir de
     // tome" - le nom de fichier lui-même n'a souvent aucun marqueur de tome pour un
     // one-shot (pas de "OS"/"HS"/numéro), mais la destination assignée le sait déjà via
