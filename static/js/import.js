@@ -1800,12 +1800,6 @@ function updateArchiveFolderSelection() {
     if (button) { button.disabled = count === 0; button.textContent = `📦 Empaqueter les dossiers cochés (${count})`; }
 }
 
-function toggleArchiveFolderPackagingOptions() {
-    const perFolder = document.getElementById('archive-package-per-folder')?.checked;
-    const label = document.getElementById('archive-match-tome-label');
-    if (label) label.style.display = perFolder ? '' : 'none';
-}
-
 async function viewArchiveContent(importRoot, relativePath) {
     const modal = document.getElementById('archive-content-modal');
     const title = document.getElementById('archive-content-title');
@@ -1826,7 +1820,7 @@ async function viewArchiveContent(importRoot, relativePath) {
         summary.textContent = `${data.format.toUpperCase()} · ${data.total_count} entrée(s)${data.truncated ? ' · liste plafonnée' : ''}`;
         if (data.format === 'zip') {
             const roots = (data.writable_roots || []).map(root => `<option value="${escapeForAttribute(root)}">${escapeHtml(root)}</option>`).join('');
-            document.getElementById('archive-content-actions').innerHTML = `<label id="archive-match-tome-label"><input type="checkbox" id="archive-match-tome" checked> associer le numéro de tome</label><select id="archive-package-output" title="Dossier de sortie">${roots}</select><button type="button" class="btn btn-sm" id="archive-package-selected" onclick="packageArchiveAsCbz()" disabled>📦 Empaqueter les dossiers cochés (0)</button>`;
+            document.getElementById('archive-content-actions').innerHTML = `<select id="archive-package-output" title="Dossier de sortie">${roots}</select><button type="button" class="btn btn-sm" id="archive-package-selected" onclick="packageArchiveAsCbz()" disabled>📦 Empaqueter les dossiers cochés (0)</button>`;
         }
         list.innerHTML = renderArchiveEntryTree(data.entries) || '<p>Aucune entrée.</p>';
     } catch (error) {
@@ -1841,7 +1835,7 @@ async function packageArchiveAsCbz() {
     try {
         const folderPaths = [...document.querySelectorAll('#archive-content-list .archive-folder-select:checked')].map(cb => cb.dataset.folderPath);
         if (!folderPaths.length) throw new Error('Cochez au moins un dossier à empaqueter');
-        const body = {import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath, output_root: document.getElementById('archive-package-output')?.value, folder_paths: folderPaths, match_tome_numbers: document.getElementById('archive-match-tome')?.checked !== false};
+        const body = {import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath, output_root: document.getElementById('archive-package-output')?.value, folder_paths: folderPaths};
         const response = await fetch('/api/import/archive-package-folders', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
