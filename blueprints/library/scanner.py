@@ -1890,18 +1890,18 @@ class LibraryScanner:
 
         volume_numbers = [row[0] for row in cursor.fetchall()]
 
-        # Le nombre d'albums possédés doit rester indépendant de la numérotation :
+        # Le nombre d'éléments principaux possédés reste indépendant de la numérotation :
         # certaines fiches Bédéthèque mélangent tome 0, albums sans numéro et numéros
         # absents. On compare donc les albums principaux réellement présents, en
-        # excluant les intégrales/HS/spéciaux/épisodes qui ne sont pas des albums de la
+        # excluant les intégrales/HS/spéciaux, qui ne sont pas des éléments de la
         # séquence principale (leur couverture éventuelle est traitée séparément).
         cursor.execute('''
             SELECT COUNT(*)
             FROM volumes
             WHERE series_id = ? AND filepath IS NOT NULL
-              AND is_special = 0 AND is_integral = 0 AND is_hs = 0 AND is_episode = 0
+              AND is_special = 0 AND is_integral = 0 AND is_hs = 0
         ''', (series_id,))
-        owned_main_album_count = cursor.fetchone()[0]
+        owned_main_item_count = cursor.fetchone()[0]
 
         # Référence Bédéthèque du nombre total de tomes de la série, si connue (matching
         # déjà fait). Utilisée pour ne pas perdre les tomes manquants au-delà du dernier
@@ -1932,11 +1932,15 @@ class LibraryScanner:
             except (TypeError, ValueError, KeyError):
                 bedetheque_album_numbers = set()
 
+        # La liste Bédéthèque peut être fiable même si son total n’a pas été extrait.
+        if not bedetheque_total and bedetheque_album_numbers:
+            bedetheque_total = len(bedetheque_album_numbers)
+
         if volume_numbers:
             min_vol = min(volume_numbers)
             max_vol = max(volume_numbers)
             actual_volumes = set(volume_numbers)
-            if bedetheque_total and owned_main_album_count >= bedetheque_total:
+            if bedetheque_total and owned_main_item_count >= bedetheque_total:
                 expected_volumes = actual_volumes
             elif bedetheque_album_numbers and (
                 not bedetheque_total or len(bedetheque_album_numbers) == bedetheque_total
@@ -2074,9 +2078,9 @@ class LibraryScanner:
             # calculé plus haut) ne compte QUE les tomes réellement possédés avec un
             # numéro, jamais les intégrales/HS/spéciaux qui gonfleraient artificiellement
             # total_volumes au-delà du nombre de tomes classiques annoncé.
-            if owned_main_album_count >= bedetheque_total:
+            if owned_main_item_count >= bedetheque_total:
                 bedetheque_complete = 1
-                bedetheque_complete_reason = f"{owned_main_album_count}/{bedetheque_total} albums parus"
+                bedetheque_complete_reason = f"{owned_main_item_count}/{bedetheque_total} éléments principaux"
             else:
                 # 2. Une seule intégrale possédée qui couvre TOUTE la série ("INT . ...",
                 # sans numéro propre - une série qui n'a qu'une intégrale n'a souvent
@@ -2118,15 +2122,15 @@ class LibraryScanner:
                         bedetheque_complete_reason = (
                             f"tomes manquants : {', '.join(str(n) for n in missing_volumes)}"
                             if missing_volumes
-                            else f"{owned_main_album_count}/{bedetheque_total} albums parus"
+                            else f"{owned_main_item_count}/{bedetheque_total} éléments principaux"
                         )
 
         # Une série Bédéthèque à album unique est complète dès que son album
         # réellement possédé existe, même si Bédéthèque ne la classe pas « One shot »
         # et même si le fichier local n'a aucun numéro de tome.
-        if bedetheque_total == 1 and total_volumes > 0:
+        if bedetheque_total == 1 and owned_main_item_count > 0:
             bedetheque_complete = 1
-            bedetheque_complete_reason = "album unique Bédéthèque possédé"
+            bedetheque_complete_reason = "One-Shot"
 
         # "one-shot is in bedetheque written as One Shot so there should not be a one
         # shot mistake" - comparaison insensible à la casse par précaution (Bédéthèque
