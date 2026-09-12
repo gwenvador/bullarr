@@ -1794,7 +1794,7 @@ function renderArchiveEntryTree(entries) {
     }
     const render = (node, prefix = '') => Object.entries(node.dirs).sort().map(([name, child]) => {
         const path = prefix ? `${prefix}/${name}` : name;
-        return `<details><summary><label onclick="event.stopPropagation()"><input type="checkbox" class="archive-folder-select" data-folder-path="${escapeForAttribute(path)}" onchange="updateArchiveFolderSelection(this)"> 📁</label> ${escapeHtml(name)}</summary><div style="padding-left:14px;">${render(child, path)}</div></details>`;
+        return `<details><summary><label onclick="event.stopPropagation()"><input type="checkbox" class="archive-folder-select" data-folder-path="${escapeHtml(path)}" onchange="updateArchiveFolderSelection(this)"> 📁</label> ${escapeHtml(name)}</summary><div style="padding-left:14px;">${render(child, path)}</div></details>`;
     }).join('') + node.files.map(({entry}) => `<div style="padding:3px 8px; border-bottom:1px solid var(--color-border, #eee); overflow-wrap:anywhere;">📄 ${escapeHtml(entry.path)} <span style="color:var(--color-text-muted);">(${formatBytes(entry.size)})</span></div>`).join('');
     return render(root);
 }
