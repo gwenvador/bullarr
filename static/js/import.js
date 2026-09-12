@@ -1870,8 +1870,17 @@ async function packageArchiveAsCbz() {
         // immédiatement puis relance le matching normal: la série Bédéthèque trouvée doit
         // être visible dans la ligne sans obliger l'utilisateur à actualiser la page.
         await loadActiveDownloads();
+        if (data.source_destination) {
+            const createdPaths = new Set(data.created.map(item => item.path));
+            for (const file of importFiles) {
+                if (createdPaths.has(file.filepath)) {
+                    file.destination = { ...data.source_destination };
+                    file.auto_import_skip_reason = 'fichier empaqueté : import manuel à valider';
+                }
+            }
+        }
         await autoMatchAll();
-        actions.innerHTML = `<span style="color:#198754; font-weight:600;">✓ ${count} CBZ créé(s), série recherchée automatiquement. Les sources sont conservées.</span>`;
+        actions.innerHTML = `<span style="color:#198754; font-weight:600;">✓ ${count} CBZ créé(s), série source affichée automatiquement. Les sources sont conservées.</span>`;
     } catch (error) {
         actions.innerHTML = `<span style="color:#dc3545; font-weight:600;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</span>`;
     }

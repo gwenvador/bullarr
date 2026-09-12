@@ -4133,9 +4133,14 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
     # Une archive affichée avec « Voir le contenu » est un conteneur à examiner ou à
     # empaqueter, pas encore un album importable. Elle peut conserver la série connue,
     # mais ne doit jamais hériter d'un volume suivi ni déclencher un conflit de tome.
-    if file_destination and ext in ('.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.7z'):
-        file_destination.pop('volume_id', None)
-        file_destination.pop('volume_number', None)
+    if ext in ('.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.7z'):
+        if file_destination:
+            file_destination.pop('volume_id', None)
+            file_destination.pop('volume_number', None)
+        parsed['volume'] = None
+        parsed['integral_number'] = None
+        parsed['hs_number'] = None
+        parsed['episode_number'] = None
     # Complète parsed['volume'] depuis le tome connu au moment du téléchargement quand le
     # nom de fichier ne le fournit pas lui-même (voir apply_tracked_volume_and_gate) - pas
     # de "gate" ici contrairement à l'import automatique: cette page laisse de toute façon
@@ -4762,7 +4767,26 @@ def package_import_archive_folders():
             mark_import_file_manual(item['path'])
     except (ZipConversionError, OSError) as exc:
         return jsonify({'error': str(exc)}), 422
-    return jsonify({'success': True, 'created': created, 'output_root': output_root})
+
+    # Le ZIP source peut être un téléchargement suivi avec une série déjà confirmée.
+    # Transmettre cette série aux CBZ produits, sans propager le volume du ZIP (le nom
+    # de l'archive peut contenir un numéro de dossier sans rapport avec l'album choisi).
+    source_destination = None
+    try:
+        from blueprints.missing_monitor.downloader import get_trackable_active_downloads
+        source_destination = find_active_download_destination(
+            os.path.basename(filepath), get_trackable_active_downloads(include_failed=True)
+        )
+        if source_destination:
+            source_destination.pop('volume_id', None)
+            source_destination.pop('volume_number', None)
+            source_destination.pop('tracking_id', None)
+            source_destination['is_packaging_source'] = True
+    except Exception as exc:
+        print(f"Erreur matching série source de l'archive {filepath}: {exc}")
+
+    return jsonify({'success': True, 'created': created, 'output_root': output_root,
+                    'source_destination': source_destination})
 
 def _resolve_incompatible_folder_path(import_root, relative_path):
     """Valide et résout (import_root, relative_path) fournis par le client vers un chemin
