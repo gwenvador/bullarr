@@ -17,6 +17,11 @@ def load_oidc_config():
     else:
         cfg = current_app.config['OIDC_CONFIG'].copy()
 
+    # Backward compatibility: the old boolean enabled meant OIDC.
+    mode = cfg.get('mode')
+    if mode not in {'none', 'password', 'oidc'}:
+        cfg['mode'] = 'oidc' if cfg.get('enabled', False) else 'none'
+
     # Déchiffrer le secret client s'il existe
     client_secret = cfg.get('client_secret', '')
     if client_secret:
