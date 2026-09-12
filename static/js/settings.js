@@ -1167,7 +1167,7 @@ async function loadOidcSettings() {
         const response = await fetch('/api/auth/config');
         const config = await response.json();
 
-        document.getElementById('authMode').value = config.mode || (config.enabled ? 'oidc' : 'none');
+        selectAuthMode(config.mode || (config.enabled ? 'oidc' : 'none'));
         document.getElementById('loginUsername').value = config.username || '';
         updateAuthModeFields();
         document.getElementById('oidcIssuer').value = config.issuer || '';
@@ -1246,8 +1246,7 @@ async function testOidcConnection() {
 
 function resetOidcSettings() {
     if (!confirm('Voulez-vous réinitialiser la configuration SSO ?')) return;
-    document.getElementById('authMode').value = 'none';
-    updateAuthModeFields();
+    selectAuthMode('none');
     document.getElementById('loginUsername').value = '';
     document.getElementById('loginPassword').value = '';
     document.getElementById('oidcIssuer').value = '';
@@ -1263,6 +1262,16 @@ function toggleOidcPassword() {
     oidcPasswordVisible = !oidcPasswordVisible;
     input.type = oidcPasswordVisible ? 'text' : 'password';
     btn.innerHTML = oidcPasswordVisible ? `${svgIcon('eye-off')} Masquer` : `${svgIcon('eye')} Afficher`;
+}
+
+function selectAuthMode(mode) {
+    document.getElementById('authMode').value = mode;
+    document.querySelectorAll('.auth-mode-option').forEach(option => {
+        const selected = option.dataset.authMode === mode;
+        option.classList.toggle('is-selected', selected);
+        option.setAttribute('aria-checked', selected ? 'true' : 'false');
+    });
+    updateAuthModeFields();
 }
 
 function updateAuthModeFields() {

@@ -27,6 +27,9 @@ class LoginAuthModesTest(unittest.TestCase):
         self.assertIn('Mode d’authentification', settings)
         self.assertIn('authMode', settings)
         self.assertIn('authMode', js)
+        self.assertNotIn('8 caractères', (ROOT / 'blueprints/auth/routes.py').read_text())
+        self.assertIn('auth-mode-options', settings)
+        self.assertIn('auth-mode-option', settings)
 
 if __name__ == '__main__':
     unittest.main()
