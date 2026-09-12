@@ -4074,6 +4074,24 @@ def _download_folder_identities(download, torrent_names_by_hash):
     return list(identities)
 
 
+
+
+def _existing_import_conflict(destination, parsed, source_size):
+    """Décrit le fichier local comparé par les règles d'import."""
+    if not destination or not destination.get('series_id'):
+        return None
+    try:
+        conn = get_db_connection()
+        existing = _find_existing_volume_for_import(conn.cursor(), destination['series_id'], parsed, single_album=bool(destination.get('is_single_album')))
+        conn.close()
+        _volume_id, path, size, _format = existing
+        if not path or not os.path.exists(path):
+            return None
+        return {'path': path, 'size': size or 0, 'will_replace': bool(destination.get('force_replace') or is_better_volume(source_size, size or 0))}
+    except Exception as exc:
+        print(f"Erreur aperçu conflit import: {exc}")
+        return None
+
 def _pack_file_matches_destination(parsed, destination):
     """Only auto-import a pack member when its parsed series is exact."""
     parsed_title = (parsed or {}).get('title')
@@ -4149,6 +4167,7 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
         'relative_path': relative_path,
         'folder_name': folder_name,
         'file_size': os.path.getsize(filepath),
+        'existing_conflict': _existing_import_conflict(file_destination, parsed, os.path.getsize(filepath)),
         # Date d'arrivée sur disque ("tableau comme historique", qui a une colonne Date) -
         # mtime plutôt que ctime: survit à un déplacement/renommage du fichier par le
         # client de téléchargement une fois l'écriture terminée.

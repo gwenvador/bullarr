@@ -696,7 +696,8 @@ class LibraryScanner:
                         normalized_name, re.IGNORECASE
                     )
                 if range_match:
-                    info['is_integral'] = True
+                    if not info['is_pack']:
+                        info['is_integral'] = True
                     info['integral_tome_start'] = tome_range[0]
                     info['integral_tome_end'] = tome_range[1]
                     normalized_name = normalized_name[:range_match.start()] + ' ' + normalized_name[range_match.end():]
