@@ -83,3 +83,55 @@ def convert_zip_to_cbz(filepath):
     else:
         shutil.copy2(filepath, new_cbz_path)
     return new_cbz_path
+
+
+
+def package_zip_folders_to_cbz(filepath, output_dir, match_tome_numbers=True):
+    """Create one CBZ copy per image-bearing folder in a ZIP; never alters source."""
+    from pathlib import Path
+    import re
+    os.makedirs(output_dir, exist_ok=True)
+    try:
+        zf = zipfile.ZipFile(filepath)
+    except Exception as exc:
+        raise ZipConversionError(f"Archive zip illisible ou corrompue: {exc}")
+    with zf:
+        bad_file = zf.testzip()
+        if bad_file is not None:
+            raise ZipConversionError(f"Archive zip corrompue (membre invalide: {bad_file})")
+        members = [n for n in zf.namelist() if not n.endswith('/') and os.path.splitext(n)[1].lower() in IMAGE_EXTENSIONS]
+        if not members:
+            raise ZipConversionError("Cette archive zip ne contient aucune image")
+        parts = [Path(n).parts for n in members]
+        common = parts[0][:-1]
+        for p in parts[1:]:
+            limit = min(len(common), len(p) - 1)
+            i = 0
+            while i < limit and common[i] == p[i]: i += 1
+            common = common[:i]
+        groups = {}
+        for n in members:
+            p = Path(n).parts
+            key = p[len(common)] if len(p) > len(common) + 1 else '__root__'
+            groups.setdefault(key, []).append(n)
+        base = Path(filepath).stem
+        created = []
+        used = set()
+        for index, (folder, names) in enumerate(sorted(groups.items())):
+            match = re.search(r'(?i)(?:^|[ _.-])(?:t(?:ome)?|vol(?:ume)?)[ _.-]*(\d{1,3})(?:$|[ _.-])', folder)
+            if not match:
+                match = re.match(r'^(\d{1,3})(?:$|[ _.-])', folder)
+            tome = int(match.group(1)) if match else None
+            label = f"{base} - #{tome:02d}" if match_tome_numbers and tome is not None else f"{base} - {folder}"
+            safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', label).strip(' .')
+            out = Path(output_dir) / f"{safe}.cbz"
+            suffix = 2
+            while str(out) in used or out.exists():
+                out = Path(output_dir) / f"{safe} ({suffix}).cbz"; suffix += 1
+            used.add(str(out))
+            with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED) as dest:
+                for name in names:
+                    rel = Path(*Path(name).parts[len(common)+1:]) if folder != '__root__' else Path(name)
+                    dest.writestr(str(rel), zf.read(name))
+            created.append({'path': str(out), 'folder': folder, 'tome_number': tome, 'file_count': len(names)})
+        return created

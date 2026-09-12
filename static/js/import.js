@@ -1775,6 +1775,28 @@ function _archiveContentActionHtml(file) {
     return `<button type="button" class="btn-icon-only" onclick="viewArchiveContent('${escapeForAttribute(file.import_root)}', '${escapeForAttribute(file.relative_path)}')" data-tooltip="Voir les dossiers et fichiers de l’archive">${svgIcon('folder-open')} Voir le contenu</button>`;
 }
 
+
+function renderArchiveEntryTree(entries) {
+    const root = {dirs: {}, files: []};
+    for (const entry of entries || []) {
+        const parts = entry.path.split('/').filter(Boolean);
+        if (entry.kind === 'directory') continue;
+        let node = root;
+        parts.forEach((part, i) => {
+            if (i === parts.length - 1) node.files.push({name: part, entry});
+            else node = node.dirs[part] ||= {dirs: {}, files: []};
+        });
+    }
+    const render = node => Object.entries(node.dirs).sort().map(([name, child]) => `<details><summary>📁 ${escapeHtml(name)}</summary><div style="padding-left:14px;">${render(child)}</div></details>`).join('') + node.files.map(({name, entry}) => `<div style="padding:3px 8px; border-bottom:1px solid var(--color-border, #eee); overflow-wrap:anywhere;">📄 ${escapeHtml(entry.path)} <span style="color:var(--color-text-muted);">(${formatBytes(entry.size)})</span></div>`).join('');
+    return render(root);
+}
+
+function toggleArchiveFolderPackagingOptions() {
+    const perFolder = document.getElementById('archive-package-per-folder')?.checked;
+    const label = document.getElementById('archive-match-tome-label');
+    if (label) label.style.display = perFolder ? '' : 'none';
+}
+
 async function viewArchiveContent(importRoot, relativePath) {
     const modal = document.getElementById('archive-content-modal');
     const title = document.getElementById('archive-content-title');
@@ -1793,8 +1815,11 @@ async function viewArchiveContent(importRoot, relativePath) {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
         summary.textContent = `${data.format.toUpperCase()} · ${data.total_count} entrée(s)${data.truncated ? ' · liste plafonnée' : ''}`;
-        if (data.format === 'zip') document.getElementById('archive-content-actions').innerHTML = '<button type="button" class="btn btn-sm" onclick="packageArchiveAsCbz()">📦 Empaqueter en CBZ</button>';
-        list.innerHTML = data.entries.map(entry => `<div style="padding:3px 8px; border-bottom:1px solid var(--color-border, #eee); white-space:pre-wrap; overflow-wrap:anywhere;">${entry.kind === 'directory' ? '📁' : entry.kind === 'file' ? '📄' : '🔗'} ${escapeHtml(entry.path)}${entry.kind === 'file' ? ` <span style="color:var(--color-text-muted);">(${formatBytes(entry.size)})</span>` : ''}</div>`).join('') || '<p>Aucune entrée.</p>';
+        if (data.format === 'zip') {
+            const roots = (data.writable_roots || []).map(root => `<option value="${escapeForAttribute(root)}">${escapeHtml(root)}</option>`).join('');
+            document.getElementById('archive-content-actions').innerHTML = `<label><input type="checkbox" id="archive-package-per-folder" onchange="toggleArchiveFolderPackagingOptions()"> Un CBZ par dossier</label><label id="archive-match-tome-label" style="display:none"><input type="checkbox" id="archive-match-tome" checked> associer le numéro de tome</label><select id="archive-package-output" title="Dossier de sortie">${roots}</select><button type="button" class="btn btn-sm" onclick="packageArchiveAsCbz()">📦 Empaqueter en CBZ</button>`;
+        }
+        list.innerHTML = renderArchiveEntryTree(data.entries) || '<p>Aucune entrée.</p>';
     } catch (error) {
         summary.textContent = 'Erreur';
         list.innerHTML = `<div style="padding:10px; color:#dc3545;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</div>`;
@@ -1804,11 +1829,20 @@ async function viewArchiveContent(importRoot, relativePath) {
 async function packageArchiveAsCbz() {
     const modal = document.getElementById('archive-content-modal');
     const actions = document.getElementById('archive-content-actions');
+    const perFolder = document.getElementById('archive-package-per-folder')?.checked;
     try {
-        const response = await fetch('/api/import/convert', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath})});
+        const body = {import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath};
+        let url = '/api/import/convert';
+        if (perFolder) {
+            url = '/api/import/archive-package-folders';
+            body.output_root = document.getElementById('archive-package-output')?.value;
+            body.match_tome_numbers = document.getElementById('archive-match-tome')?.checked !== false;
+        }
+        const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
-        actions.innerHTML = '<span style="color:#198754; font-weight:600;">✓ CBZ créé. Actualisez Import pour le voir.</span>';
+        const count = perFolder ? data.created.length : 1;
+        actions.innerHTML = `<span style="color:#198754; font-weight:600;">✓ ${count} CBZ créé(s). Les sources sont conservées. Actualisez Import pour les voir.</span>`;
     } catch (error) {
         actions.innerHTML = `<span style="color:#dc3545; font-weight:600;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</span>`;
     }

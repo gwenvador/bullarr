@@ -6,7 +6,7 @@ from . import library_bp
 from .scanner import LibraryScanner, SeriesDirectoryMissingError, COMICINFO_FIELDS, scan_import_lock
 from blueprints.bedetheque.cbr_converter import convert_cbr_to_cbz, CbrConversionError
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
-from .zip_converter import convert_zip_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
+from .zip_converter import convert_zip_to_cbz, package_zip_folders_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
 from archive_utils import list_archive_members
 from blueprints.bedetheque.comicinfo_writer import write_comicinfo_cbz, build_comicinfo_fields, WRITABLE_FORMATS, derive_author_year_from_comicinfo
 from blueprints.bedetheque.scraper import match_bedetheque_volume
@@ -4700,8 +4700,32 @@ def list_import_archive_content():
     except Exception as exc:
         return jsonify({'error': str(exc)}), 422
     result['filename'] = os.path.basename(filepath)
+    result['writable_roots'] = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.access(d, os.W_OK)]
     return jsonify({'success': True, **result})
 
+
+
+@library_bp.route('/api/import/archive-package-folders', methods=['POST'])
+def package_import_archive_folders():
+    """Empaquete explicitement chaque dossier image d'un ZIP en CBZ."""
+    data = request.get_json(silent=True) or {}
+    import_root, relative_path = data.get('import_root', ''), data.get('relative_path', '')
+    output_root = data.get('output_root', '')
+    root = os.path.realpath(import_root)
+    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES']]
+    if root not in roots or not output_root or os.path.realpath(output_root) not in roots:
+        return jsonify({'error': "Répertoire d'import non autorisé"}), 403
+    output_root = os.path.realpath(output_root)
+    if not os.access(output_root, os.W_OK):
+        return jsonify({'error': "Le répertoire de sortie est en lecture seule"}), 400
+    filepath = os.path.realpath(os.path.join(root, relative_path))
+    if os.path.commonpath([filepath, root]) != root or not os.path.isfile(filepath):
+        return jsonify({'error': 'Archive introuvable'}), 404
+    try:
+        created = package_zip_folders_to_cbz(filepath, output_root, bool(data.get('match_tome_numbers', True)))
+    except (ZipConversionError, OSError) as exc:
+        return jsonify({'error': str(exc)}), 422
+    return jsonify({'success': True, 'created': created, 'output_root': output_root})
 
 def _resolve_incompatible_folder_path(import_root, relative_path):
     """Valide et résout (import_root, relative_path) fournis par le client vers un chemin
