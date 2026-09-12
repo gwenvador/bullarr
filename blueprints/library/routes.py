@@ -4388,7 +4388,7 @@ def _scan_tracked_import_files(validate_files=True):
                 _append_scanned_file(
                     entry.path, import_path, entry.name, match, scanner, telegram_filenames,
                     manual_override_filepaths, import_config, files_found,
-                    pack_download_id=match.get('tracking_id'),
+                    pack_download_id=match.get('tracking_id') if match else None,
                     validate_file=validate_files
                 )
 
