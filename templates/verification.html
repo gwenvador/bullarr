@@ -59,6 +59,15 @@
                              sans ça, le gap:6px du <h3> flex s'appliquait aussi ENTRE le texte
                              brut "(" et le <span id="...Count"> (et entre lui et ")"), rendant
                              "Label ( 12 )" avec des espaces fantômes au lieu de "Label (12)". -->
+                        <div class="settings-card" id="verificationIncompleteSeriesCard">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0;">⚠️ Séries incomplètes (<span id="incompleteSeriesCount">—</span>)</h3>
+                                <button class="btn btn-sm" id="verifRunIncompleteSeriesBtn" onclick="runVerificationCategory(&quot;incomplete_series&quot;)">🔍 Lancer</button>
+                            </div>
+                            <p class="help-text">Chaque série incomplète affiche les tomes, épisodes ou éléments manquants connus.</p>
+                            <div id="incompleteSeriesList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+
                         <div class="settings-card" id="verificationMetadataCard">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
