@@ -4339,6 +4339,7 @@ def _scan_tracked_import_files(validate_files=True):
     packaged_filepaths = get_packaged_filepaths()
     packaged_destinations = get_packaged_destinations()
     finalized_import_paths = get_finalized_import_source_paths()
+    finalized_import_names = {os.path.basename(path) for path in finalized_import_paths}
     manual_override_filepaths -= finalized_import_paths
 
     files_found = []
@@ -4413,7 +4414,10 @@ def _scan_tracked_import_files(validate_files=True):
         for entry in os.scandir(package_temp):
             if not entry.is_file() or os.path.splitext(entry.name)[1].lower() not in supported_extensions:
                 continue
-            if os.path.realpath(entry.path) not in manual_override_filepaths and entry.path not in packaged_filepaths:
+            if (os.path.realpath(entry.path) not in manual_override_filepaths
+                    and entry.path not in packaged_filepaths
+                    and os.path.realpath(entry.path) not in finalized_import_paths
+                    and entry.name not in finalized_import_names):
                 continue
             _append_scanned_file(entry.path, package_temp, entry.name, packaged_destinations.get(entry.path), scanner, telegram_filenames, manual_override_filepaths, import_config, files_found, validate_file=validate_files, packaged_filepaths=packaged_filepaths)
 
