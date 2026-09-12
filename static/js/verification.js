@@ -1716,6 +1716,7 @@ function verifCollapseAllSections() {
         ['unmatchedOwnedList', 'unmatchedOwnedToggle'],
         ['unmatchedOwnedKomgaList', 'unmatchedOwnedKomgaToggle'],
         ['duplicateSeriesList', 'duplicateSeriesToggle'],
+        ['misplacedFoldersList', 'folderPlacementToggle'],
     ].forEach(([listId, buttonId]) => {
         const list = document.getElementById(listId);
         const button = document.getElementById(buttonId);
