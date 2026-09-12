@@ -269,12 +269,13 @@ const CLIENT_LOGOS = {
     deluge: '/static/img/deluge-logo.svg',
     amule: '/static/img/emule-logo.svg',
     telegram: '/static/img/telegram-logo.svg',
+    packaged: null,
     fourtoutici: '/static/img/fourtoutici-favicon.svg',
     shelfmark: '/static/img/annas-archive-favicon.ico'
 };
 const CLIENT_LABELS = {
     qbittorrent: 'qBittorrent', rtorrent: 'rTorrent', deluge: 'Deluge', amule: 'aMule',
-    telegram: 'Telegram', fourtoutici: 'fourtoutici', shelfmark: 'Shelfmark',
+    telegram: 'Telegram', packaged: 'Empaqueté', fourtoutici: 'fourtoutici', shelfmark: 'Shelfmark',
     // '/torrents' est partagé entre qBittorrent/rTorrent/Deluge - un fichier déjà sur
     // disque ne peut pas être rattaché avec certitude à l'un des trois (voir client côté
     // serveur, scan_import_directory)
@@ -297,7 +298,9 @@ function clientBadgeHtml(clientKey) {
     const logo = CLIENT_LOGOS[clientKey];
     const iconHtml = logo
         ? `<img src="${logo}" alt="" class="torrent-client-logo">`
-        : clientKey === 'torrent' ? svgIcon('magnet') : svgIcon('download');
+        : clientKey === 'torrent' ? svgIcon('magnet')
+            : clientKey === 'packaged' ? svgIcon('package')
+            : svgIcon('download');
     return `<span data-tooltip="${escapeHtml(label)}">${iconHtml}</span>`;
 }
 

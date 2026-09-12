@@ -722,6 +722,39 @@ def remove_import_file_manual(filepath):
             conn.close()
 
 
+def mark_import_file_packaged(filepath):
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        conn.execute('INSERT OR IGNORE INTO import_packaged_files (filepath) VALUES (?)', (filepath,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f'Erreur marquage fichier empaqueté {filepath}: {e}')
+        return False
+    finally:
+        if conn: conn.close()
+
+
+def get_packaged_filepaths():
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+        rows = [row[0] for row in conn.execute('SELECT filepath FROM import_packaged_files').fetchall()]
+        stale = [p for p in rows if not os.path.exists(p)]
+        if stale:
+            conn.executemany('DELETE FROM import_packaged_files WHERE filepath = ?', [(p,) for p in stale])
+            conn.commit()
+        return {p for p in rows if p not in stale}
+    except Exception as e:
+        print(f'Erreur lecture fichiers empaquetés: {e}')
+        return set()
+    finally:
+        if conn: conn.close()
+
+
 def get_manual_override_filepaths():
     """Ensemble des chemins actuellement marqués "assignation manuelle" - nettoie au
     passage les entrées dont le fichier n'existe plus (déjà importé/déplacé/supprimé
