@@ -4628,6 +4628,13 @@ def delete_import_file():
         except Exception as e:
             print(f"Erreur annulation téléchargement client pour '{filename}': {e}")
 
+    # Retirer aussi le hold manuel lorsqu'il n'existe plus de tracking actif.
+    try:
+        from .import_history import remove_import_file_manual
+        remove_import_file_manual(filepath)
+    except Exception as exc:
+        print(f"Erreur retrait assignation manuelle lors de la suppression de {filepath}: {exc}")
+
     # Les sources aMule sont exposées en lecture seule dans Bullarr. Une suppression
     # locale ne peut donc pas fonctionner, même si le fichier est visible; ne pas
     # transformer ce cas en Errno 30 et ne jamais retenter l'opération.
