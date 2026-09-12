@@ -4383,7 +4383,7 @@ def _scan_tracked_import_files(validate_files=True):
                         match = _build_active_download_destination(
                             torrent_download['series_id'], torrent_download.get('volume_number'), torrent_download['id']
                         )
-                if not match:
+                if not match and os.path.realpath(entry.path) not in manual_override_filepaths:
                     continue
                 _append_scanned_file(
                     entry.path, import_path, entry.name, match, scanner, telegram_filenames,
@@ -4730,10 +4730,11 @@ def package_import_archive_folders():
     """Empaquete explicitement chaque dossier image d'un ZIP en CBZ."""
     data = request.get_json(silent=True) or {}
     import_root, relative_path = data.get('import_root', ''), data.get('relative_path', '')
-    output_root = data.get('output_root', '')
     root = os.path.realpath(import_root)
     roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
-    if root not in roots or not output_root or os.path.realpath(output_root) not in roots:
+    writable_roots = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) in roots and os.access(d, os.W_OK)]
+    output_root = writable_roots[0] if writable_roots else ''
+    if root not in roots or not output_root:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
     output_root = os.path.realpath(output_root)
     if not os.access(output_root, os.W_OK):
@@ -4743,6 +4744,9 @@ def package_import_archive_folders():
         return jsonify({'error': 'Archive introuvable'}), 404
     try:
         created = package_zip_folders_to_cbz(filepath, output_root, data.get('folder_paths'))
+        from .import_history import mark_import_file_manual
+        for item in created:
+            mark_import_file_manual(item['path'])
     except (ZipConversionError, OSError) as exc:
         return jsonify({'error': str(exc)}), 422
     return jsonify({'success': True, 'created': created, 'output_root': output_root})

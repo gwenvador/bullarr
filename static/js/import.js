@@ -1106,7 +1106,7 @@ async function loadAllLibraries() {
     try {
         const response = await fetch('/api/libraries');
         allLibraries = await response.json();
-        
+
         // Charger les séries de toutes les bibliothèques en parallèle
         await Promise.all(allLibraries.map(async (lib) => {
             const seriesResponse = await fetch(`/api/library/${lib.id}/series`);
@@ -1791,12 +1791,28 @@ function renderArchiveEntryTree(entries) {
     }
     const render = (node, prefix = '') => Object.entries(node.dirs).sort().map(([name, child]) => {
         const path = prefix ? `${prefix}/${name}` : name;
-        return `<details><summary><label onclick="event.stopPropagation()"><input type="checkbox" class="archive-folder-select" data-folder-path="${escapeForAttribute(path)}" onchange="updateArchiveFolderSelection()"> 📁</label> ${escapeHtml(name)}</summary><div style="padding-left:14px;">${render(child, path)}</div></details>`;
+        return `<details><summary><label onclick="event.stopPropagation()"><input type="checkbox" class="archive-folder-select" data-folder-path="${escapeForAttribute(path)}" onchange="updateArchiveFolderSelection(this)"> 📁</label> ${escapeHtml(name)}</summary><div style="padding-left:14px;">${render(child, path)}</div></details>`;
     }).join('') + node.files.map(({entry}) => `<div style="padding:3px 8px; border-bottom:1px solid var(--color-border, #eee); overflow-wrap:anywhere;">📄 ${escapeHtml(entry.path)} <span style="color:var(--color-text-muted);">(${formatBytes(entry.size)})</span></div>`).join('');
     return render(root);
 }
 
-function updateArchiveFolderSelection() {
+function updateArchiveFolderSelection(changedCheckbox) {
+    if (changedCheckbox) {
+        const details = changedCheckbox.closest('details');
+        if (details) details.querySelectorAll(':scope .archive-folder-select').forEach(cb => {
+            if (cb !== changedCheckbox) cb.checked = changedCheckbox.checked;
+        });
+    }
+    document.querySelectorAll('#archive-content-list details').forEach(details => {
+        const own = details.querySelector(':scope > summary .archive-folder-select');
+        const children = [...details.querySelectorAll(':scope > div .archive-folder-select')];
+        if (own && children.length) {
+            const checked = children.filter(cb => cb.checked).length;
+            own.indeterminate = checked > 0 && checked < children.length;
+            if (checked === children.length) own.checked = true;
+            if (checked === 0) own.checked = false;
+        }
+    });
     const count = document.querySelectorAll('#archive-content-list .archive-folder-select:checked').length;
     const button = document.getElementById('archive-package-selected');
     if (button) { button.disabled = count === 0; button.textContent = `📦 Empaqueter les dossiers cochés (${count})`; }
@@ -1821,8 +1837,8 @@ async function viewArchiveContent(importRoot, relativePath) {
         if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
         summary.textContent = `${data.format.toUpperCase()} · ${data.total_count} entrée(s)${data.truncated ? ' · liste plafonnée' : ''}`;
         if (data.format === 'zip') {
-            const roots = (data.writable_roots || []).map(root => `<option value="${escapeForAttribute(root)}">${escapeHtml(root)}</option>`).join('');
-            document.getElementById('archive-content-actions').innerHTML = `<select id="archive-package-output" title="Dossier de sortie">${roots}</select><button type="button" class="btn btn-sm" id="archive-package-selected" onclick="packageArchiveAsCbz()" disabled>📦 Empaqueter les dossiers cochés (0)</button>`;
+
+            document.getElementById('archive-content-actions').innerHTML = `<button type="button" class="btn btn-sm" id="archive-package-selected" onclick="packageArchiveAsCbz()" disabled>📦 Empaqueter les dossiers cochés (0)</button>`;
         }
         list.innerHTML = renderArchiveEntryTree(data.entries) || '<p>Aucune entrée.</p>';
     } catch (error) {
@@ -1837,7 +1853,7 @@ async function packageArchiveAsCbz() {
     try {
         const folderPaths = [...document.querySelectorAll('#archive-content-list .archive-folder-select:checked')].map(cb => cb.dataset.folderPath);
         if (!folderPaths.length) throw new Error('Cochez au moins un dossier à empaqueter');
-        const body = {import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath, output_root: document.getElementById('archive-package-output')?.value, folder_paths: folderPaths};
+        const body = {import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath, folder_paths: folderPaths};
         const response = await fetch('/api/import/archive-package-folders', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
@@ -3313,12 +3329,12 @@ async function assignDestination() {
     console.debug('assignDestination called, currentFileIndices=', currentFileIndices);
     const libraryId = parseInt(document.getElementById('destination-library').value);
     const seriesValue = document.getElementById('destination-series').value;
-    
+
     if (!libraryId || !seriesValue) {
         alert('⚠️ Veuillez sélectionner une bibliothèque et une série');
         return;
     }
-    
+
     let library = allLibraries.find(l => l.id === libraryId);
     if (!library) {
         // tolerate string ids
@@ -3326,14 +3342,14 @@ async function assignDestination() {
     }
     console.debug('assignDestination: libraryId=', libraryId, 'seriesValue=', seriesValue, 'library=', library);
     let destination;
-    
+
     if (seriesValue === '__new__') {
         const newSeriesName = document.getElementById('new-series-name').value.trim();
         if (!newSeriesName) {
             alert('⚠️ Veuillez entrer un nom pour la nouvelle série');
             return;
         }
-        
+
         destination = {
             library_id: libraryId,
             library_name: library.name,
@@ -3525,16 +3541,16 @@ function calculateSimilarity(str1, str2) {
     // Calcul de distance basique (nombre de mots en commun)
     const words1 = str1.split(' ').filter(w => w.length > 2);
     const words2 = str2.split(' ').filter(w => w.length > 2);
-    
+
     let commonWords = 0;
     for (const word of words1) {
         if (words2.includes(word)) {
             commonWords++;
         }
     }
-    
+
     if (words1.length === 0 || words2.length === 0) return 0;
-    
+
     // Score basé sur le ratio de mots communs
     const ratio = commonWords / Math.max(words1.length, words2.length);
     return ratio * 100;
