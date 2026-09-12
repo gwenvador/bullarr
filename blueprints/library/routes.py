@@ -5896,7 +5896,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         # maintenant inconditionnellement: la source est supprimée ou
                         # non selon le cas, le suivi est TOUJOURS clos une fois le sort
                         # du fichier connu.
-                        source_was_copied = _should_preserve_import_source(original_source_path) or hardlink_requested
+                        source_was_copied = True
                         if not source_was_copied and os.path.exists(original_source_path):
                             os.remove(original_source_path)
                         if staged_source_path and os.path.exists(staged_source_path):
@@ -5928,7 +5928,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 # Copy to a local atomic staging directory, optionally convert, and
                 # validate in a killable subprocess. No NFS/archive/PDF work runs in the
                 # Flask process. The original is untouched until the final DB commit.
-                source_was_copied = _should_preserve_import_source(original_source_path) or hardlink_requested
+                source_was_copied = True
                 original_format = (file_data['parsed'].get('format') or Path(original_source_path).suffix.lstrip('.')).lower()
                 preparation = prepare_import_file(
                     original_source_path,
@@ -6172,7 +6172,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         # haut ("once Doublon ignoré -> state will be imported. so
                         # nothing should go after that") - le suivi doit toujours être
                         # clos ici, que la source ait été supprimée ou préservée.
-                        source_was_copied = _should_preserve_import_source(original_source_path) or hardlink_requested
+                        source_was_copied = True
                         if not source_was_copied and os.path.exists(original_source_path):
                             os.remove(original_source_path)
                         if staged_source_path and os.path.exists(staged_source_path):
