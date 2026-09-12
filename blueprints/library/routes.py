@@ -4409,7 +4409,7 @@ def _scan_tracked_import_files(validate_files=True):
                     validate_file=validate_files, packaged_filepaths=packaged_filepaths
                 )
 
-    package_temp = os.path.join(current_app.config.get('TELEGRAM_IMPORT_DIRECTORY', ''), '.bullarr-package-temp')
+    package_temp = '/tmp/bullarr-package-temp'
     if os.path.isdir(package_temp):
         for entry in os.scandir(package_temp):
             if not entry.is_file() or os.path.splitext(entry.name)[1].lower() not in supported_extensions:
@@ -4765,12 +4765,11 @@ def package_import_archive_folders():
     import_root, relative_path = data.get('import_root', ''), data.get('relative_path', '')
     root = os.path.realpath(import_root)
     roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
-    writable_roots = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) in roots and os.access(d, os.W_OK)]
-    output_root = writable_roots[0] if writable_roots else ''
-    if output_root == current_app.config.get('TELEGRAM_IMPORT_DIRECTORY'):
-        output_root = os.path.join(output_root, '.bullarr-package-temp')
-        os.makedirs(output_root, exist_ok=True)
-    if root not in roots or not output_root:
+    # Les CBZ générés restent strictement dans le filesystem privé du conteneur.
+    # Ne jamais utiliser un répertoire d'import monté (/downloads/telegram, etc.).
+    output_root = '/tmp/bullarr-package-temp'
+    os.makedirs(output_root, exist_ok=True)
+    if root not in roots:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
     output_root = os.path.realpath(output_root)
     if not os.access(output_root, os.W_OK):
