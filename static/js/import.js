@@ -1854,6 +1854,14 @@ async function packageArchiveAsCbz() {
         const folderPaths = [...document.querySelectorAll('#archive-content-list .archive-folder-select:checked')].map(cb => cb.dataset.folderPath);
         if (!folderPaths.length) throw new Error('Cochez au moins un dossier à empaqueter');
         const body = {import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath, folder_paths: folderPaths};
+        const packageButton = document.getElementById('archive-package-selected');
+        if (packageButton) {
+            packageButton.disabled = true;
+            packageButton.style.backgroundColor = '#fd7e14';
+            packageButton.style.borderColor = '#fd7e14';
+            packageButton.style.color = '#fff';
+            packageButton.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} Empaquetage en cours…`;
+        }
         const response = await fetch('/api/import/archive-package-folders', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
@@ -3717,6 +3725,16 @@ async function executeImport() {
                 showToast('komga-scan', 'Scan Komga demandé', { icon: 'radio', autoHideMs: 4000 });
             }
             alert(message);
+
+            // Un import réussi doit disparaître immédiatement de la liste, même si la
+            // source est conservée (aMule) ou si un scan réseau répond plus tard. En cas
+            // d'échec partiel, on laisse les fichiers concernés pour permettre une reprise.
+            if (data.failed_count === 0) {
+                const completedPaths = new Set(filesToImport.map(file => file.filepath));
+                importFiles = importFiles.filter(file => !completedPaths.has(file.filepath));
+                updateImportStats();
+                displayImportFiles();
+            }
 
             await loadAllLibraries();
 

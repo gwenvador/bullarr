@@ -4130,6 +4130,12 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
     # Copie superficielle: plusieurs fichiers d'un même dossier de téléchargement
     # partagent le même `destination` de départ, jamais le même objet en sortie.
     file_destination = dict(destination) if destination else None
+    # Une archive affichée avec « Voir le contenu » est un conteneur à examiner ou à
+    # empaqueter, pas encore un album importable. Elle peut conserver la série connue,
+    # mais ne doit jamais hériter d'un volume suivi ni déclencher un conflit de tome.
+    if file_destination and ext in ('.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.7z'):
+        file_destination.pop('volume_id', None)
+        file_destination.pop('volume_number', None)
     # Complète parsed['volume'] depuis le tome connu au moment du téléchargement quand le
     # nom de fichier ne le fournit pas lui-même (voir apply_tracked_volume_and_gate) - pas
     # de "gate" ici contrairement à l'import automatique: cette page laisse de toute façon
