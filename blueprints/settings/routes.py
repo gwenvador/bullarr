@@ -753,6 +753,16 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                 'reason': 'Titres équivalents et même nombre de fichiers ; la fiche la plus récente est proposée à la suppression.',
             })
 
+    for item in duplicates:
+        if item.get('cleanup_mode') == 'komga_duplicate':
+            item['deletable_series'] = [{
+                'id': item['duplicate_series_id'],
+                'title': item['duplicate_series_title'],
+                'path': item['duplicate_series_path'],
+                'volume_count': item.get('local_volume_count', 0),
+            }]
+        else:
+            item['deletable_series'] = list(item.get('populated_series') or [])
     duplicates.sort(key=lambda item: item['duplicate_series_title'].casefold())
     return duplicates
 
@@ -915,7 +925,8 @@ def cleanup_duplicate_empty_series():
                 min_count = min(counts.values())
                 min_ids = [series_id for series_id, count in counts.items() if count == min_count]
                 removable_id = max(min_ids)
-                title_cleanup_eligible = candidate['id'] == removable_id
+                # La sélection explicite de l'utilisateur choisit la fiche à retirer.
+                title_cleanup_eligible = True
 
             if title_cleanup_eligible:
                 series_path = candidate['path']
