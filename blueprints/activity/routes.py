@@ -458,6 +458,12 @@ def activity_status():
                         'series_id': pending_match.get('series_id'),
                         'series_title': pending_match.get('series_title'),
                         'volume_number': pending_match.get('volume_number'),
+                        'is_integral': pending_match.get('is_integral', False),
+                        'integral_number': pending_match.get('integral_number'),
+                        'is_hs': pending_match.get('is_hs', False),
+                        'hs_number': pending_match.get('hs_number'),
+                        'is_episode': pending_match.get('is_episode', False),
+                        'episode_number': pending_match.get('episode_number'),
                         'created_at': pending_match.get('created_at'),
                     }
                     # Lien persisté UNE FOIS ici - tous les sondages suivants pour ce
@@ -470,6 +476,12 @@ def activity_status():
                 item['series_id'] = linked['series_id']
                 item['series_title'] = linked['series_title']
                 item['volume_number'] = linked['volume_number']
+                item['is_integral'] = linked['is_integral']
+                item['integral_number'] = linked['integral_number']
+                item['is_hs'] = linked.get('is_hs', False)
+                item['hs_number'] = linked.get('hs_number')
+                item['is_episode'] = linked.get('is_episode', False)
+                item['episode_number'] = linked.get('episode_number')
                 item['created_at'] = linked.get('created_at')
                 recognized_items.append(item)
 

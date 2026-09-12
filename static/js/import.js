@@ -489,7 +489,7 @@ function _pendingDownloadRowHtml(pending) {
                 ${statusHtml}
                 ${pending.status === 'completed' ? `<button class="btn-icon-only" onclick="importPendingDownload(${pending.id}, this)" data-tooltip="Importer ce fichier maintenant">${svgIcon('check')}</button>` : ''}
                 ${pending.exhausted ? `<button class="btn-icon-only" onclick="retryTelegramDownload(${pending.id}, this)" data-tooltip="Relancer manuellement (budget de tentatives automatiques épuisé)">${svgIcon('refresh-cw')}</button>` : ''}
-                <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}')" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
+                <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}', {is_integral: ${!!pending.is_integral}, integral_number: ${pending.integral_number ?? 'null'}, is_hs: ${!!pending.is_hs}, hs_number: ${pending.hs_number ?? 'null'}, is_episode: ${!!pending.is_episode}, episode_number: ${pending.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
                 <button class="btn-icon-only" onclick="removePendingDownload(${pending.id}, this)" data-tooltip="Retirer et annuler le téléchargement chez le client (si retrouvé)">${svgIcon('trash-2')}</button>
             </td>
         </tr>
@@ -793,7 +793,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
         ? `<button class="btn-icon-only" onclick="deleteActiveDownload('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', ${item.tracking_id ?? 'null'}, this)" data-tooltip="Supprimer ce téléchargement">${svgIcon('trash-2')}</button>`
         : '';
     const editButtonHtml = item.tracking_id != null
-        ? `<button class="btn-icon-only" onclick="openTrackingEditModal(${item.tracking_id}, ${item.series_id ?? 'null'}, ${item.volume_number ?? 'null'}, '${escapeForAttribute(item.name)}')" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>`
+        ? `<button class="btn-icon-only" onclick="openTrackingEditModal(${item.tracking_id}, ${item.series_id ?? 'null'}, ${item.volume_number ?? 'null'}, '${escapeForAttribute(item.name)}', {is_integral: ${!!item.is_integral}, integral_number: ${item.integral_number ?? 'null'}, is_hs: ${!!item.is_hs}, hs_number: ${item.hs_number ?? 'null'}, is_episode: ${!!item.is_episode}, episode_number: ${item.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>`
         : '';
     const activeKey = _activeDownloadKey(clientKey, item);
     const selectCheckboxHtml = activeKey
@@ -813,7 +813,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
                 <div class="active-download-size-line" style="font-size:0.9em;">${_activeDownloadSizeLineHtml(item)}</div>
             </td>
             <td>${item.series_title ? (item.series_id ? `<a href="/series/${item.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(item.series_title)}</a>` : escapeHtml(item.series_title)) : '—'}</td>
-            <td>${item.volume_number ? `Tome ${escapeHtml(String(item.volume_number))}` : '—'}</td>
+            <td>${_pendingVolumeLabel(item)}</td>
             <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension({ filename: item.name }))}</td>
             <td style="text-align:center; min-width:110px;">
                 <div style="height:6px; background:var(--color-surface-alt); border:1px solid var(--color-border); border-radius:3px; overflow:hidden;">
@@ -829,23 +829,28 @@ function _activeDownloadRowHtml({ clientKey, item }) {
 
 let trackingEditId = null;
 
-function openTrackingEditModal(trackingId, seriesId, volumeNumber, filename) {
+function openTrackingEditModal(trackingId, seriesId, volumeNumber, filename, typeMeta = null) {
     trackingEditId = trackingId;
     document.getElementById('tracking-edit-file-name').textContent = `Fichier: ${filename}`;
-    _populateTrackingEditModal(seriesId, volumeNumber);
+    _populateTrackingEditModal(seriesId, volumeNumber, typeMeta);
     document.getElementById('tracking-edit-modal').classList.add('active');
     _refreshLibrariesInBackground(
         'tracking-edit-modal', 'tracking-edit-library', 'tracking-edit-series',
-        () => _populateTrackingEditModal(seriesId, volumeNumber)
+        () => _populateTrackingEditModal(seriesId, volumeNumber, typeMeta)
     );
 }
 
-function _populateTrackingEditModal(seriesId, volumeNumber) {
+function _populateTrackingEditModal(seriesId, volumeNumber, typeMeta = null) {
     const librarySelect = document.getElementById('tracking-edit-library');
     librarySelect.innerHTML = '<option value="">-- Sélectionner une bibliothèque --</option>' +
         allLibraries.map(lib => `<option value="${lib.id}">${escapeHtml(lib.name)}</option>`).join('');
-    document.getElementById('tracking-edit-volume').value = volumeNumber != null ? volumeNumber : '';
-    document.getElementById('tracking-edit-type').value = 'volume';
+    const initialType = typeMeta?.is_integral ? 'integral'
+        : typeMeta?.is_hs ? 'hs' : typeMeta?.is_episode ? 'episode' : 'volume';
+    const initialNumber = initialType === 'integral' ? typeMeta?.integral_number
+        : initialType === 'hs' ? typeMeta?.hs_number
+        : initialType === 'episode' ? typeMeta?.episode_number : volumeNumber;
+    document.getElementById('tracking-edit-volume').value = initialNumber != null ? initialNumber : '';
+    document.getElementById('tracking-edit-type').value = initialType;
     _onTrackingEditTypeChange();
 
     document.getElementById('tracking-edit-library-group').style.display = allLibraries.length === 1 ? 'none' : '';
