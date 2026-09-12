@@ -2134,6 +2134,13 @@ class LibraryScanner:
         # même si la valeur observée en base jusqu'ici est bien 'One shot' (s minuscule).
         bedetheque_status_is_oneshot = (bedetheque_status or '').strip().lower() == 'one shot'
 
+        # Un one-shot n'a souvent aucun numéro exploitable dans sa fiche. Sans ligne
+        # réelle possédée, le calcul par intervalles laisse donc missing_volumes vide
+        # alors que la série est bien incomplète. Utiliser 1 comme identifiant d'unique
+        # album permet à la Surveillance de le filtrer et de l'afficher comme manquant.
+        if bedetheque_status_is_oneshot:
+            missing_volumes = [] if total_volumes > 0 else [1]
+
         # Bédéthèque indique explicitement qu'un One shot est une série complète. Cette
         # règle doit primer même quand la fiche fournit `bedetheque_total_volumes = 1`:
         # sinon le calcul précédent produit `0/1 tomes parus` avant d'arriver ici et
