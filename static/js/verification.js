@@ -251,9 +251,9 @@ function renderMisplacedFolders(data) {
                     <details class="verification-series-collapse" style="margin-bottom:8px;">
                         <summary class="verification-series-collapse-title verification-folder-universe-summary" style="justify-content:flex-start; text-align:left;" onclick="event.preventDefault(); const details = this.parentElement; details.open = !details.open;">
                             <svg class="icon verification-folder-universe-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-                            ${selectableCount ? `<input type="checkbox" class="verif-folder-move-group-select" data-group="${groupKey}" aria-label="Sélectionner les dossiers de ${escapeHtml(universeName)}" onclick="event.stopPropagation()" onchange="verifToggleFolderMoveGroup(this, '${groupKey}')">` : ''}
                             <span>${escapeHtml(universeName)}</span>
                             <span class="verification-series-collapse-count">${groupItems.length} dossier(s)</span>
+                            ${selectableCount ? `<span class="verification-folder-universe-controls"><input type="checkbox" class="verif-folder-move-group-select" data-group="${groupKey}" aria-label="Sélectionner les dossiers de ${escapeHtml(universeName)}" onclick="event.stopPropagation()" onchange="verifToggleFolderMoveGroup(this, '${groupKey}')"></span>` : ''}
                         </summary>
                         <table class="series-table"><thead><tr><th></th><th>Série</th><th>Actuel</th><th>Attendu</th><th>État</th><th>Action</th></tr></thead><tbody>${groupItems.map(item => _folderPlacementRowHtml(item).replace('class="verif-folder-move-select"', `class="verif-folder-move-select" data-group="${groupKey}"`)).join('')}</tbody></table>
                     </details>`;
