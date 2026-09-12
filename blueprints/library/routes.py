@@ -4134,9 +4134,7 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
     # empaqueter, pas encore un album importable. Elle peut conserver la série connue,
     # mais ne doit jamais hériter d'un volume suivi ni déclencher un conflit de tome.
     if ext in ('.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.7z'):
-        if file_destination:
-            file_destination.pop('volume_id', None)
-            file_destination.pop('volume_number', None)
+        file_destination = None
         parsed['volume'] = None
         parsed['integral_number'] = None
         parsed['hs_number'] = None
