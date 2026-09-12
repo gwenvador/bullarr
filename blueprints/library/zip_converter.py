@@ -99,7 +99,16 @@ def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None)
         if bad_file is not None: raise ZipConversionError(f'Archive zip corrompue (membre invalide: {bad_file})')
         members = [n for n in zf.namelist() if not n.endswith('/') and os.path.splitext(n)[1].lower() in IMAGE_EXTENSIONS]
         created = []; used = set()
-        for selected_path in sorted(selected):
+        expanded = set(selected)
+        # Une sélection peut contenir uniquement un dossier parent (par exemple
+        # « Cubitus »). Dans ce cas, développer ses sous-dossiers d'images au
+        # lieu de l'abandonner comme dossier sans images directes.
+        for selected_path in list(selected):
+            prefix = selected_path + '/'
+            child_dirs = {n[len(prefix):].split('/', 1)[0] for n in members if n.startswith(prefix) and '/' in n[len(prefix):]}
+            if child_dirs and not any(n.startswith(prefix) and '/' not in n[len(prefix):] for n in members):
+                expanded.update(prefix + child for child in child_dirs)
+        for selected_path in sorted(expanded):
             prefix = selected_path + '/'
             names = [n for n in members if n.startswith(prefix) and '/' not in n[len(prefix):]]
             if not names: continue
