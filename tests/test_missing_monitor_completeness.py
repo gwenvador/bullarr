@@ -31,3 +31,8 @@ def test_scanner_extends_numbered_album_sequence_to_known_total():
 def test_library_uses_server_completeness_when_current_collection_is_complete():
     source = (Path(__file__).resolve().parents[1] / 'static/js/library.js').read_text()
     assert 'if (isFullyOwned && !hasMissingVolumes)' in source
+
+
+def test_incomplete_unclassified_items_expose_expected_missing_range():
+    source = (Path(__file__).resolve().parents[1] / 'blueprints/library/scanner.py').read_text()
+    assert 'owned_main_item_count < bedetheque_total and not missing_volumes' in source

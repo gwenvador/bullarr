@@ -1899,7 +1899,7 @@ class LibraryScanner:
             SELECT COUNT(*)
             FROM volumes
             WHERE series_id = ? AND filepath IS NOT NULL
-              AND is_special = 0 AND is_integral = 0 AND is_hs = 0
+              AND is_integral = 0
         ''', (series_id,))
         owned_main_item_count = cursor.fetchone()[0]
 
@@ -1991,6 +1991,11 @@ class LibraryScanner:
         placeholder_missing_volumes = {row[0] for row in cursor.fetchall()} - integral_covered_volumes
 
         missing_volumes = sorted(gap_missing_volumes | placeholder_missing_volumes)
+
+        # Sans numéro exploitable, une série incomplète doit tout de même exposer un manque.
+        # Les numéros exacts étant inconnus, on expose la plage attendue.
+        if bedetheque_total and owned_main_item_count < bedetheque_total and not missing_volumes:
+            missing_volumes = list(range(1, bedetheque_total + 1))
 
         # Vérifier si la série a des parties
         cursor.execute('''
