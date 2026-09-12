@@ -644,7 +644,8 @@ async function _deleteImportFileRequest(file) {
             import_root: file.import_root,
             relative_path: file.relative_path,
             filename: file.filename,
-            client: file.client
+            client: file.client,
+            tracking_id: file.destination?.tracking_id
         })
     });
     return response.json();
@@ -1326,7 +1327,8 @@ async function bulkDeleteSelectedImportFiles() {
                     import_root: file.import_root,
                     relative_path: file.relative_path,
                     filename: file.filename,
-                    client: file.client
+                    client: file.client,
+            tracking_id: file.destination?.tracking_id
                 })
             });
             const data = await response.json();
