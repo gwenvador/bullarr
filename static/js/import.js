@@ -1966,8 +1966,12 @@ function _importFileRowHtml(file, index) {
     // recherche par titre sinon - résultat mis en cache sur le fichier lui-même
     // ("import est très lent à s'afficher": parcourt toutes les séries de toutes les
     // bibliothèques, pas la peine de le refaire à chaque re-rendu).
-    const bedethequeLinkHtml = file.destination?.bedetheque_url
-        ? `<a href="${escapeHtml(file.destination.bedetheque_url)}" target="_blank" rel="noopener" class="import-bedetheque-link" title="Voir la fiche Bédéthèque de « ${escapeHtml(file.destination.series_title)} »"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque"></a>`
+    const destinationSeries = file.destination?.series_id != null
+        ? Object.values(librariesSeriesMap).flat().find(series => String(series.id) === String(file.destination.series_id))
+        : null;
+    const destinationBedethequeUrl = file.destination?.bedetheque_url || destinationSeries?.bedetheque_url;
+    const bedethequeLinkHtml = destinationBedethequeUrl
+        ? `<a href="${escapeHtml(destinationBedethequeUrl)}" target="_blank" rel="noopener" class="import-bedetheque-link" title="Voir la fiche Bédéthèque de « ${escapeHtml(file.destination?.series_title || destinationSeries.title)} »"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque"></a>`
         : (file._bedethequeLinkHtml ?? (file._bedethequeLinkHtml = buildBedethequeLinkHtml(fileGroupTitle(file))));
     const trackedConflictVolume = file.parsed.tracked_volume_conflict;
     const statusBadge = file.validation_error
