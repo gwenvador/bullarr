@@ -28,7 +28,6 @@ function escapeForAttribute(text) {
 // routes.py) - un clic sur "Métadonnées manquantes" n'attend plus le test d'intégrité.
 const VERIFICATION_CATEGORIES = {
     missing_metadata: { runBtnId: 'verifRunMissingMetadataBtn', render: renderMissingMetadata },
-    incomplete_series: { runBtnId: 'verifRunIncompleteSeriesBtn', render: renderIncompleteSeries },
     misnamed: { runBtnId: 'verifRunMisnamedBtn', render: renderMisnamed },
     misplaced_folders: { runBtnId: 'verifRunMisplacedFoldersBtn', render: renderMisplacedFolders },
     invalid_files: { runBtnId: 'verifRunInvalidFilesBtn', render: renderInvalidFiles },
@@ -75,13 +74,6 @@ async function runVerificationCategory(type) {
 }
 
 let verifMetaItems = [];
-function renderIncompleteSeries(data) {
-    const items = data.incomplete_series || [];
-    const list = document.getElementById('incompleteSeriesList');
-    document.getElementById('incompleteSeriesCount').textContent = items.length;
-    list.innerHTML = items.length ? items.map(s => '<div><strong>' + escapeHtml(s.series_title) + (s.is_oneshot ? ' 🔸 One-Shot' : '') + '</strong> — éléments manquants : ' + escapeHtml((s.missing_volumes || []).map(v => v == null ? 'One-Shot' : v).join(', ')) + '</div>').join('') : '<p>' + svgIcon('check') + ' Aucune série incomplète.</p>';
-}
-
 function renderMissingMetadata(data) {
     verifMetaItems = data.missing_metadata;
     const metaList = document.getElementById('missingMetadataList');
@@ -1760,7 +1752,6 @@ function _updateMissingBulkActionsBar() { _updateMissingSelectionBulkActionsBar(
 document.addEventListener('DOMContentLoaded', () => {
     verifCollapseAllSections();
     runVerificationCategory('missing_metadata');
-runVerificationCategory('incomplete_series');
     runVerificationCategory('misnamed');
     runVerificationCategory('misplaced_folders');
     runVerificationCategory('invalid_files');
