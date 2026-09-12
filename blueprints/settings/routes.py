@@ -801,6 +801,13 @@ def _verify_duplicate_komga_series(series_rows, komga_series_rows, volumes_by_se
             ],
             'reason': 'Plusieurs séries Komga ont le même titre normalisé ; vérification manuelle nécessaire.',
         })
+    for item in duplicates:
+        item['deletable_series'] = [{
+            'id': item['duplicate_series_id'],
+            'title': item['duplicate_series_title'],
+            'path': item['duplicate_series_path'],
+            'volume_count': item.get('local_volume_count', 0),
+        }]
     return duplicates
 
 
