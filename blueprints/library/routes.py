@@ -4593,6 +4593,7 @@ def delete_import_file():
     relative_path = data.get('relative_path', '')
     filename = data.get('filename', '')
     client = data.get('client', '')
+    tracking_id = data.get('tracking_id')
 
     if not import_root or not relative_path:
         return jsonify({'error': 'import_root et relative_path requis'}), 400
@@ -4631,17 +4632,25 @@ def delete_import_file():
     # locale ne peut donc pas fonctionner, même si le fichier est visible; ne pas
     # transformer ce cas en Errno 30 et ne jamais retenter l'opération.
     if not os.access(import_root, os.W_OK):
+        # Suppression logique: la source aMule reste intacte, mais la ligne explicitement
+        # supprimée ne doit plus revenir dans Import ni rester en état failed.
+        if tracking_id:
+            from blueprints.missing_monitor.downloader import mark_download_cancelled
+            mark_download_cancelled(tracking_id)
         return jsonify({
-            'success': False,
+            'success': True,
             'cancelled_at_client': cancelled_at_client,
-            'error': "Source située sur un répertoire en lecture seule; Bullarr ne peut pas supprimer ce fichier localement."
-                      + (" Le téléchargement a été annulé côté client; le fichier sera retiré par le client si celui-ci le gère." if cancelled_at_client else " Annulez ou supprimez-le depuis le client aMule/NAS.")
-        }), 409
+            'source_preserved': True,
+            'removed_from_import': True
+        })
 
     try:
         os.remove(filepath)
         cleanup_empty_directories(import_root)
-        return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client})
+        if tracking_id:
+            from blueprints.missing_monitor.downloader import mark_download_cancelled
+            mark_download_cancelled(tracking_id)
+        return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client, 'removed_from_import': True})
     except OSError as e:
         return jsonify({'error': str(e)}), 500
 

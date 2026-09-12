@@ -686,6 +686,11 @@ def mark_download_skipped(download_id: Optional[int]) -> None:
     _set_pending_download_status(download_id, 'skipped')
 
 
+def mark_download_cancelled(download_id: Optional[int]) -> None:
+    '''Mark an explicitly removed import row as cancelled without touching its source.'''
+    _set_pending_download_status(download_id, 'cancelled')
+
+
 def reconcile_stale_active_downloads() -> int:
     """"a reconciliation job should detect: a successful volume row whose tracking
     state is still completed/importing" - filet de sécurité DB-vers-DB (aucun accès
