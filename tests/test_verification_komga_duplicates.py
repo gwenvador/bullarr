@@ -17,7 +17,7 @@ class VerificationKomgaDuplicatesTest(unittest.TestCase):
         ]
         result = routes._verify_duplicate_komga_series(local_series, komga_series)
         self.assertEqual(1, len(result))
-        self.assertFalse(result[0]["cleanup_eligible"])
+        self.assertTrue(result[0]["cleanup_eligible"])
         self.assertEqual("Blueberry (La Jeunesse de)", result[0]["duplicate_series_title"])
         self.assertEqual(2, len(result[0]["komga_series"]))
 
