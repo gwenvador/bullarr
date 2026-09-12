@@ -7634,23 +7634,32 @@ async function executeRename() {
 
         const renamedFiles = (data.files || []).filter(f => f.success && !f.skipped).length;
         const failedFiles = (data.files || []).filter(f => !f.success).length;
+        const movedFiles = Number(data.folder?.moved_files || 0);
 
         // Any file or folder error makes the whole operation a failure in the
         // result dialog. Do not show the green validation when only part succeeded.
         const folderFailed = Boolean(data.folder && !data.folder.success);
         const renameFailed = failedFiles > 0 || folderFailed;
         let resultMessage = renameFailed ? '❌ Renommage échoué !' : '✅ Renommage terminé !';
-        if (currentRenameVolumeId || currentRenameAllVolumes || alsoVolumes) {
-            resultMessage += `\n\n${renamedFiles} ${pluralize(renamedFiles, 'fichier')} ${pluralize(renamedFiles, 'renommé')}`;
-            if (failedFiles > 0) {
-                resultMessage += `\n⚠️ ${failedFiles} ${pluralize(failedFiles, 'erreur')} sur des fichiers`;
-            }
+        if (renamedFiles > 0) {
+            resultMessage += `
+
+${renamedFiles} ${pluralize(renamedFiles, 'fichier')} ${pluralize(renamedFiles, 'renommé')}`;
+        }
+        if (failedFiles > 0) {
+            resultMessage += `
+❌ ${failedFiles} ${pluralize(failedFiles, 'erreur')} sur des fichiers`;
         }
         if (data.folder) {
-            if (data.folder.success && data.folder.changed) {
-                resultMessage += `\n📁 Dossier de la série renommé`;
+            if (data.folder.success && data.folder.merged_into_existing) {
+                resultMessage += `
+📁 ${movedFiles} fichier(s) déplacé(s) dans le dossier existant`;
+            } else if (data.folder.success && data.folder.changed) {
+                resultMessage += `
+📁 Dossier de la série renommé`;
             } else if (!data.folder.success) {
-                resultMessage += `\n⚠️ Dossier non renommé: ${data.folder.error}`;
+                resultMessage += `
+❌ Dossier non renommé: ${data.folder.error}`;
             }
         }
 
