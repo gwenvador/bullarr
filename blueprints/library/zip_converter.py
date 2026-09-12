@@ -90,50 +90,25 @@ def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None)
     from pathlib import Path
     import re
     os.makedirs(output_dir, exist_ok=True)
-    selected = set(selected_folder_paths or [])
-    if not selected:
-        raise ZipConversionError("Aucun dossier sélectionné")
-    try:
-        zf = zipfile.ZipFile(filepath)
-    except Exception as exc:
-        raise ZipConversionError(f"Archive zip illisible ou corrompue: {exc}")
+    selected = {str(Path(x)).strip('/') for x in (selected_folder_paths or []) if str(x).strip('/')}
+    if not selected: raise ZipConversionError('Aucun dossier sélectionné')
+    try: zf = zipfile.ZipFile(filepath)
+    except Exception as exc: raise ZipConversionError(f'Archive zip illisible ou corrompue: {exc}')
     with zf:
         bad_file = zf.testzip()
-        if bad_file is not None:
-            raise ZipConversionError(f"Archive zip corrompue (membre invalide: {bad_file})")
+        if bad_file is not None: raise ZipConversionError(f'Archive zip corrompue (membre invalide: {bad_file})')
         members = [n for n in zf.namelist() if not n.endswith('/') and os.path.splitext(n)[1].lower() in IMAGE_EXTENSIONS]
-        if not members:
-            raise ZipConversionError("Cette archive zip ne contient aucune image")
-        parts = [Path(n).parts for n in members]
-        directories = [part[:-1] for part in parts]
-        common = list(directories[0]) if directories else []
-        for directory in directories[1:]:
-            limit = min(len(common), len(directory)); i = 0
-            while i < limit and common[i] == directory[i]: i += 1
-            common = common[:i]
-        # Une seule arborescence doit tout de même produire un CBZ au nom de son
-        # dossier, pas un groupe racine ambigu.
-        if directories and all(directory == tuple(common) for directory in directories) and common:
-            common = common[:-1]
-        groups = {}
-        for name in members:
-            part = Path(name).parts
-            folder = part[len(common)] if len(part) > len(common) + 1 else '__root__'
-            groups.setdefault(folder, []).append(name)
         created = []; used = set()
-        for folder, names in sorted(groups.items()):
-            folder_path = '/'.join((*common, folder)) if folder != '__root__' else ''
-            if folder_path not in selected and folder not in selected: continue
-            label = folder if folder != '__root__' else Path(filepath).stem
-            safe = re.sub(r'[<>:"/\|?*\x00-]', '_', label).strip(' .')
-            out = Path(output_dir) / f"{safe}.cbz"; suffix = 2
-            while str(out) in used or out.exists():
-                out = Path(output_dir) / f"{safe} ({suffix}).cbz"; suffix += 1
+        for selected_path in sorted(selected):
+            prefix = selected_path + '/'
+            names = [n for n in members if n.startswith(prefix) and '/' not in n[len(prefix):]]
+            if not names: continue
+            safe = Path(selected_path).name.replace('/', '_').strip(' .')
+            out = Path(output_dir) / f'{safe}.cbz'; suffix = 2
+            while str(out) in used or out.exists(): out = Path(output_dir) / f'{safe} ({suffix}).cbz'; suffix += 1
             used.add(str(out))
             with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED) as dest:
-                for name in names:
-                    rel = Path(*Path(name).parts[len(common)+1:]) if folder != '__root__' else Path(name)
-                    dest.writestr(str(rel), zf.read(name))
-            created.append({'path': str(out), 'folder': folder_path or folder, 'file_count': len(names)})
-        if not created: raise ZipConversionError("Aucun des dossiers sélectionnés ne contient d'image")
+                for name in names: dest.writestr(Path(name).name, zf.read(name))
+            created.append({'path': str(out), 'folder': selected_path, 'file_count': len(names)})
+        if not created: raise ZipConversionError('Aucun des dossiers sélectionnés ne contient d’image')
         return created

@@ -778,6 +778,12 @@ def get_manual_override_filepaths():
         cursor = conn.cursor()
         cursor.execute('SELECT filepath FROM import_manual_overrides')
         rows = [row[0] for row in cursor.fetchall()]
+        finalized_names = {row[0] for row in cursor.execute("SELECT DISTINCT filename FROM import_history_files WHERE action IN ('imported','replaced','skipped') AND status = 'success'")}
+        finalized_overrides = [p for p in rows if os.path.basename(p) in finalized_names]
+        if finalized_overrides:
+            cursor.executemany('DELETE FROM import_manual_overrides WHERE filepath = ?', [(p,) for p in finalized_overrides])
+            conn.commit()
+            rows = [p for p in rows if p not in set(finalized_overrides)]
 
         stale = [p for p in rows if not os.path.exists(p)]
         if stale:
