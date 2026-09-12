@@ -335,7 +335,7 @@ def attach_series_to_pending_download(client: str, series_id: int, link: Optiona
         return False
 
 
-def get_trackable_active_downloads() -> List[Dict]:
+def get_trackable_active_downloads(include_failed=False) -> List[Dict]:
     """Les active_downloads récents porteurs d'un series_id réel (donc posés depuis une
     fiche série ou le monitoring automatique - voir mark_download_pending), sous forme de
     liste brute plutôt que déjà comparés à un nom de fichier précis - voir
@@ -365,13 +365,14 @@ def get_trackable_active_downloads() -> List[Dict]:
 
         conn = sqlite3.connect(db_path, timeout=30.0)
         cursor = conn.cursor()
-        cursor.execute('''
+        statuses = "('pending', 'completed', 'importing', 'failed')" if include_failed else "('pending', 'completed', 'importing')"
+        cursor.execute(f'''
             SELECT id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count,
                    client, client_item_id, force_replace,
                    is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
             FROM active_downloads
             WHERE series_id IS NOT NULL
-              AND status IN ('pending', 'completed', 'importing')
+              AND status IN {statuses}
             ORDER BY created_at DESC
         ''')
         # client/client_item_id: "can the clients api tell you the location of the files

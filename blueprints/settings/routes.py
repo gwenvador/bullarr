@@ -310,21 +310,6 @@ def _load_verification_series_and_volumes():
     return series_rows, volume_rows, volumes_by_series
 
 
-def _verify_incomplete_series(series_rows):
-    '''Séries incomplètes avec les éléments manquants.'''
-    incomplete = []
-    for s in series_rows:
-        if s['bedetheque_complete'] != 0:
-            continue
-        try: missing = json.loads(s['missing_volumes'] or '[]')
-        except (TypeError, ValueError): missing = []
-        if not missing: continue
-        incomplete.append({
-            'series_id': s['id'], 'series_title': s['title'],
-            'missing_volumes': missing, 'is_oneshot': bool(s['is_oneshot']),
-            'reason': s['bedetheque_complete_reason'],
-        })
-    return incomplete
 def _verify_missing_metadata(series_rows, volumes_by_series):
     """Séries non matchées Bédéthèque + tomes sans ComicInfo.xml (ou résumé manquant)."""
     from blueprints.bedetheque.comicinfo_writer import WRITABLE_FORMATS
@@ -1024,7 +1009,7 @@ def run_verification():
     clic sur "métadonnées manquantes" n'a plus à l'attendre. Sans ?type (compatibilité
     d'éventuels autres appelants), toutes les catégories sont calculées et renvoyées comme avant."""
     verif_type = request.args.get('type')
-    valid_types = {'missing_metadata', 'incomplete_series', 'misnamed', 'misplaced_folders', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
+    valid_types = {'missing_metadata', 'misnamed', 'misplaced_folders', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
     if verif_type is not None and verif_type not in valid_types:
         return jsonify({'error': f"type invalide, attendu l'un de {sorted(valid_types)}"}), 400
 
@@ -1038,8 +1023,6 @@ def run_verification():
 
     if verif_type in (None, 'missing_metadata'):
         result['missing_metadata'] = _verify_missing_metadata(series_rows, volumes_by_series)
-    if verif_type in (None, 'incomplete_series'):
-        result['incomplete_series'] = _verify_incomplete_series(series_rows)
     if verif_type in (None, 'misnamed'):
         result['misnamed'] = _verify_misnamed(series_rows, volumes_by_series)
     if verif_type in (None, 'misplaced_folders'):
