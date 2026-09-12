@@ -105,11 +105,16 @@ def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None)
         if not members:
             raise ZipConversionError("Cette archive zip ne contient aucune image")
         parts = [Path(n).parts for n in members]
-        common = parts[0][:-1]
-        for part in parts[1:]:
-            limit = min(len(common), len(part) - 1); i = 0
-            while i < limit and common[i] == part[i]: i += 1
+        directories = [part[:-1] for part in parts]
+        common = list(directories[0]) if directories else []
+        for directory in directories[1:]:
+            limit = min(len(common), len(directory)); i = 0
+            while i < limit and common[i] == directory[i]: i += 1
             common = common[:i]
+        # Une seule arborescence doit tout de même produire un CBZ au nom de son
+        # dossier, pas un groupe racine ambigu.
+        if directories and all(directory == tuple(common) for directory in directories) and common:
+            common = common[:-1]
         groups = {}
         for name in members:
             part = Path(name).parts
