@@ -86,7 +86,7 @@ def convert_zip_to_cbz(filepath):
 
 
 
-def package_zip_folders_to_cbz(filepath, output_dir, match_tome_numbers=True):
+def package_zip_folders_to_cbz(filepath, output_dir, match_tome_numbers=True, selected_folder_paths=None):
     """Create one CBZ copy per image-bearing folder in a ZIP; never alters source."""
     from pathlib import Path
     import re
@@ -117,7 +117,11 @@ def package_zip_folders_to_cbz(filepath, output_dir, match_tome_numbers=True):
         base = Path(filepath).stem
         created = []
         used = set()
+        selected_folder_paths = set(selected_folder_paths or [])
         for index, (folder, names) in enumerate(sorted(groups.items())):
+            folder_path = '/'.join((*common, folder)) if folder != '__root__' else ''
+            if selected_folder_paths and folder_path not in selected_folder_paths:
+                continue
             match = re.search(r'(?i)(?:^|[ _.-])(?:t(?:ome)?|vol(?:ume)?)[ _.-]*(\d{1,3})(?:$|[ _.-])', folder)
             if not match:
                 match = re.match(r'^(\d{1,3})(?:$|[ _.-])', folder)
@@ -133,5 +137,5 @@ def package_zip_folders_to_cbz(filepath, output_dir, match_tome_numbers=True):
                 for name in names:
                     rel = Path(*Path(name).parts[len(common)+1:]) if folder != '__root__' else Path(name)
                     dest.writestr(str(rel), zf.read(name))
-            created.append({'path': str(out), 'folder': folder, 'tome_number': tome, 'file_count': len(names)})
+            created.append({'path': str(out), 'folder': folder_path or folder, 'tome_number': tome, 'file_count': len(names)})
         return created
