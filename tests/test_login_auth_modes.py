@@ -34,6 +34,8 @@ class LoginAuthModesTest(unittest.TestCase):
         self.assertIn('BULLARR_AUTH_BYPASS_LOGIN', (ROOT / 'docker-compose.yml').read_text())
         self.assertIn('login-form', html)
         self.assertIn('login-field', html)
+        self.assertIn('ProxyFix', (ROOT / 'app.py').read_text())
+        self.assertIn('x_proto=1', (ROOT / 'app.py').read_text())
 
 if __name__ == '__main__':
     unittest.main()
