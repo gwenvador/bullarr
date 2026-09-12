@@ -4027,7 +4027,7 @@ async function renderSeriesDetail(seriesId) {
                             // hors-série, lui, reste un one-shot valide (une parution spéciale
                             // publiée seule n'est pas contradictoire) : il ne supprime pas ce
                             // libellé
-                            (data.is_oneshot && !(oneshotFile && oneshotFile.is_integral)) ? ' 🔸 One-shot' : ''
+                            ((data.is_oneshot || data.bedetheque_complete_reason === 'One-Shot') && !(oneshotFile && oneshotFile.is_integral)) ? ' 🔸 One-Shot' : ''
                         }${data.has_parts ? ' • arcs/parties' : ''}</span>
                         <span>💾 ${formatBytes(totalSize)}</span>
                         <span>📁 ${escapeHtml(data.path)}</span>
