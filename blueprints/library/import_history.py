@@ -755,6 +755,18 @@ def get_packaged_filepaths():
         if conn: conn.close()
 
 
+def get_finalized_import_source_paths():
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        rows = conn.execute("SELECT DISTINCT source_path FROM import_history_files WHERE source_path IS NOT NULL AND source_path != '' AND action IN ('imported','replaced','skipped') AND status = 'success'").fetchall()
+        return {row[0] for row in rows}
+    except Exception as e:
+        print(f'Erreur lecture des imports finalisés: {e}')
+        return set()
+    finally:
+        if conn: conn.close()
+
 def get_manual_override_filepaths():
     """Ensemble des chemins actuellement marqués "assignation manuelle" - nettoie au
     passage les entrées dont le fichier n'existe plus (déjà importé/déplacé/supprimé

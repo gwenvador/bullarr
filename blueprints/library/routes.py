@@ -4336,9 +4336,11 @@ def _scan_tracked_import_files(validate_files=True):
         for identity in _download_folder_identities(d, torrent_names_by_hash):
             downloads_by_folder_name.setdefault(identity, d)
 
-    from .import_history import get_manual_override_filepaths, get_packaged_filepaths
+    from .import_history import get_manual_override_filepaths, get_packaged_filepaths, get_finalized_import_source_paths
     manual_override_filepaths = get_manual_override_filepaths()
     packaged_filepaths = get_packaged_filepaths()
+    finalized_import_paths = get_finalized_import_source_paths()
+    manual_override_filepaths -= finalized_import_paths
 
     files_found = []
     incompatible_folders = []
@@ -4406,6 +4408,15 @@ def _scan_tracked_import_files(validate_files=True):
                     pack_download_id=match.get('tracking_id') if match else None,
                     validate_file=validate_files, packaged_filepaths=packaged_filepaths
                 )
+
+    package_temp = os.path.join(current_app.config.get('TELEGRAM_IMPORT_DIRECTORY', ''), '.bullarr-package-temp')
+    if os.path.isdir(package_temp):
+        for entry in os.scandir(package_temp):
+            if not entry.is_file() or os.path.splitext(entry.name)[1].lower() not in supported_extensions:
+                continue
+            if os.path.realpath(entry.path) not in manual_override_filepaths and entry.path not in packaged_filepaths:
+                continue
+            _append_scanned_file(entry.path, package_temp, entry.name, None, scanner, telegram_filenames, manual_override_filepaths, import_config, files_found, validate_file=validate_files, packaged_filepaths=packaged_filepaths)
 
     return files_found, incompatible_folders
 
@@ -4756,6 +4767,9 @@ def package_import_archive_folders():
     roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
     writable_roots = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) in roots and os.access(d, os.W_OK)]
     output_root = writable_roots[0] if writable_roots else ''
+    if output_root == current_app.config.get('TELEGRAM_IMPORT_DIRECTORY'):
+        output_root = os.path.join(output_root, '.bullarr-package-temp')
+        os.makedirs(output_root, exist_ok=True)
     if root not in roots or not output_root:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
     output_root = os.path.realpath(output_root)
