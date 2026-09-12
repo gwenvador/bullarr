@@ -4722,7 +4722,7 @@ def package_import_archive_folders():
     if os.path.commonpath([filepath, root]) != root or not os.path.isfile(filepath):
         return jsonify({'error': 'Archive introuvable'}), 404
     try:
-        created = package_zip_folders_to_cbz(filepath, output_root, bool(data.get('match_tome_numbers', True)))
+        created = package_zip_folders_to_cbz(filepath, output_root, bool(data.get('match_tome_numbers', True)), data.get('folder_paths'))
     except (ZipConversionError, OSError) as exc:
         return jsonify({'error': str(exc)}), 422
     return jsonify({'success': True, 'created': created, 'output_root': output_root})
