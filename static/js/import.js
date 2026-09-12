@@ -1866,7 +1866,12 @@ async function packageArchiveAsCbz() {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
         const count = data.created.length;
-        actions.innerHTML = `<span style="color:#198754; font-weight:600;">✓ ${count} CBZ créé(s). Les sources sont conservées. Actualisez Import pour les voir.</span>`;
+        // Les CBZ créés sont enregistrés comme fichiers à revue manuelle. Recharge-les
+        // immédiatement puis relance le matching normal: la série Bédéthèque trouvée doit
+        // être visible dans la ligne sans obliger l'utilisateur à actualiser la page.
+        await loadActiveDownloads();
+        await autoMatchAll();
+        actions.innerHTML = `<span style="color:#198754; font-weight:600;">✓ ${count} CBZ créé(s), série recherchée automatiquement. Les sources sont conservées.</span>`;
     } catch (error) {
         actions.innerHTML = `<span style="color:#dc3545; font-weight:600;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</span>`;
     }
