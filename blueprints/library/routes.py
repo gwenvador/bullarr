@@ -4627,6 +4627,17 @@ def delete_import_file():
         except Exception as e:
             print(f"Erreur annulation téléchargement client pour '{filename}': {e}")
 
+    # Les sources aMule sont exposées en lecture seule dans Bullarr. Une suppression
+    # locale ne peut donc pas fonctionner, même si le fichier est visible; ne pas
+    # transformer ce cas en Errno 30 et ne jamais retenter l'opération.
+    if not os.access(import_root, os.W_OK):
+        return jsonify({
+            'success': False,
+            'cancelled_at_client': cancelled_at_client,
+            'error': "Source située sur un répertoire en lecture seule; Bullarr ne peut pas supprimer ce fichier localement."
+                      + (" Le téléchargement a été annulé côté client; le fichier sera retiré par le client si celui-ci le gère." if cancelled_at_client else " Annulez ou supprimez-le depuis le client aMule/NAS.")
+        }), 409
+
     try:
         os.remove(filepath)
         cleanup_empty_directories(import_root)
