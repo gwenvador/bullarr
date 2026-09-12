@@ -224,8 +224,6 @@ def oidc_config():
             config['username'] = (new_config.get('username') or '').strip()
             new_password = new_config.get('password') or ''
             if new_password:
-                if len(new_password) < 8:
-                    return jsonify({'success': False, 'error': 'Le mot de passe doit contenir au moins 8 caractères'}), 400
                 config['password_hash'] = generate_password_hash(new_password)
             if mode == 'password' and (not config.get('username') or not config.get('password_hash')):
                 return jsonify({'success': False, 'error': 'Un identifiant et un mot de passe sont requis'}), 400
