@@ -757,7 +757,7 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
     return duplicates
 
 
-def _verify_duplicate_komga_series(series_rows, komga_series_rows):
+def _verify_duplicate_komga_series(series_rows, komga_series_rows, volumes_by_series=None):
     """Signale les séries Komga distinctes qui portent le même titre normalisé."""
     by_title = {}
     for series in komga_series_rows or []:
@@ -780,12 +780,13 @@ def _verify_duplicate_komga_series(series_rows, komga_series_rows):
             'duplicate_series_id': local['id'],
             'duplicate_series_title': local['title'],
             'duplicate_series_path': local['path'],
-            'cleanup_eligible': False,
+            'cleanup_eligible': True,
             'cleanup_mode': 'komga_duplicate',
             'populated_series': [],
+            'local_volume_count': sum(1 for volume in (volumes_by_series or {}).get(local['id'], []) if volume['filepath']),
             'komga_series_id': 'Doublons Komga',
             'komga_series': [
-                {'id': item.get('komga_series_id'), 'title': item.get('title'), 'url': item.get('url')}
+                {'id': item.get('komga_series_id'), 'title': item.get('title'), 'url': item.get('url'), 'volume_count': item.get('total_volumes')}
                 for item in matching_komga
             ],
             'reason': 'Plusieurs séries Komga ont le même titre normalisé ; vérification manuelle nécessaire.',
@@ -832,6 +833,40 @@ def cleanup_duplicate_empty_series():
         removed = []
         skipped = []
         for candidate in candidates:
+            komga_matches = _load_komga_duplicate_series([candidate])
+            komga_matches = [item for item in komga_matches
+                             if _normalized_duplicate_title(item.get('title')) ==
+                             _normalized_duplicate_title(candidate['title'])]
+            if len(komga_matches) >= 2:
+                series_path = candidate['path']
+                if not series_path or not os.path.isdir(series_path):
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'],
+                                    'reason': 'Dossier local introuvable'})
+                    continue
+                real_series_path = os.path.realpath(series_path)
+                real_library_path = os.path.realpath(candidate['library_path'])
+                if real_series_path == real_library_path or os.path.commonpath(
+                        [real_series_path, real_library_path]) != real_library_path:
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'],
+                                    'reason': 'Chemin hors bibliothèque ou racine de bibliothèque'})
+                    continue
+                shared_path = conn.execute(
+                    'SELECT 1 FROM series WHERE id != ? AND path = ? LIMIT 1',
+                    (candidate['id'], series_path)
+                ).fetchone()
+                if shared_path:
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'],
+                                    'reason': 'Dossier partagé par plusieurs séries'})
+                    continue
+                shutil.rmtree(real_series_path)
+                conn.execute('DELETE FROM volumes WHERE series_id = ?', (candidate['id'],))
+                conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
+                conn.commit()
+                log_action('delete', candidate['id'], candidate['title'],
+                           f"Doublon Komga · dossier supprimé · {series_path}")
+                removed.append({'id': candidate['id'], 'title': candidate['title']})
+                continue
+
             same_komga_populated_match = conn.execute('''
                 SELECT 1 FROM series s
                 JOIN volumes v ON v.series_id = s.id
@@ -986,7 +1021,7 @@ def run_verification():
     if verif_type in (None, 'duplicate_series'):
         result['duplicate_series'] = _verify_duplicate_empty_series(series_rows, volumes_by_series)
         result['duplicate_series'].extend(
-            _verify_duplicate_komga_series(series_rows, _load_komga_duplicate_series(series_rows))
+            _verify_duplicate_komga_series(series_rows, _load_komga_duplicate_series(series_rows), volumes_by_series)
         )
         result['duplicate_series'].sort(key=lambda item: item['duplicate_series_title'].casefold())
 
