@@ -262,7 +262,7 @@ class LibraryImportScheduler:
                 # Scanner les fichiers à importer
                 scanner = LibraryScanner()
                 supported_extensions = set(config.get(
-                    'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
+                    'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
                 ))
 
                 files_to_import = []

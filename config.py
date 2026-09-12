@@ -221,7 +221,7 @@ class Config:
         # automatique) - "ajoute une option dans les settings sur les fichiers à
         # monitorer pour l'import". Toutes activées par défaut = comportement identique
         # à avant que ce ne soit configurable.
-        'monitored_extensions': ['.cbz', '.cbr', '.zip', '.rar', '.pdf'],
+        'monitored_extensions': ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'],
         # "je ne veux pas avoir epub etre download. ajoute une section pour desactiver
         # les extensions qui peuvent etre affiche et download" - contrairement à
         # monitored_extensions ci-dessus (ce que l'import lit sur DISQUE), ce réglage

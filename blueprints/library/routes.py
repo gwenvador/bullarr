@@ -7,6 +7,7 @@ from .scanner import LibraryScanner, SeriesDirectoryMissingError, COMICINFO_FIEL
 from blueprints.bedetheque.cbr_converter import convert_cbr_to_cbz, CbrConversionError
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
 from .zip_converter import convert_zip_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
+from archive_utils import list_archive_members
 from blueprints.bedetheque.comicinfo_writer import write_comicinfo_cbz, build_comicinfo_fields, WRITABLE_FORMATS, derive_author_year_from_comicinfo
 from blueprints.bedetheque.scraper import match_bedetheque_volume
 import sqlite3
@@ -2508,7 +2509,7 @@ def merge_series(series_id):
         # (un fichier non scanné qui traînerait là ne doit jamais partir avec le dossier)
         source_dir_removed = False
         if os.path.isdir(source_dir) and source_dir != target_dir:
-            comic_exts = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
+            comic_exts = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
             leftover_comics = [
                 f for _root, _dirs, files in os.walk(source_dir) for f in files
                 if os.path.splitext(f)[1].lower() in comic_exts
@@ -3852,7 +3853,7 @@ def upload_series_file(series_id):
 
     import_config = load_library_import_config()
     supported_extensions = set(import_config.get(
-        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
+        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
     ))
     ext = os.path.splitext(uploaded.filename)[1].lower()
     if ext not in supported_extensions:
@@ -4278,7 +4279,7 @@ def _scan_tracked_import_files(validate_files=True):
     scanner = LibraryScanner()
     import_config = load_library_import_config()
     supported_extensions = set(import_config.get(
-        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
+        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
     ))
 
     from blueprints.telegram_channels.scraper import get_downloaded_filenames
@@ -4657,6 +4658,30 @@ def list_incompatible_folder_files():
         if os.path.isfile(os.path.join(folder_path, name))
     ]
     return jsonify({'success': True, 'files': files, 'total_count': len(entries), 'truncated': len(entries) > LIMIT})
+
+
+@library_bp.route('/api/import/archive-content', methods=['GET'])
+def list_import_archive_content():
+    """Liste une archive en lecture seule, sans extraction ni modification."""
+    import_root = request.args.get('import_root', '')
+    relative_path = request.args.get('relative_path', '')
+    if not import_root or not relative_path:
+        return jsonify({'error': 'import_root et relative_path requis'}), 400
+    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES']]
+    root = os.path.realpath(import_root)
+    if root not in roots:
+        return jsonify({'error': "Répertoire d'import non autorisé"}), 403
+    filepath = os.path.realpath(os.path.join(root, relative_path))
+    if os.path.commonpath([filepath, root]) != root:
+        return jsonify({'error': 'Chemin de fichier invalide'}), 403
+    if not os.path.isfile(filepath):
+        return jsonify({'error': 'Archive introuvable'}), 404
+    try:
+        result = list_archive_members(filepath)
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 422
+    result['filename'] = os.path.basename(filepath)
+    return jsonify({'success': True, **result})
 
 
 def _resolve_incompatible_folder_path(import_root, relative_path):
@@ -5571,7 +5596,7 @@ def _maybe_complete_tracking_after_move(source_path, destination, outcome='impor
             finalize(tracking_id)
             return
 
-        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
+        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
         for root, _dirs, files in os.walk(top_level_dir):
             if any(os.path.splitext(f)[1].lower() in supported_extensions for f in files):
                 return  # il reste au moins un tome à importer, ne rien faire
@@ -8073,7 +8098,7 @@ def attempt_immediate_auto_import(filepath, import_root):
         filename = os.path.basename(filepath)
         ext = os.path.splitext(filename)[1].lower()
         supported_extensions = set(config.get(
-            'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
+            'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
         ))
         if ext not in supported_extensions:
             return
