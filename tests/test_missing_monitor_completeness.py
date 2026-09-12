@@ -21,3 +21,8 @@ def test_scanner_counts_episodes_as_owned_primary_items_and_uses_oneshot_label()
     section = source[source.index('def update_series_stats'):source.index('def get_library_stats')]
     assert 'owned_main_item_count' in section
     assert 'One-Shot' in section
+
+
+def test_scanner_extends_numbered_album_sequence_to_known_total():
+    source = (Path(__file__).resolve().parents[1] / 'blueprints/library/scanner.py').read_text()
+    assert 'max(max_vol, max(bedetheque_album_numbers), bedetheque_total or 0)' in source
