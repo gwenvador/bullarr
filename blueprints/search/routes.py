@@ -192,21 +192,6 @@ def normalize_search_text(text):
         c for c in unicodedata.normalize('NFKD', delig_text) if not unicodedata.combining(c)
     )
     lowered = without_accents.lower()
-    # Remplace par un espace plutôt que de supprimer: "d'une" ne doit pas devenir "dune"
-    # (qui matcherait n'importe quel titre contenant "d'un(e)"), mais bien "d une". "why
-    # incroyable_Histoire_de_L'_18_L'incroyable_histoire_des_grands_procès@BD.cbz is not
-    # search as a candidate to serie 1014. all the albums are in telegram but not picked
-    # up by the search" - underscore ajouté à cette liste : un nom de fichier Telegram
-    # (quasi toujours underscore-séparé, contrairement à un titre de thread EBDZ
-    # naturellement espacé) normalisait "incroyable_histoire" en gardant l'underscore
-    # littéral, alors qu'un titre de série ("L'incroyable Histoire...") normalise ses
-    # propres espaces en... espaces - la requête ("l incroyable histoire") ne pouvait
-    # alors JAMAIS matcher en sous-chaîne un nom de fichier normalisé qui, lui, gardait
-    # "incroyable_histoire" avec un underscore au même endroit. Vérifié concrètement :
-    # 0 correspondance avant ce correctif pour ce fichier réel contre la série #1014,
-    # alors qu'il s'agit exactement du bon tome. Aucun titre de BD légitime n'utilise un
-    # underscore comme caractère à part entière - toujours un substitut d'espace côté
-    # nom de fichier/URL, jamais du contenu à préserver.
     without_punctuation = re.sub(r"[',.\"`’‘_]", ' ', lowered)
     return re.sub(r'\s+', ' ', without_punctuation).strip()
 

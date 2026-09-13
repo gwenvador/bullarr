@@ -540,8 +540,6 @@ async def _download_one(api_id, api_hash, session_string, channel, message_id, t
                 await asyncio.sleep(wait_seconds)
 
         # Un fichier tronqué silencieusement en cours de route (déjà constaté à deux
-        # reprises sur le même fichier lors de la récupération de la série "Le testament
-        # du Capitaine Crown", et une troisième fois ici sur "Foudroyants" T02: 43 Mo reçus
         # sur 228 Mo attendus) n'est jamais remonté comme une erreur par download_media
         # lui-même - il rend juste la main une fois le flux terminé, sans lever
         # d'exception ni comparer à la taille annoncée par le message.

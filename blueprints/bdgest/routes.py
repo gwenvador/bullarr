@@ -102,9 +102,6 @@ def top_annuel():
                 place_node = li.select_one('.place')
                 rank_match = re.search(r'(\d+)', place_node.get_text() if place_node else '')
                 rank = int(rank_match.group(1)) if rank_match else len(items) + 1
-                # Le libellé de tome ("8. La Longue Marche de Lucky Luke") vit dans le
-                # texte qui suit le <br/> À L'INTÉRIEUR du même <h3> - absent pour un
-                # one-shot (rien après le <br/>, voir "Cauchon..." dans le HTML observé).
                 h3 = li.select_one('.main h3')
                 volume_label = ''
                 if h3:

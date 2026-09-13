@@ -35,15 +35,6 @@ async function _resolveSeriesForAutoAdd(title, rawHint) {
         const addResponse = await fetch('/api/bedetheque/add-series', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            // "tu telecharge le fichier, tu ajoutes la série, tu ne fait pas de recherche
-            // auto puisque le fichier a deja ete telecharge" - sans skip_auto_acquire,
-            // add-series lance en plus sa PROPRE recherche+téléchargement automatique pour
-            // toute la série (auto_acquire_on_add_enabled) - téléchargeant une SECONDE fois
-            // le même fichier déjà envoyé juste avant par autoAddNouveautesEbdzThread/
-            // autoAddNouveautesTelegramFile (voir _autoAddResultToast). Constaté en réel :
-            // "Le Marche-Lune" téléchargé deux fois, chaque tentative épuisant un peu plus
-            // le flood-wait Telegram de ce fichier. Même correctif que
-            // match_manual_review_series (auto_acquire.py) pour exactement la même raison.
             body: JSON.stringify({ url: infoData.info.url, library_id: libraryId, skip_auto_acquire: true })
         });
         const addData = await addResponse.json();
@@ -298,15 +289,18 @@ function _nouveautesImportStatus(event) {
 function _nouveautesMatchedHtml(event) {
     const seriesId = event.type === 'ebdz' ? event.matched_series_id : event.series_id;
     const bedethequeUrl = event.type === 'ebdz' ? event.matched_bedetheque_url : event.bedetheque_url;
+    // Chaque sujet EBDZ peut être rattaché depuis Nouveautés : matché ou non. Le clic
+    // ouvre directement la modale de choix, sans naviguer vers la fiche de la série.
+    const ebdzMatchHtml = event.type === 'ebdz'
+        ? `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match EBDZ" onclick="event.stopPropagation(); event.preventDefault(); openEbdzThreadMatchModal('${escapeForAttribute(event.thread_id)}', '${escapeForAttribute(event.title || '')}', ${seriesId == null ? 'null' : seriesId})">${svgIcon('pencil')}</a>`
+        : '';
     if (!_nouveautesMatched(event)) {
-        // "in telegram if there is a bedetheque link use it in the nouveautes serie
-        // column" - un lien extrait de la légende du message Telegram (bedetheque_url_hint
-        // côté backend) reste utile même si la série n'est pas encore dans la bibliothèque:
-        // un aperçu direct de l'album au lieu de forcer un aller-retour par Découvrir.
-        if (bedethequeUrl) {
-            return `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir sur Bédéthèque (série pas encore dans votre bibliothèque)" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:14px; height:14px; vertical-align:-2px;"></a>`;
-        }
-        return '<span style="color:var(--color-text-muted);">—</span>';
+        // Un lien Bédéthèque issu d'une source reste utile sans série locale, mais le
+        // crayon est toujours disponible pour rattacher le sujet à une série existante.
+        const bedethequeHtml = bedethequeUrl
+            ? `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:14px; height:14px; vertical-align:-2px;"></a>`
+            : '<span style="color:var(--color-text-muted);">—</span>';
+        return `${ebdzMatchHtml} ${bedethequeHtml}`;
     }
     const matchedSeriesTitle = event.type === 'ebdz' ? event.matched_series_title : event.series_title;
     const checkTooltip = matchedSeriesTitle
@@ -315,20 +309,14 @@ function _nouveautesMatchedHtml(event) {
     const checkHtml = seriesId
         ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${checkTooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${svgIcon('check')}</a>`
         : `<span class="icon-owned" data-tooltip="${checkTooltip}">${svgIcon('check')}</span>`;
-    const changeMatchHtml = (event.type === 'ebdz' && seriesId)
-        ? `<a href="/series/${seriesId}?open_ebdz_match=1" class="icon-owned" data-tooltip="Ce n'est pas la bonne série ? Changer le match EBDZ" onclick="event.stopPropagation()">${svgIcon('pencil')}</a>`
+    const changeMatchHtml = event.type === 'ebdz'
+        ? ebdzMatchHtml
         : (event.type === 'telegram' && seriesId)
         ? `<a href="#" class="icon-owned" data-tooltip="Ce n'est pas la bonne série ? Changer le match" onclick="event.stopPropagation(); event.preventDefault(); openTelegramMatchOverrideModal('${escapeForAttribute(event.filename)}', ${seriesId})">${svgIcon('pencil')}</a>`
         : '';
     const bedethequeHtml = bedethequeUrl
         ? `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:14px; height:14px; vertical-align:-2px;"></a>`
         : '';
-    // "compares les volumes existants avec ceux nouveau et si ceux de nouveautés sont
-    // manquants ou non de la série" - en plus du ✓ "série connue" ci-dessus, signale si ce
-    // qui vient d'être trouvé apporte VRAIMENT quelque chose de nouveau (un tome/intégrale/
-    // HS/épisode absent de la bibliothèque, voir already_owned/missing_links_count côté
-    // API) ou si c'est déjà entièrement possédé - sans quoi "Série ✓" ne dit rien de plus
-    // que "vous avez déjà cette série", pas "ce fichier vous intéresse".
     if (event.type === 'ebdz') {
         const missing = event.missing_links_count || 0;
         if (missing > 0) {
@@ -455,6 +443,69 @@ async function confirmTelegramMatchOverride(filename, seriesId, seriesTitle) {
     } catch (error) {
         alert('❌ Erreur de connexion: ' + error.message);
         closeTelegramMatchOverrideModal();
+    }
+}
+
+// Modale de rattachement manuel d'un sujet EBDZ depuis Nouveautés. Contrairement
+// au raccourci historique vers /series/<id>, elle est également disponible quand le sujet
+// n'est associé à aucune série locale.
+async function openEbdzThreadMatchModal(threadId, threadTitle, currentSeriesId) {
+    let modal = document.getElementById('ebdz-thread-match-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'ebdz-thread-match-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = '<div class="modal-content"><div class="loading"><div class="spinner"></div></div></div>';
+    modal.classList.add('active');
+    try {
+        const libs = await (await fetch('/api/libraries')).json();
+        const perLibrary = await Promise.all((Array.isArray(libs) ? libs : []).map(lib => fetch(`/api/library/${lib.id}/series`).then(r => r.json()).catch(() => [])));
+        const candidates = perLibrary.flat();
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:700px;">
+                <span class="close-modal" onclick="closeEbdzThreadMatchModal()">×</span>
+                <h2 class="modal-title" style="margin-bottom:10px;">✏️ Matcher le sujet EBDZ</h2>
+                <p class="modal-subtitle">Choisissez la série pour <strong>${escapeHtml(threadTitle)}</strong>.</p>
+                <input type="text" id="ebdz-thread-match-filter" class="search-box" placeholder="Filtrer les séries..." style="width:100%; margin-bottom:12px;">
+                <div id="ebdz-thread-match-candidates" style="max-height:50vh; overflow-y:auto;"></div>
+            </div>`;
+        const candidatesEl = document.getElementById('ebdz-thread-match-candidates');
+        const filterInput = document.getElementById('ebdz-thread-match-filter');
+        const renderCandidates = () => {
+            const needle = navNormalizeSearch(filterInput.value.trim());
+            const matches = candidates.filter(c => navNormalizeSearch(c.title).includes(needle)).slice(0, 50);
+            matches.sort((a, b) => Number(b.id === currentSeriesId) - Number(a.id === currentSeriesId));
+            candidatesEl.innerHTML = matches.length ? matches.map(c => {
+                const isCurrent = c.id === currentSeriesId;
+                return `<div class="series-card${isCurrent ? ' series-card-current-match' : ''}" style="cursor:pointer; margin-bottom:8px;" onclick="confirmEbdzThreadMatch('${escapeForAttribute(threadId)}', ${c.id})"><div class="series-title">${escapeHtml(c.title)}${isCurrent ? ' <span class="badge-current-match">✅ Match actuel</span>' : ''}</div><div class="series-info">${c.total_volumes || 0} album${(c.total_volumes || 0) > 1 ? 's' : ''}</div></div>`;
+            }).join('') : '<div class="no-data"><p>😕 Aucune série ne correspond</p></div>';
+        };
+        filterInput.addEventListener('input', renderCandidates);
+        renderCandidates();
+        filterInput.focus();
+    } catch (error) {
+        modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeEbdzThreadMatchModal()">×</span><div class="no-data"><p>❌ ${escapeHtml(error.message)}</p></div></div>`;
+    }
+}
+
+function closeEbdzThreadMatchModal() {
+    document.getElementById('ebdz-thread-match-modal')?.classList.remove('active');
+}
+
+async function confirmEbdzThreadMatch(threadId, seriesId) {
+    try {
+        const response = await fetch(`/api/series/${seriesId}/ebdz-match`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ thread_id: threadId })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Match impossible');
+        closeEbdzThreadMatchModal();
+        loadNouveautesEvents(false, false);
+    } catch (error) {
+        alert('❌ ' + error.message);
     }
 }
 

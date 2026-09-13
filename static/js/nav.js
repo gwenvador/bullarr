@@ -799,14 +799,6 @@ document.addEventListener('click', e => {
 }, true);
 
 function _startColumnResize(e, table, th, key) {
-    // "right click on type and it gets very large" - bug réel: un mousedown droit
-    // déclenchait AUSSI ce redimensionnement (rien ici ne distinguait le bouton), en
-    // parallèle du reset du contextmenu (voir plus haut) - le mouseup qui suit (déclenché
-    // par le même clic droit, même sans aucun glissement volontaire) recalculait et
-    // réécrivait TOUTES les largeurs depuis getBoundingClientRect(), pouvant écraser le
-    // localStorage.removeItem du reset juste après coup selon l'ordre d'exécution des deux
-    // handlers - un clic droit avec ne serait-ce qu'un léger tremblement de souris entre
-    // mousedown et mouseup suffisait à figer une largeur totalement arbitraire.
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -849,9 +841,6 @@ function _startColumnResize(e, table, th, key) {
         const widths = {};
         allThs.forEach((cellTh, i) => { widths[i] = Math.round(cellTh.getBoundingClientRect().width); });
         _writeSavedColumnWidths(key, widths);
-        // Voir _resizeJustEnded plus haut - posé APRÈS la sauvegarde, consommé par le
-        // click fantôme qui suit ce mouseup (ou remis à zéro tout seul si aucun click ne
-        // finit par naître, ex: relâchement hors de tout élément cliquable).
         _resizeJustEnded = true;
         setTimeout(() => { _resizeJustEnded = false; }, 200);
     }
@@ -1296,12 +1285,6 @@ function initMobileNav(navLinks) {
     const headerContent = document.querySelector('.header-content');
     if (!sidebar || !headerContent) return;
 
-    // "bullar est pas très bien placé en mobile. met le plus haut et plus gros" - le logo
-    // n'était visible qu'à l'intérieur du tiroir latéral (.sidebar-brand, masqué tant que
-    // le hamburger n'est pas ouvert) - jamais dans la barre du haut elle-même, qui ne
-    // montrait que le titre de la page courante. Ajouté ici, masqué par défaut en desktop
-    // (voir .header-brand, style.css - la sidebar permanente y affiche déjà sa propre
-    // marque, inutile de la dupliquer), visible en permanence sur mobile.
     const brand = document.createElement('a');
     brand.href = '/';
     brand.className = 'header-brand';
@@ -1347,6 +1330,7 @@ function initMobileNav(navLinks) {
 // complète une seule fois (à la première ouverture), puis filtre localement à chaque
 // frappe plutôt que de refaire un appel réseau par caractère tapé
 let navHeaderSearchAllSeries = null;
+let navHeaderSearchLoadingPromise = null;
 
 // Pose/retire .has-value (voir .th-filterable-control.has-value, style-library-search.css)
 // sur un contrôle de filtre de colonne selon qu'il a une valeur ou non. Vivait auparavant
@@ -1468,21 +1452,34 @@ async function toggleHeaderSearch() {
 
 async function ensureHeaderSearchDataLoaded() {
     if (navHeaderSearchAllSeries) return;
+    if (navHeaderSearchLoadingPromise) return navHeaderSearchLoadingPromise;
+
     const resultsEl = document.getElementById('header-search-results');
-    try {
-        const libResponse = await fetch('/api/libraries');
-        const libraries = await libResponse.json();
-        const all = [];
-        for (const lib of libraries) {
-            const response = await fetch(`/api/library/${lib.id}/series`);
-            if (!response.ok) continue;
-            const series = await response.json();
-            series.forEach(s => all.push({ ...s, library_name: lib.name }));
+    navHeaderSearchLoadingPromise = (async () => {
+        try {
+            const libResponse = await fetch('/api/libraries');
+            if (!libResponse.ok) throw new Error(`Chargement des bibliothèques impossible (${libResponse.status})`);
+            const librariesPayload = await libResponse.json();
+            const libraries = Array.isArray(librariesPayload)
+                ? librariesPayload : (librariesPayload.libraries || []);
+            const all = [];
+            for (const lib of libraries) {
+                const response = await fetch(`/api/library/${lib.id}/series`);
+                if (!response.ok) continue;
+                const seriesPayload = await response.json();
+                const series = Array.isArray(seriesPayload)
+                    ? seriesPayload : (seriesPayload.series || []);
+                series.forEach(s => all.push({ ...s, library_name: lib.name }));
+            }
+            navHeaderSearchAllSeries = all;
+            handleHeaderSearchInput();
+        } catch (error) {
+            resultsEl.innerHTML = `<div style="padding: 10px; color: #c33; font-size: 0.85em;">Erreur de chargement: ${navEscapeHtml(error.message)}</div>`;
+        } finally {
+            navHeaderSearchLoadingPromise = null;
         }
-        navHeaderSearchAllSeries = all;
-    } catch (error) {
-        resultsEl.innerHTML = `<div style="padding: 10px; color: #c33; font-size: 0.85em;">Erreur de chargement: ${navEscapeHtml(error.message)}</div>`;
-    }
+    })();
+    return navHeaderSearchLoadingPromise;
 }
 
 function handleHeaderSearchInput() {
@@ -1501,13 +1498,6 @@ function handleHeaderSearchInput() {
     panel.style.display = 'block';
     const matches = navHeaderSearchAllSeries.filter(s => navNormalizeSearch(s.title).includes(query)).slice(0, 20);
 
-    // "il faudrait aussi ajouter une bd meme si dautres sont trouves. ajout saffiche
-    // uniquement quand il y en a pas de trouve" - n'apparaissait qu'à zéro résultat local ;
-    // une série RECHERCHÉE peut très bien être absente de la bibliothèque même quand la
-    // requête matche d'autres séries locales (ex: "Sillages" retrouve la série déjà
-    // possédée mais pas "Sillages Les Chroniques", une série différente non encore
-    // ajoutée) - toujours proposé maintenant, en plus des résultats trouvés plutôt qu'à
-    // leur place.
     const encodedQuery = encodeURIComponent(rawQuery);
     const addLinkHtml = `<a href="/discover?q=${encodedQuery}" class="header-search-external-link">${svgIcon('plus')} Ajouter "${navEscapeHtml(rawQuery)}" à la bibliothèque</a>`;
 
@@ -1636,10 +1626,6 @@ function _renderToastElement(id, message, icon, href) {
         iconEl.textContent = icon;
     }
     toast.querySelector('.app-toast-message').textContent = message;
-    // Fermeture manuelle: filet de sécurité si un toast sans autoHideMs ne se retire
-    // jamais tout seul (ex: sondage de progression interrompu par une erreur réseau
-    // silencieuse, voir pollMetadataWriteProgress) - sans ça il fallait recharger la
-    // page pour s'en débarrasser
     toast.querySelector('.app-toast-close').addEventListener('click', (e) => {
         e.stopPropagation();
         dismissToast(id);
@@ -1678,14 +1664,6 @@ function pluralize(count, singular, plural) {
     return count > 1 ? (plural !== undefined ? plural : `${singular}s`) : singular;
 }
 
-// icon: emoji affiché devant le message (par défaut ⏳, une icône de progression)
-// autoHideMs: si fourni, le toast se retire tout seul après ce délai (pour les
-// confirmations courtes type "Scan Komga demandé" qui n'ont pas de fin explicite à
-// attendre) et n'est PAS persisté (il aura de toute façon disparu avant qu'une
-// navigation ait le temps de le détruire) - sans autoHideMs, le toast reste jusqu'à un
-// dismissToast(id) explicite ET survit à un changement de page entretemps
-// href: si fourni, tout le toast devient cliquable (curseur pointeur, voir CSS) et
-// navigue vers cette URL - "si je cliques dessus ca va à la page de la série".
 function showToast(id, message, { icon = 'loader-circle', autoHideMs, href } = {}) {
     const toast = _renderToastElement(id, message, icon, href);
     clearTimeout(toast._autoHideTimer);
@@ -1921,26 +1899,6 @@ function pollEbdzScrapeStatus() {
     }
 })();
 
-// "import a été overengineered, review et simplifie" - libellé "Tome N - Titre" d'un tome
-// (possédé ou simple emplacement Bédéthèque pas encore possédé, voir get_series_volumes),
-// dupliqué en 4 copies quasi-identiques à travers import.js/library.js avant ce correctif -
-// chaque tweak (ex: le repli sur bedetheque_title quand ci.title est vide) devait être
-// répété 4 fois, et 3 bugs de cette même session étaient exactement "corrigé dans une
-// copie, oublié dans les 3 autres". Centralisé ici (nav.js, seul script chargé sur toutes
-// les pages qui en ont besoin: /import, /series/<id>).
-//
-// preferBedethequeTitle: par défaut, le ComicInfo local du tome (ci.title, écrit à
-// l'import/MAJ métadonnées) prime sur le titre Bédéthèque - le cas le plus courant
-// (identifier un tome déjà possédé). "le dropdown de changer le numéro doit etre le vrai
-// nom des volumes de bedetheque pas les noms des volumes modifié" inverse cette priorité
-// pour la modale de renumérotation manuelle (library.js) : un ComicInfo local peut être
-// erroné/périmé (une renumérotation ratée, ex: "Musiques" mal étiqueté "Chasse & Pêche"),
-// c'est justement la référence Bédéthèque fiable qu'on veut y voir, pas la donnée
-// potentiellement fausse qu'on est en train de corriger.
-//
-// showOwned: ajoute "(déjà possédé)" - selon l'appelant, ce texte est soit intégré au
-// libellé lui-même (import.js), soit concaténé séparément par l'appelant (library.js,
-// qui a déjà sa propre variable `owned` locale) - jamais les deux à la fois.
 function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = false } = {}) {
     let label;
     if (v.is_integral) label = `Intégrale${v.integral_number != null ? ' ' + v.integral_number : ''}`;
@@ -1956,7 +1914,7 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
     // "garde le nom du volume mais mets une icone possédé" - une <option> native ne peut
     // pas contenir de balisage (pas d'icône SVG possible ici), ✓ est déjà la convention
     // du reste de l'app pour "déjà possédé"/"déjà ajouté" (voir search-results-table.js).
-    if (showOwned && v.filepath) label = `✓ ${label}`;
+    if (showOwned && v.is_owned) label = `✓ ${label}`;
     return label;
 }
 
@@ -2005,19 +1963,6 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
 
-// Colonnes déplaçables sur tous les tableaux de l'application. L'ordre est mémorisé
-// par tableau et réappliqué après chaque rendu dynamique (filtres, pagination, onglet).
-//
-// "si je clique sur une entete ca change la position des colonnes [...] verifie tous les
-// tableaux. il faut que ce soit unifié" - bug réel: le drag HTML5 natif (draggable=true
-// sur le <th> entier) n'a aucun seuil de mouvement contrôlable en JS. Un simple clic pour
-// trier (mousedown+mouseup quasi immobile) suffisait parfois à faire naître un vrai
-// dragstart natif selon le navigateur/la souris/le trackpad - le clic de tri ne se
-// contentait pas d'échouer, la colonne se déplaçait carrément. Réécrit avec le même
-// mécanisme mousedown/mousemove/mouseup + seuil de distance explicite que
-// initResizableTableColumns ci-dessus ("unifié" au sens propre: plus deux systèmes de
-// glissement différents sur les mêmes <th>, un seul) - en dessous de DRAG_THRESHOLD_PX de
-// mouvement, c'est un clic normal (tri), jamais un réordonnancement.
 (function initDraggableTableColumns() {
     const STORAGE_KEY = 'bullarr-table-column-order-v1';
     const DRAG_THRESHOLD_PX = 6;

@@ -2,6 +2,7 @@
 Point d'entrée principal de l'application Bullarr
 """
 from flask import Flask, send_from_directory
+from werkzeug.middleware.proxy_fix import ProxyFix
 from config import config
 import os
 import sys
@@ -16,6 +17,10 @@ def create_app(config_name='default'):
 
     app = Flask(__name__)
     app.config.from_object(config[config_name])
+
+    # Bullarr is served behind Nginx Proxy Manager. Trust one proxy hop so
+    # url_for(..., _external=True) uses the public HTTPS scheme/host for OIDC.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     # "why telegram download is still stucked" - identifiant unique de CE démarrage du
     # process (voir active_downloads.process_instance_id, config.py/downloader.py): une

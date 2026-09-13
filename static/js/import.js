@@ -163,17 +163,6 @@ function setImportNameFilter(value) {
 }
 function _importNameMatches(value) { const q = String(importNameFilter || '').trim().toLocaleLowerCase(); return !q || String(value || '').toLocaleLowerCase().includes(q); }
 
-// Type (client): select comme "Possédé"/"Format" dans les tableaux de la bibliothèque,
-// pas un champ texte libre. "type should only display what is currently available not
-// all the options in clients" - CLIENT_LABELS liste TOUS les clients supportés par l'app
-// (8: qBittorrent/rTorrent/Deluge/aMule/Telegram/fourtoutici/Shelfmark/torrent partagé),
-// presque toujours plus large que ce qui est réellement présent dans la file d'import à
-// un instant donné - availableClientKeys (calculé par l'appelant sur importFiles/
-// activeDownloads/pending, voir displayImportFiles) restreint les options à ce qui existe
-// vraiment. Calculé sur les données NON filtrées par Nom/Album/Volume - un dropdown Type
-// qui rétrécirait tout seul selon un AUTRE filtre actif serait déroutant. La valeur
-// actuellement sélectionnée reste toujours proposée même si elle a entre-temps disparu
-// des données (évite un select qui "oublie" silencieusement le filtre actif).
 function _importTypeFilterHeaderHtml(availableClientKeys) {
     const active = importTableSort.column === 'client';
     const arrow = active ? (importTableSort.direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
@@ -269,12 +258,13 @@ const CLIENT_LOGOS = {
     deluge: '/static/img/deluge-logo.svg',
     amule: '/static/img/emule-logo.svg',
     telegram: '/static/img/telegram-logo.svg',
+    packaged: null,
     fourtoutici: '/static/img/fourtoutici-favicon.svg',
     shelfmark: '/static/img/annas-archive-favicon.ico'
 };
 const CLIENT_LABELS = {
     qbittorrent: 'qBittorrent', rtorrent: 'rTorrent', deluge: 'Deluge', amule: 'aMule',
-    telegram: 'Telegram', fourtoutici: 'fourtoutici', shelfmark: 'Shelfmark',
+    telegram: 'Telegram', packaged: 'Empaqueté', fourtoutici: 'fourtoutici', shelfmark: 'Shelfmark',
     // '/torrents' est partagé entre qBittorrent/rTorrent/Deluge - un fichier déjà sur
     // disque ne peut pas être rattaché avec certitude à l'un des trois (voir client côté
     // serveur, scan_import_directory)
@@ -297,7 +287,9 @@ function clientBadgeHtml(clientKey) {
     const logo = CLIENT_LOGOS[clientKey];
     const iconHtml = logo
         ? `<img src="${logo}" alt="" class="torrent-client-logo">`
-        : clientKey === 'torrent' ? svgIcon('magnet') : svgIcon('download');
+        : clientKey === 'torrent' ? svgIcon('magnet')
+            : clientKey === 'packaged' ? svgIcon('package')
+            : svgIcon('download');
     return `<span data-tooltip="${escapeHtml(label)}">${iconHtml}</span>`;
 }
 
@@ -388,6 +380,7 @@ async function loadActiveDownloads() {
             });
             incompatibleFolders = data.incompatible_folders || [];
             currentlyProcessingFile = data.currently_processing || null;
+            await _ensureVolumesLoadedForFiles(importFiles);
             hasScannedOnce = true;
         }
     } catch (error) {
@@ -427,6 +420,7 @@ function renderCurrentlyProcessingBanner() {
 }
 
 function _pendingVolumeLabel(pending) {
+    if (pending.is_oneshot) return 'One Shot';
     if (pending.volume_number && pending.volume_number !== 'null') return `Tome ${escapeHtml(String(pending.volume_number))}`;
     if (pending.is_integral) return `Intégrale${pending.integral_number != null ? ' ' + pending.integral_number : ''}`;
     if (pending.is_hs) return `Hors-série${pending.hs_number != null ? ' ' + pending.hs_number : ''}`;
@@ -476,7 +470,7 @@ function _pendingDownloadRowHtml(pending) {
                     : `<div style="font-size:0.85em;">${svgIcon('loader-circle', 'icon-spin')} En attente...</div>`;
     return `
         <tr${hasProgress ? ` data-pending-key="${pending.id}"` : ''}>
-            <td><input type="checkbox" class="import-file-select" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
+            <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">${escapeHtml(_importDateForPending(pending) || '—')}</td>
             <td>${clientBadgeHtml(pending.client)}</td>
             <td>
@@ -489,7 +483,7 @@ function _pendingDownloadRowHtml(pending) {
                 ${statusHtml}
                 ${pending.status === 'completed' ? `<button class="btn-icon-only" onclick="importPendingDownload(${pending.id}, this)" data-tooltip="Importer ce fichier maintenant">${svgIcon('check')}</button>` : ''}
                 ${pending.exhausted ? `<button class="btn-icon-only" onclick="retryTelegramDownload(${pending.id}, this)" data-tooltip="Relancer manuellement (budget de tentatives automatiques épuisé)">${svgIcon('refresh-cw')}</button>` : ''}
-                <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}')" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
+                <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}', {is_integral: ${!!pending.is_integral}, integral_number: ${pending.integral_number ?? 'null'}, is_hs: ${!!pending.is_hs}, hs_number: ${pending.hs_number ?? 'null'}, is_episode: ${!!pending.is_episode}, episode_number: ${pending.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
                 <button class="btn-icon-only" onclick="removePendingDownload(${pending.id}, this)" data-tooltip="Retirer et annuler le téléchargement chez le client (si retrouvé)">${svgIcon('trash-2')}</button>
             </td>
         </tr>
@@ -644,7 +638,8 @@ async function _deleteImportFileRequest(file) {
             import_root: file.import_root,
             relative_path: file.relative_path,
             filename: file.filename,
-            client: file.client
+            client: file.client,
+            tracking_id: file.destination?.tracking_id ?? file.pack_download_id
         })
     });
     return response.json();
@@ -793,11 +788,11 @@ function _activeDownloadRowHtml({ clientKey, item }) {
         ? `<button class="btn-icon-only" onclick="deleteActiveDownload('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', ${item.tracking_id ?? 'null'}, this)" data-tooltip="Supprimer ce téléchargement">${svgIcon('trash-2')}</button>`
         : '';
     const editButtonHtml = item.tracking_id != null
-        ? `<button class="btn-icon-only" onclick="openTrackingEditModal(${item.tracking_id}, ${item.series_id ?? 'null'}, ${item.volume_number ?? 'null'}, '${escapeForAttribute(item.name)}')" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>`
+        ? `<button class="btn-icon-only" onclick="openTrackingEditModal(${item.tracking_id}, ${item.series_id ?? 'null'}, ${item.volume_number ?? 'null'}, '${escapeForAttribute(item.name)}', {is_integral: ${!!item.is_integral}, integral_number: ${item.integral_number ?? 'null'}, is_hs: ${!!item.is_hs}, hs_number: ${item.hs_number ?? 'null'}, is_episode: ${!!item.is_episode}, episode_number: ${item.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>`
         : '';
     const activeKey = _activeDownloadKey(clientKey, item);
     const selectCheckboxHtml = activeKey
-        ? `<input type="checkbox" class="import-file-select" ${selectedActiveKeys.has(activeKey) ? 'checked' : ''} onchange="toggleActiveRowSelection('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse">`
+        ? `<input type="checkbox" class="import-file-select" data-active-client="${escapeForAttribute(clientKey)}" data-active-id="${escapeForAttribute(String(item.id))}" ${selectedActiveKeys.has(activeKey) ? 'checked' : ''} onchange="toggleActiveRowSelection('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse">`
         : '';
     // data-active-key: "make the update for the download a 5s but only for the
     // downloading files" - identifiant stable retrouvé par refreshDownloadingProgress
@@ -813,7 +808,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
                 <div class="active-download-size-line" style="font-size:0.9em;">${_activeDownloadSizeLineHtml(item)}</div>
             </td>
             <td>${item.series_title ? (item.series_id ? `<a href="/series/${item.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(item.series_title)}</a>` : escapeHtml(item.series_title)) : '—'}</td>
-            <td>${item.volume_number ? `Tome ${escapeHtml(String(item.volume_number))}` : '—'}</td>
+            <td>${_pendingVolumeLabel(item)}</td>
             <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension({ filename: item.name }))}</td>
             <td style="text-align:center; min-width:110px;">
                 <div style="height:6px; background:var(--color-surface-alt); border:1px solid var(--color-border); border-radius:3px; overflow:hidden;">
@@ -829,23 +824,28 @@ function _activeDownloadRowHtml({ clientKey, item }) {
 
 let trackingEditId = null;
 
-function openTrackingEditModal(trackingId, seriesId, volumeNumber, filename) {
+function openTrackingEditModal(trackingId, seriesId, volumeNumber, filename, typeMeta = null) {
     trackingEditId = trackingId;
     document.getElementById('tracking-edit-file-name').textContent = `Fichier: ${filename}`;
-    _populateTrackingEditModal(seriesId, volumeNumber);
+    _populateTrackingEditModal(seriesId, volumeNumber, typeMeta);
     document.getElementById('tracking-edit-modal').classList.add('active');
     _refreshLibrariesInBackground(
         'tracking-edit-modal', 'tracking-edit-library', 'tracking-edit-series',
-        () => _populateTrackingEditModal(seriesId, volumeNumber)
+        () => _populateTrackingEditModal(seriesId, volumeNumber, typeMeta)
     );
 }
 
-function _populateTrackingEditModal(seriesId, volumeNumber) {
+function _populateTrackingEditModal(seriesId, volumeNumber, typeMeta = null) {
     const librarySelect = document.getElementById('tracking-edit-library');
     librarySelect.innerHTML = '<option value="">-- Sélectionner une bibliothèque --</option>' +
         allLibraries.map(lib => `<option value="${lib.id}">${escapeHtml(lib.name)}</option>`).join('');
-    document.getElementById('tracking-edit-volume').value = volumeNumber != null ? volumeNumber : '';
-    document.getElementById('tracking-edit-type').value = 'volume';
+    const initialType = typeMeta?.is_integral ? 'integral'
+        : typeMeta?.is_hs ? 'hs' : typeMeta?.is_episode ? 'episode' : 'volume';
+    const initialNumber = initialType === 'integral' ? typeMeta?.integral_number
+        : initialType === 'hs' ? typeMeta?.hs_number
+        : initialType === 'episode' ? typeMeta?.episode_number : volumeNumber;
+    document.getElementById('tracking-edit-volume').value = initialNumber != null ? initialNumber : '';
+    document.getElementById('tracking-edit-type').value = initialType;
     _onTrackingEditTypeChange();
 
     document.getElementById('tracking-edit-library-group').style.display = allLibraries.length === 1 ? 'none' : '';
@@ -1100,7 +1100,7 @@ async function loadAllLibraries() {
     try {
         const response = await fetch('/api/libraries');
         allLibraries = await response.json();
-        
+
         // Charger les séries de toutes les bibliothèques en parallèle
         await Promise.all(allLibraries.map(async (lib) => {
             const seriesResponse = await fetch(`/api/library/${lib.id}/series`);
@@ -1321,7 +1321,8 @@ async function bulkDeleteSelectedImportFiles() {
                     import_root: file.import_root,
                     relative_path: file.relative_path,
                     filename: file.filename,
-                    client: file.client
+                    client: file.client,
+            tracking_id: file.destination?.tracking_id ?? file.pack_download_id
                 })
             });
             const data = await response.json();
@@ -1463,7 +1464,7 @@ function _incompatibleFolderRowHtml(folder, index) {
     const folderKey = _incompatibleFolderKey(folder);
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
-            <td><input type="checkbox" class="import-file-select" ${selectedIncompatibleFolderKeys.has(folderKey) ? 'checked' : ''} onchange="toggleIncompatibleFolderSelection('${escapeForAttribute(folderKey)}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
+            <td><input type="checkbox" class="import-file-select" data-folder-key="${escapeForAttribute(folderKey)}" ${selectedIncompatibleFolderKeys.has(folderKey) ? 'checked' : ''} onchange="toggleIncompatibleFolderSelection('${escapeForAttribute(folderKey)}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">—</td>
             <td>${svgIcon('ban')}</td>
             <td class="import-files-table-filename">
@@ -1762,6 +1763,125 @@ async function deleteIncompatibleFolder(importRoot, relativePath, button) {
 // le bouton groupé. Le fichier reste importable tel quel sans conversion (pdf est un
 // format supporté par l'import, juste pas par l'écriture ComicInfo.xml, voir
 // WRITABLE_FORMATS côté serveur) - c'est une amélioration proposée, pas un blocage.
+
+
+function _archiveContentActionHtml(file) {
+    const ext = (file.filename || '').toLowerCase().split('.').pop();
+    if (!['zip', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst'].includes(ext)) return '';
+    return `<button type="button" class="btn-icon-only" onclick="viewArchiveContent('${escapeForAttribute(file.import_root)}', '${escapeForAttribute(file.relative_path)}')" data-tooltip="Voir les dossiers et fichiers de l’archive">${svgIcon('folder-open')} Voir le contenu</button>`;
+}
+
+
+function renderArchiveEntryTree(entries) {
+    const root = {dirs: {}, files: []};
+    for (const entry of entries || []) {
+        const parts = entry.path.split('/').filter(Boolean);
+        if (entry.kind === 'directory') continue;
+        let node = root;
+        parts.forEach((part, i) => {
+            if (i === parts.length - 1) node.files.push({name: part, entry});
+            else node = node.dirs[part] ||= {dirs: {}, files: []};
+        });
+    }
+    const render = (node, prefix = '') => Object.entries(node.dirs).sort().map(([name, child]) => {
+        const path = prefix ? `${prefix}/${name}` : name;
+        return `<details><summary><label onclick="event.stopPropagation()"><input type="checkbox" class="archive-folder-select" data-folder-path="${escapeHtml(path)}" onchange="updateArchiveFolderSelection(this)"> 📁</label> ${escapeHtml(name)}</summary><div style="padding-left:14px;">${render(child, path)}</div></details>`;
+    }).join('') + node.files.map(({entry}) => `<div style="padding:3px 8px; border-bottom:1px solid var(--color-border, #eee); overflow-wrap:anywhere;">📄 ${escapeHtml(entry.path)} <span style="color:var(--color-text-muted);">(${formatBytes(entry.size)})</span></div>`).join('');
+    return render(root);
+}
+
+function updateArchiveFolderSelection(changedCheckbox) {
+    if (changedCheckbox) {
+        const details = changedCheckbox.closest('details');
+        if (details) details.querySelectorAll(':scope .archive-folder-select').forEach(cb => {
+            if (cb !== changedCheckbox) cb.checked = changedCheckbox.checked;
+        });
+    }
+    document.querySelectorAll('#archive-content-list details').forEach(details => {
+        const own = details.querySelector(':scope > summary .archive-folder-select');
+        const children = [...details.querySelectorAll(':scope > div .archive-folder-select')];
+        if (own && children.length) {
+            const checked = children.filter(cb => cb.checked).length;
+            own.indeterminate = checked > 0 && checked < children.length;
+            if (checked === children.length) own.checked = true;
+            if (checked === 0) own.checked = false;
+        }
+    });
+    const count = document.querySelectorAll('#archive-content-list .archive-folder-select:checked').length;
+    const button = document.getElementById('archive-package-selected');
+    if (button) { button.disabled = count === 0; button.textContent = `📦 Empaqueter les dossiers cochés (${count})`; }
+}
+
+async function viewArchiveContent(importRoot, relativePath) {
+    const modal = document.getElementById('archive-content-modal');
+    const title = document.getElementById('archive-content-title');
+    const summary = document.getElementById('archive-content-summary');
+    const list = document.getElementById('archive-content-list');
+    modal.classList.add('active');
+    modal.dataset.importRoot = importRoot;
+    modal.dataset.relativePath = relativePath;
+    title.textContent = relativePath.split('/').pop();
+    summary.textContent = 'Lecture de la table des matières…';
+    document.getElementById('archive-content-actions').innerHTML = '';
+    list.innerHTML = `<div style="padding:10px;">${svgIcon('loader-circle', 'icon-spin')} Chargement…</div>`;
+    try {
+        const params = new URLSearchParams({import_root: importRoot, relative_path: relativePath});
+        const response = await fetch(`/api/import/archive-content?${params}`);
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
+        summary.textContent = `${data.format.toUpperCase()} · ${data.total_count} entrée(s)${data.truncated ? ' · liste plafonnée' : ''}`;
+        if (data.format === 'zip') {
+
+            document.getElementById('archive-content-actions').innerHTML = `<button type="button" class="btn btn-sm" id="archive-package-selected" onclick="packageArchiveAsCbz()" disabled>📦 Empaqueter les dossiers cochés (0)</button>`;
+        }
+        list.innerHTML = renderArchiveEntryTree(data.entries) || '<p>Aucune entrée.</p>';
+    } catch (error) {
+        summary.textContent = 'Erreur';
+        list.innerHTML = `<div style="padding:10px; color:#dc3545;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</div>`;
+    }
+}
+
+async function packageArchiveAsCbz() {
+    const modal = document.getElementById('archive-content-modal');
+    const actions = document.getElementById('archive-content-actions');
+    try {
+        const folderPaths = [...document.querySelectorAll('#archive-content-list .archive-folder-select:checked')].map(cb => cb.dataset.folderPath);
+        if (!folderPaths.length) throw new Error('Cochez au moins un dossier à empaqueter');
+        const body = {import_root: modal.dataset.importRoot, relative_path: modal.dataset.relativePath, folder_paths: folderPaths};
+        const packageButton = document.getElementById('archive-package-selected');
+        if (packageButton) {
+            packageButton.disabled = true;
+            packageButton.style.backgroundColor = '#fd7e14';
+            packageButton.style.borderColor = '#fd7e14';
+            packageButton.style.color = '#fff';
+            packageButton.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} Empaquetage en cours…`;
+        }
+        const response = await fetch('/api/import/archive-package-folders', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
+        const count = data.created.length;
+        // Les CBZ créés sont enregistrés comme fichiers à revue manuelle. Recharge-les
+        // immédiatement puis relance le matching normal: la série Bédéthèque trouvée doit
+        // être visible dans la ligne sans obliger l'utilisateur à actualiser la page.
+        await loadActiveDownloads();
+        if (data.source_destination) {
+            const createdPaths = new Set(data.created.map(item => item.path));
+            for (const file of importFiles) {
+                if (createdPaths.has(file.filepath)) {
+                    file.destination = { ...data.source_destination };
+                    file.auto_import_skip_reason = 'fichier empaqueté : import manuel à valider';
+                }
+            }
+        }
+        await autoMatchAll();
+        actions.innerHTML = `<span style="color:#198754; font-weight:600;">✓ ${count} CBZ créé(s), série source affichée automatiquement. Les sources sont conservées.</span>`;
+    } catch (error) {
+        actions.innerHTML = `<span style="color:#dc3545; font-weight:600;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</span>`;
+    }
+}
+
+function closeArchiveContentModal() { document.getElementById('archive-content-modal')?.classList.remove('active'); }
+
 function _convertActionHtml(file) {
     if (!file.convertible) return '';
     const label = file.convertible === 'pdf'
@@ -1840,8 +1960,12 @@ function _importFileRowHtml(file, index) {
     // recherche par titre sinon - résultat mis en cache sur le fichier lui-même
     // ("import est très lent à s'afficher": parcourt toutes les séries de toutes les
     // bibliothèques, pas la peine de le refaire à chaque re-rendu).
-    const bedethequeLinkHtml = file.destination?.bedetheque_url
-        ? `<a href="${escapeHtml(file.destination.bedetheque_url)}" target="_blank" rel="noopener" class="import-bedetheque-link" title="Voir la fiche Bédéthèque de « ${escapeHtml(file.destination.series_title)} »"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque"></a>`
+    const destinationSeries = file.destination?.series_id != null
+        ? Object.values(librariesSeriesMap).flat().find(series => String(series.id) === String(file.destination.series_id))
+        : null;
+    const destinationBedethequeUrl = file.destination?.bedetheque_url || destinationSeries?.bedetheque_url;
+    const bedethequeLinkHtml = destinationBedethequeUrl
+        ? `<a href="${escapeHtml(destinationBedethequeUrl)}" target="_blank" rel="noopener" class="import-bedetheque-link" title="Voir la fiche Bédéthèque de « ${escapeHtml(file.destination?.series_title || destinationSeries.title)} »"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque"></a>`
         : (file._bedethequeLinkHtml ?? (file._bedethequeLinkHtml = buildBedethequeLinkHtml(fileGroupTitle(file))));
     const trackedConflictVolume = file.parsed.tracked_volume_conflict;
     const statusBadge = file.validation_error
@@ -1870,18 +1994,6 @@ function _importFileRowHtml(file, index) {
             ? (anyImportInProgress
                 ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Un import est déjà en cours - ce fichier est peut-être déjà en train d'être traité">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
                 : `<span style="color:#6c757d; font-weight:600;" data-tooltip="Aucune action nécessaire - importé automatiquement dans les secondes qui suivent">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`)
-            // "au lieu de Pret met une information sur ce qu'il faut faire. attente
-            // d'import manuelle, etc..." - cette branche n'est atteinte QUE quand
-            // isImportingNow est false alors que hasDestination && hasKnownVolume sont
-            // vrais: par construction (voir _isFileImportingNow plus haut), ça veut dire
-            // soit manual_override (assignation faite à la main, voir "si jai a faire
-            // manuelement un matching alors met un flag pas dimport automayique"), soit
-            // auto_import_skip_reason (déjà expliqué dans son propre bandeau juste
-            // au-dessus, voir "Pas repris par l'import automatique") - dans les DEUX cas,
-            // le scheduler planifié ne le reprendra JAMAIS tout seul: "✓ Prêt" nu
-            // laissait croire à tort qu'aucune action n'était nécessaire, alors qu'un
-            // clic sur "Importer" (ou la sélection groupée) est la SEULE façon de le
-            // finaliser.
             : hasDestination && hasKnownVolume
                 ? `<span style="color:#28a745; font-weight:600;" data-tooltip="${file.auto_import_skip_reason ? "L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement" : 'Assignation faite à la main - cliquez sur « Importer » pour valider, l\'import automatique ne le reprendra pas tout seul'}">${svgIcon('check')} Prêt — import manuel</span>`
                 : hasDestination
@@ -1891,15 +2003,15 @@ function _importFileRowHtml(file, index) {
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
             <td>${hasDestination ? `
-                <input type="checkbox" class="import-file-select"
-                       ${_isFileSelected(file) ? 'checked' : ''} ${(file.validation_error && !file.forceImport) ? 'disabled' : ''}
+                <input type="checkbox" class="import-file-select" data-import-file-index="${index}"
+                       ${_isFileSelected(file) ? 'checked' : ''}
                        onchange="toggleFileSelection(${index}, this.checked)"
-                       data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - import impossible' : 'Inclure dans l\'import'}">
+                       data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour importer ou assigner plusieurs fichiers à une même série'}">
             ` : `
-                <input type="checkbox" class="import-file-select"
-                       ${file._bulkSelected ? 'checked' : ''} ${(file.validation_error && !file.forceImport) ? 'disabled' : ''}
+                <input type="checkbox" class="import-file-select" data-import-file-index="${index}"
+                       ${file._bulkSelected ? 'checked' : ''}
                        onchange="toggleUnassignedSelection(${index}, this.checked)"
-                       data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - import impossible' : 'Sélectionner pour assigner plusieurs fichiers à la même série d\'un coup'}">
+                       data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour assigner plusieurs fichiers à la même série d\'un coup'}">
             `}</td>
             <td class="import-date-cell">${escapeHtml(_importDateForFile(file) || '—')}</td>
             <td>${clientBadgeHtml(file.client)}</td>
@@ -1908,6 +2020,8 @@ function _importFileRowHtml(file, index) {
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
                 ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}</div>` : ''}
                 ${_convertActionHtml(file)}
+                ${file.existing_conflict ? `<div class="import-auto-skip-explanation">⚠️ Fichier existant : ${escapeHtml(file.existing_conflict.path)} — ${file.existing_conflict.will_replace ? 'sera remplacé selon les règles actuelles' : 'conservé selon les règles actuelles'}${file.existing_conflict.will_replace ? '' : ' (cochez « Forcer le remplacement » dans Modifier pour outrepasser la règle)'}</div>` : ''}
+                ${_archiveContentActionHtml(file)}
             </td>
             <td><div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">${albumHtml}${bedethequeLinkHtml || ''}</div></td>
             <td>${_volumeCellHtml(file, index, isImportingNow)}</td>
@@ -2028,7 +2142,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
         : '—';
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
-            <td><input type="checkbox" class="import-file-select" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
+            <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">${escapeHtml(_importDateForPending(pending) || '—')}</td>
             <td>${clientBadgeHtml(pending.client)}</td>
             <td class="import-files-table-filename">
@@ -2134,13 +2248,6 @@ function displayImportFiles() {
             return a.file._order - b.file._order;
         });
 
-    // "for import there should be a database of all the downloads. this is the base
-    // reference that should be used for display" - un pack (torrent contenant plusieurs
-    // tomes d'un coup, ex: "Videur.BD.HD.PACK.2024...") reste "en attente" (voir
-    // get_pending_downloads/_pendingDownloadRowHtml) même une fois ses fichiers réellement
-    // arrivés sur disque - regroupé ici sous une ligne dépliante à son nom (voir
-    // _pendingPackGroups) dès que le serveur (scan_import_directory) a authoritativement
-    // rattaché au moins un fichier/dossier à sa ligne active_downloads.
     const pendingPackGroups = _pendingPackGroups();
     const nestedInPackIndices = pendingPackGroups.reduce((set, { fileMatches }) => {
         fileMatches.forEach(({ index }) => set.add(index));
@@ -2223,11 +2330,6 @@ function displayImportFiles() {
             .map(e => e.html).join('')
         : pendingRowsHtml + activeRowsHtml + rowsHtml;
 
-    // Options des selects Type/Volume/Ext. (voir leurs commentaires): seulement ce qui
-    // est réellement présent dans les données, PAS encore réduit par les autres filtres
-    // actifs (calculé sur les tableaux non filtrés ci-dessus) - un select qui rétrécirait
-    // tout seul selon un autre filtre serait déroutant. Album n'a pas cet équivalent
-    // (texte libre, trop de valeurs possibles pour un select).
     const availableClientKeys = new Set();
     const availableVolumeLabels = new Set();
     const availableExtensions = new Set();
@@ -2324,16 +2426,20 @@ function toggleUnassignedSelection(index, checked) {
     _updateImportBulkAssignBar();
 }
 
-function _selectedUnassignedFileIndices() {
+function _selectedFileIndicesForBulkAssignment() {
+    // La même checkbox sert à sélectionner les fichiers déjà assignés (file.selected)
+    // et ceux sans destination (file._bulkSelected). Les deux doivent pouvoir être
+    // réassignés en masse, quelle que soit la raison qui a conduit à la revue manuelle.
     return importFiles
         .map((f, i) => i)
-        .filter(i => importFiles[i]._bulkSelected && !importFiles[i].destination);
+        .filter(i => (importFiles[i].destination && importFiles[i].selected)
+            || (!importFiles[i].destination && importFiles[i]._bulkSelected));
 }
 
 function _updateImportBulkAssignBar() {
     const bar = document.getElementById('import-bulk-assign-bar');
     if (!bar) return;
-    const count = _selectedUnassignedFileIndices().length;
+    const count = _selectedFileIndicesForBulkAssignment().length;
     if (count === 0) {
         bar.style.display = 'none';
         bar.innerHTML = '';
@@ -2348,12 +2454,17 @@ function _updateImportBulkAssignBar() {
 }
 
 function clearUnassignedSelection() {
-    importFiles.forEach(f => { f._bulkSelected = false; });
+    // La barre regroupe aussi les fichiers déjà assignés: réinitialiser les deux
+    // formes de sélection, sinon une ligne déjà liée resterait cochée après « Annuler ».
+    importFiles.forEach(f => {
+        f._bulkSelected = false;
+        f.selected = false;
+    });
     displayImportFiles();
 }
 
 function openBulkAssignDestinationModal() {
-    const indices = _selectedUnassignedFileIndices();
+    const indices = _selectedFileIndicesForBulkAssignment();
     if (indices.length === 0) return;
     openDestinationModal(indices);
 }
@@ -2387,12 +2498,12 @@ function _hasKnownVolume(file) {
     if (file.parsed.volume != null || file.parsed.is_integral || file.parsed.is_hs || file.parsed.is_oneshot_tag || file.parsed.is_episode || file.parsed.is_special) {
         return true;
     }
-    // "Moon River... ⚠ Tome manquant / c'est un one-shot donc pas de need d'avoir de
-    // tome" - le nom de fichier lui-même n'a souvent aucun marqueur de tome pour un
-    // one-shot (pas de "OS"/"HS"/numéro), mais la destination assignée le sait déjà via
-    // Bédéthèque: si la série ne connaît qu'UNE seule édition, non numérotée (voir
-    // _bdVolumeOptionLabel "Édition unique"), il n'y a tout simplement aucun tome à
-    // trouver - ne pas exiger un numéro qui n'existera jamais.
+    // Une destination issue de Bédéthèque peut déjà certifier qu'il s'agit d'un
+    // one-shot ou d'une série à album unique, même si le nom de release ne contient
+    // aucun numéro/type et que le cache des volumes n'est pas encore chargé.
+    if (file.destination?.is_oneshot || file.destination?.is_single_album) {
+        return true;
+    }
     const seriesId = file.destination && !file.destination.is_new_series ? file.destination.series_id : null;
     const volumes = seriesId != null ? _seriesVolumesCache[seriesId] : null;
     if (volumes && volumes.length === 1 && volumes[0].volume_number == null
@@ -2409,6 +2520,7 @@ function _isFileSelected(file) {
 function toggleFileSelection(fileIndex, checked) {
     importFiles[fileIndex].selected = checked;
     updateImportStats();
+    _updateImportBulkAssignBar();
 }
 
 function forceImportCorruptedFile(fileIndex) {
@@ -2499,6 +2611,10 @@ function _volumeCellHtml(file, index, disabled = false) {
     const volumes = seriesId != null ? _seriesVolumesCache[seriesId] : null;
     const disabledAttr = disabled ? ' disabled' : '';
 
+    if (file.destination?.is_oneshot) {
+        return `<span style="font-size:0.9em;">One Shot</span>`;
+    }
+
     if (!volumes || volumes.length === 0) {
         // "pourquoi dans import je vois pas le numéro du volume mais pourtant dans
         // l'historique c'est bien le bon tome importé" - une intégrale/HS/épisode
@@ -2577,40 +2693,32 @@ function updateFileVolumeSlot(fileIndex, value) {
 }
 
 function toggleSelectAllFiles(checked) {
-    // "I cannot select all the album from import when some are ready and some in
-    // waiting. I want to be able to select all and deselect the one I don't want
-    // manually" - un fichier pas encore assigné à une série (voir hasDestination,
-    // toggleUnassignedSelection) utilise sa propre case _bulkSelected, jamais touchée
-    // ici jusqu'ici: "tout sélectionner" ne cochait donc que les fichiers déjà prêts,
-    // en ignorant silencieusement tous ceux "en attente" d'assignation.
-    // "ce checkbox doit selectionner tous les fichiers quel que soit c'est special,
-    // normal ou autres" - la garde _hasKnownVolume (qui excluait un fichier sans tome
-    // reconnu, ex: un bonus pas encore corrigé en "Spécial") est retirée: "tout
-    // sélectionner" coche désormais TOUT fichier déjà assigné à une série, prêt ou non -
-    // à l'utilisateur de décocher ensuite ceux qu'il ne veut pas importer tel quel.
-    // Exception: un fichier corrompu (validation_error) ne peut de toute façon jamais
-    // être importé (rejeté côté serveur, voir _execute_import_batch) - pas la même
-    // ambiguïté qu'un type de tome pas encore classifié, un blocage technique, jamais
-    // coché même par "tout sélectionner".
-    importFiles.forEach(f => {
-        if (f.validation_error) return;
-        if (f.destination) f.selected = checked;
-        else f._bulkSelected = checked;
-    });
-    // _visiblePendingDownloads: une ligne "pending" masquée (fichier déjà retrouvé comme
-    // vrai fichier importFiles, voir son commentaire) n'a plus de case à cocher visible,
-    // "tout sélectionner" ne doit donc pas non plus la marquer sélectionnée.
-    _visiblePendingDownloads().forEach(p => {
-        if (checked) selectedPendingIds.add(p.id); else selectedPendingIds.delete(p.id);
-    });
-    activeDownloads.forEach(({ clientKey, item }) => {
-        if (item.id == null) return;
-        const key = `${clientKey}:${item.id}`;
-        if (checked) selectedActiveKeys.add(key); else selectedActiveKeys.delete(key);
-    });
-    incompatibleFolders.forEach(folder => {
-        const key = _incompatibleFolderKey(folder);
-        if (checked) selectedIncompatibleFolderKeys.add(key); else selectedIncompatibleFolderKeys.delete(key);
+    // Le bouton général agit uniquement sur les lignes actuellement rendues et visibles.
+    // Ainsi un filtre actif ne sélectionne pas les entrées masquées par ce filtre.
+    const checkboxes = [...document.querySelectorAll('#import-files-container tbody input.import-file-select')]
+        .filter(cb => cb.closest('tr')?.getClientRects().length);
+    checkboxes.forEach(cb => {
+        const fileIndex = cb.dataset.importFileIndex;
+        if (fileIndex != null) {
+            const file = importFiles[Number(fileIndex)];
+            if (!file || file.validation_error) return;
+            if (file.destination) file.selected = checked;
+            else file._bulkSelected = checked;
+            return;
+        }
+        if (cb.dataset.pendingId != null) {
+            const id = Number(cb.dataset.pendingId);
+            if (checked) selectedPendingIds.add(id); else selectedPendingIds.delete(id);
+            return;
+        }
+        if (cb.dataset.activeId != null) {
+            const key = `${cb.dataset.activeClient}:${cb.dataset.activeId}`;
+            if (checked) selectedActiveKeys.add(key); else selectedActiveKeys.delete(key);
+            return;
+        }
+        if (cb.dataset.folderKey != null) {
+            if (checked) selectedIncompatibleFolderKeys.add(cb.dataset.folderKey); else selectedIncompatibleFolderKeys.delete(cb.dataset.folderKey);
+        }
     });
     displayImportFiles();
 }
@@ -2788,6 +2896,7 @@ function _populateDestinationModal() {
     const isBulk = currentFileIndices.length > 1;
     const file = importFiles[currentFileIndices[0]];
 
+    document.getElementById('force-replace-existing').checked = !isBulk && !!(file.destination && file.destination.force_replace);
     document.getElementById('file-to-assign').textContent = isBulk
         ? `${currentFileIndices.length} fichiers sélectionnés`
         : `Fichier: ${file.filename}`;
@@ -2849,6 +2958,7 @@ function closeDestinationModal() {
     document.getElementById('volume-override-group').style.display = 'none';
     document.getElementById('volume-override-manual-group').style.display = 'none';
     document.getElementById('volume-override-number').value = '';
+    document.getElementById('force-replace-existing').checked = false;
     volumeOverrideSlots = [];
     currentFileIndices = [];
 }
@@ -3211,12 +3321,12 @@ async function assignDestination() {
     console.debug('assignDestination called, currentFileIndices=', currentFileIndices);
     const libraryId = parseInt(document.getElementById('destination-library').value);
     const seriesValue = document.getElementById('destination-series').value;
-    
+
     if (!libraryId || !seriesValue) {
         alert('⚠️ Veuillez sélectionner une bibliothèque et une série');
         return;
     }
-    
+
     let library = allLibraries.find(l => l.id === libraryId);
     if (!library) {
         // tolerate string ids
@@ -3224,14 +3334,14 @@ async function assignDestination() {
     }
     console.debug('assignDestination: libraryId=', libraryId, 'seriesValue=', seriesValue, 'library=', library);
     let destination;
-    
+
     if (seriesValue === '__new__') {
         const newSeriesName = document.getElementById('new-series-name').value.trim();
         if (!newSeriesName) {
             alert('⚠️ Veuillez entrer un nom pour la nouvelle série');
             return;
         }
-        
+
         destination = {
             library_id: libraryId,
             library_name: library.name,
@@ -3239,6 +3349,7 @@ async function assignDestination() {
             series_id: null,
             series_title: newSeriesName,
             is_new_series: true,
+            force_replace: document.getElementById('force-replace-existing').checked,
             bedetheque_url: getBedethequeMatchForTitle(newSeriesName)
         };
     } else if (seriesValue.startsWith(PENDING_SERIES_PREFIX)) {
@@ -3255,6 +3366,7 @@ async function assignDestination() {
             series_id: null,
             series_title: pendingTitle,
             is_new_series: true,
+            force_replace: document.getElementById('force-replace-existing').checked,
             bedetheque_url: getBedethequeMatchForTitle(pendingTitle)
         };
 
@@ -3279,7 +3391,10 @@ async function assignDestination() {
             library_path: library.path,
             series_id: seriesId,
             series_title: series.title,
-            is_new_series: false
+            is_new_series: false,
+            is_oneshot: !!series.is_oneshot,
+            is_single_album: Number(series.bedetheque_total_volumes) === 1,
+            force_replace: document.getElementById('force-replace-existing').checked
         };
 
         const volumeOverride = buildVolumeOverride();
@@ -3324,6 +3439,13 @@ async function assignDestination() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filepath: importFiles[idx].filepath })
+        }).catch(() => {});
+        fetch('/api/import/check-conflict', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath: importFiles[idx].filepath, destination, parsed: importFiles[idx].parsed })
+        }).then(r => r.json()).then(result => {
+            if (result.success) importFiles[idx].existing_conflict = result.existing_conflict || null;
+            displayImportFiles();
         }).catch(() => {});
         // Sélection groupée "à assigner" désormais sans objet (le fichier a sa
         // destination), voir toggleUnassignedSelection/_updateImportBulkAssignBar.
@@ -3420,16 +3542,16 @@ function calculateSimilarity(str1, str2) {
     // Calcul de distance basique (nombre de mots en commun)
     const words1 = str1.split(' ').filter(w => w.length > 2);
     const words2 = str2.split(' ').filter(w => w.length > 2);
-    
+
     let commonWords = 0;
     for (const word of words1) {
         if (words2.includes(word)) {
             commonWords++;
         }
     }
-    
+
     if (words1.length === 0 || words2.length === 0) return 0;
-    
+
     // Score basé sur le ratio de mots communs
     const ratio = commonWords / Math.max(words1.length, words2.length);
     return ratio * 100;
@@ -3585,6 +3707,16 @@ async function executeImport() {
                 showToast('komga-scan', 'Scan Komga demandé', { icon: 'radio', autoHideMs: 4000 });
             }
             alert(message);
+
+            // Un import réussi doit disparaître immédiatement de la liste, même si la
+            // source est conservée (aMule) ou si un scan réseau répond plus tard. En cas
+            // d'échec partiel, on laisse les fichiers concernés pour permettre une reprise.
+            if (data.failed_count === 0) {
+                const completedPaths = new Set(filesToImport.map(file => file.filepath));
+                importFiles = importFiles.filter(file => !completedPaths.has(file.filepath));
+                updateImportStats();
+                displayImportFiles();
+            }
 
             await loadAllLibraries();
 

@@ -179,11 +179,6 @@ def search_catalog_index(query, limit=30):
 
     fts_query = ' AND '.join('"' + w.replace('"', '""') + '"' for w in words)
     try:
-        # Tous les mots sont exigés AVANT la limite SQL. Avec OR, "les recettes barbares"
-        # produisait 7114 lignes à cause du seul article "les" et la bonne fiche, pourtant
-        # présente dans l'index, tombait après LIMIT 5000. Le tri Python ne pouvait donc
-        # jamais la récupérer. Les replis de search_series raccourcissent déjà la requête
-        # progressivement lorsqu'un mot de bruit empêche tout résultat.
         rows = conn.execute('''
             SELECT s.title, s.url FROM bedetheque_series s
             JOIN bedetheque_series_fts fts ON fts.rowid = s.id

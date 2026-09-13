@@ -6,7 +6,8 @@ from . import library_bp
 from .scanner import LibraryScanner, SeriesDirectoryMissingError, COMICINFO_FIELDS, scan_import_lock
 from blueprints.bedetheque.cbr_converter import convert_cbr_to_cbz, CbrConversionError
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
-from .zip_converter import convert_zip_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
+from .zip_converter import convert_zip_to_cbz, package_zip_folders_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
+from archive_utils import list_archive_members
 from blueprints.bedetheque.comicinfo_writer import write_comicinfo_cbz, build_comicinfo_fields, WRITABLE_FORMATS, derive_author_year_from_comicinfo
 from blueprints.bedetheque.scraper import match_bedetheque_volume
 import sqlite3
@@ -43,25 +44,6 @@ def _import_staging_directory():
     return path
 
 
-# Empêche un import manuel (execute_import, requête HTTP) et l'import automatique
-# (execute_auto_import, tourne sur son propre thread APScheduler - voir
-# blueprints/library/scheduler.py) de s'exécuter en même temps : chacun ouvre plusieurs
-# connexions SQLite successives pendant sa boucle par fichier, et les faire cohabiter a
-# déjà laissé une opération bloquée sur 'started' sans aucun fichier journalisé ("pourquoi
-# il y a Aucun fichier détaillé pour cet import"), les deux ayant démarré à 2 secondes
-# d'écart. Un simple verrou en mémoire process suffit (les deux tournent dans le même
-# process Python, threads différents) - voir son acquisition dans execute_import/
-# execute_auto_import.
-#
-# MÊME OBJET que scan_import_lock (blueprints/library/scanner.py), pas une simple
-# coïncidence de nom : scan_single_series fait un DELETE+rebuild complet des volumes
-# réellement possédés d'une série depuis un instantané os.listdir(), ce qui perd
-# silencieusement une ligne fraîchement écrite par un import concurrent pour cette même
-# série si un fichier est renommé pile entre l'instantané et sa lecture (voir le
-# commentaire de scan_import_lock pour l'incident réel qui a révélé ce bug - "Les
-# bidochon" tome 4). Réutiliser le même verrou ici plutôt qu'en créer un second garantit
-# qu'aucun scan de série ne peut jamais s'intercaler au milieu d'un import, sans risque
-# d'oublier de synchroniser les deux séparément.
 _import_execution_lock = scan_import_lock
 
 # "faire un check rapide de vérification d'intégrité du fichier avant de pouvoir
@@ -345,9 +327,6 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
     episode_number = parsed.get('episode_number')
 
     if is_episode:
-        # Numéro d'épisode jamais confondu avec volume_number: Bédéthèque numérote un
-        # épisode et un tome dans le même champ (Tome 1/Épisode 1 partagent number=1,
-        # série #70835 "La Bête") - voir _sync_bedetheque_placeholder_volumes.
         if episode_number is not None:
             query = 'SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND is_episode = 1 AND episode_number = ?'
             params = (series_id, episode_number)
@@ -1095,14 +1074,6 @@ def _ebdz_enrich_series(series_id):
         from blueprints.search.routes import normalize_search_text, ebdz_core_title, ebdz_title_variants
         ebdz_conn.create_function('search_normalize', 1, normalize_search_text)
 
-        # ebdz_title_variants: même point d'entrée unique que /api/search et
-        # search_ebdz_threads (search/routes.py) - gère à la fois le suffixe
-        # parenthèses/crochets local ("Virus (RicardRica)") et l'article en tête/fin de
-        # titre ("Le Titre" <-> "Titre, Le"/"Titre (Le)"). "Le grand vide (Murawiec)
-        # could not match ebdz only if i ask about grand vide without le": cette fonction
-        # ne gérait jusqu'ici que l'article en FIN de titre (get_suffix_article_variants),
-        # jamais l'article en TÊTE - voir la docstring d'ebdz_title_variants pour l'
-        # historique complet de cette unification.
         search_terms = ebdz_title_variants(series_title)
 
         normalized_terms = [f'%{normalize_search_text(term)}%' for term in search_terms]
@@ -1212,6 +1183,32 @@ def _ebdz_enrich_series(series_id):
         'unnumbered_missing': unnumbered_missing,
         'ebdz_thread_url': ebdz_thread_url if match_status == 'matched' else None
     }
+
+
+@library_bp.route('/api/series/<int:series_id>/ebdz-rescrape', methods=['POST'])
+def rescrape_series_ebdz_thread(series_id):
+    """Refresh only the EBDZ thread explicitly matched to this series."""
+    try:
+        conn = get_db_connection()
+        row = conn.execute("SELECT ebdz_thread_id, ebdz_thread_url, ebdz_matched_title FROM series WHERE id = ?", (series_id,)).fetchone()
+        conn.close()
+        if not row:
+            return jsonify({'success': False, 'error': 'Série introuvable'}), 404
+        if not row['ebdz_thread_id'] or not row['ebdz_thread_url']:
+            return jsonify({'success': False, 'error': 'Aucun thread EBDZ n’est associé à cette série'}), 400
+        from blueprints.ebdz.routes import load_ebdz_config
+        from blueprints.ebdz.scraper import MyBBScraper
+        config = load_ebdz_config()
+        scraper = MyBBScraper('https://ebdz.net/forum/forumdisplay.php?fid=23', current_app.config['DB_FILE'], config.get('username', ''), config.get('password_decrypted', ''), 'Bande Dessinées')
+        if not scraper.login():
+            return jsonify({'success': False, 'error': 'Connexion EBDZ impossible'}), 502
+        links = scraper.scrape_thread(row['ebdz_thread_url'], row['ebdz_matched_title'] or '')
+        inserted = scraper.save_to_db(links) or 0
+        result = _ebdz_enrich_series(series_id)
+        return jsonify({'success': True, 'links_found': len(links), 'links_inserted': inserted, **result})
+    except Exception as e:
+        current_app.logger.exception('EBDZ thread refresh failed for series #%s', series_id)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/ebdz-enrich', methods=['POST'])
@@ -1886,6 +1883,10 @@ def get_series_volumes(series_id):
         ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, hs_number
     ''', (series_id,))
     owned_volumes = [dict(row) for row in cursor.fetchall()]
+    # A stale filepath can survive a move/deletion outside Bullarr. The dropdown's
+    # checkmark must mean the file is physically available, not merely recorded.
+    for entry in owned_volumes:
+        entry['is_owned'] = bool(entry.get('filepath') and os.path.isfile(entry['filepath']))
 
     cursor.execute('SELECT bedetheque_albums FROM series WHERE id = ?', (series_id,))
     series_row = cursor.fetchone()
@@ -1893,7 +1894,9 @@ def get_series_volumes(series_id):
 
     bd_albums = json.loads(series_row[0]) if series_row and series_row[0] else []
     if not bd_albums:
-        return jsonify(owned_volumes)
+        # Sans catalogue, seuls les tomes encore physiquement présents sont fiables.
+        # Une ligne volumes orpheline ne doit jamais créer un faux choix d'import.
+        return jsonify([v for v in owned_volumes if v.get('is_owned')])
 
     from blueprints.bedetheque.scraper import _index_bedetheque_volumes
     by_number, by_integral, by_hs, by_episode = _index_bedetheque_volumes(bd_albums)
@@ -1905,26 +1908,6 @@ def get_series_volumes(series_id):
             ci = {}
         return ci.get('web')
 
-    # "épervier intégrale est mal référencé. et je peux pas le changer" - un numéro seul
-    # (integral_number=1) ne suffit plus à identifier UN album précis depuis que
-    # _index_bedetheque_volumes ne perd plus les collisions ("INT01TL"/"INT1" partagent
-    # toutes deux integral_number=1, voir son commentaire) - candidates peut désormais
-    # contenir plusieurs tomes possédés partageant le même (type, numéro). L'URL Bédéthèque
-    # de CHAQUE tome déjà possédé (comicinfo.web) les distingue de façon fiable; repli sur
-    # le premier trouvé seulement quand aucun ne porte encore d'URL (fichier réel jamais
-    # passé par une MAJ métadonnées) - jamais un choix arbitraire entre deux URLs connues
-    # et différentes.
-    #
-    # used_owned_ids: "il y a deux fois le nom du volume affiché" - quand Bédéthèque liste
-    # DEUX albums pour le même numéro (réédition, entrée dupliquée côté scrape...) mais
-    # qu'un seul tome possédé local n'a pas d'URL enregistrée pour les distinguer, chaque
-    # appel de _find_owned pour ce numéro retombait sur le même candidats[0] à chaque fois
-    # - le même tome possédé apparaissait alors deux fois dans le sélecteur (une fois par
-    # album dupliqué). Un tome possédé déjà retenu pour un album n'est plus proposé à
-    # nouveau pour un second album de la même identité (type, numéro) - la boucle des
-    # tomes possédés orphelins plus bas continue de rattraper un DEUXIÈME tome RÉEL
-    # partageant la même identité (cas différent, volontairement préservé - voir son
-    # commentaire "un DOUBLON volontaire").
     used_owned_ids = set()
 
     def _find_owned(volume_number=None, is_integral=False, integral_number=None, is_hs=False, hs_number=None,
@@ -1950,19 +1933,6 @@ def get_series_volumes(series_id):
         used_owned_ids.add(chosen['id'])
         return chosen
 
-    # Tomes numérotés d'abord (par numéro croissant), intégrales, hors-séries puis
-    # épisodes ensuite (même ordre que le tri SQL ci-dessus) - None trié en tête de son
-    # propre groupe plutôt que de planter sur une comparaison int/None. Chaque bucket est
-    # maintenant une LISTE d'albums (voir _index_bedetheque_volumes) - une entrée du
-    # sélecteur par album réel, jamais un seul par numéro.
-    # bedetheque_title: le VRAI titre Bédéthèque de cet album, distinct du comicinfo.title
-    # du tome possédé (qui peut être erroné/périmé - voir renumber_volume et le cas
-    # série #381 "Musiques" mal étiqueté "Chasse & Pêche") - "le dropdown de changer le
-    # numéro doit etre le vrai nom des volumes de bedetheque pas les noms des volumes
-    # modifié": un tome possédé garde ici quand même son propre comicinfo tel quel (pas
-    # réécrit), seul ce champ supplémentaire porte la référence Bédéthèque fiable pour
-    # que le sélecteur de renumérotation s'appuie dessus plutôt que sur un titre local
-    # potentiellement faux.
     merged = []
     for number, albums in sorted(by_number.items()):
         for album in albums:
@@ -2017,6 +1987,10 @@ def get_series_volumes(series_id):
     # bel et bien encore en base.
     for v in owned_volumes:
         if v.get('id') in used_owned_ids:
+            continue
+        # Sans album Bédéthèque correspondant, une entrée locale n'est un choix
+        # légitime que si son fichier existe encore. Écarte les tomes fantômes.
+        if not v.get('is_owned'):
             continue
         if v.get('is_episode'):
             albums = by_episode.get(v.get('episode_number')) or []
@@ -2106,17 +2080,6 @@ def create_series():
         series_title = sanitize_path_component(title, 'Nom de série')
         series_path = resolve_within(os.path.join(library_path, series_title), library_path)
 
-        # "tu as fais de la merde avec la série les mémés" - #Lesmémés / Les Mémés (589)
-        # et #Lesmémés - Les Mémés (1084) coexistaient en base, MÊME path disque
-        # (/BD/#Lesmémés - Les Mémés), même komga_series_id, 5 volumes strictement
-        # identiques dupliqués - un simple changement de séparateur (" / " -> " - ")
-        # dans le titre proposé faisait échouer le dédoublonnage par (library_id, title)
-        # ci-dessous, créant une DEUXIÈME série vide pour un dossier déjà suivi (589
-        # avait tout l'historique EBDZ/Bédéthèque/tome 6 en attente ; 1084 n'avait rien
-        # de tout ça). Le titre est une chaîne libre reformulée à chaque scan/import/
-        # match Bédéthèque - le `path` sur disque, lui, est LA seule identité stable
-        # d'une série (un même dossier n'est jamais "une autre série"). Vérifie donc
-        # aussi par path, en priorité sur le titre, avant de créer quoi que ce soit.
         cursor.execute(
             'SELECT id FROM series WHERE library_id = ? AND (title = ? OR path = ?)',
             (library_id, series_title, series_path),
@@ -2482,7 +2445,7 @@ def merge_series(series_id):
         # (un fichier non scanné qui traînerait là ne doit jamais partir avec le dossier)
         source_dir_removed = False
         if os.path.isdir(source_dir) and source_dir != target_dir:
-            comic_exts = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
+            comic_exts = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
             leftover_comics = [
                 f for _root, _dirs, files in os.walk(source_dir) for f in files
                 if os.path.splitext(f)[1].lower() in comic_exts
@@ -2553,6 +2516,29 @@ def _set_series_universe(conn, series_id, universe_id):
                 title = excluded.title,
                 series_id = excluded.series_id
         ''', (universe_id, bedetheque_url, title, series_id))
+
+
+def _move_series_folder_for_universe(conn, series_id):
+    """Apply the configured universe-aware folder layout to one existing series.
+
+    This is the sole filesystem consequence of changing ``series.universe_id``.
+    Imports remain copy-only; this helper is invoked only after an explicit or
+    Bédéthèque-derived universe assignment has committed to the database.
+    """
+    from blueprints.settings.rename_config_store import load_rename_config
+
+    cursor = conn.cursor()
+    series = _fetch_series_for_rename(cursor, series_id)
+    if not series or not series['path']:
+        return {'success': True, 'changed': False}
+    config = load_rename_config()
+    result = _rename_series_folder(
+        conn, series_id, series['path'], series['title'], series['library_path'], {},
+        config['series_template'], universe_name=series['universe_name'],
+    )
+    if result.get('success') and result.get('changed'):
+        _log_rename_action(series_id, series['title'], [], result)
+    return result
 
 
 @library_bp.route('/api/series/<int:series_id>')
@@ -2805,7 +2791,6 @@ def update_series_manual_metadata(series_id):
             cursor.execute(f"UPDATE series SET {', '.join(updates)} WHERE id = ?", params)
             conn.commit()
 
-        folder_result = None
         if 'universe_id' in data:
             raw_universe_id = data.get('universe_id')
             universe_id = int(raw_universe_id) if raw_universe_id not in (None, '') else None
@@ -2817,40 +2802,17 @@ def update_series_manual_metadata(series_id):
                 conn.close()
                 return jsonify({'success': False, 'error': str(e)}), 400
 
-            # "assigner un univers via _set_series_universe devrait déplacer les
-            # fichiers. Pourquoi c'est pas?" - INCOHÉRENCE CORRIGÉE (2026-09-03):
-            # _set_series_universe() ne fait QUE poser series.universe_id, jamais de
-            # déplacement disque - alors que le matching Bédéthèque
-            # (_align_title_and_start_metadata_write, blueprints/bedetheque/routes.py)
-            # DÉPLACE bien automatiquement le dossier vers <univers>/<série> à chaque
-            # changement d'univers, via le même _rename_series_folder que le bouton
-            # "Renommer la série". Deux points d'entrée qui posent universe_id, un
-            # seul qui en tirait les conséquences sur le disque - repris ici à
-            # l'identique (même fonction, même signature, même best-effort: un
-            # renommage échoué ne fait jamais échouer l'assignation d'univers déjà
-            # commitée juste au-dessus).
+            # An universe assignment is structural: keep the persisted path aligned
+            # immediately. This never applies to imports, which remain copy-only.
             try:
-                from blueprints.library.routes import _fetch_series_for_rename, _rename_series_folder, _log_rename_action
-                from blueprints.settings.rename_config_store import load_rename_config
-                series_for_rename = _fetch_series_for_rename(cursor, series_id)
-                if series_for_rename and series_for_rename['path']:
-                    rename_cfg = load_rename_config()
-                    folder_result = _rename_series_folder(
-                        conn, series_id, series_for_rename['path'], series_for_rename['title'],
-                        series_for_rename['library_path'], {}, rename_cfg['series_template'],
-                        universe_name=series_for_rename['universe_name']
+                folder_result = _move_series_folder_for_universe(conn, series_id)
+                if not folder_result.get('success'):
+                    current_app.logger.warning(
+                        f"Déplacement après changement d'univers échoué pour la série #{series_id}: {folder_result}"
                     )
-                    if folder_result and folder_result.get('success') and folder_result.get('changed'):
-                        _log_rename_action(series_id, series_for_rename['title'], [], folder_result)
-                    elif not (folder_result and folder_result.get('success')):
-                        current_app.logger.warning(
-                            f"Renommage automatique du dossier échoué pour la série #{series_id} "
-                            f"après changement d'univers: {folder_result}"
-                        )
-            except Exception as e:
+            except Exception as exc:
                 current_app.logger.warning(
-                    f"Renommage automatique du dossier échoué pour la série #{series_id} "
-                    f"après changement d'univers: {e}"
+                    f"Déplacement après changement d'univers échoué pour la série #{series_id}: {exc}"
                 )
 
         conn.close()
@@ -3292,21 +3254,6 @@ def renumber_volume(volume_id):
     scanner = LibraryScanner()
     scanner.update_series_stats(series_id)
 
-    # "quand je change de volume ca reprend pas les metadatas du nouvel album ni renommé
-    # au bon titre (officiel de bedetheque)" - le nouveau numéro/type DOIT refléter le
-    # VRAI album Bédéthèque désormais associé à ce tome: Titre/Résumé/Auteurs/Année/Web
-    # réalignés dessus, puis le fichier renommé en conséquence. Une PREMIÈRE version avait
-    # retiré cette étape après un cas de corruption (un fichier "Musiques" renuméroté vers
-    # un 17 déjà utilisé par un AUTRE tome réel avait hérité du titre "Chasse & Pêche") -
-    # mais la vraie cause était que l'utilisateur choisissait alors un numéro à l'aveugle
-    # (titre local, potentiellement faux, affiché dans le dropdown). Le dropdown affiche
-    # maintenant le VRAI nom Bédéthèque de chaque tome (voir get_series_volumes,
-    # bedetheque_title) - une fois le bon numéro choisi en connaissance de cause, aligner
-    # ComicInfo+nom de fichier dessus est exactement le comportement voulu. Best-effort:
-    # une série non matchée sur Bédéthèque, ou le nouvel album introuvable pour cette
-    # identité (_resolve_volume_bedetheque_fields ne devine/matche jamais tout seul, voir
-    # CLAUDE.md), ne remet pas en cause le changement de type/numéro lui-même (déjà
-    # committé ci-dessus).
     if vol['filepath']:
         try:
             conn3 = get_db_connection()
@@ -3808,7 +3755,7 @@ def upload_series_file(series_id):
     if not uploaded or not uploaded.filename:
         return jsonify({'success': False, 'error': 'Aucun fichier reçu'}), 400
 
-    import_roots = current_app.config['IMPORT_DIRECTORIES']
+    import_roots = list(current_app.config['IMPORT_DIRECTORIES']) + ['/tmp/bullarr-package-temp']
     if not import_roots:
         return jsonify({'success': False, 'error': "Aucun répertoire d'import configuré"}), 500
 
@@ -3827,7 +3774,7 @@ def upload_series_file(series_id):
 
     import_config = load_library_import_config()
     supported_extensions = set(import_config.get(
-        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
+        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
     ))
     ext = os.path.splitext(uploaded.filename)[1].lower()
     if ext not in supported_extensions:
@@ -4048,9 +3995,36 @@ def _download_folder_identities(download, torrent_names_by_hash):
     return list(identities)
 
 
+
+
+def _existing_import_conflict(destination, parsed, source_size):
+    """Décrit le fichier local comparé par les règles d'import."""
+    if not destination or not destination.get('series_id'):
+        return None
+    try:
+        conn = get_db_connection()
+        existing = _find_existing_volume_for_import(conn.cursor(), destination['series_id'], parsed, single_album=bool(destination.get('is_single_album')))
+        conn.close()
+        _volume_id, path, size, _format = existing
+        if not path or not os.path.exists(path):
+            return None
+        return {'path': path, 'size': size or 0, 'will_replace': bool(destination.get('force_replace') or is_better_volume(source_size, size or 0))}
+    except Exception as exc:
+        print(f"Erreur aperçu conflit import: {exc}")
+        return None
+
+def _pack_file_matches_destination(parsed, destination):
+    """Only auto-import a pack member when its parsed series is exact."""
+    parsed_title = (parsed or {}).get('title')
+    series_title = (destination or {}).get('series_title')
+    if not parsed_title or not series_title:
+        return False
+    return _normalize_title_for_match(parsed_title) == _normalize_title_for_match(series_title)
+
+
 def _append_scanned_file(filepath, import_root, filename, destination, scanner, telegram_filenames,
                           manual_override_filepaths, import_config, files_found, pack_download_id=None,
-                          validate_file=True):
+                          validate_file=True, packaged_filepaths=None):
     """Construit et ajoute une entrée files_found - factorisé entre le fichier isolé (à
     la racine d'un répertoire surveillé) et chaque fichier trouvé dans le dossier d'un
     téléchargement (voir _collect_download_folder_files)."""
@@ -4077,6 +4051,15 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
     # Copie superficielle: plusieurs fichiers d'un même dossier de téléchargement
     # partagent le même `destination` de départ, jamais le même objet en sortie.
     file_destination = dict(destination) if destination else None
+    # Une archive affichée avec « Voir le contenu » est un conteneur à examiner ou à
+    # empaqueter, pas encore un album importable. Elle peut conserver la série connue,
+    # mais ne doit jamais hériter d'un volume suivi ni déclencher un conflit de tome.
+    if ext in ('.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.7z'):
+        file_destination = None
+        parsed['volume'] = None
+        parsed['integral_number'] = None
+        parsed['hs_number'] = None
+        parsed['episode_number'] = None
     # Complète parsed['volume'] depuis le tome connu au moment du téléchargement quand le
     # nom de fichier ne le fournit pas lui-même (voir apply_tracked_volume_and_gate) - pas
     # de "gate" ici contrairement à l'import automatique: cette page laisse de toute façon
@@ -4091,7 +4074,10 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
     if file_destination:
         gate_passed = apply_tracked_volume_and_gate(parsed, file_destination)
 
-    if filename in telegram_filenames:
+    packaged_filepaths = packaged_filepaths or set()
+    if filepath in packaged_filepaths:
+        client = 'packaged'
+    elif filename in telegram_filenames:
         client = 'telegram'
     elif import_root == current_app.config.get('TELEGRAM_IMPORT_DIRECTORY'):
         # Filet de sécurité si jamais absent de telegram_filenames (ex: base
@@ -4114,6 +4100,7 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
         'relative_path': relative_path,
         'folder_name': folder_name,
         'file_size': os.path.getsize(filepath),
+        'existing_conflict': _existing_import_conflict(file_destination, parsed, os.path.getsize(filepath)),
         # Date d'arrivée sur disque ("tableau comme historique", qui a une colonne Date) -
         # mtime plutôt que ctime: survit à un déplacement/renommage du fichier par le
         # client de téléchargement une fois l'écriture terminée.
@@ -4137,7 +4124,9 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
         # Chaque raison complète maintenant directement la phrase du préfixe, sans se
         # répéter elle-même.
         'auto_import_skip_reason': (
-            "assignation faite à la main - cliquez sur « Importer » pour valider"
+            f"mauvaise série détectée : « {parsed.get('title') or 'titre inconnu'} » au lieu de « {file_destination.get('series_title')} » — vérifiez que c’est la bonne série et importez manuellement"
+            if file_destination and not _pack_file_matches_destination(parsed, file_destination)
+            else "assignation faite à la main - cliquez sur « Importer » pour valider"
             if filepath in manual_override_filepaths
             else _repeated_failure_skip_reason(filepath)
             or ("désactivé dans les paramètres" if not import_config.get('auto_import_enabled', False) else None)
@@ -4196,21 +4185,6 @@ def _collect_download_folder_files(folder_path, import_root, download, destinati
                 pack_download_id=download['id'], validate_file=validate_files
             )
 
-        # Seuil de 5 fichiers: un dossier qui n'a plus qu'un .nfo/cover.jpg/metadata.opf
-        # isolé n'est pas "incompatible", c'est un débris normal laissé après qu'un import
-        # ait déjà déplacé le vrai fichier ailleurs. Un vrai pack de pages scannées brutes
-        # en contient toujours des dizaines à des centaines, jamais 1 ou 2.
-        #
-        # "pack prince de la nuit toujours la, alors que c'est bien importé" - bug réel:
-        # l'exclusion "root != folder_path" ici recopiait celle de l'ANCIEN scanner, où
-        # elle évitait de signaler la RACINE PARTAGÉE du répertoire surveillé entier comme
-        # "incompatible" (des dizaines de téléchargements sans rapport y cohabitent).
-        # folder_path DÉSIGNE ICI le dossier propre à CE téléchargement (jamais la racine
-        # partagée, qui n'est même jamais parcourue par cette fonction) - un torrent dont le
-        # dossier NE CONTIENT QUE des couvertures/.txt à son PROPRE niveau racine (constaté:
-        # "Prince de la Nuit (Le) [HD]", que des .jpg/.txt, aucun comic) ne remontait donc
-        # jamais comme incompatible, restant invisible alors qu'il n'y a justement rien à
-        # importer pour lui - ni maintenant, ni jamais.
         if not folder_has_supported and len(unsupported_in_folder) >= 5:
             sample_extensions = sorted({
                 os.path.splitext(f)[1].lower() or '(sans extension)'
@@ -4242,14 +4216,14 @@ def _scan_tracked_import_files(validate_files=True):
     scanner = LibraryScanner()
     import_config = load_library_import_config()
     supported_extensions = set(import_config.get(
-        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
+        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
     ))
 
     from blueprints.telegram_channels.scraper import get_downloaded_filenames
     telegram_filenames = get_downloaded_filenames()
 
     from blueprints.missing_monitor.downloader import get_trackable_active_downloads
-    trackable_downloads = get_trackable_active_downloads()
+    trackable_downloads = get_trackable_active_downloads(include_failed=True)
 
     from blueprints.qbittorrent.routes import get_qbittorrent_torrent_names
     qbittorrent_hashes = {
@@ -4266,8 +4240,13 @@ def _scan_tracked_import_files(validate_files=True):
         for identity in _download_folder_identities(d, torrent_names_by_hash):
             downloads_by_folder_name.setdefault(identity, d)
 
-    from .import_history import get_manual_override_filepaths
+    from .import_history import get_manual_override_filepaths, get_packaged_filepaths, get_packaged_destinations, get_finalized_import_source_paths
     manual_override_filepaths = get_manual_override_filepaths()
+    packaged_filepaths = get_packaged_filepaths()
+    packaged_destinations = get_packaged_destinations()
+    finalized_import_paths = get_finalized_import_source_paths()
+    finalized_import_names = {os.path.basename(path) for path in finalized_import_paths}
+    manual_override_filepaths -= finalized_import_paths
 
     files_found = []
     incompatible_folders = []
@@ -4310,31 +4289,31 @@ def _scan_tracked_import_files(validate_files=True):
                     continue
                 match = find_active_download_destination(entry.name, trackable_downloads)
                 if not match:
-                    # "will it happen again on another file" - un torrent single-
-                    # file dont le nom réel (une fois ajouté chez le client) diverge
-                    # trop du titre de release suivi en base (find_active_download_
-                    # destination compare au TITRE, jamais assez proche après
-                    # normalisation - constaté sur "Le.Vent.Dans.Les.Saules.T01...-
-                    # NOTAG" suivi vs le fichier réel "[BD FR] Le vent dans les
-                    # Saules - T01-...cbr") restait invisible pour toujours, alors
-                    # même que downloads_by_folder_name (juste au-dessus, déjà
-                    # calculé pour le cas dossier) contient déjà ce nom RÉEL résolu
-                    # via l'API du client de téléchargement (torrent_names_by_hash) -
-                    # jamais consulté ici pour un fichier isolé jusqu'à présent. Même
-                    # repli, appliqué au fichier plutôt qu'à un nom de dossier.
                     torrent_download = downloads_by_folder_name.get(entry.name.strip().lower())
                     if torrent_download:
                         match = _build_active_download_destination(
                             torrent_download['series_id'], torrent_download.get('volume_number'), torrent_download['id']
                         )
-                if not match:
+                if not match and os.path.realpath(entry.path) not in manual_override_filepaths:
                     continue
                 _append_scanned_file(
                     entry.path, import_path, entry.name, match, scanner, telegram_filenames,
                     manual_override_filepaths, import_config, files_found,
-                    pack_download_id=match.get('tracking_id'),
-                    validate_file=validate_files
+                    pack_download_id=match.get('tracking_id') if match else None,
+                    validate_file=validate_files, packaged_filepaths=packaged_filepaths
                 )
+
+    package_temp = '/tmp/bullarr-package-temp'
+    if os.path.isdir(package_temp):
+        for entry in os.scandir(package_temp):
+            if not entry.is_file() or os.path.splitext(entry.name)[1].lower() not in supported_extensions:
+                continue
+            if (os.path.realpath(entry.path) not in manual_override_filepaths
+                    and entry.path not in packaged_filepaths
+                    and os.path.realpath(entry.path) not in finalized_import_paths
+                    and entry.name not in finalized_import_names):
+                continue
+            _append_scanned_file(entry.path, package_temp, entry.name, packaged_destinations.get(entry.path), scanner, telegram_filenames, manual_override_filepaths, import_config, files_found, validate_file=validate_files, packaged_filepaths=packaged_filepaths)
 
     return files_found, incompatible_folders
 
@@ -4537,6 +4516,7 @@ def delete_import_file():
     relative_path = data.get('relative_path', '')
     filename = data.get('filename', '')
     client = data.get('client', '')
+    tracking_id = data.get('tracking_id')
 
     if not import_root or not relative_path:
         return jsonify({'error': 'import_root et relative_path requis'}), 400
@@ -4571,10 +4551,36 @@ def delete_import_file():
         except Exception as e:
             print(f"Erreur annulation téléchargement client pour '{filename}': {e}")
 
+    # Retirer aussi le hold manuel lorsqu'il n'existe plus de tracking actif.
+    try:
+        from .import_history import remove_import_file_manual
+        remove_import_file_manual(filepath)
+    except Exception as exc:
+        print(f"Erreur retrait assignation manuelle lors de la suppression de {filepath}: {exc}")
+
+    # Les sources aMule sont exposées en lecture seule dans Bullarr. Une suppression
+    # locale ne peut donc pas fonctionner, même si le fichier est visible; ne pas
+    # transformer ce cas en Errno 30 et ne jamais retenter l'opération.
+    if not os.access(import_root, os.W_OK):
+        # Suppression logique: la source aMule reste intacte, mais la ligne explicitement
+        # supprimée ne doit plus revenir dans Import ni rester en état failed.
+        if tracking_id:
+            from blueprints.missing_monitor.downloader import mark_download_cancelled
+            mark_download_cancelled(tracking_id)
+        return jsonify({
+            'success': True,
+            'cancelled_at_client': cancelled_at_client,
+            'source_preserved': True,
+            'removed_from_import': True
+        })
+
     try:
         os.remove(filepath)
         cleanup_empty_directories(import_root)
-        return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client})
+        if tracking_id:
+            from blueprints.missing_monitor.downloader import mark_download_cancelled
+            mark_download_cancelled(tracking_id)
+        return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client, 'removed_from_import': True})
     except OSError as e:
         return jsonify({'error': str(e)}), 500
 
@@ -4623,6 +4629,80 @@ def list_incompatible_folder_files():
     return jsonify({'success': True, 'files': files, 'total_count': len(entries), 'truncated': len(entries) > LIMIT})
 
 
+@library_bp.route('/api/import/archive-content', methods=['GET'])
+def list_import_archive_content():
+    """Liste une archive en lecture seule, sans extraction ni modification."""
+    import_root = request.args.get('import_root', '')
+    relative_path = request.args.get('relative_path', '')
+    if not import_root or not relative_path:
+        return jsonify({'error': 'import_root et relative_path requis'}), 400
+    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
+    root = os.path.realpath(import_root)
+    if root not in roots:
+        return jsonify({'error': "Répertoire d'import non autorisé"}), 403
+    filepath = os.path.realpath(os.path.join(root, relative_path))
+    if os.path.commonpath([filepath, root]) != root:
+        return jsonify({'error': 'Chemin de fichier invalide'}), 403
+    if not os.path.isfile(filepath):
+        return jsonify({'error': 'Archive introuvable'}), 404
+    try:
+        result = list_archive_members(filepath)
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 422
+    result['filename'] = os.path.basename(filepath)
+    result['writable_roots'] = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents' and os.access(d, os.W_OK)]
+    return jsonify({'success': True, **result})
+
+
+
+@library_bp.route('/api/import/archive-package-folders', methods=['POST'])
+def package_import_archive_folders():
+    """Empaquete explicitement chaque dossier image d'un ZIP en CBZ."""
+    data = request.get_json(silent=True) or {}
+    import_root, relative_path = data.get('import_root', ''), data.get('relative_path', '')
+    root = os.path.realpath(import_root)
+    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
+    # Les CBZ générés restent strictement dans le filesystem privé du conteneur.
+    # Ne jamais utiliser un répertoire d'import monté (/downloads/telegram, etc.).
+    output_root = '/tmp/bullarr-package-temp'
+    os.makedirs(output_root, exist_ok=True)
+    if root not in roots:
+        return jsonify({'error': "Répertoire d'import non autorisé"}), 403
+    output_root = os.path.realpath(output_root)
+    if not os.access(output_root, os.W_OK):
+        return jsonify({'error': "Le répertoire de sortie est en lecture seule"}), 400
+    filepath = os.path.realpath(os.path.join(root, relative_path))
+    if os.path.commonpath([filepath, root]) != root or not os.path.isfile(filepath):
+        return jsonify({'error': 'Archive introuvable'}), 404
+    try:
+        created = package_zip_folders_to_cbz(filepath, output_root, data.get('folder_paths'))
+        from .import_history import mark_import_file_manual, mark_import_file_packaged
+        for item in created:
+            mark_import_file_manual(item['path'])
+            mark_import_file_packaged(item['path'])
+    except (ZipConversionError, OSError) as exc:
+        return jsonify({'error': str(exc)}), 422
+
+    # Le ZIP source peut être un téléchargement suivi avec une série déjà confirmée.
+    # Transmettre cette série aux CBZ produits, sans propager le volume du ZIP (le nom
+    # de l'archive peut contenir un numéro de dossier sans rapport avec l'album choisi).
+    source_destination = None
+    try:
+        from blueprints.missing_monitor.downloader import get_trackable_active_downloads
+        source_destination = find_active_download_destination(
+            os.path.basename(filepath), get_trackable_active_downloads(include_failed=True)
+        )
+        if source_destination:
+            source_destination.pop('volume_id', None)
+            source_destination.pop('volume_number', None)
+            source_destination.pop('tracking_id', None)
+            source_destination['is_packaging_source'] = True
+    except Exception as exc:
+        print(f"Erreur matching série source de l'archive {filepath}: {exc}")
+
+    return jsonify({'success': True, 'created': created, 'output_root': output_root,
+                    'source_destination': source_destination})
+
 def _resolve_incompatible_folder_path(import_root, relative_path):
     """Valide et résout (import_root, relative_path) fournis par le client vers un chemin
     de dossier réel - factorisé pour convert-to-cbz (preview + exécution), même contrôle
@@ -4665,10 +4745,6 @@ _LOOSE_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 # formant chacune un groupe fantôme).
 _PAGE_NUMBER_RE = re.compile(r'^(.*?)[\s_.\-]*\(?(\d{1,4})\)?[a-zA-Z]?$')
 
-# Consolidation finale de _group_loose_images_by_album (voir son commentaire "Cubitus
-# T22 - 50 couv") - PAS le critère principal de regroupement (voir _numeric_variant_clusters
-# ci-dessous pour ça), seulement un signal de fusion en dernier recours entre deux groupes
-# déjà formés dont le label mentionne le même numéro de tome malgré des noms différents.
 _TOME_NUMBER_RE = re.compile(r'\bt(\d{1,3})\b', re.IGNORECASE)
 
 _TOKEN_RE = re.compile(r'\d+|\D+')
@@ -4683,16 +4759,14 @@ def _token_skeleton(tokens):
 
 
 def _numeric_variant_clusters(stems):
-    """"pour cubitus tu parses mal les albums... surtout parse par nom de fichier qui se
+    """Regroupe des noms de fichiers (sans extension) identiques trait pour trait SAUF
     ressemblent et où il y a un chiffre qui varie" - regroupe des noms de fichiers
     (sans extension) identiques trait pour trait SAUF un seul nombre qui diffère, quelle
     que soit sa position dans le nom (pas seulement en fin de nom comme
-    _PAGE_NUMBER_RE). Constaté en réel sur un pack Cubitus: "16 - Cubitus - T11 -
-    LOGiTEAM.jpg" et "03 - Cubitus - T11 - LOGiTEAM.jpg" sont deux scans de couverture du
     même tome (le nombre en tête est un numéro de scan/page sans rapport, "T11" reste
     identique) - aucune regex fixe ("T0x") n'est nécessaire ici: les deux noms ne
-    diffèrent QUE sur ce premier nombre, ce qui suffit à les rattacher au même album quel
-    que soit le marqueur utilisé par la série (T, INT, HS, ou aucun).
+    diffèrent uniquement sur ce premier nombre, ce qui suffit à les rattacher au même album
+    sans dépendre d'un marqueur particulier.
 
     Retourne {stem: template} - `template` est la clé de regroupement commune à tous les
     membres d'un même cluster (le nom avec sa position variable neutralisée), un stem
@@ -4726,8 +4800,8 @@ def _numeric_variant_clusters(stems):
                     continue
                 diff_indices = [k for k in range(len(ta)) if ta[k] != tb[k]]
                 # Exactement UN token diffère, et c'est bien un nombre des deux côtés -
-                # un mot différent ("GorcRip" vs "LOGiTEAM") ne doit jamais suffire à
-                # rattacher deux noms au même album.
+                # Un mot différent ne doit jamais suffire à
+                # rattacher deux noms.
                 if len(diff_indices) == 1 and ta[diff_indices[0]].isdigit() and tb[diff_indices[0]].isdigit():
                     union(a, b)
 
@@ -4803,15 +4877,6 @@ def _group_loose_images_by_album(filenames):
             order.append(key)
         groups[key]['files'].append(filename)
 
-    # "Cubitus T22 - 50 couv et Cubitus T22 - 51 couv ne sont pas ensemble... il faudrait
-    # une option pour les matcher avec Cubitus T22" - une couverture nommée séparément des
-    # pages elles-mêmes ("Cubitus T22 - 50 couv.jpg" vs "16 - Cubitus - T22 -
-    # LOGiTEAM.jpg") ne "ressemble" pas assez à leur nom pour que _numeric_variant_clusters
-    # les rapproche (plusieurs mots diffèrent, pas seulement un nombre) - mais un même
-    # numéro de tome ("T22") mentionné dans les DEUX labels reste un signal fort et sûr,
-    # réutilisé ici en dernier passage pour fusionner ces groupes structurellement
-    # différents mais du même album. Le groupe avec le PLUS de fichiers fait foi pour le
-    # label final (le nom des pages elles-mêmes, pas celui d'une couverture isolée).
     groups_by_tome = {}
     for key in order:
         tome_match = _TOME_NUMBER_RE.search(groups[key]['label'])
@@ -5138,16 +5203,6 @@ def delete_incompatible_folder():
         return jsonify({'error': 'Chemin de dossier invalide'}), 403
 
     if not os.path.isdir(folder_path):
-        # "Dossier introuvable" pour tome 8... j'ai supprimé l'entrée joe bar team mais
-        # ça a gardé les fichiers internes" - bug réel: removePendingPack (import.js)
-        # supprime chaque dossier "incompatible" sélectionné un par un, dans l'ordre de la
-        # liste - si le dossier RACINE du pack ("Joe Bar Team [HD]") est aussi listé comme
-        # incompatible (contenu direct non supporté) et supprimé AVANT un de ses propres
-        # sous-dossiers ("Bonus/Tome 8"), ce sous-dossier disparaît déjà avec lui
-        # (shutil.rmtree récursif) - la tentative suivante pour CE sous-dossier précis ne
-        # trouvait donc plus rien et échouait avec une 404, alors que le résultat voulu
-        # (ce dossier n'existe plus) est déjà atteint. Idempotent plutôt qu'une erreur:
-        # l'absence du dossier EST le succès demandé, peu importe qui l'a fait disparaître.
         return jsonify({'success': True})
 
     try:
@@ -5365,6 +5420,23 @@ def mark_import_file_manual_route():
     return jsonify({'success': False, 'error': 'Erreur lors de l\'enregistrement'}), 500
 
 
+@library_bp.route('/api/import/check-conflict', methods=['POST'])
+def check_import_file_conflict():
+    data = request.get_json(silent=True) or {}
+    filepath = data.get('filepath', '')
+    destination = data.get('destination') or {}
+    parsed = data.get('parsed') or {}
+    filepath_real = os.path.realpath(filepath)
+    roots = [os.path.realpath(r) for r in current_app.config['IMPORT_DIRECTORIES']]
+    if not filepath or not any(os.path.commonpath([filepath_real, root]) == root for root in roots):
+        return jsonify({'success': False, 'error': "Chemin d'import invalide"}), 400
+    if not os.path.isfile(filepath_real):
+        return jsonify({'success': False, 'error': 'Fichier introuvable'}), 404
+    if not destination.get('series_id') and not destination.get('is_new_series'):
+        return jsonify({'success': True, 'existing_conflict': None})
+    return jsonify({'success': True, 'existing_conflict': _existing_import_conflict(destination, parsed, os.path.getsize(filepath_real))})
+
+
 @library_bp.route('/api/import/rescan-file', methods=['POST'])
 def rescan_import_file_route():
     """"add a manual rescan. why the import automatic was triggered if the file was not
@@ -5535,7 +5607,7 @@ def _maybe_complete_tracking_after_move(source_path, destination, outcome='impor
             finalize(tracking_id)
             return
 
-        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
+        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
         for root, _dirs, files in os.walk(top_level_dir):
             if any(os.path.splitext(f)[1].lower() in supported_extensions for f in files):
                 return  # il reste au moins un tome à importer, ne rien faire
@@ -5619,7 +5691,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
     # Slow preparation runs without the shared scan lock. Atomic per-file claims below
     # prevent duplicate work across scheduler/manual triggers; the shared lock is acquired
     # only for each file's short final destination/SQLite mutation.
-    import_roots = current_app.config['IMPORT_DIRECTORIES']
+    import_roots = list(current_app.config['IMPORT_DIRECTORIES']) + ['/tmp/bullarr-package-temp']
     import_config = load_library_import_config()
     hardlink_requested = import_config.get('import_mode') == 'hardlink'
     cleanup_stale_staging(_import_staging_directory())
@@ -5775,21 +5847,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 ):
                     raise UnsafePathError(f"Fichier source hors des répertoires d'import autorisés: {source_path}")
 
-                # "pour l'import doublon ignoré tu devrais faire la recherche d'abord si
-                # c'est un doublon. ca devrait etre rapide. la ca prend 5 minutes pour
-                # verifier" - bug réel: la conversion cbr/pdf/zip -> cbz (voir plus bas,
-                # jusqu'à plusieurs MINUTES pour un pdf, _maybe_convert_import_file_to_cbz)
-                # tournait AVANT toute comparaison de taille, payée en entier même pour un
-                # fichier qui allait de toute façon être jeté comme doublon juste après -
-                # exactement le cas d'un fichier déjà possédé qui traîne encore côté aMule
-                # (montage read-only, jamais nettoyé - voir _should_preserve_import_source):
-                # reconverti pour rien à CHAQUE cycle du scheduler. Connexion SQLite dédiée
-                # et refermée immédiatement plutôt que d'ouvrir tôt celle réutilisée plus
-                # bas: éviter de la garder ouverte pendant une conversion qui peut durer
-                # plusieurs minutes (contention "database is locked" avec le reste de
-                # l'app). Une "nouvelle série" (is_new_series) n'a par définition ENCORE
-                # AUCUN volume existant - jamais un doublon possible, pas la peine de
-                # chercher ni d'ouvrir de connexion pour ce cas.
                 if not _import_execution_lock.acquire(timeout=lock_timeout):
                     raise TimeoutError("Pré-vérification reportée: un scan/import modifie déjà la bibliothèque")
                 per_file_lock_acquired = True
@@ -5805,18 +5862,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     _, early_existing_path, early_existing_size, _ = early_existing
                     if early_existing_path and os.path.exists(early_existing_path) \
                             and not destination.get('force_replace') and not is_better_volume(source_size, early_existing_size):
-                        # "once Doublon ignoré -> state will be imported. so nothing
-                        # should go after that" - bug réel: _maybe_complete_tracking_
-                        # after_move (qui sort tracking_id d'active_downloads.status=
-                        # 'importing', posé juste avant conversion) ne tournait QUE dans
-                        # la branche "source supprimée" - pour une source préservée
-                        # (aMule, non-inscriptible), le fichier ne quitte jamais
-                        # 'importing', réévalué (et donc reclaqué en 'importing') à
-                        # chaque cycle du scheduler sans jamais en ressortir. Appelée
-                        # maintenant inconditionnellement: la source est supprimée ou
-                        # non selon le cas, le suivi est TOUJOURS clos une fois le sort
-                        # du fichier connu.
-                        source_was_copied = _should_preserve_import_source(original_source_path) or hardlink_requested
+                        source_was_copied = True
                         if not source_was_copied and os.path.exists(original_source_path):
                             os.remove(original_source_path)
                         if staged_source_path and os.path.exists(staged_source_path):
@@ -5848,7 +5894,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 # Copy to a local atomic staging directory, optionally convert, and
                 # validate in a killable subprocess. No NFS/archive/PDF work runs in the
                 # Flask process. The original is untouched until the final DB commit.
-                source_was_copied = _should_preserve_import_source(original_source_path) or hardlink_requested
+                source_was_copied = True
                 original_format = (file_data['parsed'].get('format') or Path(original_source_path).suffix.lstrip('.')).lower()
                 preparation = prepare_import_file(
                     original_source_path,
@@ -5969,23 +6015,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     series_id = destination['series_id']
                     series_title = destination['series_title']
 
-                    # "import il n'y a pas de renommage. import c'est juste une copie" -
-                    # RÉGRESSION CORRIGÉE (2026-09-03): ce code recalculait AUPARAVANT le
-                    # dossier cible depuis le titre + template à CHAQUE import, au lieu
-                    # d'utiliser series.path déjà stocké en base. Le raisonnement d'origine
-                    # ("ne pas faire confiance au path en base, il peut être incorrect")
-                    # partait d'un vrai bug ("XIII Trilogy tome 3 not added to the right
-                    # folder") mais la corrigeait au mauvais endroit: un IMPORT n'est
-                    # jamais l'occasion de renommer/déplacer une série existante - c'est
-                    # le rôle exclusif et séparé de _rename_series_folder (bouton dédié,
-                    # déplace réellement les fichiers). Recalculer un nom de dossier à
-                    # l'import, à partir d'un TITRE reformulable à tout moment (rescan,
-                    # match Bédéthèque...), ne peut par construction correspondre au
-                    # dossier existant que par coïncidence de format - c'est exactement
-                    # le mécanisme qui a produit TOUS les doublons de série découverts et
-                    # nettoyés ce jour (589/1084 "#Lesmémés / Les Mémés" vs "#Lesmémés -
-                    # Les Mémés", et 21 autres groupes identiques). Un import est une
-                    # copie vers le dossier DÉJÀ ATTACHÉ à la série, point final.
                     cursor.execute('SELECT path FROM series WHERE id = ?', (series_id,))
                     series_row = cursor.fetchone()
                     if not series_row or not series_row[0]:
@@ -6092,7 +6121,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         # haut ("once Doublon ignoré -> state will be imported. so
                         # nothing should go after that") - le suivi doit toujours être
                         # clos ici, que la source ait été supprimée ou préservée.
-                        source_was_copied = _should_preserve_import_source(original_source_path) or hardlink_requested
+                        source_was_copied = True
                         if not source_was_copied and os.path.exists(original_source_path):
                             os.remove(original_source_path)
                         if staged_source_path and os.path.exists(staged_source_path):
@@ -6451,21 +6480,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 from .scheduler import library_import_scheduler, MAX_AUTO_IMPORT_CORRUPTION_RETRIES
                 is_corruption = str(e).startswith('Fichier corrompu')
                 prior_failures = library_import_scheduler._failure_counts.get(file_data.get('filepath'), 0)
-                # "pourquoi autant d'entrées alors que ca devrait en mettre qu'une
-                # entrée" - bug réel: suppress_log ne couvrait QUE les 3 premières
-                # tentatives rapprochées (prior_failures < MAX_AUTO_IMPORT_CORRUPTION_
-                # RETRIES). Une fois ce budget épuisé, chaque nouvelle tentative du filet
-                # de sécurité (AUTO_IMPORT_CORRUPTION_COOLDOWN_SECONDS, une fois toutes
-                # les 30 min, VOULU pour un fichier encore en copie réseau lente - voir
-                # scheduler.py) redevenait "loggée" à chaque passage, créant une ligne
-                # d'historique identique toutes les 30 minutes indéfiniment - exactement
-                # les entrées dupliquées "22:13/21:57/21:38/21:31" observées.
-                # just_became_exhausted (prior_failures == MAX_AUTO_IMPORT_CORRUPTION_
-                # RETRIES pile, PAS >) identifie le TICK EXACT où le fichier bascule de
-                # "encore en retry rapproché" à "définitivement épuisé, ce fichier a
-                # besoin d'une action humaine" - une seule ligne d'historique y est créée
-                # (voir suppress_log ci-dessous), plus aucune ensuite malgré les retries
-                # du filet de sécurité qui continuent en tâche de fond sans bruit.
                 just_became_exhausted = is_corruption and prior_failures == MAX_AUTO_IMPORT_CORRUPTION_RETRIES
                 suppress_log = is_corruption and not just_became_exhausted
                 if suppress_log:
@@ -6549,21 +6563,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
             except Exception as log_err:
                 print(f"Erreur lors de l'enregistrement du log: {log_err}")
 
-        # "Blast - Intégrale@BD_fr.cbz" importé avec succès mais resté visible en
-        # 'completed'/is_pack=1 pour toujours - bug réel: is_pack est un texte deviné à
-        # la création (scanner.py: "Intégrale" SANS numéro de tome => is_pack=True,
-        # supposant une release multi-fichiers), jamais confirmé/corrigé contre la
-        # réalité. Sans numéro de tomes détecté (expected_volume_count resté NULL),
-        # aucun filet existant ne peut jamais lever ce suivi : remove_completed_pack_if_owned
-        # exige expected_volume_count, reconcile_stale_active_downloads ne sait matcher
-        # qu'un tome/intégrale/HS/épisode NUMÉROTÉ, et _reconcile_stuck_completed_download
-        # exclut explicitement tout is_pack=1 (pack potentiellement encore incomplet).
-        # Ici, tracking_finalizations contient déjà TOUS les fichiers réellement
-        # scannés/traités dans CE batch pour chaque tracking_id - le compte réel plutôt
-        # que le texte du titre. Un seul fichier partageant un tracking_id => ce n'était
-        # jamais un pack ; plusieurs => c'en est bien un. Restreint aux lignes SANS
-        # expected_volume_count confirmé pour ne jamais toucher un pack numérique
-        # légitime (dont les tomes peuvent arriver en plusieurs batches séparés).
         tracking_id_file_counts = Counter(
             d.get('tracking_id') for _, d, _, _ in tracking_finalizations
             if d and d.get('tracking_id') is not None
@@ -6610,23 +6609,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         # connexion suivante ci-dessous qui lit déjà le nom de fichier final
         _rename_new_volumes_after_import(conn, new_volume_ids)
 
-        # Séries importées pas encore matchées à Komga - liste récupérée maintenant (avant
-        # de fermer la connexion), mais le matching lui-même n'est tenté qu'à la toute fin
-        # (voir plus bas): Komga doit d'abord avoir eu le temps de rescanner et de
-        # connaître les fichiers qu'on vient de lui déplacer, sinon la recherche par titre
-        # ne trouve rien pour une série toute neuve.
-        #
-        # Séries DÉJÀ matchées à Komga (komga_series_id IS NOT NULL): pas besoin de
-        # matching par titre, mais chaque fichier tout juste importé/remplacé a quand même
-        # besoin de son propre komga_book_id/url (_sync_komga_books, par livre) pour que
-        # les liens directs "Ouvrir sur Komga" par tome existent. Rien d'autre ne rattrape
-        # ça après coup: un scan complet ultérieur ne re-synchronise que les séries qu'IL
-        # détecte comme changées (scanner.series_created_or_changed), et l'import écrit
-        # les lignes `volumes` directement sans jamais passer par le scanner - une série
-        # déjà matchée avant l'import restait donc avec des tomes fraîchement importés
-        # sans aucun lien Komga, indéfiniment, jusqu'à un rescan manuel de cette série
-        # précise (constaté sur "Imbattable"/"Carthago": tomes ajoutés par import jamais
-        # liés malgré la série déjà matchée et les livres bien présents côté Komga).
         unmatched_komga_series = []
         matched_komga_series = []
         touched_library_ids = set()
@@ -7093,8 +7075,6 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
 
     try:
         raw_name = custom_name if custom_name else render_series_folder_name(series_title, series_template, universe_name)
-        # Les modèles peuvent produire plusieurs segments : valider chaque composant
-        # séparément conserve la protection contre l'évasion du dossier de bibliothèque.
         folder_segments = [sanitize_path_component(part, 'Titre de série') for part in raw_name.split('/') if part]
         if not folder_segments:
             raise UnsafePathError(f"Titre de série invalide: {raw_name!r}")
@@ -7107,18 +7087,57 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
     if current_path_real == new_series_path:
         return {'success': True, 'changed': False, 'old_path': series_path, 'new_path': series_path}
 
-    if os.path.exists(new_series_path):
+    destination_dir_exists = os.path.isdir(new_series_path)
+    if os.path.exists(new_series_path) and not destination_dir_exists:
         return {
             'success': False, 'old_path': series_path, 'new_path': new_series_path,
-            'error': 'Un dossier existe déjà à cet emplacement'
+            'error': 'Un fichier existe déjà à cet emplacement'
+        }
+
+    # If the destination directory already exists, merge this series folder into it:
+    # move direct files only, after checking every name so nothing is overwritten.
+    if destination_dir_exists:
+        source_dir_obj = Path(current_path_real)
+        destination_dir_obj = Path(new_series_path)
+        source_files = [entry for entry in source_dir_obj.iterdir() if entry.is_file()]
+        collisions = [entry.name for entry in source_files
+                      if (destination_dir_obj / entry.name).exists()]
+        if collisions:
+            return {
+                'success': False, 'old_path': series_path, 'new_path': new_series_path,
+                'error': 'Fichier destination existe déjà: ' + ', '.join(collisions)
+            }
+        try:
+            for source_file in source_files:
+                destination_file = destination_dir_obj / source_file.name
+                shutil.move(source_file, destination_file)
+        except OSError as e:
+            return {
+                'success': False, 'old_path': series_path, 'new_path': new_series_path,
+                'error': f'Erreur lors du déplacement vers le dossier existant: {e}'
+            }
+        cursor.execute('UPDATE series SET path = ? WHERE id = ?', (new_series_path, series_id))
+        cursor.execute('SELECT id, filename FROM volumes WHERE series_id = ?', (series_id,))
+        for row in cursor.fetchall():
+            filename = final_name_by_volume.get(row['id'], row['filename'])
+            if filename is not None:
+                cursor.execute(
+                    'UPDATE volumes SET filepath = ? WHERE id = ?',
+                    (os.path.join(new_series_path, filename), row['id'])
+                )
+        conn.commit()
+        return {
+            'success': True, 'changed': True, 'merged_into_existing': True,
+            'old_path': series_path, 'new_path': new_series_path,
+            'moved_files': len(source_files)
         }
 
     try:
-        # os.rename() ne crée pas les dossiers intermédiaires : les créer avant le
-        # déplacement permet aux modèles comportant un niveau supplémentaire de fonctionner.
+        # os.rename() ne crée pas les dossiers intermédiaires (contrairement à
+        # os.makedirs) - nécessaire dès qu'un <univers> introduit un niveau de dossier
+        # supplémentaire qui n'existe pas encore (première série de cet univers à être
+        # renommée).
         os.makedirs(os.path.dirname(new_series_path), exist_ok=True)
-        # Si la destination se trouve dans le dossier actuel, le noyau refuse le
-        # déplacement direct ; une étape temporaire permet de libérer l'ancien chemin.
         if os.path.commonpath([current_path_real, new_series_path]) == current_path_real:
             tmp_path = current_path_real + '.rename_tmp'
             os.rename(current_path_real, tmp_path)
@@ -7383,10 +7402,6 @@ def load_library_import_config():
     if os.path.exists(config_file):
         with open(config_file, 'r') as f:
             saved = json.load(f)
-        # Fusionné PAR-DESSUS les défauts (pas juste renvoyé tel quel): un fichier déjà
-        # sauvegardé avant l'ajout d'une nouvelle clé aux défauts (ex: monitored_extensions)
-        # n'a sinon jamais cette clé, faute de merge - constaté sur la clé elle-même,
-        # ajoutée après que la plupart des installations aient déjà un fichier existant.
         defaults.update(saved)
         return defaults
 
@@ -7856,13 +7871,6 @@ def find_auto_assign_destination(parsed, config, folder_name=None, all_series=No
                 'series_id': series_id,
                 'library_id': library_id,
                 'library_path': library_path,
-                # "Cannot read properties of undefined (reading 'replace')" - bug réel:
-                # ce dict n'avait pas 'library_name' (contrairement à celui de
-                # find_active_download_destination, qui l'a toujours eu) - _importFileRowHtml
-                # (import.js) appelle inconditionnellement escapeHtml(file.destination.
-                # library_name) pour l'affichage "📍 Bibliothèque → Série", plantant tout
-                # le rendu du tableau dès qu'UN SEUL fichier était résolu via CE repli
-                # (find_auto_assign_destination) plutôt que via un téléchargement suivi.
                 'library_name': library_name,
                 'series_title': series_title,
                 'is_new_series': False,
@@ -7984,7 +7992,7 @@ def attempt_immediate_auto_import(filepath, import_root):
         filename = os.path.basename(filepath)
         ext = os.path.splitext(filename)[1].lower()
         supported_extensions = set(config.get(
-            'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
+            'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
         ))
         if ext not in supported_extensions:
             return

@@ -140,12 +140,6 @@ def search_prowlarr_raw(title, volume_num=None, label=None, confirm=False, limit
             except Exception:
                 tracker_name = info_url[:50]
 
-        # Numéro de tome brut ("pourquoi nordheim ca na pas bien matcher les volumes") -
-        # même parsing que EBDZ (voir 'volume'/'is_integral'/etc. dans /api/search côté
-        # search/routes.py), jusqu'ici absent ici: seul le libellé d'affichage
-        # (parsed_volume) existait, jamais un numéro exploitable par le frontend pour
-        # taguer automatiquement CE résultat précis (voir search-results-table.js,
-        # trackingVolumeNumber).
         parsed = LibraryScanner.parse_filename(item_title)
         result = {
             'source': 'prowlarr',

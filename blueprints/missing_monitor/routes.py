@@ -356,15 +356,6 @@ def search_volume():
     try:
         data = request.get_json()
         title = data.get('title', '').strip()
-        # volume_num absent: aucun numéro connu pour ce tome (ex: intégrale/HS listée
-        # sans numéro sur Bédéthèque) - recherche par titre de série seul plutôt que de
-        # refuser la recherche (voir _search_ebdz/_search_prowlarr, param volume_num
-        # optionnel désormais).
-        # "check why it has not parse volume 0 in bedetheque for valerian" - bug réel:
-        # 0 servait ici de sentinelle pour "absent", indiscernable d'un VRAI tome 0
-        # (existe réellement sur Bédéthèque, ex. Valérian) - is not None/'' distingue les
-        # deux, None reste la seule vraie sentinelle "absent" partout en aval
-        # (_confirms_requested_volume, _search_ebdz, search_prowlarr_raw...).
         raw_volume_num = data.get('volume_num')
         volume_num = int(raw_volume_num) if raw_volume_num not in (None, '') else None
         sources = data.get('sources')  # None = tous

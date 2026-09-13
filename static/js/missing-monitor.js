@@ -128,6 +128,14 @@ function parseMissingVolumes(value) {
     return [];
 }
 
+function effectiveMissingVolumes(series) {
+    // Une intégrale peut couvrir tous les tomes Bédéthèque alors que le champ
+    // historique missing_volumes contient encore les numéros remplacés. La même règle
+    // doit servir au filtre et au rendu, sinon « Avec tomes manquants » affiche ces
+    // séries pourtant complètes.
+    return series.bedetheque_complete ? [] : parseMissingVolumes(series.missing_volumes);
+}
+
 function isBedethequeFinished(status) {
     const normalized = (status || "").toLowerCase();
     return normalized.includes("termin") || normalized.includes("fini");
@@ -157,9 +165,9 @@ function filterSeries() {
     }
     
     if (missingFilter === "with-missing") {
-        filtered = filtered.filter(s => Array.isArray(parseMissingVolumes(s.missing_volumes)) && parseMissingVolumes(s.missing_volumes).length > 0);
+        filtered = filtered.filter(s => effectiveMissingVolumes(s).length > 0);
     } else if (missingFilter === "without-missing") {
-        filtered = filtered.filter(s => !Array.isArray(parseMissingVolumes(s.missing_volumes)) || parseMissingVolumes(s.missing_volumes).length === 0);
+        filtered = filtered.filter(s => effectiveMissingVolumes(s).length === 0);
     }
 
     if (completeFilter === "yes") {
@@ -193,18 +201,9 @@ function displaySeriesGrid(series) {
 
     const rows = series.map(s => {
         // Parser missing_volumes si c'est une chaîne JSON
-        let missingVols = s.missing_volumes;
-        if (typeof missingVols === 'string') {
-            try {
-                missingVols = JSON.parse(missingVols);
-            } catch (e) {
-                missingVols = [];
-            }
-        }
-
-        // Une série complète peut être couverte par une intégrale : ses trous de
-        // numérotation ne doivent alors pas être présentés comme des tomes à récupérer.
-        const effectiveMissingVols = s.bedetheque_complete ? [] : missingVols;
+        // Le rendu et le filtre utilisent exactement la même liste effective,
+        // notamment pour les intégrales et les one-shots.
+        const effectiveMissingVols = effectiveMissingVolumes(s);
         const missingVolsStr = Array.isArray(effectiveMissingVols) ? effectiveMissingVols.join(', ') : '';
         const missingCount = Array.isArray(effectiveMissingVols) ? effectiveMissingVols.length : 0;
         const isMonitored = s.enabled !== 0; // 0 = non suivi, 1 = suivi

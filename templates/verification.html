@@ -54,11 +54,6 @@
                             <div id="verificationSummary" style="color:#666;"></div>
                         </div>
 
-                        <!-- "les nombre sont mal aligné": le label + son compteur "(N)" sont
-                             regroupés dans un <span> unique par titre de section ci-dessous -
-                             sans ça, le gap:6px du <h3> flex s'appliquait aussi ENTRE le texte
-                             brut "(" et le <span id="...Count"> (et entre lui et ")"), rendant
-                             "Label ( 12 )" avec des espaces fantômes au lieu de "Label (12)". -->
                         <div class="settings-card" id="verificationMetadataCard">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
@@ -104,6 +99,28 @@
                                 </div>
                             </div>
                             <div id="misnamedList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
+                        </div>
+
+                        <div class="settings-card" id="verificationFolderPlacementCard">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="verif-section-toggle" id="folderPlacementToggle" onclick="verifToggleSection('misplacedFoldersList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+                                    <span>Emplacement des dossiers (<span id="misplacedFoldersCount">—</span>)</span>
+                                </h3>
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <button class="btn btn-sm" id="verifRunMisplacedFoldersBtn" onclick="runVerificationCategory('misplaced_folders')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                    <span id="verifFolderMoveBulkControls" style="display:none; align-items:center; gap:10px;">
+                                    <label style="display:flex; align-items:center; gap:5px; font-size:0.85em; font-weight:normal; cursor:pointer;">
+                                        <input type="checkbox" id="verifFolderMoveSelectAll" onchange="verifToggleSelectAllFolderMoves(this)">
+                                        Tout sélectionner
+                                    </label>
+                                    <button class="btn btn-sm" id="verifBulkFolderMoveBtn" onclick="verifBulkReconcileFolders()" disabled>Déplacer la sélection (<span id="verifFolderMoveSelectedCount">0</span>)</button>
+                                    </span>
+                                </div>
+                            </div>
+                            <p class="help-text">Vérifie que chaque dossier de série correspond au template et à son univers.</p>
+                            <div id="misplacedFoldersList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
                         </div>
 
                         <div class="settings-card" id="verificationMatchingCard">

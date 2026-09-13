@@ -262,7 +262,7 @@ class LibraryImportScheduler:
                 # Scanner les fichiers à importer
                 scanner = LibraryScanner()
                 supported_extensions = set(config.get(
-                    'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
+                    'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
                 ))
 
                 files_to_import = []
@@ -356,12 +356,6 @@ class LibraryImportScheduler:
                                     continue
 
                                 parsed = scanner.parse_filename(filename)
-                                # Nom du dossier contenant directement le fichier (voir même
-                                # calcul côté scan_import_directory) - repli de
-                                # find_auto_assign_destination quand un pack multi-tomes
-                                # nommé d'après la série ("Jack Palmer (CBZ)/15 Palmer en
-                                # Bretagne.cbz") a des noms de fichiers individuels qui ne
-                                # portent pas le titre de la série.
                                 relative_path = os.path.relpath(filepath, import_path)
                                 parent_dir = os.path.dirname(relative_path)
                                 folder_name = os.path.basename(parent_dir) if parent_dir else None
@@ -385,10 +379,12 @@ class LibraryImportScheduler:
                                 # Repli par nom de torrent (voir même ordre côté
                                 # scan_import_directory) avant le repli le plus faible par
                                 # nom de dossier/fichier reparsé.
+                                matched_by_torrent_container = False
                                 if not destination and folder_name:
                                     destination = routes.find_active_download_destination_by_torrent_name(
                                         folder_name, trackable_downloads, torrent_names_by_hash
                                     )
+                                    matched_by_torrent_container = bool(destination)
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None
                                 # Repli supplémentaire par dossier RACINE (voir root_folder_name
@@ -400,6 +396,7 @@ class LibraryImportScheduler:
                                     destination = routes.find_active_download_destination_by_torrent_name(
                                         root_folder_name, trackable_downloads, torrent_names_by_hash
                                     )
+                                    matched_by_torrent_container = bool(destination)
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None
                                 if not destination:
@@ -408,6 +405,14 @@ class LibraryImportScheduler:
                                     )
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None
+                                # Every auto-import, regardless of client or whether it was
+                                # found by a direct filename or a torrent-folder fallback, must
+                                # prove that its parsed series title is the tracked series. A
+                                # download association establishes provenance, never identity.
+                                if destination and not routes._pack_file_matches_destination(parsed, destination):
+                                    from .import_history import mark_import_file_manual
+                                    mark_import_file_manual(filepath)
+                                    destination = None
                                 # Sécurité : l’auto-import ne devine jamais une série à
                                 # partir d’un titre ou d’un dossier local. Seuls les fichiers
                                 # rattachés à un téléchargement suivi (nom de fichier ou nom

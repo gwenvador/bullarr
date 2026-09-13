@@ -233,23 +233,6 @@ def process_new_monitor_files(source, items):
                 continue
             handled.add(identity)
 
-            # "surveillance should be triggered after the album and tome is correctly
-            # matched. if the matching is uncertain you can put it in validation" - bug
-            # réel reproduit: _match_series_for_auto_import accepte aussi un repli
-            # "préfixe non ambigu" (voir sa docstring - pensé pour "Mika Tanaka - L'écume
-            # de l'aube" ou un nom d'auteur collé en fin de nom de fichier), qui matche à
-            # tort un SPIN-OFF à sa série mère dès que son titre complet commence par
-            # celui de la série suivi d'un espace: "Nordheim Saga - T04 - ..." (série
-            # dérivée, sa PROPRE numérotation) matchait ainsi "Nordheim" (810), et son tome
-            # 4 coïncidait par hasard avec un vrai tome manquant de la série mère - aurait
-            # téléchargé un album totalement différent en le faisant passer pour "Nordheim
-            # tome 4". N'accepte donc l'égalité stricte de titre ou un repli hint
-            # EXPLICITEMENT confirmé par l'URL Bédéthèque comme suffisamment sûr pour un
-            # téléchargement sans revue - un repli préfixe seul (deviné, jamais confirmé)
-            # va plutôt à /validation (même file que les résultats de recherche trop peu
-            # confiants pour l'acquisition auto, voir auto_acquire.py/queue_manual_review)
-            # pour qu'un humain tranche, plutôt que d'être silencieusement jeté (ancien
-            # comportement: le fichier disparaissait purement et simplement).
             is_exact_title_match = _normalize_title_for_match(match[3]) == normalized_parsed_title
             is_hint_confirmed = bool(hint) and (bedetheque_url_by_series.get(match[0]) or '').strip().rstrip('/') == hint
             is_thread_confirmed = bool(thread_match) and thread_match[0] == match[0]

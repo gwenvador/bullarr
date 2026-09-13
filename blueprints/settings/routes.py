@@ -231,11 +231,10 @@ def restore_backup():
 
 
 def _check_volume_file_validity(filepath, fmt):
-    """Vérifie qu'un fichier tome n'est pas corrompu/tronqué ("add in verification
-    checking the validity of files. like Foudroyants ... is not valid file") - un test
+    """Vérifie qu'un fichier tome n'est pas corrompu ou tronqué avec un test
+    d'intégrité rapide
     d'intégrité rapide (CRC des membres pour cbz/zip, testrar pour cbr/rar, simple
-    ouverture pour pdf) plutôt qu'une lecture complète des pages: suffisant pour
-    détecter un téléchargement tronqué (voir l'incident Capitaine Crown, deux
+    ouverture pour pdf) plutôt qu'une lecture complète des pages.
     téléchargements Telegram tronqués en silence côté taille de fichier) sans alourdir
     excessivement un scan qui porte déjà sur toute la bibliothèque à chaque lancement.
     Retourne None si le fichier est valide, sinon un message d'erreur explicite."""
@@ -282,7 +281,8 @@ def _load_verification_series_and_volumes():
     cursor.execute('''
         SELECT s.id, s.library_id, s.title, s.path, s.is_oneshot, s.bedetheque_url, s.komga_series_id,
                s.ebdz_thread_id, s.ebdz_matched_title, s.ebdz_match_status, s.ebdz_volumes_count,
-               u.name AS universe_name
+               s.total_volumes, s.missing_volumes, s.bedetheque_total_volumes, s.bedetheque_complete, s.bedetheque_complete_reason,
+               l.path AS library_path, u.name AS universe_name
     FROM series s
         JOIN libraries l ON l.id = s.library_id
         LEFT JOIN universes u ON u.id = s.universe_id
@@ -370,10 +370,67 @@ def _verify_missing_metadata(series_rows, volumes_by_series):
     return missing_metadata
 
 
+
+def _verify_misplaced_series_folders(series_rows):
+    """Liste, sans modifier le disque, les dossiers de séries qui ne correspondent
+    plus au template et à leur univers. L'action reste volontairement explicite côté UI:
+    l'audit ne déplace jamais une bibliothèque simplement parce qu'il a été lancé.
+
+    Une collision ou un chemin source manquant reste visible, mais n'est pas actionnable;
+    l'utilisateur peut alors traiter le conflit avant tout déplacement.
+    """
+    from blueprints.library.routes import UnsafePathError, resolve_within, sanitize_path_component
+    from rename_handler import render_series_folder_name
+
+    rename_cfg = load_rename_config()
+    misplaced = []
+    for series in series_rows:
+        current_path = series['path']
+        library_path = series['library_path']
+        if not current_path or not library_path:
+            continue
+        try:
+            raw_name = render_series_folder_name(
+                series['title'], rename_cfg['series_template'], series['universe_name']
+            )
+            segments = [sanitize_path_component(part, 'Titre de série') for part in raw_name.split('/') if part]
+            if not segments:
+                raise UnsafePathError(f"Titre de série invalide: {raw_name!r}")
+            expected_path = resolve_within(os.path.join(library_path, *segments), library_path)
+        except UnsafePathError as exc:
+            misplaced.append({
+                'series_id': series['id'], 'series_title': series['title'],
+                'universe_name': series['universe_name'] or 'Sans univers',
+                'current_path': current_path, 'expected_path': None,
+                'can_reconcile': False, 'reason': str(exc),
+            })
+            continue
+
+        if os.path.realpath(current_path) == expected_path:
+            continue
+        if not os.path.isdir(current_path):
+            reason, can_reconcile = 'Dossier source introuvable', False
+        elif os.path.exists(expected_path):
+            reason, can_reconcile = 'Un dossier existe déjà à la destination attendue', False
+        else:
+            reason, can_reconcile = 'Dossier hors de l’univers ou du template configuré', True
+        misplaced.append({
+            'series_id': series['id'], 'series_title': series['title'],
+            'universe_name': series['universe_name'] or 'Sans univers',
+            'current_path': current_path, 'expected_path': expected_path,
+            'can_reconcile': can_reconcile, 'reason': reason,
+        })
+    return misplaced
+
 def _verify_misnamed(series_rows, volumes_by_series):
-    """Fichiers/dossiers dont le nom ne correspond pas au format configuré (voir
-    rename_handler.FileRenamer)."""
-    from rename_handler import FileRenamer, render_series_folder_name
+    """Fichiers dont le nom ne correspond pas au format configuré.
+
+    This verification endpoint is deliberately read-only: it may suggest a
+    per-file rename, but it must never expose a series-folder rename. Moving a
+    series directory relocates every contained file and is an explicit action
+    outside the verification workflow.
+    """
+    from rename_handler import FileRenamer
 
     rename_cfg = load_rename_config()
     misnamed = []
@@ -410,23 +467,6 @@ def _verify_misnamed(series_rows, volumes_by_series):
                         })
             except Exception:
                 pass
-
-        if s['path']:
-            # render_series_folder_name peut rendre un chemin à plusieurs segments quand
-            # le format utilise <univers> (ex: "Nordheim/Dans Les Forêts De Bambous", voir
-            # _rename_series_folder côté library/routes.py qui gère réellement ce niveau
-            # de dossier supplémentaire) - seul le DERNIER segment (le nom du dossier de
-            # la série elle-même) est comparé ici : ce diagnostic ne vérifie donc que le
-            # nom du dossier, pas son EMPLACEMENT sous le bon dossier d'univers.
-            expected_folder = render_series_folder_name(s['title'], rename_cfg['series_template'], s['universe_name'])
-            expected_folder = expected_folder.rsplit('/', 1)[-1] if expected_folder else expected_folder
-            current_folder = os.path.basename(s['path'].rstrip('/'))
-            if expected_folder and current_folder != expected_folder:
-                misnamed.append({
-                    'is_folder': True, 'series_id': s['id'], 'series_title': s['title'],
-                    'volume_id': None,
-                    'current_name': current_folder, 'expected_name': expected_folder,
-                })
 
     return misnamed
 
@@ -656,8 +696,6 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                 })
                 reported_pairs.add(pair)
 
-    # Les variantes de casse, accents et séparateurs deviennent la même clé, sans
-    # rapprocher des titres dont les mots diffèrent.
     by_normalized_title = {}
     for series in series_rows:
         key = _normalized_duplicate_title(series['title'])
@@ -712,8 +750,72 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                 'reason': 'Titres équivalents et même nombre de fichiers ; la fiche la plus récente est proposée à la suppression.',
             })
 
+    for item in duplicates:
+        if item.get('cleanup_mode') == 'komga_duplicate':
+            item['deletable_series'] = [{
+                'id': item['duplicate_series_id'],
+                'title': item['duplicate_series_title'],
+                'path': item['duplicate_series_path'],
+                'volume_count': item.get('local_volume_count', 0),
+            }]
+        else:
+            item['deletable_series'] = list(item.get('populated_series') or [])
     duplicates.sort(key=lambda item: item['duplicate_series_title'].casefold())
     return duplicates
+
+
+def _verify_duplicate_komga_series(series_rows, komga_series_rows, volumes_by_series=None):
+    """Signale les séries Komga distinctes qui portent le même titre normalisé."""
+    by_title = {}
+    for series in komga_series_rows or []:
+        key = _normalized_duplicate_title(series.get('title'))
+        if key:
+            by_title.setdefault(key, []).append(series)
+
+    local_by_title = {}
+    for series in series_rows:
+        key = _normalized_duplicate_title(series['title'])
+        if key:
+            local_by_title.setdefault(key, []).append(series)
+
+    duplicates = []
+    for key, matching_komga in by_title.items():
+        if len(matching_komga) < 2 or len(local_by_title.get(key, [])) != 1:
+            continue
+        local = local_by_title[key][0]
+        duplicates.append({
+            'duplicate_series_id': local['id'],
+            'duplicate_series_title': local['title'],
+            'duplicate_series_path': local['path'],
+            'cleanup_eligible': True,
+            'cleanup_mode': 'komga_duplicate',
+            'populated_series': [],
+            'local_volume_count': sum(1 for volume in (volumes_by_series or {}).get(local['id'], []) if volume['filepath']),
+            'komga_series_id': 'Doublons Komga',
+            'komga_series': [
+                {'id': item.get('komga_series_id'), 'title': item.get('title'), 'url': item.get('url'), 'volume_count': item.get('total_volumes')}
+                for item in matching_komga
+            ],
+            'reason': 'Plusieurs séries Komga ont le même titre normalisé ; vérification manuelle nécessaire.',
+        })
+    for item in duplicates:
+        item['deletable_series'] = [{
+            'id': item['duplicate_series_id'],
+            'title': item['duplicate_series_title'],
+            'path': item['duplicate_series_path'],
+            'volume_count': item.get('local_volume_count', 0),
+        }]
+    return duplicates
+
+
+def _load_komga_duplicate_series(series_rows):
+    """Charge les séries Komga en une seule requête pour détecter les titres répétés."""
+    try:
+        from blueprints.komga.client import KomgaClient
+        # Komga accepte une recherche vide et renvoie l'ensemble du catalogue courant.
+        return KomgaClient().search_series('', size=1000)
+    except Exception:
+        return []
 
 
 @settings_bp.route('/api/settings/verification/duplicate-series/cleanup', methods=['POST'])
@@ -745,6 +847,40 @@ def cleanup_duplicate_empty_series():
         removed = []
         skipped = []
         for candidate in candidates:
+            komga_matches = _load_komga_duplicate_series([candidate])
+            komga_matches = [item for item in komga_matches
+                             if _normalized_duplicate_title(item.get('title')) ==
+                             _normalized_duplicate_title(candidate['title'])]
+            if len(komga_matches) >= 2:
+                series_path = candidate['path']
+                if not series_path or not os.path.isdir(series_path):
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'],
+                                    'reason': 'Dossier local introuvable'})
+                    continue
+                real_series_path = os.path.realpath(series_path)
+                real_library_path = os.path.realpath(candidate['library_path'])
+                if real_series_path == real_library_path or os.path.commonpath(
+                        [real_series_path, real_library_path]) != real_library_path:
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'],
+                                    'reason': 'Chemin hors bibliothèque ou racine de bibliothèque'})
+                    continue
+                shared_path = conn.execute(
+                    'SELECT 1 FROM series WHERE id != ? AND path = ? LIMIT 1',
+                    (candidate['id'], series_path)
+                ).fetchone()
+                if shared_path:
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'],
+                                    'reason': 'Dossier partagé par plusieurs séries'})
+                    continue
+                shutil.rmtree(real_series_path)
+                conn.execute('DELETE FROM volumes WHERE series_id = ?', (candidate['id'],))
+                conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
+                conn.commit()
+                log_action('delete', candidate['id'], candidate['title'],
+                           f"Doublon Komga · dossier supprimé · {series_path}")
+                removed.append({'id': candidate['id'], 'title': candidate['title']})
+                continue
+
             same_komga_populated_match = conn.execute('''
                 SELECT 1 FROM series s
                 JOIN volumes v ON v.series_id = s.id
@@ -793,7 +929,8 @@ def cleanup_duplicate_empty_series():
                 min_count = min(counts.values())
                 min_ids = [series_id for series_id, count in counts.items() if count == min_count]
                 removable_id = max(min_ids)
-                title_cleanup_eligible = candidate['id'] == removable_id
+                # La sélection explicite de l'utilisateur choisit la fiche à retirer.
+                title_cleanup_eligible = True
 
             if title_cleanup_eligible:
                 series_path = candidate['path']
@@ -868,7 +1005,7 @@ def run_verification():
     clic sur "métadonnées manquantes" n'a plus à l'attendre. Sans ?type (compatibilité
     d'éventuels autres appelants), toutes les catégories sont calculées et renvoyées comme avant."""
     verif_type = request.args.get('type')
-    valid_types = {'missing_metadata', 'misnamed', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
+    valid_types = {'missing_metadata', 'misnamed', 'misplaced_folders', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
     if verif_type is not None and verif_type not in valid_types:
         return jsonify({'error': f"type invalide, attendu l'un de {sorted(valid_types)}"}), 400
 
@@ -884,6 +1021,8 @@ def run_verification():
         result['missing_metadata'] = _verify_missing_metadata(series_rows, volumes_by_series)
     if verif_type in (None, 'misnamed'):
         result['misnamed'] = _verify_misnamed(series_rows, volumes_by_series)
+    if verif_type in (None, 'misplaced_folders'):
+        result['misplaced_folders'] = _verify_misplaced_series_folders(series_rows)
     if verif_type in (None, 'invalid_files'):
         invalid_files, komga_configured = _verify_invalid_files(series_rows, volume_rows)
         result['invalid_files'] = invalid_files
@@ -896,5 +1035,9 @@ def run_verification():
         result['komga_configured'] = komga_configured
     if verif_type in (None, 'duplicate_series'):
         result['duplicate_series'] = _verify_duplicate_empty_series(series_rows, volumes_by_series)
+        result['duplicate_series'].extend(
+            _verify_duplicate_komga_series(series_rows, _load_komga_duplicate_series(series_rows), volumes_by_series)
+        )
+        result['duplicate_series'].sort(key=lambda item: item['duplicate_series_title'].casefold())
 
     return jsonify(result)

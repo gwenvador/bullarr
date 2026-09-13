@@ -231,7 +231,7 @@ img, table, pre {
 @supports (width: 100vw) {
     @media (min-width: 1920px) {
         .container {
-            max-width: 90%;
+            max-width: 100%;
         }
     }
 }
@@ -506,8 +506,8 @@ img, table, pre {
     }
 
     .content-wrapper {
-        max-width: 1600px;
-        margin: 0 auto;
+        max-width: none;
+        margin: 0;
         width: 100%;
     }
 
