@@ -1600,6 +1600,15 @@ function loadClientCardStatuses() {
 }
 
 
+// ===== FORMAT DE RENOMMAGE (tomes + dossier de série) =====
+// "j'aimerais qu'il y ait un exemple quand je met les parametres en bas" - aperçu en
+// direct sous chaque champ plutôt qu'un exemple statique unique plus haut dans la page
+// (retiré): reflète le format RÉELLEMENT saisi, pas seulement le format par défaut.
+// Réimplémentation JS minimale de render_standard_template (rename_handler.py, même
+// règle de bloc optionnel: un bloc {...} disparaît entièrement si l'un de ses tags <...>
+// n'a pas de valeur) - inévitable ici (aperçu instantané, sans aller-retour serveur à
+// chaque frappe), mais tenue volontairement comme un simple miroir de cette fonction:
+// toute évolution de la syntaxe des blocs côté Python doit être répercutée ici aussi.
 const RENAME_PREVIEW_SAMPLE_TOKENS = {
     series: 'Dans Les Forêts De Bambous',
     number2: '01',
