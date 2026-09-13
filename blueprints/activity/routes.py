@@ -432,16 +432,6 @@ def activity_status():
             recognized_items = []
             for item in r['items']:
                 item_id = item.get('id')
-                # Priorité au lien exact déjà établi lors d'un sondage précédent (voir
-                # set_active_download_client_item_id plus bas), sans la moindre
-                # comparaison de nom. Seul le tout premier sondage d'un téléchargement
-                # encore jamais relié retombe sur la correspondance de nom ci-dessous -
-                # et UNIQUEMENT contre les lignes actuellement 'pending' de CE client
-                # (client_pending_rows), jamais un historique large: un item qui ne
-                # correspond à AUCUNE d'entre elles n'est tout simplement pas à nous, il
-                # est ignoré (pas de ligne "Chasse & Pêche" créée à la volée pour lui -
-                # c'était la source des téléchargements fantômes, voir le docstring du
-                # module).
                 linked = linked_by_item_id.get(item_id.lower()) if item_id else None
                 if linked is None:
                     # match_pending_download_by_name (downloader.py) exclut déjà toute

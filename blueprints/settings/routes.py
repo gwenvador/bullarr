@@ -697,9 +697,6 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                 })
                 reported_pairs.add(pair)
 
-    # Variantes de casse/accents/séparateurs : "I.R.$", "I.R.$." et
-    # "I R $" deviennent la même clé, sans rapprocher "Blueberry" de
-    # "Blueberry (La Jeunesse de)" puisque les mots restent différents.
     by_normalized_title = {}
     for series in series_rows:
         key = _normalized_duplicate_title(series['title'])

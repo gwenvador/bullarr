@@ -108,9 +108,6 @@ def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None)
                 if len(matches) == 1:
                     selected.remove(value); selected.add(matches[0])
         expanded = set(selected)
-        # Une sélection peut contenir uniquement un dossier parent (par exemple
-        # « Cubitus »). Dans ce cas, développer ses sous-dossiers d'images au
-        # lieu de l'abandonner comme dossier sans images directes.
         for selected_path in list(selected):
             prefix = selected_path + '/'
             child_dirs = {n[len(prefix):].split('/', 1)[0] for n in members if n.startswith(prefix) and '/' in n[len(prefix):]}

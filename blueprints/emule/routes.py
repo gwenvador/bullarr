@@ -237,10 +237,6 @@ def test_connection():
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         
-        # amulecmd peut retourner 0 alors que la connexion EC a échoué : dans ce
-        # cas, l'erreur est écrite dans stdout (par exemple « EC connection
-        # failed » / « Connection Failed »), pas dans stderr. Ne pas laisser ce
-        # faux positif apparaître comme une connexion réussie dans les paramètres.
         output = '\n'.join(part for part in (result.stdout, result.stderr) if part)
         connection_error = re.search(
             r'(?:ec\s+connection\s+failed|connection\s+failed|unable\s+to\s+connect|empty\s+reply)',

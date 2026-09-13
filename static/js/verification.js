@@ -109,18 +109,6 @@ function renderMissingMetadata(data) {
                         if (g.indices.length === 1) {
                             return _verifMetaItemRowHtml(verifMetaItems[g.indices[0]], g.indices[0]);
                         }
-                        // Pas de <tbody> imbriqué (HTML invalide, un <table> n'accepte qu'un
-                        // <tbody> par niveau) - les lignes de détail sont des <tr> normales,
-                        // marquées data-group et repliées via display:none, togglées en masse
-                        // par verifToggleGroupRows (partagée avec Nommage non standard) plutôt que verifToggleSection
-                        // (pensé pour un seul conteneur, pas plusieurs <tr> à la fois).
-                        //
-                        // "Mitterrand Le Dernier Président (2 tomes) - but this is not 2
-                        // tomes c'est juste 2 entrées: métadonnées manquantes et série non
-                        // matchée" - un groupe peut mélanger l'entrée 'series' (série non
-                        // matchée sur Bédéthèque, item.type==='series') et des entrées
-                        // 'volume' (un vrai tome sans ComicInfo) sous le même series_id -
-                        // "N tomes" mentait dès qu'une entrée 'series' était comptée dedans.
                         const volumeCount = g.indices.filter(i => verifMetaItems[i].type !== 'series').length;
                         const hasSeriesEntry = volumeCount !== g.indices.length;
                         const countLabel = hasSeriesEntry

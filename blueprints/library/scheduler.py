@@ -356,12 +356,6 @@ class LibraryImportScheduler:
                                     continue
 
                                 parsed = scanner.parse_filename(filename)
-                                # Nom du dossier contenant directement le fichier (voir même
-                                # calcul côté scan_import_directory) - repli de
-                                # find_auto_assign_destination quand un pack multi-tomes
-                                # nommé d'après la série ("Jack Palmer (CBZ)/15 Palmer en
-                                # Bretagne.cbz") a des noms de fichiers individuels qui ne
-                                # portent pas le titre de la série.
                                 relative_path = os.path.relpath(filepath, import_path)
                                 parent_dir = os.path.dirname(relative_path)
                                 folder_name = os.path.basename(parent_dir) if parent_dir else None
