@@ -510,7 +510,7 @@ function _toggleSearchResultSelection(checkbox) {
 }
 
 function _updateSearchBatchDownloadToolbar() {
-    const count = document.querySelectorAll('#search-results-tbody .search-result-select:checked').length;
+    const count = _searchTableSelectedKeys.size;
     const label = document.getElementById('search-results-batch-download-label');
     const button = document.getElementById('search-results-batch-download');
     if (label) label.textContent = `${count} sélectionné${count > 1 ? 's' : ''}`;
@@ -689,10 +689,11 @@ function buildSearchResultRowHtml(result) {
     const unconfirmedVolumeHtml = result.unconfirmed_volume
         ? `<span style="color:#e67e22;" data-tooltip="${escapeHtml(unconfirmedReasonText)}">⚠️</span>`
         : '';
+    const isSelected = _searchTableSelectedKeys.has(_searchResultSelectionKey(result));
 
     return `
         <tr class="replace-results-row${isOwned ? ' replace-results-row-owned' : ''}">
-            <td class="replace-results-select"><input type="checkbox" class="search-result-select" data-selection-key="${escapeHtml(_searchResultSelectionKey(result))}" onchange="_toggleSearchResultSelection(this)" aria-label="Sélectionner ce résultat"></td>
+            <td class="replace-results-select"><input type="checkbox" class="search-result-select" data-selection-key="${escapeHtml(_searchResultSelectionKey(result))}" onchange="_toggleSearchResultSelection(this)" aria-label="Sélectionner ce résultat" ${isSelected ? 'checked=""' : ''}></td>
             <td class="replace-results-best-marker">${isOwned ? `<span class="icon-owned" data-tooltip="En bibliothèque">${svgIcon('check')}</span>` : ''}</td>
             <td class="replace-results-filename" title="${escapeHtml(displayName)}">
                 ${unconfirmedVolumeHtml} ${escapeHtml(displayName)}
@@ -915,6 +916,7 @@ function _renderSearchResultsTbody() {
     tbody.innerHTML = filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
         : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>';
+    _updateSearchBatchDownloadToolbar();
 }
 
 function _applySearchTableFilter(field, value) {
@@ -1026,6 +1028,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
     if (!results || results.length === 0) return '';
     _searchTableAllResults = [...results].sort(compareSearchResults);
     if (!preserveState) {
+        _searchTableSelectedKeys.clear();
         _searchTableFilters = { source: '', format: '', size: '', volume: '', title: '', hideUnconfirmed: true, owned: '' };
         _searchTableSort = { column: null, direction: 'asc' };
     }
