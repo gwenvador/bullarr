@@ -1524,7 +1524,7 @@ def get_pending_downloads() -> List[Dict]:
                 'series_title': series_title,
                 'bytes_downloaded': bytes_downloaded, 'bytes_total': bytes_total,
                 'exhausted': exhausted,
-                'is_pack': bool(is_pack), 'expected_volume_count': expected_volume_count,
+                'is_pack': bool(is_pack), 'is_oneshot': bool(is_oneshot), 'expected_volume_count': expected_volume_count,
                 'client_item_id': client_item_id,
                 'status': download_status,
                 'needs_volume_correction': needs_volume_correction,
