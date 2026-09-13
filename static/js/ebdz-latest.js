@@ -608,7 +608,7 @@ function toggleNouveautesFiles(rowId, event, index) {
                     return `
                         <tr class="${ownedRowClass.trim()}" style="border-top:1px solid var(--color-border);">
                             <td style="padding:6px 8px; color:var(--color-text-muted);">${escapeHtml(decodedFilename)}</td>
-                            <td style="padding:6px 8px; white-space:nowrap;">${link.parsed_volume ? escapeHtml(link.parsed_volume) : '—'}</td>
+                            <td style="padding:6px 8px; white-space:nowrap;">${link.parsed_volume ? escapeHtml(String(link.parsed_volume).replace(/^Tome\s+(\d+)$/i, '$1')) : '—'}</td>
                             <td style="padding:6px 8px; white-space:nowrap; text-align:center;">${_nouveautesLinkOwnedHtml(link)}</td>
                             <td style="padding:6px 8px; white-space:nowrap;">${formatBytes(link.filesize)}</td>
                             <td style="padding:6px 8px; text-align:right; white-space:nowrap;">
