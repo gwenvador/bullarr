@@ -527,7 +527,11 @@ class LibraryScanner:
         bracket_match = re.search(r'\[(\d{3,4})\]', name_without_ext)
         if bracket_match:
             bracket_num = int(bracket_match.group(1))
-            is_plausible_year = 1900 <= bracket_num <= 2035
+            # Un nombre entre crochets en fin de nom est généralement une résolution
+            # brute ([1920]), pas une année. Les années restent reconnues lorsqu'elles
+            # sont placées dans un groupe non terminal, ou entre parenthèses.
+            is_terminal_bracket = bracket_match.end() == len(name_without_ext)
+            is_plausible_year = 1900 <= bracket_num <= 2035 and not is_terminal_bracket
             if bracket_num >= 300 and not is_plausible_year:  # Seuil: les résolutions commencent généralement à 300+
                 excluded_numbers.add(bracket_num)
                 if not info['resolution']:
