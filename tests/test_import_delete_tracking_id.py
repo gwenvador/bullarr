@@ -74,6 +74,14 @@ class ImportVolumeOwnershipPresentationTest(unittest.TestCase):
         self.assertIn("entry['is_owned'] = bool(entry.get('filepath') and os.path.isfile(entry['filepath']))", routes[start:end])
         self.assertIn('if (showOwned && v.is_owned)', nav)
 
+    def test_stale_local_volume_without_a_catalogue_album_is_not_returned(self):
+        routes = (Path(__file__).resolve().parents[1] / 'blueprints/library/routes.py').read_text()
+        fallback_start = routes.index('for v in owned_volumes:', routes.index('# Tomes possédés mais absents'))
+        fallback_end = routes.index('    return jsonify(merged)', fallback_start)
+        fallback = routes[fallback_start:fallback_end]
+        self.assertIn("if not v.get('is_owned'):", fallback)
+        self.assertIn('continue', fallback)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1924,7 +1924,9 @@ def get_series_volumes(series_id):
 
     bd_albums = json.loads(series_row[0]) if series_row and series_row[0] else []
     if not bd_albums:
-        return jsonify(owned_volumes)
+        # Sans catalogue, seuls les tomes encore physiquement présents sont fiables.
+        # Une ligne volumes orpheline ne doit jamais créer un faux choix d'import.
+        return jsonify([v for v in owned_volumes if v.get('is_owned')])
 
     from blueprints.bedetheque.scraper import _index_bedetheque_volumes
     by_number, by_integral, by_hs, by_episode = _index_bedetheque_volumes(bd_albums)
@@ -2048,6 +2050,10 @@ def get_series_volumes(series_id):
     # bel et bien encore en base.
     for v in owned_volumes:
         if v.get('id') in used_owned_ids:
+            continue
+        # Sans album Bédéthèque correspondant, une entrée locale n'est un choix
+        # légitime que si son fichier existe encore. Écarte les tomes fantômes.
+        if not v.get('is_owned'):
             continue
         if v.get('is_episode'):
             albums = by_episode.get(v.get('episode_number')) or []
