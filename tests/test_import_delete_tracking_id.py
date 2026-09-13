@@ -15,6 +15,23 @@ class ImportDeleteTrackingIdTest(unittest.TestCase):
         self.assertIn('mark_download_cancelled(tracking_id)', source[start:end])
 
 
+class PendingOneShotDisplayTest(unittest.TestCase):
+    def test_pending_oneshot_renders_one_shot_in_volume_column(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/js/import.js').read_text()
+        start = source.index('function _pendingVolumeLabel(pending)')
+        end = source.index('\n}', start) + 2
+        self.assertIn("if (pending.is_oneshot) return 'One Shot';", source[start:end])
+
+
+class ActiveOneShotDisplayPayloadTest(unittest.TestCase):
+    def test_linked_client_download_carries_oneshot_to_the_shared_volume_renderer(self):
+        downloader = (Path(__file__).resolve().parents[1] / 'blueprints/missing_monitor/downloader.py').read_text()
+        activity = (Path(__file__).resolve().parents[1] / 'blueprints/activity/routes.py').read_text()
+        self.assertIn('s.is_oneshot', downloader[downloader.index('def find_active_downloads_by_client_item_ids'):])
+        self.assertIn("'is_oneshot': bool(is_oneshot)", downloader[downloader.index('def find_active_downloads_by_client_item_ids'):])
+        self.assertIn("item['is_oneshot'] = linked.get('is_oneshot', False)", activity)
+
+
 class PendingOneShotPayloadTest(unittest.TestCase):
     def test_pending_download_payload_includes_oneshot_state(self):
         source = (Path(__file__).resolve().parents[1] / 'blueprints/missing_monitor/downloader.py').read_text()

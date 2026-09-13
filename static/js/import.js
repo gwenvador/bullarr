@@ -430,6 +430,7 @@ function renderCurrentlyProcessingBanner() {
 }
 
 function _pendingVolumeLabel(pending) {
+    if (pending.is_oneshot) return 'One Shot';
     if (pending.volume_number && pending.volume_number !== 'null') return `Tome ${escapeHtml(String(pending.volume_number))}`;
     if (pending.is_integral) return `Intégrale${pending.integral_number != null ? ' ' + pending.integral_number : ''}`;
     if (pending.is_hs) return `Hors-série${pending.hs_number != null ? ' ' + pending.hs_number : ''}`;

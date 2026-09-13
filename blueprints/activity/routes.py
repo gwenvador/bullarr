@@ -458,6 +458,7 @@ def activity_status():
                         'series_id': pending_match.get('series_id'),
                         'series_title': pending_match.get('series_title'),
                         'volume_number': pending_match.get('volume_number'),
+                        'is_oneshot': pending_match.get('is_oneshot', False),
                         'is_integral': pending_match.get('is_integral', False),
                         'integral_number': pending_match.get('integral_number'),
                         'is_hs': pending_match.get('is_hs', False),
@@ -476,6 +477,7 @@ def activity_status():
                 item['series_id'] = linked['series_id']
                 item['series_title'] = linked['series_title']
                 item['volume_number'] = linked['volume_number']
+                item['is_oneshot'] = linked.get('is_oneshot', False)
                 item['is_integral'] = linked['is_integral']
                 item['integral_number'] = linked['integral_number']
                 item['is_hs'] = linked.get('is_hs', False)
