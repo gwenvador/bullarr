@@ -391,6 +391,7 @@ async function loadActiveDownloads() {
             });
             incompatibleFolders = data.incompatible_folders || [];
             currentlyProcessingFile = data.currently_processing || null;
+            await _ensureVolumesLoadedForFiles(importFiles);
             hasScannedOnce = true;
         }
     } catch (error) {
