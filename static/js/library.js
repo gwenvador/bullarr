@@ -6482,67 +6482,37 @@ function buildEbdzVolumeLabel(f) {
 // on veut la liste complète) et les affiche sous forme de tableau (une ligne par fichier,
 // une colonne par métadonnée parsée) pour une lecture rapide, avec un bouton pour ajouter
 // chaque fichier à eMule
+let _ebdzFiles = [];
+let _ebdzFileSelection = new Set();
+let _ebdzFileFilters = { volume: '', filename: '', resolution: '', year: '', format: '' };
+function _ebdzFileKey(file) { return `${file.link || ''}|${file.filename || ''}`; }
+function _filteredEbdzFiles() {
+    return _ebdzFiles.filter(file => {
+        const v=String(file.volume ?? file.parsed_volume ?? ''), n=decodeFilename(file.filename || ''), r=String(file.resolution || ''), y=String(file.year || ''), f=String(file.format || '').toUpperCase();
+        return (!_ebdzFileFilters.volume || v.toLowerCase().includes(_ebdzFileFilters.volume.toLowerCase())) && (!_ebdzFileFilters.filename || n.toLowerCase().includes(_ebdzFileFilters.filename.toLowerCase())) && (!_ebdzFileFilters.resolution || r.toLowerCase().includes(_ebdzFileFilters.resolution.toLowerCase())) && (!_ebdzFileFilters.year || y.includes(_ebdzFileFilters.year)) && (!_ebdzFileFilters.format || f === _ebdzFileFilters.format);
+    });
+}
+function _setEbdzFileFilter(field, value) { _ebdzFileFilters[field]=value; _renderEbdzFilesTable(window._ebdzMissingVolumes || []); }
+function _toggleEbdzFileSelection(key, checked) { checked ? _ebdzFileSelection.add(key) : _ebdzFileSelection.delete(key); _renderEbdzFilesTable(window._ebdzMissingVolumes || []); }
+function _toggleAllEbdzFileSelection(checked) { _filteredEbdzFiles().forEach(f => checked ? _ebdzFileSelection.add(_ebdzFileKey(f)) : _ebdzFileSelection.delete(_ebdzFileKey(f))); _renderEbdzFilesTable(window._ebdzMissingVolumes || []); }
+async function downloadSelectedEbdzFiles() {
+    const selected=_ebdzFiles.filter(f=>_ebdzFileSelection.has(_ebdzFileKey(f))); if (!selected.length) return;
+    await Promise.all(selected.map(f=>addToEmule(f.link, document.createElement('button'), decodeFilename(f.filename||''), null, null, f.volume ?? null, 'ebdz', null, false)));
+    _ebdzFileSelection.clear(); _renderEbdzFilesTable(window._ebdzMissingVolumes || []);
+}
+function _renderEbdzFilesTable(missingVolumes) {
+    const el=document.getElementById('ebdz-files-results'); if (!el) return;
+    const missing=new Set(missingVolumes||[]), files=_filteredEbdzFiles();
+    const all=files.length>0 && files.every(f=>_ebdzFileSelection.has(_ebdzFileKey(f))), some=files.some(f=>_ebdzFileSelection.has(_ebdzFileKey(f)));
+    const formats=[...new Set(_ebdzFiles.map(f=>String(f.format||'').toUpperCase()).filter(Boolean))].sort();
+    const opts=formats.map(f=>`<option value="${escapeHtml(f)}"${_ebdzFileFilters.format===f?' selected':''}>${escapeHtml(f)}</option>`).join('');
+    const rows=files.map(f=>{ const name=decodeFilename(f.filename||''), key=_ebdzFileKey(f), vol=f.volume ?? f.parsed_volume, miss=vol!=null&&missing.has(vol); return `<tr class="${miss?'ebdz-modal-missing-row':''}"><td><input type="checkbox" ${_ebdzFileSelection.has(key)?'checked':''} onchange="_toggleEbdzFileSelection(${escapeForAttribute(JSON.stringify(key))},this.checked)" aria-label="Sélectionner ${escapeHtml(name)}"></td><td>${escapeHtml(buildEbdzVolumeLabel(f))}${miss?' ❌':''}</td><td>${escapeHtml(name)}</td><td>${f.resolution?escapeHtml(f.resolution):'-'}</td><td>${f.year||'-'}</td><td>${f.format?escapeHtml(f.format.toUpperCase()):'-'}</td><td>${formatBytes(parseInt(f.filesize,10)||0)}</td><td><button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}',this,'${escapeForAttribute(name)}')">${svgIcon('plus')} Ajouter</button></td></tr>`; }).join('');
+    el.innerHTML=`${missing.size?'<p class="ebdz-modal-missing-hint">🟡 Surligné = tome absent de votre collection</p>':''}<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;"><button class="btn" onclick="downloadSelectedEbdzFiles()" ${some?'':'disabled'}>${svgIcon('download')} Télécharger la sélection</button><span>${_ebdzFileSelection.size} sélectionné(s) · ${files.length}/${_ebdzFiles.length} affiché(s)</span></div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr class="ebdz-modal-header-row"><th><input type="checkbox" ${all?'checked':''} onchange="_toggleAllEbdzFileSelection(this.checked)" aria-label="Tout sélectionner"></th><th>Vol.<br><input type="search" value="${escapeHtml(_ebdzFileFilters.volume)}" oninput="_setEbdzFileFilter('volume',this.value)" aria-label="Filtrer par volume"></th><th>Fichier<br><input type="search" value="${escapeHtml(_ebdzFileFilters.filename)}" oninput="_setEbdzFileFilter('filename',this.value)" aria-label="Filtrer par fichier"></th><th>Résolution<br><input type="search" value="${escapeHtml(_ebdzFileFilters.resolution)}" oninput="_setEbdzFileFilter('resolution',this.value)" aria-label="Filtrer par résolution"></th><th>Année<br><input type="search" value="${escapeHtml(_ebdzFileFilters.year)}" oninput="_setEbdzFileFilter('year',this.value)" aria-label="Filtrer par année"></th><th>Format<br><select onchange="_setEbdzFileFilter('format',this.value)" aria-label="Filtrer par format"><option value="">Tous</option>${opts}</select></th><th>Taille</th><th>Action</th></tr></thead><tbody>${rows||'<tr><td colspan="8">Aucun résultat pour ces filtres.</td></tr>'}</tbody></table></div>`;
+    const cb=el.querySelector('thead input[type="checkbox"]'); if(cb) cb.indeterminate=some&&!all;
+}
 async function loadEbdzThreadFiles(threadId, missingVolumes) {
-    const resultsEl = document.getElementById('ebdz-files-results');
-    resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    const missingSet = new Set(missingVolumes || []);
-
-    try {
-        const response = await fetch(`/api/search?thread_id=${encodeURIComponent(threadId)}`);
-        const data = await response.json();
-        const files = (data.results || []).slice().sort(
-            (a, b) => (a.volume || a.parsed_volume || 0) - (b.volume || b.parsed_volume || 0)
-        );
-
-        if (files.length === 0) {
-            resultsEl.innerHTML = `<div class="no-data"><p>😕 Aucun fichier trouvé sur EBDZ pour ce thread</p></div>`;
-            return;
-        }
-
-        const rowsHtml = files.map(f => {
-            const decodedFilename = decodeFilename(f.filename);
-            const volume = f.volume || f.parsed_volume;
-            const isMissing = volume && missingSet.has(volume);
-            const rowStyle = isMissing
-                ? 'border-bottom: 1px solid var(--color-border);'
-                : 'border-bottom: 1px solid var(--color-border);';
-            return `
-                <tr class="${isMissing ? 'ebdz-modal-missing-row' : ''}" style="${rowStyle}">
-                    <td class="${isMissing ? 'ebdz-modal-missing-cell' : ''}" style="padding: 8px; text-align: center; white-space: nowrap; ${isMissing ? 'font-weight: 600;' : ''}">${escapeHtml(buildEbdzVolumeLabel(f))}${isMissing ? ' ❌' : ''}</td>
-                    <td style="padding: 8px; word-break: break-word;">${escapeHtml(decodedFilename)}</td>
-                    <td style="padding: 8px; white-space: nowrap;">${f.resolution ? escapeHtml(f.resolution) : '-'}</td>
-                    <td style="padding: 8px; white-space: nowrap;">${f.year || '-'}</td>
-                    <td style="padding: 8px; white-space: nowrap;">${f.format ? escapeHtml(f.format.toUpperCase()) : '-'}</td>
-                    <td style="padding: 8px; white-space: nowrap;">${formatBytes(parseInt(f.filesize, 10) || 0)}</td>
-                    <td style="padding: 8px; white-space: nowrap; text-align: center;">
-                        <button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}', this, '${escapeForAttribute(decodedFilename)}')">${svgIcon('plus')} Ajouter</button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-        resultsEl.innerHTML = `
-            ${missingSet.size > 0 ? `<p class="ebdz-modal-missing-hint" style="margin: 0 0 10px 0; font-size: 0.9em;">🟡 Surligné = tome absent de votre collection</p>` : ''}
-            <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                    <thead>
-                        <tr class="ebdz-modal-header-row">
-                            <th style="padding: 8px; text-align: center; font-weight: 600;">Vol.</th>
-                            <th style="padding: 8px; text-align: left; font-weight: 600;">Fichier</th>
-                            <th style="padding: 8px; text-align: left; font-weight: 600;">Résolution</th>
-                            <th style="padding: 8px; text-align: left; font-weight: 600;">Année</th>
-                            <th style="padding: 8px; text-align: left; font-weight: 600;">Format</th>
-                            <th style="padding: 8px; text-align: left; font-weight: 600;">Taille</th>
-                            <th style="padding: 8px; text-align: center; font-weight: 600;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rowsHtml}</tbody>
-                </table>
-            </div>
-        `;
-    } catch (error) {
-        resultsEl.innerHTML = `<div class="no-data"><p>❌ ${escapeHtml(error.message)}</p></div>`;
-    }
+    const el=document.getElementById('ebdz-files-results'); el.innerHTML='<div class="loading"><div class="spinner"></div></div>'; window._ebdzMissingVolumes=missingVolumes||[]; _ebdzFileSelection.clear(); _ebdzFileFilters={volume:'',filename:'',resolution:'',year:'',format:''};
+    try { const response=await fetch(`/api/search?thread_id=${encodeURIComponent(threadId)}`), data=await response.json(); _ebdzFiles=(data.results||[]).slice().sort((a,b)=>(a.volume||a.parsed_volume||0)-(b.volume||b.parsed_volume||0)); if(!_ebdzFiles.length){el.innerHTML='<div class="no-data"><p>😕 Aucun fichier trouvé sur EBDZ pour ce thread</p></div>';return;} _renderEbdzFilesTable(window._ebdzMissingVolumes); } catch(error) { el.innerHTML=`<div class="no-data"><p>❌ ${escapeHtml(error.message)}</p></div>`; }
 }
 
 // ===== KOMGA =====
