@@ -41,20 +41,28 @@ class PendingOneShotPayloadTest(unittest.TestCase):
 
 
 class ValidationBedethequeMatchTest(unittest.TestCase):
-    def test_manual_review_match_uses_internal_request_context_not_unauthenticated_client(self):
+    def test_matching_only_verifies_and_resolves_the_review(self):
         source = (Path(__file__).resolve().parents[1] / 'blueprints/bedetheque/auto_acquire.py').read_text()
         start = source.index('def match_manual_review_series(')
         end = source.index('\ndef get_auto_acquire_status', start)
         body = source[start:end]
-        self.assertIn('test_request_context', body)
-        self.assertIn('add_series_from_bedetheque', body)
-        self.assertNotIn('test_client().post', body)
+        self.assertIn("SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP", body)
+        self.assertNotIn('add_series_from_bedetheque', body)
+        self.assertNotIn('UPDATE active_downloads', body)
 
-    def test_manual_review_match_also_links_existing_download(self):
-        source = (Path(__file__).resolve().parents[1] / 'blueprints/bedetheque/auto_acquire.py').read_text()
-        start = source.index('def match_manual_review_series(')
-        end = source.index('\ndef get_auto_acquire_status', start)
-        self.assertIn('UPDATE active_downloads', source[start:end])
+
+class ImportManualReviewPresentationTest(unittest.TestCase):
+    def test_wrong_series_message_requires_verification_then_manual_import(self):
+        source = (Path(__file__).resolve().parents[1] / 'blueprints/library/routes.py').read_text()
+        self.assertIn('vérifiez que c’est la bonne série et importez manuellement', source)
+
+    def test_initial_import_load_populates_known_volumes_before_rendering(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/js/import.js').read_text()
+        start = source.index('async function loadActiveDownloads()')
+        end = source.index('function renderCurrentlyProcessingBanner()', start)
+        body = source[start:end]
+        self.assertIn('await _ensureVolumesLoadedForFiles(importFiles);', body)
+        self.assertLess(body.index('await _ensureVolumesLoadedForFiles(importFiles);'), body.index('displayImportFiles();'))
 
 
 if __name__ == '__main__':

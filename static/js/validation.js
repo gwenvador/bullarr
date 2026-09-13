@@ -152,7 +152,7 @@ async function selectReviewBedethequeCandidate(url, title) {
         });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Rattachement impossible');
-        showToast('review-bedetheque-match', `Série rattachée à « ${title} ».`, {icon:'check', autoHideMs:5000});
+        showToast('review-bedetheque-match', `Série vérifiée : « ${title} ». Import manuel requis.`, {icon:'check', autoHideMs:5000});
         await loadAutoAcquireReviews();
     } catch (error) {
         showToast('review-bedetheque-match', `Échec du rattachement : ${error.message}`, {icon:'circle-x', autoHideMs:6000});
