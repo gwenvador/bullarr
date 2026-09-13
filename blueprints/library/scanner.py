@@ -487,6 +487,16 @@ class LibraryScanner:
         # accepté (le tag de format de scan varie beaucoup: Digital, ePub, Printer,
         # UpScale, Scan...). On garde le texte du tag tel quel (casse d'origine, tiret ou
         # espace) plutôt que de le reconstruire, pour ne pas perdre ces variantes
+        # Variante numérique seule : [1200px] / (1920px), sans préfixe Digital/Printer.
+        numeric_px_match = re.search(
+            r'[\[\(]\s*(\d{3,4}\s*px)\s*[\]\)]',
+            name_without_ext, re.IGNORECASE
+        )
+        if numeric_px_match:
+            excluded_numbers.add(int(re.search(r'\d+', numeric_px_match.group(1)).group()))
+            info['resolution'] = re.sub(r'\s+', '', numeric_px_match.group(1))
+            name_without_ext = name_without_ext.replace(numeric_px_match.group(0), ' ', 1)
+
         digital_match = re.search(
             r'[\[\(]([A-Za-z][A-Za-z\s.-]*?(\d+)\s*px)[\]\)]',
             name_without_ext, re.IGNORECASE
@@ -575,6 +585,11 @@ class LibraryScanner:
             if info['author'] is None and not re.match(r'^\d{4}$', candidate) and candidate != info['group']:
                 info['author'] = candidate
                 break
+        # Capturer les années entre parenthèses avant de retirer les groupes.
+        year_match = re.search(r'\b(19\d{2}|20\d{2})\b', name_without_ext)
+        if year_match and int(year_match.group(1)) not in excluded_numbers:
+            info['year'] = int(year_match.group(1))
+
         name_without_ext = re.sub(r'\[[^\]]+?\]|\([^)]+?\)', ' ', name_without_ext)
 
         # "Titre_NN_Sous-titre" (underscore des DEUX côtés du numéro) - capturé ICI, avant
@@ -892,9 +907,7 @@ class LibraryScanner:
             if author_dash_match:
                 info['author'] = author_dash_match.group(1).strip()
 
-        year_match = re.search(r'\b(19\d{2}|20\d{2})\b', name_without_ext)
-        if year_match and int(year_match.group(1)) not in excluded_numbers:
-            info['year'] = int(year_match.group(1))
+        if info['year'] is not None:
             info['title'] = re.sub(rf'\s+{info["year"]}\s*$', '', info['title']).strip()
 
         # Extraire la résolution (1920x1080, etc.)
