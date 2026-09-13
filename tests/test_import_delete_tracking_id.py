@@ -65,5 +65,15 @@ class ImportManualReviewPresentationTest(unittest.TestCase):
         self.assertLess(body.index('await _ensureVolumesLoadedForFiles(importFiles);'), body.index('displayImportFiles();'))
 
 
+class ImportVolumeOwnershipPresentationTest(unittest.TestCase):
+    def test_dropdown_checkmark_uses_live_file_existence_not_a_stale_filepath(self):
+        routes = (Path(__file__).resolve().parents[1] / 'blueprints/library/routes.py').read_text()
+        nav = (Path(__file__).resolve().parents[1] / 'static/js/nav.js').read_text()
+        start = routes.index('def get_series_volumes(series_id):')
+        end = len(routes)
+        self.assertIn("entry['is_owned'] = bool(entry.get('filepath') and os.path.isfile(entry['filepath']))", routes[start:end])
+        self.assertIn('if (showOwned && v.is_owned)', nav)
+
+
 if __name__ == '__main__':
     unittest.main()

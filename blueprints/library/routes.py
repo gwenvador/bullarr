@@ -1913,6 +1913,10 @@ def get_series_volumes(series_id):
         ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, hs_number
     ''', (series_id,))
     owned_volumes = [dict(row) for row in cursor.fetchall()]
+    # A stale filepath can survive a move/deletion outside Bullarr. The dropdown's
+    # checkmark must mean the file is physically available, not merely recorded.
+    for entry in owned_volumes:
+        entry['is_owned'] = bool(entry.get('filepath') and os.path.isfile(entry['filepath']))
 
     cursor.execute('SELECT bedetheque_albums FROM series WHERE id = ?', (series_id,))
     series_row = cursor.fetchone()
