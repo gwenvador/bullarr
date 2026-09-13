@@ -468,18 +468,19 @@ def find_active_downloads_by_client_item_ids(client: str, client_item_ids) -> Di
         cursor = conn.cursor()
         placeholders = ','.join('?' for _ in ids)
         cursor.execute(
-            f"SELECT ad.client_item_id, ad.id, ad.series_id, ad.volume_number, ad.created_at, s.title, "
+            f"SELECT ad.client_item_id, ad.id, ad.series_id, ad.volume_number, ad.created_at, s.title, s.is_oneshot, "
             f"ad.is_integral, ad.integral_number, ad.is_hs, ad.hs_number, ad.is_episode, ad.episode_number "
             f"FROM active_downloads ad LEFT JOIN series s ON s.id = ad.series_id "
             f"WHERE ad.client = ? AND LOWER(ad.client_item_id) IN ({placeholders})",
             (client, *ids)
         )
         for row in cursor.fetchall():
-            (client_item_id, tracking_id, series_id, volume_number, created_at, series_title,
+            (client_item_id, tracking_id, series_id, volume_number, created_at, series_title, is_oneshot,
              is_integral, integral_number, is_hs, hs_number, is_episode, episode_number) = row
             result[client_item_id.lower()] = {
                 'tracking_id': tracking_id, 'series_id': series_id,
                 'volume_number': volume_number, 'series_title': series_title, 'created_at': created_at,
+                'is_oneshot': bool(is_oneshot),
                 'is_integral': bool(is_integral), 'integral_number': integral_number,
                 'is_hs': bool(is_hs), 'hs_number': hs_number,
                 'is_episode': bool(is_episode), 'episode_number': episode_number,
