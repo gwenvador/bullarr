@@ -82,6 +82,20 @@ class ImportVolumeOwnershipPresentationTest(unittest.TestCase):
         self.assertIn("if not v.get('is_owned'):", fallback)
         self.assertIn('continue', fallback)
 
+    def test_import_volume_select_requests_only_physically_existing_slots(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/js/import.js').read_text()
+        start = source.index('async function _ensureSeriesVolumesLoaded(seriesId)')
+        end = source.index('// Précharge en une fois', start)
+        self.assertIn('/volumes?existing_only=1', source[start:end])
+
+    def test_volume_endpoint_supports_existing_only_filter(self):
+        routes = (Path(__file__).resolve().parents[1] / 'blueprints/library/routes.py').read_text()
+        start = routes.index('def get_series_volumes(series_id):')
+        end = routes.index('def trigger_new_series', start)
+        body = routes[start:end]
+        self.assertIn("request.args.get('existing_only')", body)
+        self.assertIn("return jsonify([v for v in owned_volumes if v.get('is_owned')])", body)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1898,6 +1898,10 @@ def get_series_volumes(series_id):
     téléchargé n'apparaissait jamais dans le sélecteur de tome (voir
     updateVolumeOverrideVisibility/_confirmUploadVolumeSlot), qui ne listait que ce qui
     était déjà sur disque."""
+    # The Import dropdown must offer only actual local volume slots, never a
+    # catalogue-only future/missing volume.
+    existing_only = request.args.get('existing_only') == '1'
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -1917,6 +1921,9 @@ def get_series_volumes(series_id):
     # checkmark must mean the file is physically available, not merely recorded.
     for entry in owned_volumes:
         entry['is_owned'] = bool(entry.get('filepath') and os.path.isfile(entry['filepath']))
+
+    if existing_only:
+        return jsonify([v for v in owned_volumes if v.get('is_owned')])
 
     cursor.execute('SELECT bedetheque_albums FROM series WHERE id = ?', (series_id,))
     series_row = cursor.fetchone()

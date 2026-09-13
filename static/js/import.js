@@ -971,7 +971,7 @@ async function _loadTrackingEditVolumes() {
     group.style.display = '';
 
     try {
-        const response = await fetch(`/api/series/${seriesId}/volumes`);
+        const response = await fetch(`/api/series/${seriesId}/volumes?existing_only=1`);
         const volumes = await response.json();
         const plainVolumes = volumes.filter(v => v.volume_number != null && !v.is_integral && !v.is_hs && !v.is_episode);
         select.innerHTML = '<option value="">-- Tomes connus de la série --</option>' +
@@ -2604,7 +2604,7 @@ let _seriesVolumesCache = {};
 async function _ensureSeriesVolumesLoaded(seriesId) {
     if (seriesId == null || _seriesVolumesCache[seriesId]) return;
     try {
-        const response = await fetch(`/api/series/${seriesId}/volumes`);
+        const response = await fetch(`/api/series/${seriesId}/volumes?existing_only=1`);
         _seriesVolumesCache[seriesId] = await response.json();
     } catch (e) {
         _seriesVolumesCache[seriesId] = [];
@@ -3244,7 +3244,7 @@ async function updateVolumeOverrideVisibility(seriesValue, existingOverride) {
     document.getElementById('volume-override-manual-group').style.display = 'none';
 
     try {
-        const response = await fetch(`/api/series/${seriesValue}/volumes`);
+        const response = await fetch(`/api/series/${seriesValue}/volumes?existing_only=1`);
         const volumes = await response.json();
         volumeOverrideSlots = volumes;
 
