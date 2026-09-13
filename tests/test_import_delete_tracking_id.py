@@ -82,19 +82,21 @@ class ImportVolumeOwnershipPresentationTest(unittest.TestCase):
         self.assertIn("if not v.get('is_owned'):", fallback)
         self.assertIn('continue', fallback)
 
-    def test_import_volume_select_requests_only_physically_existing_slots(self):
+    def test_import_volume_select_loads_all_catalogue_entries(self):
         source = (Path(__file__).resolve().parents[1] / 'static/js/import.js').read_text()
         start = source.index('async function _ensureSeriesVolumesLoaded(seriesId)')
         end = source.index('// Précharge en une fois', start)
-        self.assertIn('/volumes?existing_only=1', source[start:end])
+        cache_loader = source[start:end]
+        self.assertIn('fetch(`/api/series/${seriesId}/volumes`)', cache_loader)
+        self.assertNotIn('existing_only', cache_loader)
 
-    def test_volume_endpoint_supports_existing_only_filter(self):
+    def test_catalogue_volume_without_a_file_is_returned_but_not_owned(self):
         routes = (Path(__file__).resolve().parents[1] / 'blueprints/library/routes.py').read_text()
         start = routes.index('def get_series_volumes(series_id):')
         end = routes.index('def trigger_new_series', start)
         body = routes[start:end]
-        self.assertIn("request.args.get('existing_only')", body)
-        self.assertIn("return jsonify([v for v in owned_volumes if v.get('is_owned')])", body)
+        self.assertIn("entry['is_owned'] = bool(entry.get('filepath') and os.path.isfile(entry['filepath']))", body)
+        self.assertNotIn("existing_only = request.args.get('existing_only')", body)
 
 
 if __name__ == '__main__':
