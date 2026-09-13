@@ -3144,3 +3144,24 @@ a.result-title:hover {
 [data-theme="dark"] .ebdz-modal-missing-hint {
     color: #e0c069;
 }
+
+
+/* Modale EBDZ : possession compacte et actions sur une seule ligne. */
+.ebdz-owned-cell {
+    width: 2.2rem;
+    min-width: 2.2rem;
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+    text-align: center;
+    font-size: 0.78rem;
+}
+
+.replace-results-table td:last-child {
+    white-space: nowrap;
+    width: 1%;
+}
+
+.replace-results-table td:last-child .btn-icon-only {
+    display: inline-flex;
+    margin: 0 1px;
+}
