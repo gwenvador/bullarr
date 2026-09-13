@@ -455,6 +455,15 @@ class LibraryScanner:
         # Retirer l'extension pour faciliter le parsing
         name_without_ext = os.path.splitext(filename)[0]
 
+        # Retirer un préfixe de source/langue de type "BD.FR", "BD FR", "BD-FR" en tête du
+        # nom de fichier (convention de scan de bandes dessinées, ex: "BD.FR.-.Titre...")
+        # - éventuellement entre crochets ("[BD.Fr].Titre...", constaté sur un one-shot
+        # jamais auto-importé faute de titre reconstruit correctement: "BD Fr" restait
+        # collé au début du titre parsé, qui ne matchait alors plus jamais le titre exact
+        # de la série en base). Ce n'est pas le titre de la série: sans ce retrait, le
+        # nettoyage de fin de titre plus bas (qui coupe au premier marqueur de langue
+        # rencontré) tronquerait le titre à "BD" puisque "FR" y apparaîtrait en tout début
+        # de chaîne plutôt qu'à la fin
         name_without_ext = re.sub(
             r'^\[?BD[.\s-]+(?:FR|EN|VF|VO|FRENCH|ENGLISH)\]?[.\s-]+',
             '', name_without_ext, flags=re.IGNORECASE
@@ -549,6 +558,9 @@ class LibraryScanner:
             ((m.group(1) if m.group(1) is not None else m.group(2)).strip(), m.group(1) is not None)
             for m in re.finditer(r'\[([^\]]+?)\]|\(([^)]+?)\)', name_without_ext)
         ]
+        # Les années isolées entre parenthèses/crochets ne sont jamais des releaseurs
+        # (ex: ``1984 (Nesti) - (2020)``). Elles doivent rester disponibles pour
+        # l'extraction de l'année, mais ne doivent pas alimenter <group>.
         group_matches = [
             (text, is_bracket) for text, is_bracket in combined_matches
             if not (re.fullmatch(r'\d{4}', text) and 1900 <= int(text) <= 2035)
@@ -565,6 +577,16 @@ class LibraryScanner:
                 break
         name_without_ext = re.sub(r'\[[^\]]+?\]|\([^)]+?\)', ' ', name_without_ext)
 
+        # "Titre_NN_Sous-titre" (underscore des DEUX côtés du numéro) - capturé ICI, avant
+        # que la normalisation juste en dessous ne remplace tous les underscores par des
+        # espaces (sinon ce signal disparaît complètement). Un numéro encadré d'underscores
+        # est un signal nettement plus sûr qu'un simple "numéro nu entre espaces" (jamais
+        # ajouté comme pattern générique - voir §8.1b/CLAUDE.md - à cause de vrais titres
+        # contenant eux-mêmes un chiffre, ex: "les Mystères des 7 boules de cristal",
+        # "Les 4 as et..."): aucun des deux n'utilise l'underscore comme séparateur interne,
+        # contrairement à cette convention de nommage. Constaté sur "Atalante_La_Légende_
+        # 06_Le_labyrinthe_d'Hades_Crisse@9_art_BD.cbr" (volume jamais détecté sans ça) -
+        # utilisé plus bas seulement si aucun pattern normal n'a rien trouvé.
         underscore_volume_match = re.search(r'_(\d{1,3})_', name_without_ext)
 
         leading_number_match = re.match(r'^(\d{1,3})\s+([A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜŸÇ])', name_without_ext)
@@ -597,6 +619,15 @@ class LibraryScanner:
             normalized_name = re.sub(integral_pattern, ' ', normalized_name, flags=re.IGNORECASE)
             normalized_name = re.sub(r'\s+', ' ', normalized_name).strip()
 
+            # Certaines séries numérotent leurs intégrales via un tag "#NN" séparé plutôt
+            # qu'accolé à INT/Intégrale (ex: "Ranger Solitaire (Intégrale) - #01 - L'Intégrale 1
+            # - ..."), même convention que le tag de tome normal ("#4" ci-dessous) mais
+            # désignant ici le numéro de l'intégrale elle-même - sans ce repli, ces
+            # fichiers restaient is_integral=True mais integral_number=None, empêchant
+            # tout matching Bédéthèque par numéro pour une série dont les "tomes" sont
+            # eux-mêmes des intégrales numérotées 1, 2, 3... (constaté sur "Ranger Solitaire
+            # (Intégrale)": la fiche Bédéthèque numérote chaque intégrale normalement,
+            # pas de préfixe INT/HS puisque la série entière n'est QUE des intégrales)
             if info['integral_number'] is None:
                 tag_match = re.search(r'#(\d+)', normalized_name)
                 if tag_match:
@@ -625,6 +656,17 @@ class LibraryScanner:
             normalized_name = normalized_name.replace(episode_match.group(0), ' ', 1)
             normalized_name = re.sub(r'\s+', ' ', normalized_name).strip()
 
+        # "why do you need to know that a file is a one shot? ... this overcomplicate
+        # things. is one-shot is triggered once you import the file and at that time you
+        # know the serie so you know the volume will be one-shot. don't look at the name
+        # of the volume. this is making a mess" - deviner "OS"/"One Shot" depuis le TEXTE
+        # du nom de fichier a été retiré entièrement (voir historique: collision avec le
+        # mot français ordinaire "os", cassait le numéro de tome de séries entières comme
+        # Pierre Tombal), y compris le champ is_oneshot_tag lui-même (plus aucun appelant
+        # ne le lit, voir searcher.py/routes.py nettoyés dans la foulée). La vraie
+        # classification "cette série est un one-shot" vient de series.is_oneshot
+        # (Bédéthèque), déjà connu au moment du scan (scan_single_series force
+        # volume=None pour toute la série dans ce cas, après cet appel).
 
         if not (info['is_hs'] or info['is_episode']):
             tome_range = LibraryScanner._parse_integral_tome_range(normalized_name)
@@ -662,6 +704,15 @@ class LibraryScanner:
                     normalized_name = re.sub(r'\s*-\s*-\s*', ' - ', normalized_name)
                     normalized_name = re.sub(r'\s+', ' ', normalized_name).strip()
 
+        # Extraire la partie/arc (Part XX, Arc XX, Partie XX). Bornée à un nombre
+        # raisonnable (<=50): sans cette borne, un nombre isolé et sans rapport apparaissant
+        # plus loin dans le nom de fichier (ex: un tag de résolution mal formé, "... -
+        # Première partie (Gibrat) (Toner) 2690.cbz" où "2690" n'est pas une valeur px
+        # reconnue) se retrouve collé à "partie" une fois les groupes entre parenthèses
+        # retirés plus haut, et capturé à tort comme numéro de partie - ce qui bascule
+        # l'extraction du titre sur un pattern différent (arrêté à "partie" au lieu du
+        # marqueur de tome T01) et casse le titre obtenu ("Le Sursis - T01 - Première" au
+        # lieu de "Le Sursis")
         part_match = re.search(r'(?:Part|Arc|Partie)\s+(\d+)', normalized_name, re.IGNORECASE)
         if part_match and int(part_match.group(1)) > 50:
             part_match = None
@@ -711,8 +762,25 @@ class LibraryScanner:
                                                    # version de ce pattern, qui n'acceptait qu'un
                                                    # espace ou une fin de chaîne après le chiffre)
                 r'\s(\d{1,2})\s+[A-Za-z]+\s*$',   # 08 Noda - nombre suivi d'un nom en toute fin de
+                                                   # chaîne (ex: Fer et Neige 08 Noda). Ancré en fin de
+                                                   # chaîne pour ne pas confondre un nombre présent dans le
+                                                   # titre lui-même (ex: "Les 40 Commandements 01") avec le
+                                                   # numéro de tome réel
                 r'\s(\d+)\s*(?:FR|EN|VF|VO)',    # 09 FR (nombre avant langue)
                 r'(?:^|\s)(\d{1,3})\s*-\s*\S',    # 04 - Le Gaulois gladiateur, ou Le Gaulois 04 - Le Gaulois
+                                                   # gladiateur - le pattern "- 08" ci-dessus ne couvre
+                                                   # que le tiret AVANT le chiffre; un nom qui numérote
+                                                   # ses fichiers "NN - Sous-titre" (rien après le tiret
+                                                   # ne ressemble à Tome/T/Vol) ou "Titre NN - Sous-titre"
+                                                   # (le nom de série n'apparaît qu'AVANT le numéro,
+                                                   # jamais après un tiret) n'était détecté par aucun
+                                                   # pattern précédent - constaté sur "01 - Le Génie Des
+                                                   # Alpages.cbr" (14 tomes d'une même série, tous
+                                                   # volume=None) et "Le Gaulois (La grande collection) 04
+                                                   # - Le Gaulois gladiateur.cbz" (import ET recherche EBDZ
+                                                   # d'accord pour dire volume=None, alors que le scraper
+                                                   # EBDZ lui-même, avec un pattern plus permissif, y
+                                                   # trouvait bien 4)
                 r'\s(\d{1,3})$'                   # 08 (nombre de 1-3 chiffres à la fin, évite les années)
             ]
 
@@ -728,6 +796,12 @@ class LibraryScanner:
                         info['volume'] = potential_volume
                         break
 
+            # Repli sur le signal underscore capturé plus haut (voir "Titre_NN_Sous-titre")
+            # si aucun pattern normal n'a rien trouvé - "certains volumes sont mal
+            # matchés... le matching ne marche pas bien", constaté sur
+            # "Atalante_La_Légende_06_Le_labyrinthe_d'Hades_Crisse@9_art_BD.cbr" (volume=6
+            # jamais détecté, aucun des patterns ci-dessus n'a de tiret ni de mot-clé à
+            # s'accrocher).
             used_underscore_volume = False
             if info['volume'] is None and underscore_volume_match:
                 potential_volume = int(underscore_volume_match.group(1))
@@ -2093,6 +2167,13 @@ class LibraryScanner:
         if bedetheque_total and bedetheque_total > 1:
             new_is_oneshot = 0
         elif bedetheque_status_is_oneshot:
+            # Symétrique du cas ci-dessus: Bédéthèque affirme explicitement que c'est un
+            # one-shot, contradiction factuelle qui prime même sur une numérotation locale
+            # trompeuse (ex: fichier nommé "...#01..." alors que l'unique album Bédéthèque
+            # n'a lui-même aucun numéro) - sans cette règle, match_bedetheque_volume ne
+            # peut jamais rattacher l'album (son repli "un seul album listé" ne se
+            # déclenche que si le tome local n'a lui-même AUCUN numéro), laissant Titre/
+            # Numéro d'album vides indéfiniment (constaté sur la série 395).
             new_is_oneshot = 1
             if current_is_oneshot != 1:
                 missing_volumes = []

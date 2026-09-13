@@ -367,6 +367,16 @@ def latest_scrape():
         # utilisés ici pour already_owned mais jamais renvoyés au frontend).
         from blueprints.missing_monitor.searcher import MissingVolumeSearcher
 
+        # Une seule fonction pour calculer la clé de comparaison "already_in_library",
+        # appliquée IDENTIQUEMENT au titre local et au thread_title EBDZ (voir son usage
+        # plus bas) - ebdz_core_title retire un éventuel suffixe entre parenthèses/
+        # crochets (désambiguateur d'auteur, ex: "(Murawiec)"/"[Murawiec]") avant
+        # unscramble_trailing_article (article "Le/La/Les/L'" ramené en tête, ex: "Grand
+        # vide, Le" -> "Le Grand vide"). Traiter les deux titres avec la MÊME fonction
+        # plutôt que d'appliquer ces étapes séparément de chaque côté (ce qui a été
+        # tenté puis restait faux pour "Le grand vide (Murawiec)": le suffixe local
+        # "(Murawiec)" n'était jamais retiré alors que le suffixe EBDZ "[Murawiec]"
+        # l'était) est ce qui garantit que les deux titres finissent bien comparables.
         def _title_match_key(title):
             return normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title)))
 
