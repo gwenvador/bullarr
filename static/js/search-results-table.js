@@ -515,6 +515,24 @@ function _updateSearchBatchDownloadToolbar() {
     const button = document.getElementById('search-results-batch-download');
     if (label) label.textContent = `${count} sélectionné${count > 1 ? 's' : ''}`;
     if (button) button.disabled = count === 0;
+    const selectAll = document.getElementById('search-results-select-all');
+    const visible = [...document.querySelectorAll('#search-results-tbody .search-result-select')];
+    const checkedVisible = visible.filter(checkbox => checkbox.checked).length;
+    if (selectAll) {
+        selectAll.checked = visible.length > 0 && checkedVisible === visible.length;
+        selectAll.indeterminate = checkedVisible > 0 && checkedVisible < visible.length;
+    }
+}
+
+function toggleAllSearchResults(selectAll) {
+    const visible = [...document.querySelectorAll('#search-results-tbody .search-result-select')];
+    visible.forEach(checkbox => {
+        checkbox.checked = selectAll.checked;
+        const key = checkbox.dataset.selectionKey;
+        if (selectAll.checked) _searchTableSelectedKeys.add(key);
+        else _searchTableSelectedKeys.delete(key);
+    });
+    _updateSearchBatchDownloadToolbar();
 }
 
 function downloadSelectedSearchResults() {
@@ -1108,7 +1126,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
             <table class="replace-results-table" id="search-results-table">
                 <thead>
                     <tr>
-                        <th class="replace-results-select-header" aria-label="Sélection"></th>
+                        <th class="replace-results-select-header" aria-label="Sélection"><input type="checkbox" id="search-results-select-all" onchange="toggleAllSearchResults(this)" aria-label="Tout sélectionner"></th>
                         <th>${ownedColumnHeaderHtml}</th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('filename', 'Fichier',

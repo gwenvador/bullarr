@@ -100,6 +100,12 @@ class ImportVolumeOwnershipPresentationTest(unittest.TestCase):
 
 
 class SearchResultsBatchDownloadTest(unittest.TestCase):
+    def test_search_table_has_select_all_for_visible_rows(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/js/search-results-table.js').read_text()
+        self.assertIn('toggleAllSearchResults(this)', source)
+        self.assertIn('search-results-select-all', source)
+        self.assertIn("querySelectorAll('#search-results-tbody .search-result-select')", source)
+
     def test_search_rows_have_selectors_and_a_batch_download_action(self):
         source = (Path(__file__).resolve().parents[1] / 'static/js/search-results-table.js').read_text()
         self.assertIn('class=\"search-result-select\"', source)
