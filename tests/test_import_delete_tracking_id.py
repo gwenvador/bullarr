@@ -106,6 +106,12 @@ class SearchResultsBatchDownloadTest(unittest.TestCase):
         self.assertIn('function downloadSelectedSearchResults()', source)
         self.assertIn('search-result-download-action', source)
 
+    def test_search_rerender_restores_checked_rows_from_stable_selection_state(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/js/search-results-table.js').read_text()
+        self.assertIn("_searchTableSelectedKeys.has(_searchResultSelectionKey(result))", source)
+        self.assertIn('checked=""', source)
+        self.assertIn("_updateSearchBatchDownloadToolbar();", source)
+
     def test_batch_download_uses_only_checked_visible_rows_and_can_reset(self):
         source = (Path(__file__).resolve().parents[1] / 'static/js/search-results-table.js').read_text()
         start = source.index('function downloadSelectedSearchResults()')
