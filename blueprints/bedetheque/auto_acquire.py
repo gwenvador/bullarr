@@ -287,16 +287,38 @@ def match_manual_review_series(review_id, bedetheque_url, library_id=None):
             else:
                 return False, 'Plusieurs bibliothèques configurées : précisez laquelle utiliser.', None
 
-        response = current_app.test_client().post(
-            '/api/bedetheque/add-series',
+        # A separate test client has no authenticated session and is redirected to
+        # /login. Invoke the existing route in a local request context instead.
+        from blueprints.bedetheque.routes import add_series_from_bedetheque
+        with current_app.test_request_context(
+            '/api/bedetheque/add-series', method='POST',
             json={'url': bedetheque_url, 'library_id': library_id, 'skip_auto_acquire': True}
-        )
+        ):
+            response = add_series_from_bedetheque()
+        if isinstance(response, tuple):
+            response = response[0]
         data = response.get_json(silent=True) or {}
         if not data.get('success'):
             return False, data.get('error') or 'Impossible de créer/associer la série sur Bédéthèque', None
 
         series_id = data['series_id']
         conn.execute('UPDATE auto_acquire_reviews SET series_id = ?, volume_label = NULL WHERE id = ?', (series_id, review_id))
+
+        # Le fichier peut déjà avoir été envoyé au client avant que la revue de
+        # rattachement soit résolue. Rattacher aussi ces téléchargements sans série :
+        # sinon la Validation dit « rattaché » mais Import reçoit toujours une ligne
+        # orpheline, incapable de reconnaître le One-Shot.
+        try:
+            candidates = json.loads(row['candidates_json'] or '[]')
+        except (TypeError, ValueError):
+            candidates = []
+        filenames = sorted({str(c.get('filename')).strip() for c in candidates if c.get('filename')})
+        if filenames:
+            placeholders = ', '.join('?' for _ in filenames)
+            conn.execute(
+                f'UPDATE active_downloads SET series_id = ? WHERE series_id IS NULL AND title IN ({placeholders})',
+                (series_id, *filenames)
+            )
         conn.commit()
         return True, None, series_id
     finally:
