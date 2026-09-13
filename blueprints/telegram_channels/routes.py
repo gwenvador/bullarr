@@ -743,11 +743,6 @@ def search_telegram_files_local(query, limit=100):
             continue
         if len(files) >= limit:
             break
-        # Numéro de tome brut ("pourquoi nordheim ca na pas bien matcher les volumes") -
-        # même parsing que EBDZ (voir 'volume'/'is_integral'/etc. dans /api/search côté
-        # search/routes.py) - un numéro exploitable par le frontend pour taguer
-        # automatiquement CE résultat précis (voir search-results-table.js,
-        # trackingVolumeNumber) plutôt que seulement un libellé d'affichage.
         parsed = LibraryScanner.parse_filename(filename)
         files.append({
             'channel': channel,

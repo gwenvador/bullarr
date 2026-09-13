@@ -135,22 +135,6 @@ class MissingVolumeSearcher:
                 conn.close()
                 return []
 
-            # ebdz_title_variants/normalize_search_text: même point d'entrée unique que
-            # /api/search et le matching EBDZ automatique (_ebdz_enrich_series/
-            # _bulk_ebdz_autodetect, library/routes.py) - gère à la fois le "cœur" du
-            # titre (parenthèses/crochets retirés, ex: "Namibia (Kenya - Saison 2)" où le
-            # groupe est un désambiguateur local plutôt qu'une partie du titre réel côté
-            # EBDZ) et l'article en tête/fin de titre. Avant cette unification, cette
-            # fonction avait sa propre variante (clean_title/core_title, sans aucune
-            # gestion de l'article) ET sa propre normalisation (self._clean_series_name:
-            # ne retire ni parenthèses/crochets ni accents) comparée en LIKE brut contre
-            # les colonnes NON normalisées de la table - un article retiré de la requête
-            # ("grand vide, Le" -> "grand vide le" une fois la virgule retirée) ne
-            # matchait alors plus jamais le thread_title réel qui, lui, GARDE sa virgule
-            # ("Grand vide, Le [Murawiec]"). search_normalize() (fonction SQL, même
-            # normalize_search_text que partout ailleurs) appliquée aux DEUX côtés de la
-            # comparaison règle ce décalage. "Le grand vide (Murawiec) could not match
-            # ebdz only if i ask about grand vide without le" en était un exemple concret.
             from blueprints.search.routes import ebdz_title_variants, normalize_search_text
             conn.create_function('search_normalize', 1, normalize_search_text)
             title_variants = [normalize_search_text(v) for v in ebdz_title_variants(title)]
@@ -214,17 +198,6 @@ class MissingVolumeSearcher:
                     keyword = 'int' if label.lower().startswith('int') else 'hs'
                     sql += ' AND (LOWER(filename) LIKE ? OR LOWER(thread_title) LIKE ?)'
                     params.extend([f'%{keyword}%', f'%{keyword}%'])
-                # "epervier n'a pas beaucoup de liens dans ebdz pourtant la page sur ebdz
-                # a au moins 20 liens" - LIMIT 10 était pensé pour une recherche d'UN
-                # tome précis (volume_num connu, déjà filtré par "AND volume = ?"
-                # juste au-dessus - largement suffisant même avec plusieurs rescans du
-                # même tome). Pour une recherche "série entière" (volume_num absent, ex:
-                # Découvrir/searchSources), ce même LIMIT 10 s'appliquait à TOUT le
-                # thread sans aucun filtre de tome, tronquant arbitrairement un gros
-                # thread (vérifié: thread 679 "L'Épervier" a 24 lignes réelles, LIMIT 10
-                # n'en laissait passer que les tomes 1 à 5, perdant les tomes 6 à 10,
-                # l'intégrale et les deux hors-séries - alors que la page EBDZ elle-même
-                # en affiche bien 20+).
                 sql += f' ORDER BY thread_id DESC LIMIT {10 if volume_num is not None else 100}'
 
                 cursor.execute(sql, params)
@@ -255,23 +228,6 @@ class MissingVolumeSearcher:
                 if sharing_series_count <= 1:
                     rows = _run(None)
                 else:
-                    # "in serie only have 9 resultats" (après le décodage URL de
-                    # normalize_search_text, encore moins - 1 seul) - thread_id déjà
-                    # résolu à CETTE série précise: s'arrêter à la première variante qui
-                    # remonte ne serait-ce qu'UNE ligne (ancien comportement, ci-dessous
-                    # pour le cas sans thread_id) coupait le thread bien trop tôt. Une
-                    # variante avec le groupe parenthétique d'auteur ("L'Épervier
-                    # (Pellerin)") ne matche quasiment jamais un nom de fichier de
-                    # release (l'auteur y apparaît rarement collé au titre) mais peut
-                    # matcher UNE ligne par pur hasard de mise en forme (ex: des points
-                    # transformés en espaces par la normalisation alignant fortuitement
-                    # "épervier" et "(pellerin)"), arrêtant la boucle avant même
-                    # d'essayer la variante sans parenthèses (bien plus permissive, qui
-                    # aurait trouvé le thread entier). Thread partagé -> unioner toutes
-                    # les variantes plutôt que de deviner laquelle est "la bonne": pas de
-                    # risque de faux positif inter-séries ici, juste des reformulations
-                    # du même titre. Doublons sans risque, dédupliqués par lien dans
-                    # _deduplicate_and_rank en aval.
                     rows = []
                     seen_links = set()
                     for variant in title_variants:
@@ -291,13 +247,6 @@ class MissingVolumeSearcher:
             
             results = []
             for row in rows:
-                # "la colonne Volume est vide ou fausse" (constaté sur "Après l'Incal -
-                # T01 - ..."): le nom de fichier ed2k est encodé URL ("%20", "%C3%A8"...) -
-                # LibraryScanner.parse_filename attend de vrais espaces/accents pour que
-                # ses patterns ("T01", "- 01 -"...) matchent. Sans décodage, "T01%20-
-                # %20Le" ne matche jamais aucun pattern (vérifié: "Tome 1" décodé vs None
-                # brut) - contrairement à /api/search (search/routes.py) qui décode déjà
-                # avant de parser, ce chemin (recherche missing-monitor) ne le faisait pas.
                 from urllib.parse import unquote
                 try:
                     decoded_filename = unquote(row[5])
@@ -367,13 +316,6 @@ class MissingVolumeSearcher:
         # L'interface les décode avant affichage, mais le matcher automatique doit
         # aussi les décoder avant parse_filename pour retrouver T01, T02, etc.
         parsed = LibraryScanner.parse_filename(unquote(item_title or ''))
-        # Plage "T01 à T14" détectée directement via _parse_integral_tome_range plutôt
-        # que parsed['integral_tome_start']/['integral_tome_end'] (calculés par
-        # parse_filename lui-même SEULEMENT quand son propre déclencheur interne "ceci
-        # est une intégrale" a matché ailleurs) - constaté sur "Bouncer (T01- a T12) FR
-        # CBZ & PDF"/"BOUNCER.[T01-T11].FR.[PDF]-NOTAG": aucun des deux n'a de mot-clé
-        # "intégrale"/"INT" et pourtant _parse_integral_tome_range seule y détecte bien
-        # une plage - appelée ici directement pour ne pas dépendre de ce déclencheur.
         tome_range = LibraryScanner._parse_integral_tome_range(item_title)
         # "il faudrait que tu parses PACK et met le dans volume dans les recherches" -
         # vérifié en premier: "PACK est mieux que T1-TXX" (voir _best_pack_result,

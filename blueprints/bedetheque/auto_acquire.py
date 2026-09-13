@@ -280,16 +280,6 @@ def get_auto_acquire_status(series_id):
         return dict(_last_auto_acquire_results.get(series_id) or {'running': False})
 
 
-# Formats reconnus dans un nom de RELEASE (pas un fichier réel sur disque) par simple
-# mot-clé, PAS par extension - un titre Prowlarr/torrent n'a presque jamais de vraie
-# extension de fichier ("Videur (T01- a T12) FR CBZ & PDF", "...[PDF]-NOTAG": le dernier
-# segment après un point serait "notag"/"pdf-notag", pas un format exploitable). Même
-# raisonnement déjà établi côté frontend pour ce problème identique sur les résultats
-# Prowlarr (voir detectResultFormat/SEARCH_FORMAT_PRIORITY_DEFAULT,
-# static/js/search-results-table.js, "pour prowlarr les fichiers ne sont pas retournés
-# avec leur extension") - ordre de préférence identique (cbz/zip > cbr/rar > pdf), aligné
-# sur FORMAT_PRIORITY (blueprints/library/routes.py) pour le reste de l'app. Une release
-# qui mentionne plusieurs formats à la fois ("CBZ & PDF") retient le meilleur des deux.
 _PACK_FORMAT_KEYWORDS = (
     ('cbz', re.compile(r'\bcbz\b', re.IGNORECASE)),
     ('zip', re.compile(r'\bzip\b', re.IGNORECASE)),
@@ -388,15 +378,6 @@ def _download_result(app, result, series_id, title, vol_num):
         )
         return True, f"{filename or title} : téléchargement fourtoutici démarré"
 
-    # EBDZ (ed2k) / Prowlarr (magnet/torrent) - auto-détection du client par
-    # send_torrent_download selon le schéma du lien. download_url en repli - "aussi on
-    # dirait que la recherche de prowlarr ne s'affiche plus" (voir _deduplicate_and_rank,
-    # missing_monitor/searcher.py): certains indexeurs Prowlarr ne renseignent que
-    # 'downloadUrl', jamais 'link' - constaté en réel sur le choix de pack Videur
-    # (Torr9, 'link': '', seul 'download_url' rempli). Ce repli existait déjà pour la clé
-    # de dédup mais pas ici: sans lui, un résultat sélectionné avec 'link' vide échouait
-    # silencieusement au téléchargement ("Aucun lien de téléchargement") malgré un choix
-    # par ailleurs correct.
     link = result.get('link') or result.get('download_url')
     if not link:
         return False, "Aucun lien de téléchargement"
@@ -412,18 +393,6 @@ def _download_result(app, result, series_id, title, vol_num):
 # _oneshot_title_contained, un seul jeu d'articles plutôt que deux copies.
 _LEADING_ARTICLES = {'le', 'la', 'les', 'l', 'un', 'une', 'du', 'des', 'de'}
 
-# Préfixe de release courant sur EBDZ avant le vrai titre ("BD.FR.-.Guerre d'Alan...",
-# "1BD.FR.-.Kenya...", "[BD] L'Or Des Marées...", "[BD Fr] - Kenya...") - un chiffre de
-# tri de forum optionnel, puis un tag "BD"/"BD FR" entre crochets ou suivi de points/tiret.
-# _series_identity_matches exige que TOUT ce qui précède le numéro de tome soit
-# EXACTEMENT le titre (voir sa docstring) - ce tag, présent sur une grosse partie des
-# releases réelles, cassait cette égalité alors que le fichier est le bon (mesuré: 48
-# imports réels rejetés à tort pour cette seule raison, sur l'historique complet).
-#
-# "[EBOOK] Boule et Bill - tome 26 - ..." / "[EBOOK] BANDE DESSINEE - Boule et Bill - T31
-# - ..." (constaté en réel, fourtoutici) - même besoin que "[BD]"/"BD FR" ci-dessus, tag
-# différent, avec en plus un "BANDE DESSINEE -" parfois intercalé entre le tag et le vrai
-# titre.
 _RELEASE_PREFIX_RE = re.compile(
     r'^\d*(?:\[bd(?:\s*fr)?\]\s*-?\s*|bd[\s.]*fr[\s.]*[-.]+\s*'
     r'|\[e-?book\]\s*(?:bande[\s._]*dessin[eé]e\s*-\s*)?)',
@@ -496,12 +465,6 @@ def _series_identity_matches(filename, title, volume_number):
         return False
     prefix = text[:marker.start()].strip(' ._-')
 
-    # Articles retirés entièrement plutôt que déplacés en fin de liste: "Guerre d'Alan"
-    # (titre local, sans article) vs "Guerre d'Alan (La)" (nom de release, article ajouté)
-    # ne partagent aucun article en commun à réordonner - un des deux côtés n'en a
-    # simplement pas. Et "Les Passagers du Vent" vs "Passagers du Vent (Les)" (deux
-    # articles, "les"+"du", mais pas dans le même ordre relatif) posait le même problème
-    # même quand les DEUX côtés avaient des articles - voir _identity_tokens.
     if not prefix:
         return False
     prefix_tokens = tuple(_identity_tokens(prefix))
@@ -565,12 +528,6 @@ def _is_explicitly_unavailable(result):
     return bool(values) and max(values) <= 0
 
 
-# "Fille du destin T2 Les disparus de Nanzy... epub" téléchargé automatiquement pour un
-# one-shot BD - un ebook texte (roman) n'est jamais le bon fichier pour une BD, quel que
-# soit le score de correspondance du titre. monitored_extensions (library_import_config.json)
-# ne liste même pas .epub: un tel fichier ne sera de toute façon jamais importé, seulement
-# téléchargé pour rien. Vérifié sur le NOM du résultat (filename/title), pas sur un champ
-# de format structuré - aucune source (EBDZ/Prowlarr/Telegram/fourtoutici) n'en fournit un.
 _NON_COMIC_EXTENSIONS_RE = re.compile(r'(?i)\.(?:epub|mobi|azw3?|djvu|txt)$')
 
 
@@ -688,11 +645,6 @@ def _best_confident_result(results, vol_num, title, source_order=None):
                 or not _series_identity_matches(candidate, title, int(numbered_marker.group(1)))
             ):
                 continue
-        # Les noms de releases ajoutent souvent une extension, l'année, le format
-        # et des marqueurs OS/qualité. Ces suffixes ne font pas partie du titre et
-        # diluaient le score d'un one-shot pourtant exact (ex. « Le télescope
-        # (2009).cbr » passait de 1.0 à 0.5). On les retire uniquement pour le
-        # calcul de confiance ; le nom original reste celui envoyé au client.
         score_candidate = re.sub(r'(?i)\.(?:cbz|cbr|cb7|zip|rar|pdf|epub)$', '', candidate)
         score_candidate = re.sub(r'(?i)\b(?:19|20)\d{2}\b', ' ', score_candidate)
         score_candidate = re.sub(r'(?i)\b(?:one[ -]?shot|os|digital|scan|ebook|cbz|cbr|cb7|zip|rar|pdf)\b', ' ', score_candidate)
@@ -911,10 +863,6 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
             return
         pack_search_enabled = config.get('auto_acquire_pack_search_enabled', False)
 
-        # Quand la série est déjà reliée à un thread EBDZ, transmettre cette
-        # correspondance au chercheur. Sans cette restriction, une recherche de
-        # one-shot ou de tome peut trouver un résultat d'un autre thread partageant
-        # un mot du titre (ex. « D'Artagnan » dans « Le Fou du Roy »).
         db_conn = get_db_connection()
         series_row = db_conn.execute(
             'SELECT ebdz_thread_id FROM series WHERE id = ?', (series_id,)
@@ -970,9 +918,6 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
             if pack_search_enabled:
                 best_pack = _best_pack_result(results, title)
                 if best_pack:
-                    # Un pack repéré au mot-clé "PACK" seul (pas de plage détectée, ex.
-                    # "Videur.BD.HD.PACK...") n'a pas de compte de tomes exploitable - "N
-                    # tomes" avec N=None serait affiché tel quel dans les logs/l'Historique.
                     pack_size = _detect_pack_size(best_pack.get('filename') or best_pack.get('title') or '')
                     pack_label = f"Pack ({pack_size} tomes)" if pack_size else "Pack"
                     try:

@@ -163,17 +163,6 @@ function setImportNameFilter(value) {
 }
 function _importNameMatches(value) { const q = String(importNameFilter || '').trim().toLocaleLowerCase(); return !q || String(value || '').toLocaleLowerCase().includes(q); }
 
-// Type (client): select comme "Possédé"/"Format" dans les tableaux de la bibliothèque,
-// pas un champ texte libre. "type should only display what is currently available not
-// all the options in clients" - CLIENT_LABELS liste TOUS les clients supportés par l'app
-// (8: qBittorrent/rTorrent/Deluge/aMule/Telegram/fourtoutici/Shelfmark/torrent partagé),
-// presque toujours plus large que ce qui est réellement présent dans la file d'import à
-// un instant donné - availableClientKeys (calculé par l'appelant sur importFiles/
-// activeDownloads/pending, voir displayImportFiles) restreint les options à ce qui existe
-// vraiment. Calculé sur les données NON filtrées par Nom/Album/Volume - un dropdown Type
-// qui rétrécirait tout seul selon un AUTRE filtre actif serait déroutant. La valeur
-// actuellement sélectionnée reste toujours proposée même si elle a entre-temps disparu
-// des données (évite un select qui "oublie" silencieusement le filtre actif).
 function _importTypeFilterHeaderHtml(availableClientKeys) {
     const active = importTableSort.column === 'client';
     const arrow = active ? (importTableSort.direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
@@ -2005,18 +1994,6 @@ function _importFileRowHtml(file, index) {
             ? (anyImportInProgress
                 ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Un import est déjà en cours - ce fichier est peut-être déjà en train d'être traité">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
                 : `<span style="color:#6c757d; font-weight:600;" data-tooltip="Aucune action nécessaire - importé automatiquement dans les secondes qui suivent">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`)
-            // "au lieu de Pret met une information sur ce qu'il faut faire. attente
-            // d'import manuelle, etc..." - cette branche n'est atteinte QUE quand
-            // isImportingNow est false alors que hasDestination && hasKnownVolume sont
-            // vrais: par construction (voir _isFileImportingNow plus haut), ça veut dire
-            // soit manual_override (assignation faite à la main, voir "si jai a faire
-            // manuelement un matching alors met un flag pas dimport automayique"), soit
-            // auto_import_skip_reason (déjà expliqué dans son propre bandeau juste
-            // au-dessus, voir "Pas repris par l'import automatique") - dans les DEUX cas,
-            // le scheduler planifié ne le reprendra JAMAIS tout seul: "✓ Prêt" nu
-            // laissait croire à tort qu'aucune action n'était nécessaire, alors qu'un
-            // clic sur "Importer" (ou la sélection groupée) est la SEULE façon de le
-            // finaliser.
             : hasDestination && hasKnownVolume
                 ? `<span style="color:#28a745; font-weight:600;" data-tooltip="${file.auto_import_skip_reason ? "L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement" : 'Assignation faite à la main - cliquez sur « Importer » pour valider, l\'import automatique ne le reprendra pas tout seul'}">${svgIcon('check')} Prêt — import manuel</span>`
                 : hasDestination
@@ -2271,13 +2248,6 @@ function displayImportFiles() {
             return a.file._order - b.file._order;
         });
 
-    // "for import there should be a database of all the downloads. this is the base
-    // reference that should be used for display" - un pack (torrent contenant plusieurs
-    // tomes d'un coup, ex: "Videur.BD.HD.PACK.2024...") reste "en attente" (voir
-    // get_pending_downloads/_pendingDownloadRowHtml) même une fois ses fichiers réellement
-    // arrivés sur disque - regroupé ici sous une ligne dépliante à son nom (voir
-    // _pendingPackGroups) dès que le serveur (scan_import_directory) a authoritativement
-    // rattaché au moins un fichier/dossier à sa ligne active_downloads.
     const pendingPackGroups = _pendingPackGroups();
     const nestedInPackIndices = pendingPackGroups.reduce((set, { fileMatches }) => {
         fileMatches.forEach(({ index }) => set.add(index));
@@ -2360,11 +2330,6 @@ function displayImportFiles() {
             .map(e => e.html).join('')
         : pendingRowsHtml + activeRowsHtml + rowsHtml;
 
-    // Options des selects Type/Volume/Ext. (voir leurs commentaires): seulement ce qui
-    // est réellement présent dans les données, PAS encore réduit par les autres filtres
-    // actifs (calculé sur les tableaux non filtrés ci-dessus) - un select qui rétrécirait
-    // tout seul selon un autre filtre serait déroutant. Album n'a pas cet équivalent
-    // (texte libre, trop de valeurs possibles pour un select).
     const availableClientKeys = new Set();
     const availableVolumeLabels = new Set();
     const availableExtensions = new Set();
@@ -2539,12 +2504,6 @@ function _hasKnownVolume(file) {
     if (file.destination?.is_oneshot || file.destination?.is_single_album) {
         return true;
     }
-    // "Moon River... ⚠ Tome manquant / c'est un one-shot donc pas de need d'avoir de
-    // tome" - le nom de fichier lui-même n'a souvent aucun marqueur de tome pour un
-    // one-shot (pas de "OS"/"HS"/numéro), mais la destination assignée le sait déjà via
-    // Bédéthèque: si la série ne connaît qu'UNE seule édition, non numérotée (voir
-    // _bdVolumeOptionLabel "Édition unique"), il n'y a tout simplement aucun tome à
-    // trouver - ne pas exiger un numéro qui n'existera jamais.
     const seriesId = file.destination && !file.destination.is_new_series ? file.destination.series_id : null;
     const volumes = seriesId != null ? _seriesVolumesCache[seriesId] : null;
     if (volumes && volumes.length === 1 && volumes[0].volume_number == null
