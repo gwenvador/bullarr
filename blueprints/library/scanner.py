@@ -531,7 +531,7 @@ class LibraryScanner:
             # brute ([1920]), pas une année. Les années restent reconnues lorsqu'elles
             # sont placées dans un groupe non terminal, ou entre parenthèses.
             is_terminal_bracket = bracket_match.end() == len(name_without_ext)
-            is_plausible_year = 1900 <= bracket_num <= 2035 and not is_terminal_bracket
+            is_plausible_year = 1970 <= bracket_num <= 2035 and not is_terminal_bracket
             if bracket_num >= 300 and not is_plausible_year:  # Seuil: les résolutions commencent généralement à 300+
                 excluded_numbers.add(bracket_num)
                 if not info['resolution']:
@@ -577,7 +577,7 @@ class LibraryScanner:
         # l'extraction de l'année, mais ne doivent pas alimenter <group>.
         group_matches = [
             (text, is_bracket) for text, is_bracket in combined_matches
-            if not (re.fullmatch(r'\d{4}', text) and 1900 <= int(text) <= 2035)
+            if not (re.fullmatch(r'\d{4}', text) and 1970 <= int(text) <= 2035)
         ]
         if len(group_matches) == 1:
             text, is_bracket = group_matches[0]
@@ -590,7 +590,7 @@ class LibraryScanner:
                 info['author'] = candidate
                 break
         # Capturer les années entre parenthèses avant de retirer les groupes.
-        year_match = re.search(r'\b(19\d{2}|20\d{2})\b', name_without_ext)
+        year_match = re.search(r'\b(19[7-9]\d|20\d{2})\b', name_without_ext)
         if year_match and int(year_match.group(1)) not in excluded_numbers:
             info['year'] = int(year_match.group(1))
 
