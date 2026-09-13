@@ -6465,8 +6465,13 @@ function closeBedethequeReviewsModal() {
 // (voir LibraryScanner.parse_filename): numéro de tome si trouvé, sinon tag intégrale/HS/épisode
 // (avec son propre numéro s'il existe pour HS/INT/épisode), sinon "?" si rien n'a pu être déterminé
 function buildEbdzVolumeLabel(f) {
-    const volume = f.volume || f.parsed_volume;
-    if (volume) return String(volume);
+    // EBDZ fournit parfois le numéro dans parsed_volume (ex. « Tome 46 »).
+    // Afficher uniquement le numéro pour un tome normal.
+    if (f.volume != null && f.volume !== '') return String(f.volume);
+    const parsedVolume = String(f.parsed_volume || '');
+    const regularVolume = parsedVolume.match(/^Tome\s+(\d+)$/i);
+    if (regularVolume) return regularVolume[1];
+    if (parsedVolume) return parsedVolume;
     if (f.is_integral) return f.integral_number ? `📦 INT ${f.integral_number}` : '📦 INT';
     if (f.is_hs) return f.hs_number ? `✨ HS ${f.hs_number}` : '✨ HS';
     if (f.is_episode) return f.episode_number ? `🎬 Ép ${f.episode_number}` : '🎬 Ép';
