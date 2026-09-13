@@ -195,13 +195,42 @@ aussi déclencher une passe d'acquisition immédiate pour tous ses tomes manquan
 
 ## 🆕 Nouveautés de la version v1.2.0
 
-- Ajout de cases à cocher devant les résultats de recherche de tome
-- Ajout de **Tout sélectionner**, limité aux résultats visibles après filtrage
-- Ajout du bouton **Télécharger la sélection** pour lancer plusieurs téléchargements
-- Conservation des sélections quand les résultats, la possession ou la disponibilité des
-  sources sont rafraîchis
-- Prise en charge du téléchargement groupé pour Prowlarr, fourtoutici, Telegram,
-  EBDZ/eMule et Shelfmark
+### Recherche et téléchargement
+
+- Recherche multi-sources enrichie : EBDZ/eMule, Prowlarr, Telegram, fourtoutici et Shelfmark
+- Sélection de plusieurs résultats dans la recherche d'un tome
+- Case **Tout sélectionner**, limitée aux lignes visibles après filtrage
+- Bouton **Télécharger la sélection** avec prise en charge de tous les clients configurés
+- Sélections conservées pendant les rafraîchissements asynchrones, le tri et les filtres
+- Meilleur parsing des formats, résolutions, volumes et intégrales des résultats
+- Vérification de disponibilité eMule regroupée et affichage des sources/seeders
+
+### Import, archives et sécurité des sources
+
+- Visionneur du contenu des archives et sélection individuelle de dossiers à empaqueter
+- Conversion de dossiers d'archives en CBZ, y compris les dossiers imbriqués
+- Sortie d'empaquetage dans un répertoire temporaire privé au conteneur
+- Conservation des archives et fichiers sources pendant l'import
+- Import par copie, validation des destinations et masquage des imports finalisés
+- Gestion sûre des suppressions sur les sources en lecture seule
+- Détection améliorée des doublons de fichiers, variantes de scans et conflits
+- Affectation groupée de fichiers à une série et rafraîchissement des validations
+
+### Bibliothèque, métadonnées et validation
+
+- Complétude recalculée pour les tomes, épisodes, intégrales et one-shots
+- Affichage fiable des tomes manquants et vérification de l'existence physique des fichiers
+- Gestion correcte des one-shots sans numéro de tome
+- Rescrape EBDZ depuis la fiche série et rattachement plus précis des métadonnées
+- Contrôles de placement des dossiers repliables et renommage vers une série existante
+- Détection et nettoyage contrôlé des doublons locaux/Komga
+- Validation des titres et séries renforcée pour éviter les rattachements erronés
+
+### Authentification et interface
+
+- Modes d'authentification `none`, mot de passe local et OIDC
+- Récupération après erreur de configuration et correction des callbacks OIDC derrière HTTPS
+- Interface de validation, import et recherche rafraîchie, avec meilleure utilisation des grands écrans
 
 ---
 
