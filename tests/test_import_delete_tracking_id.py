@@ -99,5 +99,22 @@ class ImportVolumeOwnershipPresentationTest(unittest.TestCase):
         self.assertNotIn("existing_only = request.args.get('existing_only')", body)
 
 
+class SearchResultsBatchDownloadTest(unittest.TestCase):
+    def test_search_rows_have_selectors_and_a_batch_download_action(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/js/search-results-table.js').read_text()
+        self.assertIn('class=\"search-result-select\"', source)
+        self.assertIn('function downloadSelectedSearchResults()', source)
+        self.assertIn('search-result-download-action', source)
+
+    def test_batch_download_uses_only_checked_visible_rows_and_can_reset(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/js/search-results-table.js').read_text()
+        start = source.index('function downloadSelectedSearchResults()')
+        end = source.index('\n}', start) + 2
+        body = source[start:end]
+        self.assertIn("querySelectorAll('#search-results-tbody .search-result-select:checked')", body)
+        self.assertIn("closest('tr')", body)
+        self.assertIn(".search-result-download-action", body)
+
+
 if __name__ == '__main__':
     unittest.main()

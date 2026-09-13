@@ -488,14 +488,46 @@ function _markShelfmarkResultAdded(md5) {
 // l'état ajouté/pas encore ajouté du bouton.
 function _clientAddButtonHtml(added, clientLabel, iconHtml, onclickJs, actionVerb = 'Envoyer', extraClass = '') {
     if (added) {
-        return `<button class="btn-icon-only add-button-added${extraClass}" data-tooltip="Ajouté à ${clientLabel}" disabled><span class="btn-icon">✓</span></button>`;
+        return `<button class="btn-icon-only search-result-download-action add-button-added${extraClass}" data-tooltip="Ajouté à ${clientLabel}" disabled><span class="btn-icon">✓</span></button>`;
     }
-    return `<button class="btn-icon-only${extraClass}" data-tooltip="${actionVerb} à ${clientLabel}" onclick="${onclickJs}">${iconHtml}</button>`;
+    return `<button class="btn-icon-only search-result-download-action${extraClass}" data-tooltip="${actionVerb} à ${clientLabel}" onclick="${onclickJs}">${iconHtml}</button>`;
 }
 
 // Construit une ligne du tableau de résultats - une seule structure compacte pour
 // EBDZ/Prowlarr/Telegram au lieu d'affichages séparés, avec juste les actions qui
 // diffèrent selon la source.
+let _searchTableSelectedKeys = new Set();
+
+function _searchResultSelectionKey(result) {
+    return `${result.source || ''}|${result.link || result.download_url || result.md5 || result.message_id || result.filename || result.title || ''}`;
+}
+
+function _toggleSearchResultSelection(checkbox) {
+    const key = checkbox.dataset.selectionKey;
+    if (checkbox.checked) _searchTableSelectedKeys.add(key);
+    else _searchTableSelectedKeys.delete(key);
+    _updateSearchBatchDownloadToolbar();
+}
+
+function _updateSearchBatchDownloadToolbar() {
+    const count = document.querySelectorAll('#search-results-tbody .search-result-select:checked').length;
+    const label = document.getElementById('search-results-batch-download-label');
+    const button = document.getElementById('search-results-batch-download');
+    if (label) label.textContent = `${count} sélectionné${count > 1 ? 's' : ''}`;
+    if (button) button.disabled = count === 0;
+}
+
+function downloadSelectedSearchResults() {
+    const checkboxes = [...document.querySelectorAll('#search-results-tbody .search-result-select:checked')];
+    checkboxes.forEach(checkbox => {
+        const downloadButton = checkbox.closest('tr')?.querySelector('.search-result-download-action:not([disabled])');
+        if (downloadButton) downloadButton.click();
+    });
+    _searchTableSelectedKeys.clear();
+    checkboxes.forEach(checkbox => { checkbox.checked = false; });
+    _updateSearchBatchDownloadToolbar();
+}
+
 function buildSearchResultRowHtml(result) {
     // "met une icône quand j'ai déjà le volume. retire l'étoile. c'est inutile" -
     // _searchTableOwnedLabels n'est peuplé que pour une recherche "série entière" (voir
@@ -600,7 +632,7 @@ function buildSearchResultRowHtml(result) {
         // Style "icône conservée + texte Ajouté" (pas une coche, voir downloadTelegramFile)
         // - même état déjà-ajouté persistant que les autres clients, juste un rendu différent.
         actionsHtml = added.telegram
-            ? `<button class="btn-icon-only add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
+            ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
             : `<button class="btn-icon-only" data-tooltip="Télécharger vers l'import" onclick="downloadTelegramFile('${escapeForAttribute(result.channel)}', ${result.message_id}, this, '${escapeForAttribute(result.channel_title || '')}', '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})">${svgIcon('download')}</button>`;
     } else if (isFourtoutici) {
         // Comme Telegram (téléchargement interne droit vers l'import, pas de client
@@ -609,15 +641,15 @@ function buildSearchResultRowHtml(result) {
         actionsHtml = `
             <button class="btn-icon-only" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.download_url || result.link)}', this)">${svgIcon('copy')}</button>
             ${added.fourtoutici
-                ? `<button class="btn-icon-only add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
-                : `<button class="btn-icon-only" data-tooltip="Télécharger vers l'import" onclick="downloadFourtoutici('${escapeForAttribute(result.file_id)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.download_url || result.link || '')}', ${trackingForceReplace})">${svgIcon('download')}</button>`}
+                ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
+                : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger vers l'import" onclick="downloadFourtoutici('${escapeForAttribute(result.file_id)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.download_url || result.link || '')}', ${trackingForceReplace})">${svgIcon('download')}</button>`}
         `;
     } else if (isAnnasArchive) {
         const shelfmarkAdded = added.shelfmark;
         actionsHtml = `
             <a class="btn-icon-only" href="${escapeHtml(result.info_url || result.link || '#')}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir le fichier sur Anna's Archive"><img src="/static/img/web-logo.svg" alt="Web" class="torrent-client-logo"></a>
             ${shelfmarkAdded
-                    ? `<button class="btn-icon-only add-button-added" data-tooltip="Envoyé à Shelfmark" disabled><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`
+                    ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Envoyé à Shelfmark" disabled><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`
                 // "Tome null" - trackingSeriesId/trackingVolumeId/trackingVolumeNumber (voir
                 // plus haut) sont délibérément la CHAÎNE 'null' quand inconnus, pour
                 // s'interpoler en code JS BRUT (littéral null) dans les onclick des autres
@@ -627,7 +659,7 @@ function buildSearchResultRowHtml(result) {
                 // comme la CHAÎNE "null", pas le null JSON attendu, et ressortait telle quelle
                 // jusqu'à l'affichage ("Tome null" sur /import, seul client affecté puisque
                 // seul celui-ci sérialise ces valeurs plutôt que de les injecter en code brut).
-                : `<button class="btn-icon-only" data-tooltip="Télécharger via Shelfmark" onclick="downloadViaShelfmark(this, '${encodeURIComponent(JSON.stringify({...result, series_id: trackingSeriesId === 'null' ? null : trackingSeriesId, volume_id: trackingVolumeId === 'null' ? null : trackingVolumeId, volume_number: trackingVolumeNumber === 'null' ? null : trackingVolumeNumber, force_replace: trackingForceReplace}))}')"><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`}`;
+                : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger via Shelfmark" onclick="downloadViaShelfmark(this, '${encodeURIComponent(JSON.stringify({...result, series_id: trackingSeriesId === 'null' ? null : trackingSeriesId, volume_id: trackingVolumeId === 'null' ? null : trackingVolumeId, volume_number: trackingVolumeNumber === 'null' ? null : trackingVolumeNumber, force_replace: trackingForceReplace}))}')"><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`}`;
     } else {
         actionsHtml = `
             <button class="btn-icon-only" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.download_url || result.link)}', this)">${svgIcon('copy')}</button>
@@ -660,6 +692,7 @@ function buildSearchResultRowHtml(result) {
 
     return `
         <tr class="replace-results-row${isOwned ? ' replace-results-row-owned' : ''}">
+            <td class="replace-results-select"><input type="checkbox" class="search-result-select" data-selection-key="${escapeHtml(_searchResultSelectionKey(result))}" onchange="_toggleSearchResultSelection(this)" aria-label="Sélectionner ce résultat"></td>
             <td class="replace-results-best-marker">${isOwned ? `<span class="icon-owned" data-tooltip="En bibliothèque">${svgIcon('check')}</span>` : ''}</td>
             <td class="replace-results-filename" title="${escapeHtml(displayName)}">
                 ${unconfirmedVolumeHtml} ${escapeHtml(displayName)}
@@ -881,7 +914,7 @@ function _renderSearchResultsTbody() {
     const filtered = _filteredSearchTableResults();
     tbody.innerHTML = filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
-        : '<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>';
+        : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>';
 }
 
 function _applySearchTableFilter(field, value) {
@@ -1064,10 +1097,15 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
 
     return `
         ${hideUnconfirmedCheckboxHtml}
+        <div style="display:flex; align-items:center; gap:10px; margin:8px 0;">
+            <button id="search-results-batch-download" class="btn" type="button" onclick="downloadSelectedSearchResults()" disabled>Télécharger la sélection</button>
+            <span id="search-results-batch-download-label" aria-live="polite">0 sélectionné</span>
+        </div>
         <div style="overflow-x:auto;">
             <table class="replace-results-table" id="search-results-table">
                 <thead>
                     <tr>
+                        <th class="replace-results-select-header" aria-label="Sélection"></th>
                         <th>${ownedColumnHeaderHtml}</th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('filename', 'Fichier',
