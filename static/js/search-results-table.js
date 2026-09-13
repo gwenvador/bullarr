@@ -651,7 +651,7 @@ function buildSearchResultRowHtml(result) {
         // - même état déjà-ajouté persistant que les autres clients, juste un rendu différent.
         actionsHtml = added.telegram
             ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
-            : `<button class="btn-icon-only" data-tooltip="Télécharger vers l'import" onclick="downloadTelegramFile('${escapeForAttribute(result.channel)}', ${result.message_id}, this, '${escapeForAttribute(result.channel_title || '')}', '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})">${svgIcon('download')}</button>`;
+            : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger vers l'import" onclick="downloadTelegramFile('${escapeForAttribute(result.channel)}', ${result.message_id}, this, '${escapeForAttribute(result.channel_title || '')}', '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})">${svgIcon('download')}</button>`;
     } else if (isFourtoutici) {
         // Comme Telegram (téléchargement interne droit vers l'import, pas de client
         // externe à piloter) mais avec un vrai lien à copier - fourtoutici sert ses

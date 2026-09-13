@@ -100,6 +100,13 @@ class ImportVolumeOwnershipPresentationTest(unittest.TestCase):
 
 
 class SearchResultsBatchDownloadTest(unittest.TestCase):
+    def test_telegram_download_rows_are_eligible_for_batch_download(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/js/search-results-table.js').read_text()
+        start = source.index('} else if (isTelegram)')
+        end = source.index('} else if (isFourtoutici)', start)
+        telegram = source[start:end]
+        self.assertIn('downloadTelegramFile', telegram)
+        self.assertIn('search-result-download-action', telegram)
     def test_search_table_has_select_all_for_visible_rows(self):
         source = (Path(__file__).resolve().parents[1] / 'static/js/search-results-table.js').read_text()
         self.assertIn('toggleAllSearchResults(this)', source)
