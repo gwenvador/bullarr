@@ -1970,7 +1970,7 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
     // "garde le nom du volume mais mets une icone possédé" - une <option> native ne peut
     // pas contenir de balisage (pas d'icône SVG possible ici), ✓ est déjà la convention
     // du reste de l'app pour "déjà possédé"/"déjà ajouté" (voir search-results-table.js).
-    if (showOwned && v.filepath) label = `✓ ${label}`;
+    if (showOwned && v.is_owned) label = `✓ ${label}`;
     return label;
 }
 
