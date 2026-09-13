@@ -21,6 +21,10 @@ tomes manquants.
 - 🔍 **Recherche multi-sources** : forum [EBDZ.net](https://ebdz.net) (liens ed2k),
   [Prowlarr](https://prowlarr.com/), [fourtoutici.cc](https://fourtoutici.cc) et des
   canaux Telegram dédiés — page "Nouveautés" avec suivi des sujets/fichiers déjà scrapés
+- ☑️ **Téléchargement groupé** : sélection de plusieurs résultats dans une recherche,
+  sélection globale limitée aux lignes visibles, conservation des sélections pendant les
+  rafraîchissements asynchrones, et envoi groupé vers les clients configurés (Prowlarr,
+  fourtoutici, Telegram, EBDZ/eMule ou Shelfmark)
 - 📊 **Surveillance des tomes manquants** (façon Sonarr) : détection des tomes non
   possédés par série, recherche + téléchargement automatique sur les sources
   configurées, acquisition immédiate à l'ajout d'une nouvelle série
@@ -186,6 +190,18 @@ inutile de forcer un scan manuel côté Komga.
 par série (comparaison avec Bédéthèque) et, si souhaité, la recherche + téléchargement
 automatique sur les sources activées. L'ajout d'une nouvelle série depuis Bédéthèque peut
 aussi déclencher une passe d'acquisition immédiate pour tous ses tomes manquants.
+
+---
+
+## 🆕 Nouveautés de la version v1.2.0
+
+- Ajout de cases à cocher devant les résultats de recherche de tome
+- Ajout de **Tout sélectionner**, limité aux résultats visibles après filtrage
+- Ajout du bouton **Télécharger la sélection** pour lancer plusieurs téléchargements
+- Conservation des sélections quand les résultats, la possession ou la disponibilité des
+  sources sont rafraîchis
+- Prise en charge du téléchargement groupé pour Prowlarr, fourtoutici, Telegram,
+  EBDZ/eMule et Shelfmark
 
 ---
 
