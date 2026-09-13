@@ -9,6 +9,8 @@ class Config:
     
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    # Emergency recovery switch for a misconfigured OIDC/password setup. Keep false in normal use.
+    AUTH_BYPASS_LOGIN = os.environ.get('BULLARR_AUTH_BYPASS_LOGIN', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
     DEBUG = False
     
     # Chemins
@@ -108,7 +110,10 @@ class Config:
     # SSO / OIDC par défaut (désactivé : aucun changement de comportement tant que
     # l'utilisateur ne configure pas son fournisseur dans les paramètres)
     OIDC_CONFIG = {
+        'mode': 'none',
         'enabled': False,
+        'username': '',
+        'password_hash': '',
         'issuer': '',
         'client_id': '',
         'client_secret': '',
@@ -216,7 +221,7 @@ class Config:
         # automatique) - "ajoute une option dans les settings sur les fichiers à
         # monitorer pour l'import". Toutes activées par défaut = comportement identique
         # à avant que ce ne soit configurable.
-        'monitored_extensions': ['.cbz', '.cbr', '.zip', '.rar', '.pdf'],
+        'monitored_extensions': ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'],
         # "je ne veux pas avoir epub etre download. ajoute une section pour desactiver
         # les extensions qui peuvent etre affiche et download" - contrairement à
         # monitored_extensions ci-dessus (ce que l'import lit sur DISQUE), ce réglage

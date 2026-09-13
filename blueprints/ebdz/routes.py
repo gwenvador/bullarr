@@ -296,6 +296,24 @@ def auto_scrape_config():
             return jsonify({'success': False, 'error': str(e)}), 500
 
 
+def _build_nouveautes_title_match_index(series_rows, title_match_key):
+    """Indexe les séries locales par clé de titre, sans jamais choisir entre deux
+    candidates. Les nouveautés peuvent alors ouvrir une fiche et son lien Bédéthèque
+    lorsque le titre correspond de façon certaine, même si le sujet EBDZ précis n'a pas
+    encore été attaché à la série. Aucun champ de la base n'est modifié ici.
+    """
+    candidates = {}
+    for series_id, _thread_id, bedetheque_url, series_title in series_rows:
+        if not series_title:
+            continue
+        key = title_match_key(series_title)
+        candidates.setdefault(key, []).append((series_id, bedetheque_url, series_title))
+    return {
+        key: matches[0] if len({match[0] for match in matches}) == 1 else None
+        for key, matches in candidates.items()
+    }
+
+
 @ebdz_bp.route('/latest', methods=['GET'])
 def latest_scrape():
     """Retourne l'historique des scrapes (fichiers ajoutés à chaque session), la plus
@@ -349,16 +367,6 @@ def latest_scrape():
         # utilisés ici pour already_owned mais jamais renvoyés au frontend).
         from blueprints.missing_monitor.searcher import MissingVolumeSearcher
 
-        # Une seule fonction pour calculer la clé de comparaison "already_in_library",
-        # appliquée IDENTIQUEMENT au titre local et au thread_title EBDZ (voir son usage
-        # plus bas) - ebdz_core_title retire un éventuel suffixe entre parenthèses/
-        # crochets (désambiguateur d'auteur, ex: "(Murawiec)"/"[Murawiec]") avant
-        # unscramble_trailing_article (article "Le/La/Les/L'" ramené en tête, ex: "Grand
-        # vide, Le" -> "Le Grand vide"). Traiter les deux titres avec la MÊME fonction
-        # plutôt que d'appliquer ces étapes séparément de chaque côté (ce qui a été
-        # tenté puis restait faux pour "Le grand vide (Murawiec)": le suffixe local
-        # "(Murawiec)" n'était jamais retiré alors que le suffixe EBDZ "[Murawiec]"
-        # l'était) est ce qui garantit que les deux titres finissent bien comparables.
         def _title_match_key(title):
             return normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title)))
 
@@ -372,10 +380,14 @@ def latest_scrape():
             WHERE mm.enabled = 1
         ''')
         monitored_titles = {_title_match_key(row[0]) for row in library_cursor.fetchall() if row[0]}
-        library_cursor.execute("SELECT id, ebdz_thread_id, bedetheque_url, title FROM series WHERE ebdz_thread_id IS NOT NULL")
+        library_cursor.execute("SELECT id, ebdz_thread_id, bedetheque_url, title FROM series")
+        all_series_rows = library_cursor.fetchall()
+        title_to_unambiguous_series = _build_nouveautes_title_match_index(all_series_rows, _title_match_key)
         thread_to_series_ids = {}
         thread_to_first_series = {}
-        for series_id, thread_id, bedetheque_url, series_title in library_cursor.fetchall():
+        for series_id, thread_id, bedetheque_url, series_title in all_series_rows:
+            if thread_id is None:
+                continue
             thread_to_series_ids.setdefault(str(thread_id), []).append(series_id)
             thread_to_first_series.setdefault(str(thread_id), (series_id, bedetheque_url, series_title))
         matched_thread_ids = set(thread_to_series_ids.keys())
@@ -469,6 +481,14 @@ def latest_scrape():
                     # (Murawiec)" (article en fin + suffixe différent des deux côtés).
                     normalized_core_title = _title_match_key(row['thread_title'] or '')
                     matched_series_id, matched_bedetheque_url, matched_series_title = thread_to_first_series.get(str(thread_id), (None, None, None))
+                    # Le lien explicite de sujet EBDZ est prioritaire. Sans ce lien, un
+                    # titre local unique (Carthago [auteurs] -> Carthago) est suffisamment
+                    # sûr pour exposer les actions UI, mais n'écrit jamais ebdz_thread_id:
+                    # l'utilisateur peut corriger le match depuis la fiche si nécessaire.
+                    if matched_series_id is None:
+                        title_match = title_to_unambiguous_series.get(normalized_core_title)
+                        if title_match is not None:
+                            matched_series_id, matched_bedetheque_url, matched_series_title = title_match
                     grouped[thread_id] = {
                         'thread_id': thread_id,
                         'title': row['thread_title'],

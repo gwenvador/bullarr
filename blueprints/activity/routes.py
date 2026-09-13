@@ -432,16 +432,6 @@ def activity_status():
             recognized_items = []
             for item in r['items']:
                 item_id = item.get('id')
-                # Priorité au lien exact déjà établi lors d'un sondage précédent (voir
-                # set_active_download_client_item_id plus bas), sans la moindre
-                # comparaison de nom. Seul le tout premier sondage d'un téléchargement
-                # encore jamais relié retombe sur la correspondance de nom ci-dessous -
-                # et UNIQUEMENT contre les lignes actuellement 'pending' de CE client
-                # (client_pending_rows), jamais un historique large: un item qui ne
-                # correspond à AUCUNE d'entre elles n'est tout simplement pas à nous, il
-                # est ignoré (pas de ligne "Chasse & Pêche" créée à la volée pour lui -
-                # c'était la source des téléchargements fantômes, voir le docstring du
-                # module).
                 linked = linked_by_item_id.get(item_id.lower()) if item_id else None
                 if linked is None:
                     # match_pending_download_by_name (downloader.py) exclut déjà toute
@@ -458,6 +448,13 @@ def activity_status():
                         'series_id': pending_match.get('series_id'),
                         'series_title': pending_match.get('series_title'),
                         'volume_number': pending_match.get('volume_number'),
+                        'is_oneshot': pending_match.get('is_oneshot', False),
+                        'is_integral': pending_match.get('is_integral', False),
+                        'integral_number': pending_match.get('integral_number'),
+                        'is_hs': pending_match.get('is_hs', False),
+                        'hs_number': pending_match.get('hs_number'),
+                        'is_episode': pending_match.get('is_episode', False),
+                        'episode_number': pending_match.get('episode_number'),
                         'created_at': pending_match.get('created_at'),
                     }
                     # Lien persisté UNE FOIS ici - tous les sondages suivants pour ce
@@ -470,6 +467,13 @@ def activity_status():
                 item['series_id'] = linked['series_id']
                 item['series_title'] = linked['series_title']
                 item['volume_number'] = linked['volume_number']
+                item['is_oneshot'] = linked.get('is_oneshot', False)
+                item['is_integral'] = linked['is_integral']
+                item['integral_number'] = linked['integral_number']
+                item['is_hs'] = linked.get('is_hs', False)
+                item['hs_number'] = linked.get('hs_number')
+                item['is_episode'] = linked.get('is_episode', False)
+                item['episode_number'] = linked.get('episode_number')
                 item['created_at'] = linked.get('created_at')
                 recognized_items.append(item)
 

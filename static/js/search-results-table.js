@@ -7,18 +7,6 @@
 // decodeFilename, copyLink, addToEmule, addTorrentToQbittorrent) - ne pas les redéclarer
 // ici pour éviter les conflits de nom.
 
-// "ajouter un fihceir a shelfmark ca ne met pas ajouté" - bug réel: `result` ici vient du
-// JSON sérialisé dans l'onclick (encodeURIComponent(JSON.stringify(...)), voir
-// buildSearchResultRowHtml), donc une COPIE indépendante de l'objet réel - le marquer
-// "ajouté" (result._addedClients.shelfmark = true) ne touchait que cette copie jetable,
-// jamais l'objet vivant dans _searchTableAllResults que _renderSearchResultsTbody relit
-// pour reconstruire chaque ligne. _markShelfmarkResultAdded (comme _markSearchResultAdded/
-// _markTelegramResultAdded pour les autres clients) retrouve et mute le VRAI objet par
-// md5, seul identifiant fiable ici (Anna's Archive n'a pas de download_url/link).
-// "le toast aussi c'est success. retire ca" - {icon: 'success'} n'est pas une clé
-// ICON_PATHS valide (icons.js): _renderToastElement retombe alors sur `iconEl.textContent
-// = icon`, affichant littéralement le mot "success" au lieu d'une icône - 'check' (déjà
-// utilisé par les autres toasts de succès de cette page) corrige ça.
 async function downloadViaShelfmark(button, serializedResult) {
     let result;
     try { result = JSON.parse(decodeURIComponent(serializedResult)); } catch (_) { result = null; }
@@ -48,26 +36,6 @@ async function downloadViaShelfmark(button, serializedResult) {
 // fichier (absent de /bedetheque-enrich par ex.), donc plus approprié pour un helper
 // partagé par tout tableau filtrable de l'app.
 
-// Point d'entrée UNIQUE pour chercher une source (EBDZ/Prowlarr/Telegram) pour une série
-// déjà identifiée - "same function same code... check that the search is the same for
-// every function that do a search in the app": la fiche série (searchMissingVolume,
-// library.js) et Découvrir (searchSources, discover.js) recherchent toutes les deux des
-// sources pour UNE série déjà connue, exactement le même besoin. Avant ce partage,
-// Découvrir avait sa propre implémentation (endpoints /api/search, /api/search/prowlarr,
-// /api/telegram-channels/search + fonctions de normalisation dédiées) qui a fini par
-// diverger du comportement de la fiche série pour Telegram: /api/missing-monitor/search
-// interroge l'API Telegram EN DIRECT (insensible à l'ordre des mots), alors que
-// /api/telegram-channels/search cherche une base locale pré-indexée en phrase EXACTE -
-// une série ("Les chats en BD" en local vs "Chats En BD (Les)" côté release Telegram/
-// EBDZ, article déplacé en fin de titre) trouvée d'un côté et introuvable de l'autre pour
-// la même recherche. Définie ici (pas dans library.js) car c'est le seul fichier chargé
-// par les deux pages (bibliothèque/fiche série ET Découvrir).
-//
-// La page Recherche (search.js) reste volontairement à part: elle sert une recherche
-// libre par texte sans série identifiée (parcourir le contenu indexé), un besoin
-// différent d'une confirmation de tome pour une série déjà connue - /api/missing-
-// monitor/search suppose un titre de série et applique une logique de confirmation de
-// volume qui n'a pas de sens pour ce cas-là.
 async function searchMissingVolumeSource(source, seriesTitle, volumeNumber, seriesId, isIntegral, isHs, isEpisode) {
     try {
         const response = await fetch('/api/missing-monitor/search', {
@@ -189,7 +157,6 @@ function detectResultFormat(result) {
     // "pour prowlarr les fichiers ne sont pas retournés avec leur extension donc ton
     // parsing foire" - vérifié empiriquement: un titre de release Prowlarr est nommé à la
     // scene (points comme séparateurs de mots, ex.
-    // "Foudroyants.T02.La.montagne.de.feu.2025.FRENCH.HYBRiD.COMiC.CBZ.eBook-TONER"), le
     // dernier segment après un point y est le groupe de release ("EBOOK-TONER"), pas
     // l'extension - même quand le vrai format (CBZ) apparaît bien plus tôt dans le titre.
     // Prowlarr ne fournit jamais de vrai nom de fichier (result.filename, seulement
@@ -488,14 +455,64 @@ function _markShelfmarkResultAdded(md5) {
 // l'état ajouté/pas encore ajouté du bouton.
 function _clientAddButtonHtml(added, clientLabel, iconHtml, onclickJs, actionVerb = 'Envoyer', extraClass = '') {
     if (added) {
-        return `<button class="btn-icon-only add-button-added${extraClass}" data-tooltip="Ajouté à ${clientLabel}" disabled><span class="btn-icon">✓</span></button>`;
+        return `<button class="btn-icon-only search-result-download-action add-button-added${extraClass}" data-tooltip="Ajouté à ${clientLabel}" disabled><span class="btn-icon">✓</span></button>`;
     }
-    return `<button class="btn-icon-only${extraClass}" data-tooltip="${actionVerb} à ${clientLabel}" onclick="${onclickJs}">${iconHtml}</button>`;
+    return `<button class="btn-icon-only search-result-download-action${extraClass}" data-tooltip="${actionVerb} à ${clientLabel}" onclick="${onclickJs}">${iconHtml}</button>`;
 }
 
 // Construit une ligne du tableau de résultats - une seule structure compacte pour
 // EBDZ/Prowlarr/Telegram au lieu d'affichages séparés, avec juste les actions qui
 // diffèrent selon la source.
+let _searchTableSelectedKeys = new Set();
+
+function _searchResultSelectionKey(result) {
+    return `${result.source || ''}|${result.link || result.download_url || result.md5 || result.message_id || result.filename || result.title || ''}`;
+}
+
+function _toggleSearchResultSelection(checkbox) {
+    const key = checkbox.dataset.selectionKey;
+    if (checkbox.checked) _searchTableSelectedKeys.add(key);
+    else _searchTableSelectedKeys.delete(key);
+    _updateSearchBatchDownloadToolbar();
+}
+
+function _updateSearchBatchDownloadToolbar() {
+    const count = _searchTableSelectedKeys.size;
+    const label = document.getElementById('search-results-batch-download-label');
+    const button = document.getElementById('search-results-batch-download');
+    if (label) label.textContent = `${count} sélectionné${count > 1 ? 's' : ''}`;
+    if (button) button.disabled = count === 0;
+    const selectAll = document.getElementById('search-results-select-all');
+    const visible = [...document.querySelectorAll('#search-results-tbody .search-result-select')];
+    const checkedVisible = visible.filter(checkbox => checkbox.checked).length;
+    if (selectAll) {
+        selectAll.checked = visible.length > 0 && checkedVisible === visible.length;
+        selectAll.indeterminate = checkedVisible > 0 && checkedVisible < visible.length;
+    }
+}
+
+function toggleAllSearchResults(selectAll) {
+    const visible = [...document.querySelectorAll('#search-results-tbody .search-result-select')];
+    visible.forEach(checkbox => {
+        checkbox.checked = selectAll.checked;
+        const key = checkbox.dataset.selectionKey;
+        if (selectAll.checked) _searchTableSelectedKeys.add(key);
+        else _searchTableSelectedKeys.delete(key);
+    });
+    _updateSearchBatchDownloadToolbar();
+}
+
+function downloadSelectedSearchResults() {
+    const checkboxes = [...document.querySelectorAll('#search-results-tbody .search-result-select:checked')];
+    checkboxes.forEach(checkbox => {
+        const downloadButton = checkbox.closest('tr')?.querySelector('.search-result-download-action:not([disabled])');
+        if (downloadButton) downloadButton.click();
+    });
+    _searchTableSelectedKeys.clear();
+    checkboxes.forEach(checkbox => { checkbox.checked = false; });
+    _updateSearchBatchDownloadToolbar();
+}
+
 function buildSearchResultRowHtml(result) {
     // "met une icône quand j'ai déjà le volume. retire l'étoile. c'est inutile" -
     // _searchTableOwnedLabels n'est peuplé que pour une recherche "série entière" (voir
@@ -542,25 +559,6 @@ function buildSearchResultRowHtml(result) {
     // série connu" (None) de 0, un id de série valide.
     const trackingSeriesId = _searchResultsContextSeriesId ?? 'null';
     const trackingVolumeId = _searchResultsContextVolumeId ?? 'null';
-    // "pourquoi thorgal ca na pas bien matcher les volumes" - un résultat porte déjà SON
-    // PROPRE numéro de tome parsé depuis son nom de fichier (result.volume, EBDZ/Telegram/
-    // Prowlarr - voir LibraryScanner.parse_filename côté search/routes.py, telegram_channels/
-    // routes.py, prowlarr/search.py), mais c'était jusqu'ici ignoré au profit du SEUL
-    // contexte de recherche partagé (_searchResultsContextVolumeNumber, un seul numéro pour
-    // TOUTE la table) - correct seulement quand la recherche part d'un "Rechercher CE tome"
-    // depuis une fiche série, faux dès qu'une recherche plus large (Recherche/Nouveautés)
-    // renvoie plusieurs tomes différents en une seule liste: chaque "Ajouter" collait alors
-    // soit le même numéro à tous, soit aucun. Préfère désormais le numéro propre au résultat,
-    // ne retombe sur le contexte partagé que si son propre nom n'a rien laissé extraire.
-    // "01 à 09 ... matché tome 1" - bug réel: un résultat marqué intégrale/pack
-    // (result.is_integral, ex. "Adèle Blanc-Sec - 01 à 09 - BDPACK.zip", parsé par
-    // LibraryScanner.parse_filename côté searcher.py) n'a lui-même AUCUN volume unique
-    // (result.volume reste null, c'est un lot de plusieurs tomes) - retomber quand même
-    // sur le contexte de recherche partagé (le tome UNIQUE recherché, ex. "Tome 1
-    // manquant") lui collait à tort ce numéro isolé, comme si le pack entier n'était
-    // QUE ce tome. Un pack/une intégrale ne doit jamais hériter du contexte de
-    // recherche à tome unique - seul un résultat qui n'est ni intégrale ni hors-série
-    // ni épisode (donc un vrai tome simple sans numéro propre extrait) en profite.
     const trackingVolumeNumber = (
         result.volume != null
             ? result.volume
@@ -600,8 +598,8 @@ function buildSearchResultRowHtml(result) {
         // Style "icône conservée + texte Ajouté" (pas une coche, voir downloadTelegramFile)
         // - même état déjà-ajouté persistant que les autres clients, juste un rendu différent.
         actionsHtml = added.telegram
-            ? `<button class="btn-icon-only add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
-            : `<button class="btn-icon-only" data-tooltip="Télécharger vers l'import" onclick="downloadTelegramFile('${escapeForAttribute(result.channel)}', ${result.message_id}, this, '${escapeForAttribute(result.channel_title || '')}', '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})">${svgIcon('download')}</button>`;
+            ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
+            : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger vers l'import" onclick="downloadTelegramFile('${escapeForAttribute(result.channel)}', ${result.message_id}, this, '${escapeForAttribute(result.channel_title || '')}', '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})">${svgIcon('download')}</button>`;
     } else if (isFourtoutici) {
         // Comme Telegram (téléchargement interne droit vers l'import, pas de client
         // externe à piloter) mais avec un vrai lien à copier - fourtoutici sert ses
@@ -609,15 +607,15 @@ function buildSearchResultRowHtml(result) {
         actionsHtml = `
             <button class="btn-icon-only" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.download_url || result.link)}', this)">${svgIcon('copy')}</button>
             ${added.fourtoutici
-                ? `<button class="btn-icon-only add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
-                : `<button class="btn-icon-only" data-tooltip="Télécharger vers l'import" onclick="downloadFourtoutici('${escapeForAttribute(result.file_id)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.download_url || result.link || '')}', ${trackingForceReplace})">${svgIcon('download')}</button>`}
+                ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
+                : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger vers l'import" onclick="downloadFourtoutici('${escapeForAttribute(result.file_id)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.download_url || result.link || '')}', ${trackingForceReplace})">${svgIcon('download')}</button>`}
         `;
     } else if (isAnnasArchive) {
         const shelfmarkAdded = added.shelfmark;
         actionsHtml = `
             <a class="btn-icon-only" href="${escapeHtml(result.info_url || result.link || '#')}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir le fichier sur Anna's Archive"><img src="/static/img/web-logo.svg" alt="Web" class="torrent-client-logo"></a>
             ${shelfmarkAdded
-                    ? `<button class="btn-icon-only add-button-added" data-tooltip="Envoyé à Shelfmark" disabled><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`
+                    ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Envoyé à Shelfmark" disabled><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`
                 // "Tome null" - trackingSeriesId/trackingVolumeId/trackingVolumeNumber (voir
                 // plus haut) sont délibérément la CHAÎNE 'null' quand inconnus, pour
                 // s'interpoler en code JS BRUT (littéral null) dans les onclick des autres
@@ -627,7 +625,7 @@ function buildSearchResultRowHtml(result) {
                 // comme la CHAÎNE "null", pas le null JSON attendu, et ressortait telle quelle
                 // jusqu'à l'affichage ("Tome null" sur /import, seul client affecté puisque
                 // seul celui-ci sérialise ces valeurs plutôt que de les injecter en code brut).
-                : `<button class="btn-icon-only" data-tooltip="Télécharger via Shelfmark" onclick="downloadViaShelfmark(this, '${encodeURIComponent(JSON.stringify({...result, series_id: trackingSeriesId === 'null' ? null : trackingSeriesId, volume_id: trackingVolumeId === 'null' ? null : trackingVolumeId, volume_number: trackingVolumeNumber === 'null' ? null : trackingVolumeNumber, force_replace: trackingForceReplace}))}')"><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`}`;
+                : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger via Shelfmark" onclick="downloadViaShelfmark(this, '${encodeURIComponent(JSON.stringify({...result, series_id: trackingSeriesId === 'null' ? null : trackingSeriesId, volume_id: trackingVolumeId === 'null' ? null : trackingVolumeId, volume_number: trackingVolumeNumber === 'null' ? null : trackingVolumeNumber, force_replace: trackingForceReplace}))}')"><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`}`;
     } else {
         actionsHtml = `
             <button class="btn-icon-only" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.download_url || result.link)}', this)">${svgIcon('copy')}</button>
@@ -657,9 +655,11 @@ function buildSearchResultRowHtml(result) {
     const unconfirmedVolumeHtml = result.unconfirmed_volume
         ? `<span style="color:#e67e22;" data-tooltip="${escapeHtml(unconfirmedReasonText)}">⚠️</span>`
         : '';
+    const isSelected = _searchTableSelectedKeys.has(_searchResultSelectionKey(result));
 
     return `
         <tr class="replace-results-row${isOwned ? ' replace-results-row-owned' : ''}">
+            <td class="replace-results-select"><input type="checkbox" class="search-result-select" data-selection-key="${escapeHtml(_searchResultSelectionKey(result))}" onchange="_toggleSearchResultSelection(this)" aria-label="Sélectionner ce résultat" ${isSelected ? 'checked=""' : ''}></td>
             <td class="replace-results-best-marker">${isOwned ? `<span class="icon-owned" data-tooltip="En bibliothèque">${svgIcon('check')}</span>` : ''}</td>
             <td class="replace-results-filename" title="${escapeHtml(displayName)}">
                 ${unconfirmedVolumeHtml} ${escapeHtml(displayName)}
@@ -852,12 +852,6 @@ function _filteredSearchTableResults() {
         // aux autres filtres dont les valeurs possibles sont limitées et connues d'avance)
         // sur le nom affiché du résultat, pour isoler une release précise parmi beaucoup.
         if (_searchTableFilters.title && !_normalizeFilterText(_searchResultDisplayName(r)).includes(_normalizeFilterText(_searchTableFilters.title))) return false;
-        // "mets une checkbox pour afficher/masquer les résultats correspondant au bon
-        // volume" - unconfirmed_volume (_confirms_requested_volume côté searcher.py) est
-        // déjà affiché avec un ⚠️ + motif et trié en dernier, mais reste visible par
-        // défaut (ex: Murena tome 14 pas encore sorti - montrer les tomes proches plutôt
-        // qu'une liste vide) - cette case permet de les masquer complètement quand on ne
-        // veut voir que de vrais matches.
         if (_searchTableFilters.hideUnconfirmed && r.unconfirmed_volume) return false;
         // "met un filtre pour voir où seuls les tomes non possédé" - _searchTableOwnedLabels
         // n'est peuplé que pour une recherche "série entière" (voir _loadOwnedVolumeLabels),
@@ -881,7 +875,8 @@ function _renderSearchResultsTbody() {
     const filtered = _filteredSearchTableResults();
     tbody.innerHTML = filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
-        : '<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>';
+        : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>';
+    _updateSearchBatchDownloadToolbar();
 }
 
 function _applySearchTableFilter(field, value) {
@@ -993,6 +988,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
     if (!results || results.length === 0) return '';
     _searchTableAllResults = [...results].sort(compareSearchResults);
     if (!preserveState) {
+        _searchTableSelectedKeys.clear();
         _searchTableFilters = { source: '', format: '', size: '', volume: '', title: '', hideUnconfirmed: true, owned: '' };
         _searchTableSort = { column: null, direction: 'asc' };
     }
@@ -1064,10 +1060,15 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
 
     return `
         ${hideUnconfirmedCheckboxHtml}
+        <div style="display:flex; align-items:center; gap:10px; margin:8px 0;">
+            <button id="search-results-batch-download" class="btn" type="button" onclick="downloadSelectedSearchResults()" disabled>Télécharger la sélection</button>
+            <span id="search-results-batch-download-label" aria-live="polite">0 sélectionné</span>
+        </div>
         <div style="overflow-x:auto;">
             <table class="replace-results-table" id="search-results-table">
                 <thead>
                     <tr>
+                        <th class="replace-results-select-header" aria-label="Sélection"><input type="checkbox" id="search-results-select-all" onchange="toggleAllSearchResults(this)" aria-label="Tout sélectionner"></th>
                         <th>${ownedColumnHeaderHtml}</th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('filename', 'Fichier',

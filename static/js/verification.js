@@ -29,6 +29,7 @@ function escapeForAttribute(text) {
 const VERIFICATION_CATEGORIES = {
     missing_metadata: { runBtnId: 'verifRunMissingMetadataBtn', render: renderMissingMetadata },
     misnamed: { runBtnId: 'verifRunMisnamedBtn', render: renderMisnamed },
+    misplaced_folders: { runBtnId: 'verifRunMisplacedFoldersBtn', render: renderMisplacedFolders },
     invalid_files: { runBtnId: 'verifRunInvalidFilesBtn', render: renderInvalidFiles },
     unmatched_owned_volumes: { runBtnId: 'verifRunUnmatchedOwnedBtn', render: renderUnmatchedOwnedVolumes },
     unmatched_owned_komga: { runBtnId: 'verifRunUnmatchedOwnedKomgaBtn', render: renderUnmatchedOwnedKomga },
@@ -108,18 +109,6 @@ function renderMissingMetadata(data) {
                         if (g.indices.length === 1) {
                             return _verifMetaItemRowHtml(verifMetaItems[g.indices[0]], g.indices[0]);
                         }
-                        // Pas de <tbody> imbriqué (HTML invalide, un <table> n'accepte qu'un
-                        // <tbody> par niveau) - les lignes de détail sont des <tr> normales,
-                        // marquées data-group et repliées via display:none, togglées en masse
-                        // par verifToggleGroupRows (partagée avec Nommage non standard) plutôt que verifToggleSection
-                        // (pensé pour un seul conteneur, pas plusieurs <tr> à la fois).
-                        //
-                        // "Mitterrand Le Dernier Président (2 tomes) - but this is not 2
-                        // tomes c'est juste 2 entrées: métadonnées manquantes et série non
-                        // matchée" - un groupe peut mélanger l'entrée 'series' (série non
-                        // matchée sur Bédéthèque, item.type==='series') et des entrées
-                        // 'volume' (un vrai tome sans ComicInfo) sous le même series_id -
-                        // "N tomes" mentait dès qu'une entrée 'series' était comptée dedans.
                         const volumeCount = g.indices.filter(i => verifMetaItems[i].type !== 'series').length;
                         const hasSeriesEntry = volumeCount !== g.indices.length;
                         const countLabel = hasSeriesEntry
@@ -211,6 +200,108 @@ function _verifRenameItemRowHtml(item, groupKey = null, isDetail = false) {
             <td><button class="btn-icon-only" onclick="verifRenameItem(${item.series_id}, ${item.volume_id ?? 'null'}, ${item.is_folder ? 'true' : 'false'}, this)" data-tooltip="Renommer" aria-label="Renommer">${svgIcon('pencil')}</button></td>
         </tr>
     `;
+}
+
+
+function _folderPlacementRowHtml(item) {
+    const action = item.can_reconcile
+        ? `<button class="btn-icon-only" onclick="verifReconcileFolder(${item.series_id}, this)" data-tooltip="Déplacer vers le dossier attendu" aria-label="Déplacer vers le dossier attendu">${svgIcon('folder')}</button>`
+        : '<span class="help-text">Conflit à résoudre</span>';
+    return `<tr class="series-table-row">
+        <td class="volume-table-select-cell">${item.can_reconcile ? `<input type="checkbox" class="verif-folder-move-select" data-series-id="${item.series_id}" aria-label="Sélectionner ${escapeHtml(item.series_title)}" onchange="verifUpdateFolderMoveSelectionCount()">` : ''}</td>
+        <td><a href="/series/${item.series_id}" class="missing-series-link">${escapeHtml(item.series_title)}</a></td>
+        <td><code>${escapeHtml(item.current_path || '')}</code></td>
+        <td>${item.expected_path ? `<code>${escapeHtml(item.expected_path)}</code>` : '—'}</td>
+        <td>${escapeHtml(item.reason)}</td>
+        <td>${action}</td>
+    </tr>`;
+}
+
+function renderMisplacedFolders(data) {
+    const list = document.getElementById('misplacedFoldersList');
+    const items = data.misplaced_folders || [];
+    document.getElementById('misplacedFoldersCount').textContent = items.length;
+    if (!items.length) {
+        list.innerHTML = '<p class="help-text">Tous les dossiers correspondent au template et à leur univers.</p>';
+    } else {
+        const universeGroups = new Map();
+        items.forEach(item => {
+            const universeName = item.universe_name || 'Sans univers';
+            if (!universeGroups.has(universeName)) universeGroups.set(universeName, []);
+            universeGroups.get(universeName).push(item);
+        });
+        list.innerHTML = [...universeGroups.entries()]
+            .sort(([a], [b]) => a.localeCompare(b, 'fr'))
+            .map(([universeName, groupItems], index) => {
+                const groupKey = `folder-universe-${index}`;
+                const selectableCount = groupItems.filter(item => item.can_reconcile).length;
+                return `
+                    <details class="verification-series-collapse" style="margin-bottom:8px;">
+                        <summary class="verification-series-collapse-title verification-folder-universe-summary" style="justify-content:flex-start; text-align:left;" onclick="event.preventDefault(); const details = this.parentElement; details.open = !details.open;">
+                            <svg class="icon verification-folder-universe-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                            <span>${escapeHtml(universeName)}</span>
+                            <span class="verification-series-collapse-count">${groupItems.length} dossier(s)</span>
+                            ${selectableCount ? `<span class="verification-folder-universe-controls"><input type="checkbox" class="verif-folder-move-group-select" data-group="${groupKey}" aria-label="Sélectionner les dossiers de ${escapeHtml(universeName)}" onclick="event.stopPropagation()" onchange="verifToggleFolderMoveGroup(this, '${groupKey}')"></span>` : ''}
+                        </summary>
+                        <table class="series-table"><thead><tr><th></th><th>Série</th><th>Actuel</th><th>Attendu</th><th>État</th><th>Action</th></tr></thead><tbody>${groupItems.map(item => _folderPlacementRowHtml(item).replace('class="verif-folder-move-select"', `class="verif-folder-move-select" data-group="${groupKey}"`)).join('')}</tbody></table>
+                    </details>`;
+            }).join('');
+    }
+    const controls = document.getElementById('verifFolderMoveBulkControls');
+    controls.style.display = items.some(item => item.can_reconcile) ? 'flex' : 'none';
+    document.getElementById('verifFolderMoveSelectAll').checked = false;
+    verifUpdateFolderMoveSelectionCount();
+}
+
+async function _verifRequestFolderReconciliation(seriesId) {
+    const response = await fetch(`/api/series/${seriesId}/rename/execute`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.success || !payload.folder?.success) {
+        throw new Error(payload.error || payload.folder?.error || 'Déplacement impossible');
+    }
+    return payload;
+}
+
+async function verifReconcileFolder(seriesId, buttonEl) {
+    buttonEl.disabled = true;
+    try {
+        await _verifRequestFolderReconciliation(seriesId);
+        showToast('Dossier déplacé vers son emplacement attendu.', 'success');
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally {
+        await runVerificationCategory('misplaced_folders');
+    }
+}
+
+function verifToggleFolderMoveGroup(checkboxEl, groupKey) {
+    document.querySelectorAll(`.verif-folder-move-select[data-group="${groupKey}"]`).forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateFolderMoveSelectionCount();
+}
+
+function verifToggleSelectAllFolderMoves(checkboxEl) {
+    document.querySelectorAll('.verif-folder-move-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    verifUpdateFolderMoveSelectionCount();
+}
+
+function verifUpdateFolderMoveSelectionCount() {
+    const count = document.querySelectorAll('.verif-folder-move-select:checked').length;
+    document.getElementById('verifFolderMoveSelectedCount').textContent = count;
+    document.getElementById('verifBulkFolderMoveBtn').disabled = count === 0;
+}
+
+async function verifBulkReconcileFolders() {
+    const ids = [...document.querySelectorAll('.verif-folder-move-select:checked')].map(cb => Number(cb.dataset.seriesId));
+    const button = document.getElementById('verifBulkFolderMoveBtn');
+    button.disabled = true;
+    let failed = 0;
+    for (const seriesId of ids) {
+        try { await _verifRequestFolderReconciliation(seriesId); } catch (error) { failed += 1; }
+    }
+    showToast(failed ? `${ids.length - failed} déplacé(s), ${failed} échec(s).` : `${ids.length} dossier(s) déplacé(s).`, failed ? 'error' : 'success');
+    await runVerificationCategory('misplaced_folders');
 }
 
 function renderMisnamed(data) {
@@ -640,7 +731,10 @@ async function selectVerificationKomgaCandidate(seriesId, komgaSeriesId) {
         const data = await response.json();
         if (!data.success) { alert('❌ ' + (data.error || 'Matching Komga impossible')); return; }
         document.getElementById('komga-match-modal').classList.remove('active');
-        await runVerificationCategory('unmatched_owned_komga');
+        // Cette modale appartient à la table « Matching incorrect », pas à la
+        // catégorie « Tomes possédés sans lien Komga ». Rafraîchir la ligne réelle
+        // conserve les filtres actifs et reflète immédiatement le match choisi.
+        _refreshMissingRowOrRemove(seriesId);
     } catch (error) {
         alert('❌ Erreur pendant le matching Komga');
     }
@@ -696,8 +790,8 @@ function renderDuplicateSeries(data) {
             <tbody>
                 ${items.map(item => `
                     <tr class="series-table-row">
-                        <td><div class="duplicate-series-entry">${item.cleanup_eligible ? `<input type="checkbox" class="verif-duplicate-select" value="${item.duplicate_series_id}" aria-label="Sélectionner ${escapeHtml(item.duplicate_series_title)}" onchange="verifUpdateDuplicateSelectionCount()"> ` : ''}<a href="/series/${item.duplicate_series_id}" class="missing-series-link">${escapeHtml(item.duplicate_series_title)}</a><span class="help-text duplicate-series-meta">${item.cleanup_eligible ? `Nettoyable — cette entrée sera supprimée (n°${duplicateSeriesNumber(item)})` : 'À vérifier manuellement'}</span><span class="help-text duplicate-series-path">${escapeHtml(item.duplicate_series_path || '')}</span></div></td>
-                        <td>${(item.populated_series || []).map((series, index) => `<div class="duplicate-series-entry"><strong>${index + 1} :</strong> <a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a><span class="help-text duplicate-series-meta">${series.volume_count} fichiers</span><span class="help-text duplicate-series-path">${escapeHtml(series.path || '')}</span></div>`).join('')}</td>
+                        <td><div class="duplicate-series-entry"><strong>Doublon :</strong> ${escapeHtml(item.duplicate_series_title)}<span class="help-text duplicate-series-meta">Sélectionnez la série à supprimer</span>${(item.deletable_series || []).map(series => `<label class="duplicate-series-entry"><input type="checkbox" class="verif-duplicate-select" value="${series.id}" aria-label="Supprimer ${escapeHtml(series.title)}" onchange="verifUpdateDuplicateSelectionCount()"> <a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a><span class="help-text duplicate-series-meta">${series.volume_count != null ? `${series.volume_count} tomes` : 'nombre de tomes inconnu'}</span><span class="help-text duplicate-series-path">${escapeHtml(series.path || '')}</span></label>`).join('')}</div></td>
+                        <td>${(item.populated_series || []).map((series, index) => `<div class="duplicate-series-entry"><strong>${index + 1} :</strong> <a href="/series/${series.id}" class="missing-series-link">${escapeHtml(series.title)}</a><span class="help-text duplicate-series-meta">${series.volume_count} fichiers</span><span class="help-text duplicate-series-path">${escapeHtml(series.path || '')}</span></div>`).join('')}${(item.komga_series || []).map((series, index) => `<div class="duplicate-series-entry"><strong>Komga ${index + 1} :</strong> <a href="${escapeHtml(series.url || '#')}" target="_blank" rel="noopener" class="missing-series-link">${escapeHtml(series.title || series.id || 'Série')}</a><span class=\"help-text duplicate-series-meta\">${series.volume_count != null ? `${series.volume_count} tomes` : 'nombre de tomes inconnu'}</span></div>`).join('')}</td>
                         <td><span class="help-text">${escapeHtml(item.komga_series_id)}</span></td>
                     </tr>
                 `).join('')}
@@ -1386,13 +1480,13 @@ function _missingMatchRowHtml(s) {
         <tr class="series-table-row" id="missing-row-${s.id}">
             <td class="volume-table-select-cell"><input type="checkbox" class="missing-series-checkbox" value="${s.id}" aria-label="Sélectionner ${escapeHtml(s.title)}" onchange="syncMissingSeriesSelectAll()"></td>
             <td><a class="missing-series-link" href="/series/${s.id}">${escapeHtml(s.title)}</a></td>
-            <td class="missing-match-status-cell" data-matched="${s.bedetheque_matched ? '1' : '0'}">${s.bedetheque_matched
+            <td class="missing-match-status-cell" data-source="bedetheque" data-matched="${s.bedetheque_matched ? '1' : '0'}">${s.bedetheque_matched
                 ? (s.bedetheque_url ? `<a href="${escapeHtml(s.bedetheque_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir sur Bédéthèque" aria-label="Ouvrir sur Bédéthèque"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur Bédéthèque" aria-label="Matcher sur Bédéthèque" onclick="verifMatchingBedethequeButtonClick(${s.id}, '${escapeForAttribute(s.title)}', this)"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>
-            ${_ebdzConfigured ? `<td class="missing-match-status-cell" data-matched="${s.ebdz_matched ? '1' : '0'}">${s.ebdz_matched
+            ${_ebdzConfigured ? `<td class="missing-match-status-cell" data-source="ebdz" data-matched="${s.ebdz_matched ? '1' : '0'}">${s.ebdz_matched
                 ? (s.ebdz_thread_url ? `<a href="${escapeHtml(s.ebdz_thread_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir le thread EBDZ" aria-label="Ouvrir le thread EBDZ"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur EBDZ" aria-label="Matcher sur EBDZ" onclick="enrichOpenEbdzMatchModal(${s.id}, '${escapeForAttribute(s.title)}')"><img src="/static/img/ebdz-logo.png" alt="EBDZ" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>` : ''}
-            ${_komgaConfigured ? `<td class="missing-match-status-cell" data-matched="${s.komga_matched ? '1' : '0'}">${s.komga_matched
+            ${_komgaConfigured ? `<td class="missing-match-status-cell" data-source="komga" data-matched="${s.komga_matched ? '1' : '0'}">${s.komga_matched
                 ? (s.komga_url ? `<a href="${escapeHtml(s.komga_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Ouvrir Komga" aria-label="Ouvrir Komga"><span style="color:#28a745;">${svgIcon('check')}</span></a>` : `<span style="color:#28a745;">${svgIcon('check')}</span>`)
                 : `<button type="button" class="btn-icon-only" data-tooltip="Matcher sur Komga" aria-label="Matcher sur Komga" onclick="openVerificationKomgaMatcher(${s.id}, '${escapeForAttribute(s.title)}')"><img src="/static/img/komga-logo.svg" alt="Komga" style="width:18px;height:18px;object-fit:contain;"></button>`}</td>` : ''}
         </tr>
@@ -1414,6 +1508,8 @@ function _refreshMissingRowOrRemove(seriesId) {
             if (remaining === 0) loadMissingMatches();
         } else {
             row.outerHTML = _missingMatchRowHtml(s);
+            // La ligne recréée doit respecter immédiatement les filtres encore actifs.
+            filterMissingSeriesTable();
         }
     });
 }
@@ -1574,14 +1670,14 @@ function filterMissingSeriesTable(query) {
     const statusFilters = window.missingStatusFilters || {};
     document.querySelectorAll('#missing-table-body tr').forEach(row => {
         const title = row.querySelector('.missing-series-link')?.textContent?.toLowerCase() || '';
-        // Ordre des colonnes de statut = ordre des <th> (Bédéthèque puis EBDZ si présent,
-        // voir loadMissingMatches) - même index pour retrouver la bonne cellule.
+        // Les colonnes sont dynamiques: EBDZ et Komga peuvent être absents
+        // indépendamment. Lire le champ via data-source évite que le filtre Komga
+        // utilise par erreur la deuxième colonne (ou qu'il ne soit jamais appliqué).
         const statusCells = row.querySelectorAll('.missing-match-status-cell');
-        const bedethequeMatched = statusCells[0]?.dataset.matched || '';
-        const ebdzMatched = statusCells[1]?.dataset.matched || '';
+        const statusBySource = {};
+        statusCells.forEach(cell => { statusBySource[cell.dataset.source] = cell.dataset.matched || ''; });
         row.hidden = (!!needle && !title.includes(needle))
-            || (!!statusFilters.bedetheque && bedethequeMatched !== statusFilters.bedetheque)
-            || (!!statusFilters.ebdz && ebdzMatched !== statusFilters.ebdz);
+            || Object.entries(statusFilters).some(([source, expected]) => expected && statusBySource[source] !== expected);
     });
     syncMissingSeriesSelectAll();
 }
@@ -1613,6 +1709,7 @@ function verifCollapseAllSections() {
         ['unmatchedOwnedList', 'unmatchedOwnedToggle'],
         ['unmatchedOwnedKomgaList', 'unmatchedOwnedKomgaToggle'],
         ['duplicateSeriesList', 'duplicateSeriesToggle'],
+        ['misplacedFoldersList', 'folderPlacementToggle'],
     ].forEach(([listId, buttonId]) => {
         const list = document.getElementById(listId);
         const button = document.getElementById(buttonId);
@@ -1644,6 +1741,7 @@ document.addEventListener('DOMContentLoaded', () => {
     verifCollapseAllSections();
     runVerificationCategory('missing_metadata');
     runVerificationCategory('misnamed');
+    runVerificationCategory('misplaced_folders');
     runVerificationCategory('invalid_files');
     runVerificationCategory('unmatched_owned_volumes');
     runVerificationCategory('unmatched_owned_komga');

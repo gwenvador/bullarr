@@ -335,7 +335,7 @@ def attach_series_to_pending_download(client: str, series_id: int, link: Optiona
         return False
 
 
-def get_trackable_active_downloads() -> List[Dict]:
+def get_trackable_active_downloads(include_failed=False) -> List[Dict]:
     """Les active_downloads récents porteurs d'un series_id réel (donc posés depuis une
     fiche série ou le monitoring automatique - voir mark_download_pending), sous forme de
     liste brute plutôt que déjà comparés à un nom de fichier précis - voir
@@ -365,13 +365,14 @@ def get_trackable_active_downloads() -> List[Dict]:
 
         conn = sqlite3.connect(db_path, timeout=30.0)
         cursor = conn.cursor()
-        cursor.execute('''
+        statuses = "('pending', 'completed', 'importing', 'failed')" if include_failed else "('pending', 'completed', 'importing')"
+        cursor.execute(f'''
             SELECT id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count,
                    client, client_item_id, force_replace,
                    is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
             FROM active_downloads
             WHERE series_id IS NOT NULL
-              AND status IN ('pending', 'completed', 'importing')
+              AND status IN {statuses}
             ORDER BY created_at DESC
         ''')
         # client/client_item_id: "can the clients api tell you the location of the files
@@ -467,15 +468,22 @@ def find_active_downloads_by_client_item_ids(client: str, client_item_ids) -> Di
         cursor = conn.cursor()
         placeholders = ','.join('?' for _ in ids)
         cursor.execute(
-            f"SELECT ad.client_item_id, ad.id, ad.series_id, ad.volume_number, ad.created_at, s.title "
+            f"SELECT ad.client_item_id, ad.id, ad.series_id, ad.volume_number, ad.created_at, s.title, s.is_oneshot, "
+            f"ad.is_integral, ad.integral_number, ad.is_hs, ad.hs_number, ad.is_episode, ad.episode_number "
             f"FROM active_downloads ad LEFT JOIN series s ON s.id = ad.series_id "
             f"WHERE ad.client = ? AND LOWER(ad.client_item_id) IN ({placeholders})",
             (client, *ids)
         )
-        for client_item_id, tracking_id, series_id, volume_number, created_at, series_title in cursor.fetchall():
+        for row in cursor.fetchall():
+            (client_item_id, tracking_id, series_id, volume_number, created_at, series_title, is_oneshot,
+             is_integral, integral_number, is_hs, hs_number, is_episode, episode_number) = row
             result[client_item_id.lower()] = {
                 'tracking_id': tracking_id, 'series_id': series_id,
-                'volume_number': volume_number, 'series_title': series_title, 'created_at': created_at
+                'volume_number': volume_number, 'series_title': series_title, 'created_at': created_at,
+                'is_oneshot': bool(is_oneshot),
+                'is_integral': bool(is_integral), 'integral_number': integral_number,
+                'is_hs': bool(is_hs), 'hs_number': hs_number,
+                'is_episode': bool(is_episode), 'episode_number': episode_number,
             }
         conn.close()
     except Exception as e:
@@ -677,6 +685,11 @@ def mark_download_skipped(download_id: Optional[int]) -> None:
     get_pending_downloads): garde une trace distincte plutôt que de disparaître ou de
     se faire passer pour un import réel."""
     _set_pending_download_status(download_id, 'skipped')
+
+
+def mark_download_cancelled(download_id: Optional[int]) -> None:
+    '''Mark an explicitly removed import row as cancelled without touching its source.'''
+    _set_pending_download_status(download_id, 'cancelled')
 
 
 def reconcile_stale_active_downloads() -> int:
@@ -1512,7 +1525,7 @@ def get_pending_downloads() -> List[Dict]:
                 'series_title': series_title,
                 'bytes_downloaded': bytes_downloaded, 'bytes_total': bytes_total,
                 'exhausted': exhausted,
-                'is_pack': bool(is_pack), 'expected_volume_count': expected_volume_count,
+                'is_pack': bool(is_pack), 'is_oneshot': bool(is_oneshot), 'expected_volume_count': expected_volume_count,
                 'client_item_id': client_item_id,
                 'status': download_status,
                 'needs_volume_correction': needs_volume_correction,

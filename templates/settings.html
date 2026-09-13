@@ -36,7 +36,7 @@
                 <a href="#indexeurs" class="nav-sublink" data-tab="indexeurs" onclick="switchTab('indexeurs'); return false;">🔌 Indexeurs</a>
                 <a href="#clients" class="nav-sublink" data-tab="clients" onclick="switchTab('clients'); return false;">💻 Clients</a>
                 <a href="#telegram" class="nav-sublink" data-tab="telegram" onclick="switchTab('telegram'); return false;">📱 Notifications</a>
-                <a href="#oidc" class="nav-sublink" data-tab="oidc" onclick="switchTab('oidc'); return false;">🔐 SSO / OIDC</a>
+                <a href="#oidc" class="nav-sublink" data-tab="oidc" onclick="switchTab('oidc'); return false;">🔐 Login</a>
                 <a href="#monitoring" class="nav-sublink" data-tab="monitoring" onclick="switchTab('monitoring'); return false;">📊 Surveillance</a>
                 <a href="#import-auto" class="nav-sublink" data-tab="import-auto" onclick="switchTab('import-auto'); return false;">📥 Imports</a>
                 <a href="#theme" class="nav-sublink" data-tab="theme" onclick="switchTab('theme'); return false;">🌓 Thème</a>
@@ -89,7 +89,7 @@
                             </div>
                             <div class="integration-card" onclick="switchTab('oidc')">
                                 <span class="integration-card-icon">🔐</span>
-                                <div class="integration-card-name">SSO / OIDC</div>
+                                <div class="integration-card-name">Login</div>
                             </div>
                             <div class="integration-card" onclick="switchTab('monitoring')">
                                 <span class="integration-card-icon">📊</span>
@@ -1341,12 +1341,26 @@
                     </div>
                 </div>
 
-                <!-- Onglet SSO / OIDC -->
+                <!-- Onglet Login -->
                 <div class="tab-content" id="tab-oidc">
                     <div class="settings-section">
                         <div class="section-header">
                             <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
-                            <h2>🔐 Configuration SSO / OIDC</h2>
+                            <h2>🔐 Configuration Login</h2>
+                            <style>
+        .auth-mode-group { margin-bottom: 28px; }
+        .auth-mode-heading { display:flex; flex-direction:column; gap:5px; margin-bottom:12px; }
+        .auth-mode-options { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+        .auth-mode-option { display:flex; align-items:flex-start; gap:12px; min-height:76px; padding:15px; border:1px solid var(--border-color, #e5e7eb); border-radius:14px; background:var(--card-background, #fff); color:inherit; text-align:left; cursor:pointer; transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease, background .18s ease; }
+        .auth-mode-option:hover { transform:translateY(-1px); border-color:#8b5cf6; box-shadow:0 5px 16px rgba(99,102,241,.12); }
+        .auth-mode-option.is-selected { border-color:#6366f1; background:linear-gradient(135deg, rgba(99,102,241,.10), rgba(139,92,246,.05)); box-shadow:0 0 0 2px rgba(99,102,241,.14); }
+        .auth-mode-option:focus-visible { outline:3px solid rgba(99,102,241,.3); outline-offset:2px; }
+        .auth-mode-icon { display:grid; place-items:center; width:32px; height:32px; flex:0 0 32px; border-radius:10px; background:rgba(99,102,241,.1); font-size:18px; }
+        .auth-mode-copy { display:flex; flex-direction:column; gap:4px; min-width:0; }
+        .auth-mode-copy strong { font-size:.92rem; line-height:1.2; }
+        .auth-mode-copy small { color:var(--text-muted, #6b7280); line-height:1.25; }
+        @media (max-width: 760px) { .auth-mode-options { grid-template-columns:1fr; } .auth-mode-option { min-height:0; } }
+</style>
                             <p class="section-description">
                                 Protégez l'accès à l'application avec votre fournisseur d'identité (OIDC).
                                 Une fois activée, une connexion sera exigée pour accéder à toutes les pages.
@@ -1354,13 +1368,39 @@
                         </div>
 
                         <div class="settings-card">
-                            <div class="form-group checkbox-group">
-                                <input type="checkbox" id="oidcEnabled">
-                                <label for="oidcEnabled">
-                                    <strong>Activer l'authentification SSO / OIDC</strong>
-                                    <span class="help-text">Exige une connexion via votre fournisseur d'identité pour accéder à l'application</span>
-                                </label>
+                            <div class="form-group auth-mode-group">
+                                <div class="auth-mode-heading">
+                                    <label>Mode d’authentification</label>
+                                    <span class="help-text">Choisissez comment protéger l’accès à Bullarr.</span>
+                                </div>
+                                <input type="hidden" id="authMode" value="none">
+                                <div class="auth-mode-options" role="radiogroup" aria-label="Mode d’authentification">
+                                    <button type="button" class="auth-mode-option" data-auth-mode="none" role="radio" aria-checked="false" onclick="selectAuthMode('none')">
+                                        <span class="auth-mode-icon">◌</span>
+                                        <span class="auth-mode-copy"><strong>Sans authentification</strong><small>Accès direct à Bullarr</small></span>
+                                    </button>
+                                    <button type="button" class="auth-mode-option" data-auth-mode="password" role="radio" aria-checked="false" onclick="selectAuthMode('password')">
+                                        <span class="auth-mode-icon">🔑</span>
+                                        <span class="auth-mode-copy"><strong>Login / mot de passe</strong><small>Compte local sécurisé</small></span>
+                                    </button>
+                                    <button type="button" class="auth-mode-option" data-auth-mode="oidc" role="radio" aria-checked="false" onclick="selectAuthMode('oidc')">
+                                        <span class="auth-mode-icon">◎</span>
+                                        <span class="auth-mode-copy"><strong>OIDC</strong><small>Connexion via un fournisseur</small></span>
+                                    </button>
+                                </div>
                             </div>
+
+                            <div id="passwordAuthFields">
+                                <div class="form-group">
+                                    <label for="loginUsername">Identifiant</label>
+                                    <input type="text" id="loginUsername" autocomplete="username">
+                                </div>
+                                <div class="form-group">
+                                    <label for="loginPassword">Mot de passe</label>
+                                    <input type="password" id="loginPassword" autocomplete="new-password" placeholder="Laisser vide pour conserver l’actuel">
+                                </div>
+                            </div>
+
 
                             <div class="form-group">
                                 <label for="oidcIssuer">URL de l'issuer</label>
@@ -1635,7 +1675,7 @@
                                         <tr>
                                             <td style="padding:8px 10px;"><code>&lt;univers&gt;</code></td>
                                             <td style="padding:8px 10px;">Univers Bédéthèque de la série (détecté via ses "Séries liées") - absent si la série n'appartient à aucun univers connu</td>
-                                            <td style="padding:8px 10px; color:#666;">Thorgal</td>
+                                            <td style="padding:8px 10px; color:#666;">Univers exemple</td>
                                         </tr>
                                     </tbody>
                                 </table>

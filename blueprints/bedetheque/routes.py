@@ -221,10 +221,6 @@ def pantheon_authors():
                 works_node = row.select_one('.texte-auteur')
                 cat_node = row.select_one('.cat-hall a')
                 year_node = row.select_one('.annee-hall')
-                # get_text(' ', strip=True) ne collapse pas les runs d'espaces/retours à
-                # la ligne À L'INTÉRIEUR d'un même nœud texte (seulement en début/fin) -
-                # "Scénariste,\n                    Dessinateur" (mise en forme HTML
-                # source) restait donc avec tous ses espaces internes intacts.
                 def _clean(node):
                     return ' '.join(node.get_text(' ', strip=True).split()) if node else ''
                 items.append({
@@ -871,6 +867,13 @@ def enrich_series(series_id):
         return jsonify({'error': 'search_by doit être "title" ou "url"'}), 400
 
     try:
+        # Le matching manuel peut être demandé alors que de nouveaux fichiers sont déjà présents dans le dossier mais absents de `volumes`. Recharger la série depuis le disque avant d'appliquer la fiche Bédéthèque garantit que le thread de métadonnées travaille sur les lignes réelles et que les nouveaux fichiers sont disponibles en base. Ce scan ciblé ne déplace aucun fichier.
+        from blueprints.library.scanner import LibraryScanner
+        try:
+            LibraryScanner(current_app.config['DATABASE']).scan_single_series(series_id)
+        except Exception as e:
+            logger.warning(f"Rescan préalable au matching Bédéthèque ignoré pour la série #{series_id}: {e}")
+
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT title FROM series WHERE id = ?', (series_id,))
@@ -1430,30 +1433,9 @@ def _align_title_and_start_metadata_write(series_id, series_title, info, write_v
 
     conn.commit()
 
-    if bd_title:
-        try:
-            from blueprints.library.routes import _fetch_series_for_rename, _rename_series_folder, _log_rename_action
-            from blueprints.settings.rename_config_store import load_rename_config
-            series_for_rename = _fetch_series_for_rename(cursor, series_id)
-            if series_for_rename and series_for_rename['path']:
-                rename_cfg = load_rename_config()
-                folder_result = _rename_series_folder(
-                    conn, series_id, series_for_rename['path'], bd_title,
-                    series_for_rename['library_path'], {}, rename_cfg['series_template'],
-                    universe_name=series_for_rename['universe_name']
-                )
-                if folder_result and folder_result.get('success') and folder_result.get('changed'):
-                    _log_rename_action(series_id, bd_title, [], folder_result)
-                    # Mutation disque hors des chemins qui déclenchent déjà leur propre
-                    # rescan Komga plus loin (voir CLAUDE.md, tout chemin qui touche au
-                    # système de fichiers doit le faire) - pas conditionné à write_volumes,
-                    # ce déplacement a lieu même en scope "série uniquement".
-                    from blueprints.komga.client import trigger_scan_async
-                    trigger_scan_async()
-                elif not (folder_result and folder_result.get('success')):
-                    logger.warning(f"Renommage automatique du dossier échoué pour la série #{series_id}: {folder_result}")
-        except Exception as e:
-            logger.warning(f"Renommage automatique du dossier échoué pour la série #{series_id}: {e}")
+    # A Bédéthèque refresh may update reference metadata and the display title, but
+    # it must never move a series directory. Folder relocation is an explicit
+    # rename action because it moves every file below that directory.
 
     conn.close()
 
@@ -2110,13 +2092,6 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
     Retourne le nombre de lignes créées."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    # BEGIN IMMEDIATE prend le verrou d'écriture dès l'ouverture de la transaction,
-    # avant même le SELECT ci-dessous: sans ça, deux appels concurrents (ex: l'utilisateur
-    # clique "MAJ métadonnées" pendant qu'un enrichissement par lot tourne) peuvent chacun
-    # lire "rien en base pour ce numéro" avant que l'autre n'ait committé son propre
-    # INSERT, et créer un doublon du même tome placeholder - constaté sur plusieurs
-    # dizaines de séries après un enrichissement de bibliothèque en tâche de fond pendant
-    # que d'autres MAJ métadonnées individuelles tournaient en parallèle depuis l'UI.
     cursor.execute('BEGIN IMMEDIATE')
 
     # "but you should look at bedetheque and see that it is a one-shot so no need to
@@ -2127,18 +2102,6 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
     # cette fonction d'un paramètre supplémentaire chez tous ses appelants.
     is_oneshot_series = bool(cursor.execute('SELECT is_oneshot FROM series WHERE id = ?', (series_id,)).fetchone()[0])
 
-    # "Après l'orage (Cremers)" (voir CLAUDE.md): un one-shot n'a par définition qu'UNE
-    # seule oeuvre - tout autre album non numéroté que Bédéthèque liste sur la même page
-    # (tirage/édition alternative) n'est jamais un second contenu à acquérir dès qu'on
-    # possède déjà le fichier réel. Le dédoublonnage par titre (existing_all_titles plus
-    # bas) suffisait pour Le Gaulois/Lucky Luke/Nordheim (albums numérotés, titre Bédéthèque
-    # identique au titre local) mais pas ici: le titre du fichier réel d'un one-shot est
-    # souvent celui de la SÉRIE (comicinfo['series'], pas 'title', voir _row_title), qui
-    # porte parfois un suffixe de désambiguïsation purement local ("(Cremers)", ajouté
-    # pour distinguer deux séries locales de même titre) absent du titre brut Bédéthèque
-    # de l'édition alternative ("Après l'orage" sans suffixe) - la comparaison de titre
-    # échoue alors silencieusement. Pour un one-shot déjà possédé, plus besoin de
-    # comparer les titres du tout: AUCUN spécial supplémentaire n'a de raison d'exister.
     has_owned_real_volume = bool(cursor.execute(
         'SELECT 1 FROM volumes WHERE series_id = ? AND filepath IS NOT NULL LIMIT 1', (series_id,)
     ).fetchone())
@@ -2160,12 +2123,6 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
     # dans le même champ `number` que ses tomes (voir plus bas), un tome et un épisode
     # peuvent donc légitimement partager le même numéro sans être le même album.
     existing_episode_numbers = set()
-    # "check nordheim... some are duplicates" (suite): le matching d'un fichier RÉELLEMENT
-    # possédé (match_bedetheque_volume, "MAJ métadonnées") peut lui aussi écrire l'URL
-    # générique de la série en <Web> quand il n'est pas sûr à 100% de l'album précis
-    # (constaté sur L'Épervier: un fichier matché "INT01TL . 1+2" mais avec web = URL de
-    # la série, pas celle de l'album) - même repli par titre qu'en dessous pour
-    # existing_unclassified_titles, appliqué ici aux intégrales/hors-séries.
     existing_integral_titles = set()
     existing_hs_titles = set()
     existing_unclassified_titles = set()
@@ -2192,15 +2149,6 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
             ci = {}
         return ci.get('title')
 
-    # "check nordheim... some are duplicates": une ligne réelle importée AVANT l'existence
-    # d'une classification (ex: is_episode, ajoutée à ce parser le 19/07 - un fichier
-    # "Épisode N" scanné avant cette date est resté classé volume_number=N/is_episode=0)
-    # ne matche alors plus jamais la MÊME entrée Bédéthèque, reclassée différemment par un
-    # scrape plus récent - un nouveau placeholder se recréait à côté à chaque
-    # resynchronisation, quelle que soit sa classification à elle. L'URL Bédéthèque d'une
-    # ligne, elle, ne dépend d'aucun schéma de classification et reste le même identifiant
-    # quoi qu'il arrive - vérifiée en premier, tous types confondus, avant tout repli
-    # spécifique à un type.
     existing_all_urls = set()
     unclaimed_unclassified_real_volumes = 0
     unclaimed_integral_real_numbers = set()
@@ -2212,17 +2160,6 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
     # real_volumes (qui suppose un tome sans AUCUNE classification, un cas différent).
     existing_special_titles = set()
     unclaimed_special_titles = set()
-    # "Aldobrando"/"Le Gaulois" (voir CLAUDE.md): Bédéthèque catalogue parfois un TIRAGE ou
-    # une ÉDITION alternative d'un album déjà possédé (luxe "TL", réédition, coffret...)
-    # comme sa PROPRE page d'album, sans aucun 'number' - exactement la même mécanique
-    # qu'un vrai spécial (COF/Pub/...) aux yeux de ce parseur, mais ce n'est pas un
-    # contenu à acquérir en plus, juste un autre tirage de ce qu'on a déjà. Titre exact
-    # (ou titre après un éventuel préfixe "CODE . ", voir plus bas) comparé contre TOUS
-    # les titres déjà connus dans la série, tomes numérotés compris - pas seulement
-    # existing_special_titles/existing_unclassified_titles comme avant, qui ne
-    # couvraient pas le cas d'une réédition d'un TOME NUMÉROTÉ (Le Gaulois Tome 4: la
-    # version normale est en base sous volume_number=4, jamais comparée jusqu'ici contre
-    # le titre d'un spécial candidat).
     existing_all_titles = set()
     for row in cursor.fetchall():
         _url = _row_web_url(row)
@@ -2351,14 +2288,6 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
                 continue
             if title and title in existing_special_titles:
                 continue
-            # Voir existing_all_titles plus haut: un "spécial" qui n'est en réalité qu'un
-            # tirage/une édition alternative d'un album déjà représenté (numéroté,
-            # intégrale, HS, one-shot non classifié...) sous le MÊME titre - comparé
-            # titre exact d'abord, puis titre débarrassé de son préfixe "CODE . " (format
-            # documenté dans _parse_special_prefix) au cas où seule l'édition alternative
-            # porte ce préfixe alors que l'album déjà possédé, lui, ne le porte pas
-            # (ex: tome normal "Le Gaulois le Gaulois" déjà possédé, édition de luxe listée
-            # par Bédéthèque sous "TL . Le Gaulois le Gaulois").
             if title and title in existing_all_titles:
                 continue
             if special_label and ' . ' in title:
@@ -2431,17 +2360,6 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
               int(is_special), special_label, int(is_bis), bis_suffix if is_bis else None))
         created += 1
 
-        # "serie 775 ca a creer d'autres tomes duplique" / "i did not use fusionner pour
-        # cette serie" - existing_numbers/existing_integral_numbers/existing_hs_numbers ne
-        # sont construits qu'UNE FOIS avant cette boucle, jamais mis à jour au fil des
-        # insertions qu'elle fait elle-même: si la fiche Bédéthèque liste deux albums avec
-        # le même numéro (ou plusieurs hors-séries/intégrales sans le moindre numéro,
-        # is_integral/is_hs=True avec number=None, cas constaté sur plusieurs séries de
-        # cette bibliothèque), le second n'était jamais reconnu comme "déjà créé à
-        # l'instant par cette même boucle" et repartait sur un nouveau placeholder en
-        # double - sans le moindre rapport avec un import ou une fusion de séries.
-        # is_episode vérifié avant `number is not None` pour la même raison que dans le
-        # bloc de dédup ci-dessus (number est non-None aussi pour un épisode).
         if bd_vol.get('url'):
             existing_all_urls.add(bd_vol['url'])
         if is_episode:
@@ -2530,17 +2448,6 @@ def add_series_from_bedetheque():
 
         series_title = _bedetheque_title_to_folder_name(info['title'])
 
-        # "pourquoi il a créé 2 blanc autour": la vérification "existe déjà" ci-dessous
-        # ET l'INSERT juste en bas doivent former une section critique unique avec
-        # execute_import/execute_auto_import (mêmes deux opérations pour une série
-        # auto-créée pendant l'import - voir _import_execution_lock côté library/routes.py)
-        # - sinon un import automatique en cours et cet ajout manuel depuis Bédéthèque
-        # peuvent chacun trouver "pas encore de série avec ce titre" au même instant et
-        # créer chacun la leur (constaté: deux séries "Blanc autour" identiques,
-        # bedetheque_url identique, l'une avec un vrai fichier, l'autre un placeholder
-        # vide). Acquis seulement à partir d'ici (pas pendant le scraping Bédéthèque,
-        # potentiellement long avec son délai anti-bot) pour ne pas bloquer l'import
-        # automatique plus que nécessaire.
         if not _import_execution_lock.acquire(timeout=30):
             conn.close()
             return jsonify({'success': False, 'error': 'Import en cours, réessayez dans un instant'}), 409
@@ -2585,12 +2492,6 @@ def add_series_from_bedetheque():
         bd_volumes = info.get('volumes') or []
         missing = sorted({v['number'] for v in bd_volumes if v.get('number') is not None})
         if not missing and bd_volumes:
-            # Certaines séries d'albums (ex. « Les grands Peintres ») affichent une
-            # date/collection dans le titre (« 2015/02 . Goya ») au lieu d'un numéro
-            # Bédéthèque exploitable. Sans repli, missing restait vide et le réglage
-            # « téléchargement automatique à l'ajout » ne lançait jamais la recherche.
-            # Pour une liste multi-albums entièrement non numérotée, l'ordre de la fiche
-            # est la seule séquence fiable disponible : on l'utilise pour rechercher 1..N.
             is_one_shot = (info.get('status') or '').strip().lower() == 'one shot'
             missing = [None] if is_one_shot or len(bd_volumes) == 1 else list(range(1, len(bd_volumes) + 1))
 
@@ -2600,22 +2501,6 @@ def add_series_from_bedetheque():
         ''', (library_id, series_title, series_path, json.dumps(missing)))
         series_id = cursor.lastrowid
 
-        # "2020 • pages null • N/A" (série #889 "La fuite du cerveau" et 4 autres one-shots
-        # ajoutés depuis Bédéthèque) - series.is_oneshot n'était sinon posé que bien plus
-        # tard, par un scan/update_series_stats (scanner.py, à partir de
-        # bedetheque_status=='One shot'). Entre-temps, _sync_bedetheque_placeholder_volumes
-        # ci-dessous tournait avec is_oneshot_series=False (valeur par défaut de la colonne
-        # à l'INSERT) et classifiait donc à tort l'unique album du one-shot is_special=1 au
-        # lieu du placeholder "plain one-shot" attendu (voir son commentaire "not
-        # is_oneshot_series"). Le vrai fichier, importé plus tard, ne retrouvait alors
-        # jamais ce placeholder (is_special=0 exigé par _find_existing_volume_for_import)
-        # et créait sa PROPRE ligne à côté - un one-shot possédé se retrouvait avec 2
-        # lignes volumes, et la fiche série pouvait afficher les stats (pages/taille) du
-        # placeholder vide (data.volumes[0]) au lieu du fichier réel. Posé ici, AVANT
-        # _sync_bedetheque_placeholder_volumes, à partir du même signal Bédéthèque
-        # ('Parution' == 'One shot') que update_series_stats utilise.
-        # Insensible à la casse (voir la même précaution côté scanner.py,
-        # update_series_stats - "one-shot is in bedetheque written as One Shot").
         if (info.get('status') or '').strip().lower() == 'one shot':
             cursor.execute('UPDATE series SET is_oneshot = 1 WHERE id = ?', (series_id,))
 

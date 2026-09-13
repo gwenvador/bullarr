@@ -1,5 +1,3 @@
-// Le libraryId est défini par le template HTML
-// Si ce n'est pas défini (par exemple depuis index.html), on le récupère depuis l'URL
 if (typeof window.libraryId === 'undefined') {
     const params = new URLSearchParams(window.location.search);
     const urlLibraryId = params.get('libraryId');
@@ -1181,12 +1179,7 @@ function _seriesBadgeInfo(series) {
     }
 
     // 1. "Terminé" : rien ne manque dans la séquence possédée ET série terminée sur Bédéthèque
-    if (isFullyOwned && isBedethequeComplete) {
-        // "584 explique pourquoi c'est complet... explique mieux" - même texte que la
-        // fiche série (series.bedetheque_complete_reason, calculé une seule fois côté
-        // serveur), plutôt qu'un ratio brut ici (trompeur si la série n'est possédée
-        // qu'au travers d'une intégrale, ex: Ter - "1 volume(s) possédé(s)" ne dit rien
-        // sur POURQUOI c'est considéré complet).
+    if (isFullyOwned && !hasMissingVolumes) {
         return {
             key: 'complete', icon: 'check', label: 'Terminé',
             reason: `Série terminée (${series.bedetheque_status}) - ${series.bedetheque_complete_reason || `${series.total_volumes} ${pluralize(series.total_volumes, 'volume')} ${pluralize(series.total_volumes, 'possédé')} sur ${series.bedetheque_total_volumes}`}`
@@ -1326,17 +1319,6 @@ function cleanupDetachedDropdownMenus() {
     document.querySelectorAll('body > .toolbar-dropdown-menu').forEach(el => el.remove());
 }
 
-// Affiche/masque le menu d'un des boutons déroulants de la toolbar (Filtrer/Ordonner),
-// en fermant les autres menus éventuellement ouverts.
-//
-// anchorEl (optionnel): quand fourni, le menu est détaché de son parent et repositionné
-// en `position: fixed` ancré au bouton, ancré au viewport plutôt qu'à un ancêtre qui
-// scrolle - nécessaire pour le menu "⚙️ Actions" de series-detail, dont la toolbar est
-// à l'intérieur de .content (overflow-y: auto): en position:absolute normale, le menu
-// scrollait avec la page et pouvait ressortir hors écran plutôt que de s'afficher
-// par-dessus. Les autres dropdowns (Filtrer/Ordonner de la page bibliothèque), eux,
-// n'ont pas ce problème et continuent d'utiliser le positionnement absolu classique
-// (pas d'anchorEl fourni à leur appel).
 function toggleToolbarDropdown(menuId, anchorEl) {
     document.querySelectorAll('.toolbar-dropdown-menu').forEach(el => {
         if (el.id !== menuId) el.style.display = 'none';
@@ -2306,15 +2288,6 @@ function buildVolumeMissingActionsGearHtml(v) {
 function buildVolumeActionsGearHtml(v) {
     const ci = v.comicinfo || {};
 
-    // Action (pas une navigation, donc <button> et non <a>) qui écrit les métadonnées
-    // Bedetheque dans le ComicInfo.xml de ce seul tome. La mise à jour de TOUS les tomes
-    // reste uniquement dans le header de la série (bouton "MAJ métadonnées" de la
-    // toolbar, voir updateSeriesMetadataFromBedetheque) - pas dupliquée ici.
-    // Masquée tant que la série n'est pas matchée sur Bédéthèque (currentSeriesDetail.
-    // bedetheque.url): l'action ne peut structurellement rien mettre à jour sans match
-    // (voir _ensure_bedetheque_match côté Flask, qui ne matche plus jamais tout seul
-    // pour cette route) - autant ne pas proposer un bouton qui ne peut qu'échouer/
-    // rediriger vers le matching, plutôt que de le laisser cliquable pour rien.
     const updateMetadataItemHtml = (currentSeriesDetail && currentSeriesDetail.bedetheque && currentSeriesDetail.bedetheque.url)
         ? `<button type="button" class="toolbar-dropdown-item" onclick="updateVolumeMetadataFromBedetheque(${v.id}, event)">${svgIcon('tag')} MAJ de ce tome</button>`
         : '';
@@ -2334,15 +2307,6 @@ function buildVolumeActionsGearHtml(v) {
     // précis sans passer par le menu "Actions" de la série puis chercher la bonne ligne
     // dans la longue liste de tomes de la modale.
     const editManuallyItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="openManualEditModal(currentSeriesDetail.id, ${v.id})">${svgIcon('pencil')} Éditer ce tome</button>`;
-    // Permet de rechercher une meilleure source pour un tome DÉJÀ possédé (pas seulement
-    // manquant) et de le remplacer - réutilise exactement le même flux que la recherche
-    // d'un tome manquant (searchMissingVolume), le remplacement lui-même n'a besoin
-    // d'aucune logique dédiée: une fois le fichier téléchargé et réimporté, la comparaison
-    // de qualité déjà faite à l'import (is_better_volume, cbz > cbr/rar > pdf)
-    // remplace automatiquement l'ancien fichier si le nouveau est meilleur.
-    // Pas de numéro connu (ex: intégrale/HS listée sans numéro sur Bédéthèque) -> recherche
-    // par titre de série seul plutôt que de désactiver l'action (searchMissingVolume gère
-    // ce cas: volumeNumber null/0 = recherche sans filtre de numéro, jamais bloquée)
     const searchAgainNumber = v.volume_number ?? v.integral_number ?? v.hs_number ?? v.episode_number ?? 'null';
     const searchAgainItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="searchMissingVolume(currentSeriesDetail.title, ${searchAgainNumber}, {seriesId: currentSeriesDetail.id, isIntegral: ${!!v.is_integral}, isHs: ${!!v.is_hs}, isEpisode: ${!!v.is_episode}, currentVolumeId: ${v.id}})">${svgIcon('radar')} Rechercher un remplacement</button>`;
     // "ajouter aussi recherche automatique... dans la molette des volumes" - même
@@ -2408,22 +2372,6 @@ function buildVolumeActionIconsHtml(v) {
     return `${buildVolumeLinksIconHtml(v)}${buildVolumeActionsGearHtml(v)}`;
 }
 
-// Numéro affiché d'un tome (Tome N / INT N / HS N / OS), même logique de priorité que le
-// label de progression envoyé par le serveur pendant l'écriture ComicInfo en masse (voir
-// _write_series_volumes_metadata_async côté Flask) - gardée en un seul endroit pour que
-// buildVolumeItemHtml et les toasts de MAJ métadonnées (série+tomes ET tome seul)
-// affichent exactement le même format.
-// "the name should not be INT1 for file that in bedetheque is INTFL1" / "I want the same
-// album as bedetheque" - INT1/INTFL1/INTTL peuvent partager le même integral_number (voir
-// _parse_int_hs_prefix, scraper.py, qui les distingue toutes comme integral_number=1) tout
-// en étant des ALBUMS DIFFÉRENTS pour Bédéthèque - reconstruire "INT {integral_number}"
-// depuis le seul numéro affichait donc le MÊME badge pour deux éditions distinctes (INT1
-// possédée ET INTFL1 pas possédée confondues visuellement). Le code brut Bédéthèque, capturé
-// en tête du titre ("INTFL1 . Tomes 1 et 2"), est la seule chose qui les distingue
-// réellement - même segment que _displayVolumeTitle juste en dessous retire à l'affichage,
-// extrait ici au lieu d'être retiré. Repli sur l'ancienne reconstruction "INT N"/"HS N"
-// seulement si le titre n'a pas (encore) ce préfixe (classification manuelle sans passage
-// par Bédéthèque, par exemple).
 function _bedethequeCodePrefix(v) {
     const ci = v.comicinfo || {};
     const title = ci.title || '';
@@ -2454,32 +2402,11 @@ function volumeNumberLabel(v, isOneshot) {
     } else if (v.is_episode) {
         numberLabel = v.episode_number != null ? `ÉP ${v.episode_number}` : 'ÉP';
     } else if (v.is_special && !isOneshot) {
-        // special_label: code brut Bédéthèque ("COF", "MBD05"...) - pas de numéro
-        // structuré côté spéciaux, pas de dictionnaire de noms "traduits" à maintenir
-        // (voir _parse_special_prefix, scraper.py).
-        // "il y a SP qui n'a pas de tooltip" - bug réel: le repli utilisé ici quand un
-        // spécial n'a AUCUN code (titre Bédéthèque sans préfixe du tout, ex: "Making
-        // of" - voir CLAUDE.md "plain-titled unnumbered spin-offs") était le texte
-        // littéral "SP", visuellement IDENTIQUE au vrai code Bédéthèque "SP" (Service
-        // Presse, voir SPECIAL_CODE_LABELS) - un badge "SP" pouvait donc soit être ce
-        // vrai code (avec tooltip), soit ce simple repli "aucun code" (jamais de
-        // tooltip, puisque special_label vaut alors NULL, rien à chercher dans le
-        // dictionnaire) - impossible à distinguer visuellement. "bedetheque has no
-        // entry for this so it should stay as - ... keep the same as bedetheque" -
-        // même convention "—" que le tout premier repli de cette fonction (valeur
-        // vraiment absente, jamais inventée) plutôt qu'un nouveau texte qui n'existe
-        // pas côté Bédéthèque. 121 tomes de la bibliothèque sont dans ce cas.
         numberLabel = v.special_label || '—';
     }
     return numberLabel;
 }
 
-// Le titre stocké (ci.title) pour une intégrale/HS/spécial garde le code brut Bédéthèque
-// en tête ("INTFL1 . Tomes I, II & III", "COF . Kookaburra Universe") - déjà redondant
-// avec le badge numberLabel affiché juste à côté ("INT 1", "COF"). Retiré uniquement à
-// l'affichage (jamais dans comicinfo/la base - "MAJ métadonnées" doit garder le code
-// brut pour re-matcher Bédéthèque). Un tome classique/épisode n'a jamais ce préfixe, rien
-// à faire pour eux.
 function _displayVolumeTitle(v) {
     const ci = v.comicinfo || {};
     let title = ci.title || '';
@@ -2536,12 +2463,8 @@ const SPECIAL_CODE_LABELS = {
     '3D': 'Album 3D', ART: 'Artbook', CC: 'Coffret Collector', CDV: 'Cahier de vacances',
     FLD: 'Feuillet / Flyer de libraire (ou Fascicule Ludique Dérivé)', LIV: 'Livre',
     MR: 'Mini-récit', POR: 'Portfolio', SCO: 'Scolaire',
-    // Confiance plus faible (fournies par l'utilisateur malgré tout, pas devinées par moi)
     TH: 'Tirage spécial / édition festival', FOL: 'Folio', GEO: 'Édition GEO',
     GP: 'Grands Personnages / Grand Public (selon la collection)', PARO: 'Parodie', PF: 'Petit Format',
-    // F1-F5/J1-J5: sous-numérotations propres à une série précise (I.R.$./Méta-Barons),
-    // pas des codes BEL génériques - volontairement PAS ajoutés ici (voir _volumeNumberBadgeTooltip,
-    // "F"/"J" seuls seraient beaucoup trop génériques pour ne matcher QUE ces deux séries).
 };
 
 function _volumeNumberBadgeTooltip(v) {
@@ -2563,12 +2486,6 @@ function _volumeNumberBadgeTooltip(v) {
     return rawTitle;
 }
 
-// "c'est pas son nom??" - un one-shot dont le titre ComicInfo du tome est identique au
-// titre de la SÉRIE (cas fréquent: une œuvre jamais publiée sous un autre nom que la
-// série elle-même) n'apporte rien à afficher en suffixe ("OS - À l'intérieur" sous une
-// série déjà nommée "À l'intérieur" ne fait que répéter la même information) - comparaison
-// insensible aux accents/casse (normalizeForSearch) plutôt qu'une égalité stricte, pour
-// que "À L'INTÉRIEUR" et "à l'intérieur" comptent comme le même titre.
 function _volumeTitleSuffix(title, seriesTitle) {
     if (!title) return '';
     if (seriesTitle && normalizeForSearch(title.trim()) === normalizeForSearch(seriesTitle.trim())) return '';
@@ -2810,21 +2727,6 @@ function _volumeTableSortValue(v, column) {
     }
 }
 
-// Un tome numéroté, une intégrale (INT), un hors-série (HS) et un épisode ont chacun
-// leur propre compteur (volume_number/integral_number/hs_number/episode_number) - les
-// comparer entre eux directement (ex: tome 2 vs INT1) mélangerait ces échelles
-// indépendantes et intercalerait les INT/HS au milieu des tomes numérotés ("1, INT 1,
-// 2"). On les classe donc d'abord par palier (tomes numérotés avant INT avant HS avant
-// épisode avant non-numéroté), toujours dans cet ordre quel que soit le sens du tri, et
-// on ne trie par valeur numérique qu'à l'intérieur d'un palier - même principe que côté
-// serveur dans get_series_volumes().
-// "for example for Hors-serie it has order HS 2, HS 3 mais n'order pas HS" - bug réel:
-// le tri se faisait sur la PRÉSENCE d'un numéro (integral_number/hs_number/episode_number
-// non NULL), pas sur le TYPE réel du tome (is_integral/is_hs/is_episode) - un HS SANS
-// numéro (hs_number NULL, une série qui n'a qu'un seul hors-série) ne remontait donc
-// jamais dans le même groupe que HS2/HS3, retombant dans le fourre-tout de la dernière
-// tier avec les Spéciaux et autres one-shots. Basé sur le type lui-même désormais, jamais
-// sur son numéro.
 function _volumeNumberSortTier(v) {
     if (v.volume_number !== null && v.volume_number !== undefined) return 0;
     if (v.is_integral) return 1;
@@ -3869,19 +3771,6 @@ async function renderSeriesDetail(seriesId) {
               </div>`
             : '';
 
-        // Petite icône à côté du titre - "third implementation of the completeness
-        // check? ask for unification": refaisait son PROPRE calcul divergent (comparaison
-        // brute total_volumes/bdTotalVolumes, qui mélange à tort tomes + intégrales +
-        // spéciaux) au lieu de réutiliser data.bedetheque_complete_reason, calculé UNE
-        // SEULE fois côté serveur par update_series_stats et déjà rédigé en texte prêt à
-        // afficher (voir son commentaire: "584 explique pourquoi c'est complet... tu
-        // mets juste les volumes alors que j'ai l'intégrale" - le ratio brut de tomes
-        // classiques seul seul est trompeur si la série n'est possédée qu'au travers
-        // d'une intégrale, ex: Ter - "0/3 tomes parus" mais bien complète). null (série
-        // jamais matchée) -> pas d'icône, rien à comparer.
-        //
-        // "tooltip doit etre instantanés" - data-tooltip (JS custom, instantané, voir
-        // nav.js), jamais l'attribut natif title (délai navigateur ~1s).
         let completenessIconHtml = '';
         if (data.bedetheque_complete != null) {
             const icon = data.bedetheque_complete ? '✅' : '⚠️';
@@ -4027,7 +3916,7 @@ async function renderSeriesDetail(seriesId) {
                             // hors-série, lui, reste un one-shot valide (une parution spéciale
                             // publiée seule n'est pas contradictoire) : il ne supprime pas ce
                             // libellé
-                            (data.is_oneshot && !(oneshotFile && oneshotFile.is_integral)) ? ' 🔸 One-shot' : ''
+                            ((data.is_oneshot || data.bedetheque_complete_reason === 'One-Shot') && !(oneshotFile && oneshotFile.is_integral)) ? ' 🔸 One-Shot' : ''
                         }${data.has_parts ? ' • arcs/parties' : ''}</span>
                         <span>💾 ${formatBytes(totalSize)}</span>
                         <span>📁 ${escapeHtml(data.path)}</span>
@@ -4285,15 +4174,6 @@ async function _updateSeriesMetadataFromBedetheque(seriesId, buttonEl, scope) {
             pollMetadataWriteProgress(seriesId, toastId);
             setSeriesActionsGearBusy(seriesId, false);
         } else if (data.success && data.started) {
-            // L'écriture des tomes continue en arrière-plan côté serveur bien après
-            // cette réponse (voir _write_series_volumes_metadata_async) - c'est aussi ce
-            // thread qui déclenche le rescan Komga une fois terminé. Le toast reste affiché
-            // et se met à jour tome par tome (voir pollMetadataWriteProgress) au lieu
-            // d'être fermé ici avec le reste du bloc try/finally.
-            // Pas d'alert() ici (bloquant: gèle tout le JS de la page, y compris le
-            // setInterval du sondage de progression, et empêche même de changer de page
-            // tant qu'on ne clique pas sur OK) - le toast persistant suffit à informer
-            // que l'opération est en cours et se termine tout seul quand elle finit
             keepToastAlive = true;
             pollMetadataWriteProgress(seriesId, toastId);
             setSeriesActionsGearBusy(seriesId, false);
@@ -4401,10 +4281,6 @@ async function updateVolumeMetadataFromBedetheque(volumeId, evt) {
                 ? (currentSeriesDetail.volumes || []).find(v => v.id === volumeId)
                 : null;
             const updatedLabel = volumeProgressLabel(updatedVolume, isOneshot);
-            // Toujours montrer un message final (même générique si on ne peut plus
-            // retrouver le titre à jour) - le point critique est que ce toast passe par
-            // showToast avec autoHideMs pour être sûr de se refermer tout seul, jamais le
-            // laisser dans son état "Mise à jour..." indéfiniment
             keepToastAlive = true;
             showToast(toastId, updatedLabel ? `Métadonnées mises à jour (${updatedLabel})` : 'Métadonnées mises à jour', { icon: 'check', autoHideMs: 3000 });
         } else if (data.error === 'Impossible de trouver la série sur Bedetheque') {
@@ -4689,15 +4565,6 @@ async function confirmBedethequeMatch(seriesId, url) {
 
 function _renderNoSearchResults(seriesTitle, displayLabel, hasNumber, options, volumeNumber) {
     const searchModalBody = document.getElementById('search-modal-body');
-    // Recherche filtrée par numéro de tome infructueuse: proposer de retenter sans ce
-    // filtre (recherche "série entière") plutôt que de laisser l'utilisateur relancer
-    // manuellement une recherche par le nom de la série. Pas de bouton si la recherche
-    // était déjà "série entière" (hasNumber déjà false): rien de plus large à proposer.
-    // "ajoute une option pour que je change la recherche manuellement" - le titre utilisé
-    // (celui de la série en base, ex. "(AUT) Serre, Claude") ne correspond pas toujours à
-    // la façon dont une release est réellement nommée chez les indexeurs/EBDZ/Telegram -
-    // un champ pré-rempli permet de retenter avec un texte différent sans quitter la
-    // modale, plutôt que d'être bloqué sur "aucun résultat" sans recours.
     searchModalBody.innerHTML = `
         <div class="search-header">
             <h2>🔍 Recherche: ${escapeHtml(seriesTitle)} - ${escapeHtml(displayLabel)}</h2>
@@ -4863,7 +4730,8 @@ function buildEbdzStatusHtml({ seriesId, context, ownedCount, ebdzCount, missing
     // existe): le rafraîchissement du matching se fait ici, dans les actions au survol
     const rematchHtml = `
         <span class="toolbar-status-actions">
-            <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Recomparer avec EBDZ">${svgIcon('refresh-cw')}</button>
+            <button class="btn" onclick="rescrapeEbdzThread(${seriesId}, this)" style="padding: 4px 8px; font-size: 0.75em;" title="Rescraper ce thread EBDZ">${svgIcon('download')}</button>
+            <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Recomparer avec le cache EBDZ">${svgIcon('refresh-cw')}</button>
             <button class="btn" onclick="openEbdzMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Changer le match EBDZ">${svgIcon('pencil')}</button>
             <button class="btn" onclick="unmatchEbdzSeries(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #ef4444;" title="Retirer le match EBDZ">${svgIcon('ban')}</button>
         </span>
@@ -5685,26 +5553,6 @@ function closeManualEditModal() {
     _bulkEditSeriesId = null;
 }
 
-// Contenu des champs d'un tome (Titre/Année/Scénariste/Dessinateur/Coloriste/Éditeur/
-// Genre/Résumé + actions Renommer/Charger Bédéthèque/Enregistrer), factorisé pour être
-// affiché soit replié dans la liste complète des tomes (vue série entière), soit seul et
-// toujours déplié dans la vue "un seul tome" (voir renderManualEditModalSingleVolume).
-// Libellé complet (mot entier, pas la forme compacte de volumeNumberLabel) d'un tome de
-// la liste fusionnée Bédéthèque (GET /api/series/<id>/volumes) - même format que
-// _bdVolumeOptionLabel côté import.js, dupliqué ici plutôt que partagé entre les deux
-// fichiers (import.js n'est pas chargé sur la page /series).
-// Libellé partagé, voir buildVolumeOptionLabel (nav.js). preferBedethequeTitle: "le
-// dropdown de changer le numéro doit etre le vrai nom des volumes de bedetheque pas les
-// noms des volumes modifié" - un comicinfo.title local peut être erroné/périmé (ex:
-// "Musiques" mal étiqueté "Chasse & Pêche" après une renumérotation ratée), c'est
-// justement la référence Bédéthèque fiable qu'on veut voir ici pour choisir/vérifier un
-// numéro, pas la donnée locale potentiellement fausse.
-// Construit le champ "Univers" de la modale "Éditer manuellement" (rename-section
-// Série): un <select> listant tous les univers connus + "Aucun univers" pour retirer
-// l'appartenance. Absent du payload si l'utilisateur ne le touche pas n'était pas
-// souhaitable ici (contrairement aux autres champs manuels, vides = "inchangé côté
-// scraping"): un univers vide EST un état valide et voulu (série indépendante), donc
-// ce champ envoie toujours sa valeur (voir buildManualSeriesMetadataBody).
 function buildManualUniverseFieldHtml(universes, currentUniverseId) {
     const options = (universes || []).map(u => {
         const selected = currentUniverseId != null && String(u.id) === String(currentUniverseId) ? 'selected' : '';
@@ -5725,16 +5573,6 @@ function _manualEditVolumeOptionLabel(v) {
     return buildVolumeOptionLabel(v, { preferBedethequeTitle: true });
 }
 
-// "met une option dans editer manuellement de pouvoir changer le numéro du volume" - un
-// fichier peut être mal identifié (numéro Bédéthèque ambigu, nom de fichier trompeur:
-// "La caste des Méta-Barons - #01 ... n'est pas le bon volume, le correct c'est ... une
-// HS1") sans que rien dans son propre nom ne permette de le corriger automatiquement.
-// Dropdown des tomes déjà connus de la série (GET /api/series/<id>/volumes, chargé une
-// fois à l'ouverture de la modale - voir openManualEditModal/_manualEditAllVolumes) +
-// repli "Autre" pour un numéro/type totalement libre. La valeur de chaque option encode
-// directement type:numéro (ex: "hs:1") plutôt qu'un index - un tome pas encore possédé
-// (entrée synthétique de get_series_volumes, sans id) reste choisissable de la même façon
-// qu'un tome réel, aucune référence à son id nécessaire côté client.
 function buildManualEditVolumeRenumberHtml(v, seriesId) {
     const others = (_manualEditAllVolumes || []).filter(ov => !(ov.id != null && ov.id === v.id));
     const currentType = v.is_integral ? 'integral' : v.is_hs ? 'hs' : v.is_episode ? 'episode' : 'volume';
@@ -5819,12 +5657,6 @@ async function changeVolumeNumber(volumeId, seriesId) {
         const data = await response.json();
 
         if (data.success) {
-            // "donc ne pas ecraser par défaut. il suffira que l'utilisateur supprime
-            // manuelement le volume mal numéroté" - le backend ne remplace/supprime plus
-            // jamais l'autre tome tout seul: s'il portait déjà ce numéro, duplicate_filename
-            // le signale ici en simple avertissement (pas une confirmation), à régler à la
-            // main (bouton "Supprimer le fichier" de l'autre tome) une fois la chaîne de
-            // renumérotations terminée.
             feedback.innerHTML = data.duplicate_filename
                 ? `✅ Numéro changé - ⚠️ « ${escapeHtml(data.duplicate_filename)} » a aussi ce numéro, supprimez celui qui est en trop`
                 : '✅ Numéro changé';
@@ -5982,6 +5814,7 @@ function renderManualEditModal(data, focusVolumeId) {
             <button class="btn-neutral-sm" onclick="closeManualEditModal(); openEbdzMatchModal(${data.id}, 'modal', ${editReturnCtx})">
                 <img src="/static/img/ebdz-logo.png" alt="" style="width:14px;height:14px;">EBDZ ${data.ebdz.thread_url ? '✅' : '❌'}
             </button>
+            ${data.ebdz.thread_url ? `<button class="btn-neutral-sm" onclick="rescrapeEbdzThread(${data.id}, this)" title="Relit ce thread EBDZ et met à jour ses liens"><img src="/static/img/ebdz-logo.png" alt="" style="width:14px;height:14px;">Rescraper</button>` : ''}
             <button class="btn-neutral-sm" onclick="closeManualEditModal(); openKomgaMatchModal(${data.id}, 'modal', ${editReturnCtx})">
                 <img src="/static/img/komga-logo.svg" alt="" style="width:14px;height:14px;">Komga ${data.komga.url ? '✅' : '❌'}
             </button>
@@ -6352,6 +6185,21 @@ async function deleteVolume(volumeId, seriesId, label, isPlaceholder = false) {
         }, 500);
     } catch (error) {
         alert('❌ Erreur de connexion: ' + error.message);
+    }
+}
+
+
+async function rescrapeEbdzThread(seriesId, button) {
+    const original = button.innerHTML;
+    button.disabled = true; button.textContent = '⏳ Rescrape…';
+    try {
+        const response = await fetch(`/api/series/${seriesId}/ebdz-rescrape`, {method: 'POST'});
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Erreur inconnue');
+        button.textContent = `✓ ${data.links_inserted || 0} lien ajouté`;
+        await renderSeriesDetail(seriesId);
+    } catch (error) {
+        button.innerHTML = original; button.disabled = false; alert('❌ ' + error.message);
     }
 }
 
@@ -7617,19 +7465,32 @@ async function executeRename() {
 
         const renamedFiles = (data.files || []).filter(f => f.success && !f.skipped).length;
         const failedFiles = (data.files || []).filter(f => !f.success).length;
+        const movedFiles = Number(data.folder?.moved_files || 0);
 
-        let resultMessage = '✅ Renommage terminé !';
-        if (currentRenameVolumeId || currentRenameAllVolumes || alsoVolumes) {
-            resultMessage += `\n\n${renamedFiles} ${pluralize(renamedFiles, 'fichier')} ${pluralize(renamedFiles, 'renommé')}`;
-            if (failedFiles > 0) {
-                resultMessage += `\n⚠️ ${failedFiles} ${pluralize(failedFiles, 'erreur')} sur des fichiers`;
-            }
+        // Any file or folder error makes the whole operation a failure in the
+        // result dialog. Do not show the green validation when only part succeeded.
+        const folderFailed = Boolean(data.folder && !data.folder.success);
+        const renameFailed = failedFiles > 0 || folderFailed;
+        let resultMessage = renameFailed ? '❌ Renommage échoué !' : '✅ Renommage terminé !';
+        if (renamedFiles > 0) {
+            resultMessage += `
+
+${renamedFiles} ${pluralize(renamedFiles, 'fichier')} ${pluralize(renamedFiles, 'renommé')}`;
+        }
+        if (failedFiles > 0) {
+            resultMessage += `
+❌ ${failedFiles} ${pluralize(failedFiles, 'erreur')} sur des fichiers`;
         }
         if (data.folder) {
-            if (data.folder.success && data.folder.changed) {
-                resultMessage += `\n📁 Dossier de la série renommé`;
+            if (data.folder.success && data.folder.merged_into_existing) {
+                resultMessage += `
+📁 ${movedFiles} fichier(s) déplacé(s) dans le dossier existant`;
+            } else if (data.folder.success && data.folder.changed) {
+                resultMessage += `
+📁 Dossier de la série renommé`;
             } else if (!data.folder.success) {
-                resultMessage += `\n⚠️ Dossier non renommé: ${data.folder.error}`;
+                resultMessage += `
+❌ Dossier non renommé: ${data.folder.error}`;
             }
         }
 

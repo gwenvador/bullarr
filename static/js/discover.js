@@ -358,21 +358,6 @@ async function selectSeries(url, title, cardEl) {
     // lieu de continuer à consommer le quota anti-bot Bédéthèque pour rien.
     searchGeneration++;
 
-    // "ça met toujours Chargement des infos... ça devrait juste rien mettre. on sait pas
-    // si ça charge encore" - la garde ci-dessus arrête bien les requêtes futures, mais un
-    // slot pas encore atteint par la boucle gardait son placeholder "⏳ Chargement des
-    // infos..." affiché indéfiniment (plus aucun code n'allait jamais le vider, puisque
-    // la boucle sort avant de l'atteindre). On sait déjà qu'aucun de ces slots ne
-    // chargera plus rien tout seul - remplacé par un bouton "Recharger" (voir
-    // _reloadCandidateDetailButtonHtml) plutôt qu'un vide définitif, pour pouvoir
-    // récupérer ces infos à la demande si l'utilisateur revient à l'étape 1.
-    //
-    // "ca stoppe le chargement mais il faudrait quand même charger la série que j'ai
-    // cliqué" - le candidat CLIQUÉ, lui, va justement être rechargé juste en dessous (voir
-    // le fetch de secours dans le try/catch) puisque c'est sa fiche qui nourrit l'étape 2 -
-    // son propre slot ne doit donc pas basculer sur "Recharger" comme les autres, sans quoi
-    // la carte encore visible derrière l'étape 2 semble abandonnée alors que ses infos sont
-    // en train d'arriver.
     const clickedIndex = discoverCandidates.findIndex(c => c.url === url);
     document.querySelectorAll('#results-list .result-detail-loading').forEach(span => {
         const detailsSlot = span.closest('.result-details');

@@ -302,17 +302,6 @@ def match_bedetheque_volume(bd_volumes, local_volume):
     if bd_volumes and len(bd_volumes) == 1:
         return bd_volumes[0]
 
-    # Repli par titre: certaines séries n'ont AUCUN album numéroté sur Bédéthèque - chaque
-    # tome y est un one-shot thématique avec son propre titre plutôt qu'un numéro de
-    # séquence (ex: "Les 40 commandements", où chaque album est "Les 40 commandements du
-    # Bricoleur"/"...du Célibataire"/... sans aucun 'number'). Le matching par numéro ne
-    # peut structurellement jamais s'appliquer ici, et len(bd_volumes) > 1 exclut le repli
-    # "un seul album" ci-dessus. On compare le nom de fichier local (nettoyé, voir
-    # _local_title_from_filename) au titre de chaque album via la même similarité Jaccard
-    # que search_and_get_best_match, et on ne retient le meilleur candidat que s'il
-    # dépasse un seuil de confiance minimal - un score faible veut dire qu'aucun album ne
-    # ressemble vraiment au fichier local, mieux vaut alors ne rien matcher que de coller
-    # la mauvaise description/le mauvais titre sur le mauvais tome.
     local_title = _local_title_from_filename(local_volume.get('filename'))
     if local_title and bd_volumes:
         best_match, best_score = None, 0.0
@@ -411,12 +400,6 @@ class BedethequeScraper:
         pratique sur une série restée non matchée après import malgré un titre local
         pourtant correct.
         """
-        # Normalisation Unicode NFC: un nom de fichier issu d'un système qui décompose
-        # les caractères accentués (HFS+/macOS, ex. "e" + accent combinant U+0301 au
-        # lieu de "é" U+00E9 précomposé) donne un titre visuellement identique mais dont
-        # les octets diffèrent - Bedetheque ne retourne alors AUCUN résultat pour une
-        # requête par ailleurs correcte (constaté sur "Et si l'amour c'était aimer",
-        # 0 résultat en NFD contre 1 résultat exact en NFC)
         query = unicodedata.normalize('NFC', query)
 
         candidates = [self._reorder_trailing_article(query), query.strip()]
@@ -429,9 +412,6 @@ class BedethequeScraper:
         if no_suffix and no_suffix.lower() != query.strip().lower():
             candidates.append(no_suffix)
 
-        # Repli: certains signes de ponctuation dans la requête renvoient
-        # systématiquement 0 résultat côté Bedetheque, même quand le titre existe bien
-        # tel quel sur le site (constaté sur "Incroyable !")
         no_punct = re.sub(r'[!?…]+', '', query)
         no_punct = re.sub(r'\s+', ' ', no_punct).strip()
         if no_punct and no_punct.lower() != query.strip().lower():
@@ -747,12 +727,6 @@ class BedethequeScraper:
                 'editeurs': [],
                 'author_links': {},
                 'volumes': [],
-                # "parse les Séries liées [...] toutes ces series font parties du meme
-                # univers" - liste de {title, url} vers d'autres fiches série Bédéthèque
-                # partageant le même univers/personnages (widget "Séries liées" de la
-                # sidebar, ex: https://www.bedetheque.com/serie-12-BD-Nordheim.html liste
-                # ses spin-offs) - absent de la page pour la plupart des séries (pas de
-                # spin-off connu), jamais deviné.
                 'related_series': [],
                 # Recommandations éditoriales « A lire aussi » de la fiche, distinctes
                 # des « Séries liées » de l'univers.
@@ -1567,6 +1541,9 @@ class BedethequeDatabase:
 
         try:
             conn = sqlite3.connect(self.db_path, timeout=30.0)
+            # The shared folder-reconciliation helper reads named columns; keep
+            # positional access valid too (sqlite3.Row supports both styles).
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
             if series_url:
@@ -1583,6 +1560,13 @@ class BedethequeDatabase:
                 # ancien universe_id (jamais remis à NULL avant ce correctif).
                 cursor.execute('UPDATE series SET universe_id = NULL WHERE id = ?', (series_id,))
                 conn.commit()
+                try:
+                    from blueprints.library.routes import _move_series_folder_for_universe
+                    result = _move_series_folder_for_universe(conn, series_id)
+                    if not result.get('success'):
+                        logger.warning(f"Déplacement après retrait d'univers échoué pour série #{series_id}: {result}")
+                except Exception as exc:
+                    logger.warning(f"Déplacement après retrait d'univers échoué pour série #{series_id}: {exc}")
                 conn.close()
                 return
 
@@ -1625,6 +1609,20 @@ class BedethequeDatabase:
                     cursor.execute('UPDATE series SET universe_id = ? WHERE id = ?', (universe_id, matched_series_id))
 
             conn.commit()
+            # Universe detection can occur after a series has already been created at
+            # the library root. Reconcile its persisted folder immediately so creation,
+            # manual assignment and later Bédéthèque enrichment share one layout rule.
+            try:
+                from blueprints.library.routes import _move_series_folder_for_universe
+                for matched_series_id in {row[2] for row in cursor.execute(
+                    'SELECT universe_id, bedetheque_url, series_id FROM universe_series WHERE universe_id = ?',
+                    (universe_id,)
+                ) if row[2]}:
+                    result = _move_series_folder_for_universe(conn, matched_series_id)
+                    if not result.get('success'):
+                        logger.warning(f"Déplacement après synchronisation univers échoué pour série #{matched_series_id}: {result}")
+            except Exception as exc:
+                logger.warning(f"Déplacement après synchronisation univers échoué: {exc}")
             conn.close()
         except Exception as e:
             logger.warning(f"Erreur synchronisation univers pour série #{series_id}: {e}")

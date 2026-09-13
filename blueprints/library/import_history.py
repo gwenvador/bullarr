@@ -706,6 +706,89 @@ def mark_import_file_manual(filepath):
                 pass
 
 
+def remove_import_file_manual(filepath):
+    # Un fichier finalisé ne doit plus rester retenu par le hold manuel.
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute('DELETE FROM import_manual_overrides WHERE filepath = ?', (filepath,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors du retrait de l'assignation manuelle de {filepath}: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def mark_import_file_packaged(filepath, destination=None):
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)')
+        import json
+        encoded = json.dumps(destination, ensure_ascii=False) if destination else None
+        conn.execute('INSERT OR IGNORE INTO import_packaged_files (filepath, destination_json) VALUES (?, ?)', (filepath, encoded))
+        if encoded:
+            conn.execute('UPDATE import_packaged_files SET destination_json = ? WHERE filepath = ?', (encoded, filepath))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f'Erreur marquage fichier empaqueté {filepath}: {e}')
+        return False
+    finally:
+        if conn: conn.close()
+
+
+def get_packaged_filepaths():
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)')
+        rows = [row[0] for row in conn.execute('SELECT filepath FROM import_packaged_files').fetchall()]
+        stale = [p for p in rows if not os.path.exists(p)]
+        if stale:
+            conn.executemany('DELETE FROM import_packaged_files WHERE filepath = ?', [(p,) for p in stale])
+            conn.commit()
+        return {p for p in rows if p not in stale}
+    except Exception as e:
+        print(f'Erreur lecture fichiers empaquetés: {e}')
+        return set()
+    finally:
+        if conn: conn.close()
+
+
+def get_packaged_destinations():
+    import json
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute("CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)")
+        cols = {row[1] for row in conn.execute('PRAGMA table_info(import_packaged_files)').fetchall()}
+        if 'destination_json' not in cols: conn.execute('ALTER TABLE import_packaged_files ADD COLUMN destination_json TEXT')
+        result = {}
+        for filepath, encoded in conn.execute('SELECT filepath, destination_json FROM import_packaged_files').fetchall():
+            if os.path.exists(filepath) and encoded:
+                try: result[filepath] = json.loads(encoded)
+                except (TypeError, ValueError): pass
+        return result
+    except Exception as e: print(f'Erreur lecture destinations empaquetées: {e}'); return {}
+    finally:
+        if conn: conn.close()
+
+def get_finalized_import_source_paths():
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        rows = conn.execute("SELECT DISTINCT source_path FROM import_history_files WHERE source_path IS NOT NULL AND source_path != '' AND action IN ('imported','replaced','skipped') AND status = 'success'").fetchall()
+        return {row[0] for row in rows}
+    except Exception as e:
+        print(f'Erreur lecture des imports finalisés: {e}')
+        return set()
+    finally:
+        if conn: conn.close()
+
 def get_manual_override_filepaths():
     """Ensemble des chemins actuellement marqués "assignation manuelle" - nettoie au
     passage les entrées dont le fichier n'existe plus (déjà importé/déplacé/supprimé
@@ -717,6 +800,12 @@ def get_manual_override_filepaths():
         cursor = conn.cursor()
         cursor.execute('SELECT filepath FROM import_manual_overrides')
         rows = [row[0] for row in cursor.fetchall()]
+        finalized_names = {row[0] for row in cursor.execute("SELECT DISTINCT filename FROM import_history_files WHERE action IN ('imported','replaced','skipped') AND status = 'success'")}
+        finalized_overrides = [p for p in rows if os.path.basename(p) in finalized_names]
+        if finalized_overrides:
+            cursor.executemany('DELETE FROM import_manual_overrides WHERE filepath = ?', [(p,) for p in finalized_overrides])
+            conn.commit()
+            rows = [p for p in rows if p not in set(finalized_overrides)]
 
         stale = [p for p in rows if not os.path.exists(p)]
         if stale:
