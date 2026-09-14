@@ -1,6 +1,9 @@
 import unittest
 
-from blueprints.library.routes import _pack_file_matches_destination
+from blueprints.library.routes import (
+    _pack_file_matches_destination,
+    _match_series_for_auto_import,
+)
 
 
 class PackFileTitleValidationTests(unittest.TestCase):
@@ -14,6 +17,18 @@ class PackFileTitleValidationTests(unittest.TestCase):
         self.assertFalse(_pack_file_matches_destination(
             {'title': 'Thorgal Saga', 'volume': 2},
             {'series_title': 'Thorgal'},
+        ))
+
+    def test_auto_import_accepts_title_with_leading_article_at_90_percent(self):
+        series = [("series-1", "library-1", "/library", "Brève Histoire de l'Égalité", 0, "BD")]
+        self.assertIsNotNone(_match_series_for_auto_import(
+            "une breve histoire de l egalite", series
+        ))
+
+    def test_auto_import_rejects_title_below_similarity_threshold(self):
+        series = [("series-1", "library-1", "/library", "Brève Histoire de l'Égalité", 0, "BD")]
+        self.assertIsNone(_match_series_for_auto_import(
+            "histoire de la monnaie", series
         ))
 
     def test_unparsed_pack_file_is_not_auto_importable(self):
