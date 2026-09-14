@@ -14,6 +14,7 @@ import sqlite3
 import json
 import os
 import re
+from difflib import SequenceMatcher
 import threading
 import time
 import shutil
@@ -7719,6 +7720,26 @@ def _match_series_for_auto_import(normalized_title, all_series):
     if len(exact_matches) == 1:
         return exact_matches[0]
     if len(exact_matches) > 1:
+        return None
+
+    # Les titres provenant d'un fichier peuvent contenir un article ou une légère
+    # reformulation absente du titre canonique (ex: "Une brève histoire de l'égalité"
+    # contre "Brève Histoire de l'Égalité"). Utiliser un ratio symétrique évite de
+    # transformer une simple sous-chaîne en correspondance automatique. Le seuil élevé
+    # et le refus des égalités garantissent qu'une ambiguïté ne choisit jamais une série.
+    similar_matches = []
+    for row in all_series:
+        series_title = _normalize_title_for_match(row[3])
+        if not series_title:
+            continue
+        score = SequenceMatcher(None, normalized_title, series_title).ratio()
+        if score >= 0.90:
+            similar_matches.append((score, row))
+    similar_matches.sort(key=lambda item: item[0], reverse=True)
+    if similar_matches:
+        best_score, best_row = similar_matches[0]
+        if len(similar_matches) == 1 or best_score > similar_matches[1][0]:
+            return best_row
         return None
 
     prefix_matches = [
