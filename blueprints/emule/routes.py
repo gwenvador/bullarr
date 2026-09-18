@@ -5,6 +5,7 @@ from flask import request, jsonify, current_app
 from . import emule_bp
 import re
 import subprocess
+import shlex
 from encryption import load_encrypted_json_config, save_encrypted_json_config
 
 
@@ -141,7 +142,7 @@ def add_to_emule():
             '-h', config['host'],
             '-P', config.get('password_decrypted', ''),
             '-p', str(config['ec_port']),
-            '-c', f'add {link}'
+            '-c', f'add {shlex.quote(link)}'
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -201,7 +202,7 @@ def remove_download():
             '-h', config['host'],
             '-P', config.get('password_decrypted', ''),
             '-p', str(config['ec_port']),
-            '-c', f'cancel {file_hash}'
+            '-c', f'cancel {shlex.quote(file_hash)}'
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if result.returncode != 0:
