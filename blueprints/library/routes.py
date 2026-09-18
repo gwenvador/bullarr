@@ -857,7 +857,7 @@ def scan_series(series_id):
         return jsonify({
             'success': True,
             'deleted': True,
-            'message': f'Répertoire introuvable, série "{e}" supprimée de la bibliothèque'
+            'message': 'Répertoire introuvable, série supprimée de la bibliothèque'
         })
 
     except Exception as e:
