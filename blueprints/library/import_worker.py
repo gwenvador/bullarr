@@ -18,6 +18,8 @@ import time
 import uuid
 from pathlib import Path
 
+from archive_utils import detect_actual_format
+
 
 class ImportWorkerError(RuntimeError):
     pass
@@ -185,6 +187,26 @@ def _prepare_child(payload):
 
     fmt = payload.get("format") or source.suffix.lstrip(".").lower()
     message = ""
+    format_mismatch = None
+    detected_fmt = detect_actual_format(str(staged), fmt)
+    if fmt in {"cbz", "zip", "cbr", "rar"} and detected_fmt in {"cbz", "zip", "cbr", "rar"} and detected_fmt != fmt:
+        format_mismatch = (
+            f"Extension/format déclaré {fmt.upper()} mais contenu réel "
+            f"{detected_fmt.upper()}"
+        )
+        # Let the existing explicit conversion setting repair a mislabeled archive.
+        # When conversion is disabled, fail validation instead of importing a file
+        # whose extension lies about its binary format.
+        if payload.get("auto_convert", False):
+            fmt = detected_fmt
+        else:
+            return {
+                "path": str(staged),
+                "filename": Path(staged).name,
+                "format": detected_fmt,
+                "conversion_message": "",
+                "validation_error": format_mismatch,
+            }
     try:
         staged, message, fmt = _convert_if_requested(
             str(staged), fmt, payload.get("auto_convert", False),

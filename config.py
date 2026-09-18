@@ -9,8 +9,6 @@ class Config:
     
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
-    # Emergency recovery switch for a misconfigured OIDC/password setup. Keep false in normal use.
-    AUTH_BYPASS_LOGIN = os.environ.get('BULLARR_AUTH_BYPASS_LOGIN', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
     DEBUG = False
     
     # Chemins
@@ -36,8 +34,6 @@ class Config:
     RENAME_CONFIG_FILE = os.path.join(DATA_DIR, 'rename_config.json')
     TELEGRAM_CONFIG_FILE = os.path.join(DATA_DIR, 'telegram_config.json')
     TELEGRAM_CHANNELS_CONFIG_FILE = os.path.join(DATA_DIR, 'telegram_channels_config.json')
-    # État interne (pas une config utilisateur) qui retient quels fichiers d'import ont
-    # déjà déclenché une notification "import disponible" - voir scheduler.py
     IMPORT_NOTIFY_STATE_FILE = os.path.join(DATA_DIR, 'import_notify_state.json')
     
     # eMule/aMule par défaut
@@ -110,10 +106,7 @@ class Config:
     # SSO / OIDC par défaut (désactivé : aucun changement de comportement tant que
     # l'utilisateur ne configure pas son fournisseur dans les paramètres)
     OIDC_CONFIG = {
-        'mode': 'none',
         'enabled': False,
-        'username': '',
-        'password_hash': '',
         'issuer': '',
         'client_id': '',
         'client_secret': '',
@@ -153,17 +146,9 @@ class Config:
         'password': ''
     }
 
-    # fourtoutici.cc (item #24 improvement.txt): source publique sans identifiants (pas
-    # d'URL/clé API à saisir comme Prowlarr/Komga, pas de compte comme Telegram) - juste
-    # une bascule pour pouvoir la désactiver si besoin, activée par défaut ("j'ai désactivé
-    # prowlarr mais il s'affiche toujours..." - même bascule que les autres sources, mais
-    # celle-ci n'a rien d'autre à configurer).
     FOURTOUTICI_CONFIG_FILE = os.path.join(DATA_DIR, 'fourtoutici_config.json')
     FOURTOUTICI_CONFIG = {
         'enabled': True,
-        # Modifiable depuis Configuration > Indexeurs > Web ("je voudrais modifier
-        # manuellement l'adresse de fourtoutici") - le site change parfois de domaine/
-        # miroir, sans quoi il faudrait modifier scraper.py et redéployer à chaque fois.
         'base_url': 'https://fourtoutici.cc'
     }
 
@@ -177,10 +162,10 @@ class Config:
     # environment variables, never committed to the repository.
     SHELFMARK_CONFIG_FILE = os.path.join(DATA_DIR, 'shelfmark_config.json')
     SHELFMARK_CONFIG = {
-        'enabled': False,
-        'base_url': '',
-        'username': '',
-        'password': '',
+        'enabled': True,
+        'base_url': 'http://127.0.0.1:8084',
+        'username': 'bullar',
+        'password': 'bullar',
     }
 
     # Répertoires surveillés pour l'import (toujours scannés/monitorés ensemble), regroupés
@@ -207,32 +192,8 @@ class Config:
     LIBRARY_IMPORT_CONFIG = {
         'auto_import_enabled': False,
         'auto_assign_enabled': True,
-        # 'move' keeps the historical behavior; 'hardlink' preserves the source.
-        'import_mode': 'move',
         'auto_assign_rules': [],  # Liste des règles d'auto-assignation
-        # Plus de fréquence configurable ("tu peux directement demander une importation
-        # automatique quand le fichier est téléchargé et bien matché. Pas besoin de cette
-        # fréquence") - Telegram déclenche l'import immédiatement à la fin du
-        # téléchargement (voir attempt_immediate_auto_import, library/routes.py); le
-        # scheduler périodique restant (aMule/qBittorrent/rTorrent/Deluge, voir
-        # AUTO_IMPORT_FALLBACK_INTERVAL_MINUTES côté library/scheduler.py) tourne à un
-        # intervalle fixe non exposé aux réglages.
-        # Extensions surveillées dans /amule et /torrents (scan manuel /import ET import
-        # automatique) - "ajoute une option dans les settings sur les fichiers à
-        # monitorer pour l'import". Toutes activées par défaut = comportement identique
-        # à avant que ce ne soit configurable.
-        'monitored_extensions': ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'],
-        # "je ne veux pas avoir epub etre download. ajoute une section pour desactiver
-        # les extensions qui peuvent etre affiche et download" - contrairement à
-        # monitored_extensions ci-dessus (ce que l'import lit sur DISQUE), ce réglage
-        # exclut des extensions AVANT même qu'un résultat de recherche EBDZ/Prowlarr/
-        # Telegram/fourtoutici/Anna's Archive n'atteigne l'utilisateur ou l'acquisition
-        # automatique (voir _deduplicate_and_rank, missing_monitor/searcher.py -
-        # POINT D'ENTRÉE UNIQUE partagé par la recherche manuelle ET automatique). EPUB
-        # activé par défaut : un ebook texte n'est jamais le bon fichier pour une BD,
-        # quel que soit son score de correspondance de titre - déjà téléchargé pour rien
-        # au moins une fois avant ce réglage (voir l'historique de
-        # _NON_COMIC_EXTENSIONS_RE/_is_non_comic_format, bedetheque/auto_acquire.py).
+        'monitored_extensions': ['.cbz', '.cbr', '.zip', '.rar', '.pdf'],
         'blocked_search_extensions': ['epub'],
         # "met une option pour automatiquement convertir pour cbz dans l'import
         # automatique. si c'est desactivé l'utilisateur doit manuellement convertir" -
@@ -242,6 +203,8 @@ class Config:
         # _convert_import_file_to_cbz), auparavant jamais convertis automatiquement à
         # l'import (seulement via le bouton "Convertir en CBZ" de /import).
         'auto_convert_to_cbz': True,
+        # Créer le dossier vide d'une série ajoutée sans volume.
+        'create_series_folder_on_add': False,
         # "au lieu de faire une recherche pour chaque volume fait une recherche pour la
         # serie entiere si il y a l'option pack active" - une seule recherche large pour
         # toute la série plutôt qu'une par tome manquant, à la recherche d'un "pack" (un
@@ -358,7 +321,11 @@ class Config:
 
         extra_columns = [
             ('tags', 'TEXT'),  # JSON array de tags
-            ('is_oneshot', 'INTEGER DEFAULT 0')  # 1 = one-shot (pas de volumes)
+            ('is_oneshot', 'INTEGER DEFAULT 0'),  # 1 = one-shot (pas de volumes)
+            ('filesystem_state', "TEXT DEFAULT 'unknown'"),
+            ('filesystem_checked_at', 'TIMESTAMP'),
+            ('filesystem_missing_count', 'INTEGER DEFAULT 0'),
+            ('filesystem_verification_error', 'TEXT'),
         ]
 
         # Vérifier quelles colonnes existent
@@ -419,14 +386,6 @@ class Config:
             )
         ''')
 
-        # "dans historique il faudrait voir quelle est la source du téléchargement et
-        # cliquable aussi" - source (ebdz/prowlarr/telegram/fourtoutici) et lien vers la
-        # PAGE de la release (fil de forum EBDZ, page de release Prowlarr, message
-        # Telegram) - même distinction lien-page-source/lien-de-téléchargement-direct déjà
-        # établie côté résultats de recherche (voir _searchResultSourceLinkUrl,
-        # static/js/search-results-table.js), réutilisée ici telle quelle plutôt que
-        # recalculée. Colonnes ajoutées défensivement (pas de cadre de migration dans
-        # cette appli, voir CLAUDE.md).
         cursor.execute("PRAGMA table_info(missing_volume_downloads)")
         existing_download_columns = {row[1] for row in cursor.fetchall()}
         for col_name in ('source', 'source_link'):
@@ -437,14 +396,6 @@ class Config:
                     if 'already exists' not in str(e):
                         print(f"⚠️  Impossible d'ajouter {col_name} à missing_volume_downloads: {e}")
 
-        # "once the download is initiated it should be in the database" - jusqu'ici une
-        # ligne n'apparaissait dans missing_volume_downloads (donc dans l'onglet
-        # "Téléchargements" d'Historique) qu'une fois le téléchargement TERMINÉ (succès ou
-        # échec, voir log_manual_download) - rien entre le clic "Ajouter" et la fin, parfois
-        # plusieurs minutes (Telegram). tracking_id relie désormais une ligne posée
-        # immédiatement (success NULL = "en cours", voir mark_download_pending côté
-        # downloader.py) à la même ligne active_downloads, pour qu'un appel de complétion
-        # la METTE À JOUR (au lieu d'en insérer une seconde) une fois le résultat connu.
         if 'tracking_id' not in existing_download_columns:
             try:
                 cursor.execute("ALTER TABLE missing_volume_downloads ADD COLUMN tracking_id INTEGER")
@@ -472,17 +423,6 @@ class Config:
             )
         ''')
 
-        # "le volume/album doit être matché si le clic vient d'une fiche série" - jusqu'ici
-        # active_downloads n'avait qu'un `title` texte, retrouvé plus tard par matching flou
-        # (voir _filenames_match côté downloader.py) aussi bien pour savoir "est-ce déjà
-        # importé" que pour deviner la série de destination au moment du scan. Quand le
-        # téléchargement est
-        # lancé depuis une fiche série (searchMissingVolume côté library.js), la série/le
-        # tome sont déjà connus avec certitude à cet instant précis - les conserver ici
-        # évite d'avoir à les re-deviner depuis un nom de fichier de release ambigu une fois
-        # le fichier arrivé sur disque. Nullable: une recherche libre depuis /search n'a
-        # aucun contexte série/tome à proposer. Colonnes ajoutées défensivement (pas de
-        # cadre de migration dans cette appli, voir CLAUDE.md) plutôt que recréer la table.
         cursor.execute("PRAGMA table_info(active_downloads)")
         existing_columns = {row[1] for row in cursor.fetchall()}
         # volume_number: le numéro de tome (int simple), connu même quand volume_id est
@@ -497,15 +437,6 @@ class Config:
                     if 'already exists' not in str(e):
                         print(f"⚠️  Impossible d'ajouter {col_name} à active_downloads: {e}")
 
-        # "import avec telegram essaie de monitorer le status de telechargement" - un
-        # téléchargement Telegram (thread de CETTE app, voir download_channel_file_background
-        # côté telegram_channels/scraper.py) n'avait jusqu'ici qu'un état binaire "en
-        # attente"/"terminé" (voir active_downloads ci-dessus), contrairement à qBittorrent/
-        # rTorrent/Deluge/aMule qui exposent une vraie progression en octets via leur API -
-        # bytes_downloaded/bytes_total permettent la même barre de progression pour
-        # Telegram (voir update_download_progress côté downloader.py, alimenté par le
-        # progress_callback de Telethon), plutôt qu'un simple "⏳ En attente..." pour un
-        # fichier qui peut prendre plusieurs minutes.
         for col_name, col_type in [('bytes_downloaded', 'INTEGER'), ('bytes_total', 'INTEGER')]:
             if col_name not in existing_columns:
                 try:
@@ -535,16 +466,6 @@ class Config:
                     if 'already exists' not in str(e):
                         print(f"⚠️  Impossible d'ajouter {col_name} à active_downloads: {e}")
 
-        # "what's the value in knowing the age of the download" - created_at seul ne dit
-        # rien de fiable sur "ce téléchargement est-il bloqué": un gros fichier Telegram
-        # légitimement lent dépasse le seuil "probablement bloqué" tout autant qu'un
-        # téléchargement dont le thread est réellement mort (voir PENDING_DOWNLOAD_
-        # LIKELY_STUCK_MINUTES côté import.js). last_progress_at, mis à jour à chaque
-        # callback de progression RÉELLE (voir update_download_progress) et initialisé à
-        # CURRENT_TIMESTAMP comme created_at à la création (mark_download_pending), sert de
-        # vrai battement de cœur : tant qu'il avance, le téléchargement est vivant quel que
-        # soit son âge total ; s'il cesse d'avancer, "bloqué" devient un diagnostic fiable
-        # au lieu d'un simple "vieux".
         if 'last_progress_at' not in existing_columns:
             try:
                 cursor.execute("ALTER TABLE active_downloads ADD COLUMN last_progress_at TIMESTAMP")
@@ -552,16 +473,6 @@ class Config:
                 if 'already exists' not in str(e):
                     print(f"⚠️  Impossible d'ajouter last_progress_at à active_downloads: {e}")
 
-        # "yes relaunch and delete the stalled download from telegram" - jusqu'ici, rien
-        # ne permettait de relancer un téléchargement Telegram bloqué (thread mort,
-        # rebuild du conteneur pendant un lot en cours...): le channel/message_id
-        # nécessaire pour redemander le fichier à Telegram n'existait que dans le
-        # navigateur au moment du clic "Télécharger", jamais persisté. channel/message_id
-        # stockés ici (Telegram uniquement, NULL pour aMule/qBittorrent/rTorrent/Deluge -
-        # voir mark_download_pending) permettent à retry_stalled_telegram_downloads
-        # (downloader.py, appelé par le scheduler périodique existant) de relancer le
-        # même téléchargement depuis zéro plutôt que de laisser la ligne bloquée pour de
-        # bon dès que son thread meurt.
         for col_name, col_type in [('channel', 'TEXT'), ('message_id', 'INTEGER')]:
             if col_name not in existing_columns:
                 try:
@@ -581,20 +492,6 @@ class Config:
                 if 'already exists' not in str(e):
                     print(f"⚠️  Impossible d'ajouter retry_count à active_downloads: {e}")
 
-        # "why telegram download is still stucked" - retry_stalled_telegram_downloads ne
-        # doit relancer que ce qui a RÉELLEMENT commencé à transférer puis s'est arrêté
-        # (voir son commentaire, bytes_downloaded IS NOT NULL) pour ne pas confondre "en
-        # file d'attente derrière d'autres téléchargements" (téléchargements Telegram
-        # sérialisés un par un, voir _telegram_client_lock) avec "réellement bloqué" -
-        # les deux ont un last_progress_at figé identique. Mais ça laisse un vrai trou:
-        # une ligne encore en file au moment d'un rebuild du conteneur (son thread meurt
-        # AVANT d'avoir jamais progressé) ne serait alors plus JAMAIS relancée non plus.
-        # process_instance_id (un identifiant aléatoire généré une fois par démarrage de
-        # l'app, voir app.py) distingue les deux cas sans ambiguïté: une ligne posée par
-        # un PRÉCÉDENT démarrage du process a forcément perdu son thread (le rebuild a
-        # tout tué), quel que soit bytes_downloaded - donc rejouable immédiatement, sans
-        # attendre le seuil de blocage d'1 minute qui n'a de sens que pour un thread
-        # encore potentiellement vivant dans CE process-ci.
         if 'process_instance_id' not in existing_columns:
             try:
                 cursor.execute("ALTER TABLE active_downloads ADD COLUMN process_instance_id TEXT")
@@ -609,7 +506,7 @@ class Config:
         # téléchargement, plutôt que redevinés à chaque rendu côté client depuis des champs
         # indirects (absence de volume_number/type, voir l'ancienne logique de
         # _pendingPackGroups côté import.js). Une release qui regroupe plusieurs tomes en
-        # un seul téléchargement (ex. "Bouncer.BD.HD.PACK.2024.FR.PDF-STCTEAM") fait
+        # un seul téléchargement (ex. "Videur.BD.HD.PACK.2024.FR.PDF-STCTEAM") fait
         # désormais autorité pour le regroupement de /import (voir scan_import_directory/
         # get_pending_downloads) sans dépendre du matching flou des fichiers déjà arrivés
         # sur disque. expected_volume_count reste NULL quand aucune plage "T01 à T14" n'est
@@ -642,13 +539,6 @@ class Config:
                 if 'already exists' not in str(e):
                     print(f"⚠️  Impossible d'ajouter client_item_id à active_downloads: {e}")
 
-        # "pourquoi je ne peux pas choisir intégrale, seulement le tome normal" -
-        # update_active_download_tracking (correction d'un téléchargement encore EN COURS,
-        # /api/activity/update-tracking) ne stockait que volume_number, aucun moyen de
-        # marquer une Intégrale/HS/Épisode avant l'arrivée du fichier sur disque - même
-        # jeu de champs que volumes.is_integral/integral_number/is_hs/hs_number/
-        # is_episode/episode_number, pour que apply_tracked_volume_and_gate puisse
-        # transmettre le bon type au fichier une fois arrivé (voir downloader.py).
         for col_name, col_type in [
             ('is_integral', 'INTEGER DEFAULT 0'), ('integral_number', 'INTEGER'),
             ('is_hs', 'INTEGER DEFAULT 0'), ('hs_number', 'INTEGER'),
@@ -680,17 +570,6 @@ class Config:
                 if 'already exists' not in str(e):
                     print(f"⚠️  Impossible d'ajouter force_replace à active_downloads: {e}")
 
-        # "dans nouveautés ca a match une mauvaise serie. il faudrait pouvoir changer ca
-        # et selectionner manuellement la série" - côté EBDZ un thread se réassigne en
-        # changeant series.ebdz_thread_id (déjà persistant, voir ebdz-match côté
-        # library/routes.py). Côté Telegram il n'existe rien d'équivalent à réassigner:
-        # le matching (_annotate_already_in_library, telegram_channels/routes.py) est
-        # recalculé À CHAQUE requête depuis le titre parsé du fichier (aucun id de thread
-        # stable). Cette table mémorise une correction manuelle par titre normalisé
-        # (parsed_title, identique pour tous les fichiers Telegram de la même série) -
-        # consultée en priorité, avant le matching flou par titre, pour que la correction
-        # s'applique à CHAQUE fichier de cette série sur Nouveautés, pas seulement à celui
-        # cliqué.
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS telegram_title_overrides (
                 normalized_title TEXT PRIMARY KEY,
