@@ -6577,7 +6577,7 @@ function displaySearchResults(seriesTitle, volumeNumber, results, displayLabel, 
         </div>
     `;
 
-    # lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
+    // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
     searchModalBody.innerHTML = html;
     initClearableSearchInputs(searchModalBody);
 
