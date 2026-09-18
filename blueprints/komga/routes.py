@@ -43,7 +43,7 @@ def komga_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @komga_bp.route('/test', methods=['GET', 'POST'])
@@ -95,7 +95,7 @@ def test_komga_connection():
     except requests.exceptions.ConnectionError:
         return jsonify({'success': False, 'error': "Impossible de se connecter à Komga. Vérifiez l'URL."}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
 
 
 @komga_bp.route('/scan', methods=['POST'])
@@ -118,6 +118,6 @@ def scan_libraries():
         })
 
     except KomgaError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500

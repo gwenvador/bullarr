@@ -229,7 +229,7 @@ def ed2k_availability():
     try:
         availability = get_ed2k_availability_bulk(links)
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
     return jsonify({'success': True, 'availability': availability})
 
@@ -275,4 +275,4 @@ def test_connection():
     except FileNotFoundError:
         return jsonify({'success': False, 'error': 'amulecmd introuvable'}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500

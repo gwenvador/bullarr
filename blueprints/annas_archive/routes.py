@@ -33,7 +33,7 @@ def annas_archive_test():
         if response.status_code == 200: return jsonify({'success': True})
         return jsonify({'success': False, 'error': f'HTTP {response.status_code}'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
 
 
 @annas_archive_bp.route('/shelfmark-download', methods=['POST'])

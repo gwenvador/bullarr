@@ -555,7 +555,7 @@ def libraries():
         except sqlite3.IntegrityError:
             return jsonify({'success': False, 'error': 'Une bibliothèque avec ce nom existe déjà'}), 400
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/libraries/<int:library_id>/onboard', methods=['POST'])
@@ -656,7 +656,7 @@ def library_operations(library_id):
             return jsonify({'success': True})
         
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _scan_library_and_sync(library_id, library_path, force_metadata_refresh=False):
@@ -793,7 +793,7 @@ def scan_library(library_id):
         return jsonify({'success': True, 'series_count': series_count})
 
     except Exception as e:
-        error_msg = str(e)
+        error_msg = 'Erreur interne'
         print(f"❌ Erreur lors du scan de la bibliothèque {library_id}: {error_msg}")
         return jsonify({
             'success': False,
@@ -861,7 +861,7 @@ def scan_series(series_id):
         })
 
     except Exception as e:
-        error_msg = str(e)
+        error_msg = 'Erreur interne'
         print(f"❌ Erreur lors du scan de la série {series_id}: {error_msg}")
         return jsonify({
             'success': False,
@@ -1148,9 +1148,9 @@ def enrich_series_ebdz(series_id):
     try:
         result = _ebdz_enrich_series(series_id)
     except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 404
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 404
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
     result['success'] = True
     return jsonify(result)
@@ -1179,12 +1179,12 @@ def ebdz_match_candidates(series_id):
         try:
             candidates = search_ebdz_threads(query)
         except LookupError as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
         return jsonify({'success': True, 'candidates': candidates})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/ebdz-match', methods=['POST'])
@@ -1264,7 +1264,7 @@ def ebdz_match_series(series_id):
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/ebdz-unmatch', methods=['POST'])
@@ -1290,7 +1290,7 @@ def ebdz_unmatch_series(series_id):
         return jsonify({'success': True, 'match_status': 'unmatched'})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _download_komga_cover(komga_series_id, client):
@@ -1629,12 +1629,12 @@ def komga_match_candidates(series_id):
             client = KomgaClient()
             candidates = client.search_series(query)
         except KomgaError as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 400
 
         return jsonify({'success': True, 'candidates': candidates})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/komga-match', methods=['POST'])
@@ -1667,14 +1667,14 @@ def komga_match_series(series_id):
             client = KomgaClient()
             series_info = client.get_series(komga_series_id)
         except KomgaError as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 400
 
         result = _apply_komga_match(series_id, series_info, client)
         result['success'] = True
         return jsonify(result)
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/komga-unmatch', methods=['POST'])
@@ -1693,7 +1693,7 @@ def komga_unmatch_series(series_id):
         return jsonify({'success': True, 'match_status': 'unmatched'})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 # Recherche par titre une série Komga candidate et l'adopte comme match si elle désigne
@@ -1766,7 +1766,7 @@ def komga_enrich_series(series_id):
         try:
             client = KomgaClient()
         except KomgaError as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 400
 
         try:
             if matched_id:
@@ -1778,7 +1778,7 @@ def komga_enrich_series(series_id):
             candidates = []
             result = _try_komga_title_match(series_id, series_title, client, out_candidates=candidates)
         except KomgaError as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 400
 
         if result:
             result.update({'success': True, 'candidates': []})
@@ -1788,7 +1788,7 @@ def komga_enrich_series(series_id):
         return jsonify({'success': True, 'match_status': 'unmatched', 'candidates': candidates})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _synthetic_bd_volume_entry(album, **kwargs):
@@ -2028,9 +2028,9 @@ def create_series():
             trigger_new_series_bedetheque_fetch(series_id, series_title, bedetheque_url)
         return jsonify({'success': True, 'series_id': series_id, 'title': series_title})
     except UnsafePathError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/library/<int:library_id>/series')
@@ -2130,7 +2130,7 @@ def get_library_series(library_id):
         return jsonify(series_list)
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 @library_bp.route('/api/series/<int:series_id>', methods=['DELETE'])
 def delete_series(series_id):
@@ -2184,7 +2184,7 @@ def delete_series(series_id):
         return jsonify({'success': True, 'library_id': library_id})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/merge', methods=['POST'])
@@ -2371,7 +2371,7 @@ def merge_series(series_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _set_series_universe(conn, series_id, universe_id):
@@ -2755,7 +2755,7 @@ def get_series_details(series_id):
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/manual-metadata', methods=['PUT'])
@@ -2824,7 +2824,7 @@ def update_series_manual_metadata(series_id):
                 updates.append('universe_id')
             except ValueError as e:
                 conn.close()
-                return jsonify({'success': False, 'error': str(e)}), 400
+                return jsonify({'success': False, 'error': 'Erreur interne'}), 400
 
             # "assigner un univers via _set_series_universe devrait déplacer les
             # fichiers. Pourquoi c'est pas?" - INCOHÉRENCE CORRIGÉE (2026-09-03):
@@ -2871,7 +2871,7 @@ def update_series_manual_metadata(series_id):
         return jsonify({'success': True})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/refresh', methods=['POST'])
@@ -2910,7 +2910,7 @@ def refresh_volume(volume_id):
 
         return jsonify({'success': True, 'file_size': file_size, 'page_count': page_count})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/download', methods=['GET'])
@@ -3005,9 +3005,9 @@ def update_volume_manual_metadata(volume_id):
         return jsonify({'success': True, 'comicinfo': new_comicinfo, **db_updates})
 
     except UnsupportedFormatError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/move-to-series', methods=['PUT'])
@@ -3146,7 +3146,7 @@ def move_volume_to_series(volume_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _volume_identity_label(fields):
@@ -3418,7 +3418,7 @@ def delete_volume(volume_id):
         return jsonify({'success': True, 'series_id': series_id})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/toggle-oneshot', methods=['POST'])
@@ -3465,7 +3465,7 @@ def toggle_series_oneshot(series_id):
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/toggle-complete-override', methods=['POST'])
@@ -3493,7 +3493,7 @@ def toggle_series_complete_override(series_id):
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/library/<int:library_id>/stats')
@@ -3546,7 +3546,7 @@ def get_library_stats_route(library_id):
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/library/<int:library_id>/last-updated')
@@ -3586,7 +3586,7 @@ def get_library_last_updated(library_id):
             'volumes_count': row[5],
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/libraries/<int:library_id>')
@@ -3618,7 +3618,7 @@ def get_library_info(library_id):
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
     
 @library_bp.route('/api/series/<int:series_id>/download', methods=['GET'])
 def download_series(series_id):
@@ -4293,7 +4293,7 @@ def scan_import_directory():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/import/validation', methods=['GET'])
@@ -4335,7 +4335,7 @@ def import_validation_items():
         } for folder in incompatible_folders]
         return jsonify({'success': True, 'items': items + folders})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/import/state', methods=['GET'])
@@ -4467,7 +4467,7 @@ def delete_import_file():
         cleanup_empty_directories(import_root)
         return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client})
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/import/incompatible-folder/files', methods=['GET'])
@@ -4500,7 +4500,7 @@ def list_incompatible_folder_files():
     try:
         entries = sorted(os.listdir(folder_path))
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
     # Plafonné: certains packs contiennent des centaines de pages scannées individuelles
     # (voir le cas qui a motivé cette fonctionnalité, ~370 .jpg) - au-delà, le nombre total
@@ -4839,7 +4839,7 @@ def preview_convert_incompatible_folder_to_cbz():
     try:
         entries = sorted(os.listdir(folder_path))
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
     image_files = [
         name for name in entries
@@ -4892,7 +4892,7 @@ def convert_incompatible_folder_to_cbz():
     try:
         entries = sorted(os.listdir(folder_path))
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
     image_files = [
         name for name in entries
@@ -4980,7 +4980,7 @@ def delete_incompatible_folder():
         shutil.rmtree(folder_path)
         return jsonify({'success': True})
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 def _convert_single_import_file(import_root, relative_path):
@@ -6175,7 +6175,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     # vient de son AFFECTATION elle-même (source_path = file_data['filepath']
                     # tout en haut du bloc try), la variable ne serait pas encore définie.
                     'filepath': file_data.get('filepath'),
-                    'error': str(e)
+                    'error': 'Erreur interne'
                 })
 
                 from .scheduler import library_import_scheduler, MAX_AUTO_IMPORT_CORRUPTION_RETRIES
@@ -6427,7 +6427,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
             'failed_count': failed_count,
             'failures': failures,
             'cleaned_directories': cleaned_dirs,
-            'error': str(e)
+            'error': 'Erreur interne'
         }
     finally:
         if operation_id:
@@ -6518,7 +6518,7 @@ def manage_series_tags(series_id):
         
         except Exception as e:
             conn.close()
-            return jsonify({'error': str(e)}), 500
+            return jsonify({'error': 'Erreur interne'}), 500
 
 def cleanup_empty_directories(base_path):
     """
@@ -6565,7 +6565,7 @@ def cleanup_import_directory():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 # ========== RENOMMAGE DE FICHIERS/DOSSIER AU FORMAT CONFIGURABLE ==========
@@ -6745,7 +6745,7 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
             raise UnsafePathError(f"Titre de série invalide: {raw_name!r}")
         new_series_path = resolve_within(os.path.join(library_path, *folder_segments), library_path)
     except UnsafePathError as e:
-        return {'success': False, 'old_path': series_path, 'error': str(e)}
+        return {'success': False, 'old_path': series_path, 'error': 'Erreur interne'}
 
     current_path_real = os.path.realpath(series_path)
 
@@ -6778,7 +6778,7 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
         else:
             os.rename(current_path_real, new_series_path)
     except OSError as e:
-        return {'success': False, 'old_path': series_path, 'new_path': new_series_path, 'error': str(e)}
+        return {'success': False, 'old_path': series_path, 'new_path': new_series_path, 'error': 'Erreur interne'}
 
     # Le dossier a bien été renommé sur disque à ce stade: la base DOIT refléter le
     # nouveau chemin, indépendamment du succès du re-scan tenté juste après
@@ -6865,7 +6865,7 @@ def preview_rename(series_id):
                 'changed': os.path.realpath(series_path) != new_series_path
             }
         except UnsafePathError as e:
-            folder_change = {'old_path': series_path, 'changed': False, 'error': str(e)}
+            folder_change = {'old_path': series_path, 'changed': False, 'error': 'Erreur interne'}
 
         return jsonify({
             'success': True,
@@ -6878,7 +6878,7 @@ def preview_rename(series_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/rename/execute', methods=['POST'])
@@ -6970,7 +6970,7 @@ def execute_rename(series_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 def _log_rename_action(series_id, series_title, file_results, folder_result):
@@ -7726,7 +7726,7 @@ def log_search_action():
         log_action('search', series_id, title, detail, success=True)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/actions/history', methods=['GET'])
@@ -7743,7 +7743,7 @@ def actions_history():
 
         return jsonify({'success': True, 'history': history})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/actions/history/<int:action_id>', methods=['GET'])
@@ -7770,7 +7770,7 @@ def action_history_detail(action_id):
 
         return jsonify({'success': True, 'action': action})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/import/history', methods=['GET'])
@@ -7785,7 +7785,7 @@ def import_history():
 
         return jsonify({'success': True, 'history': history})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/import/history/<operation_id>', methods=['GET'])
@@ -7801,7 +7801,7 @@ def import_operation_details(operation_id):
         
         return jsonify({'success': True, 'details': details})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/import/history/<operation_id>/undo', methods=['POST'])
@@ -7818,4 +7818,4 @@ def undo_import_operation(operation_id):
             return jsonify({'error': message}), 400
             
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500

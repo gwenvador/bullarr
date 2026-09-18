@@ -65,7 +65,7 @@ def _run_library_onboarding(app, library_id):
             _run_comicinfo_phase(library_id, progress)
         progress['phase'] = 'done'
     except Exception as e:
-        progress['error'] = str(e)
+        progress['error'] = 'Erreur interne'
         progress['phase'] = 'error'
     finally:
         progress['running'] = False

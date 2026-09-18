@@ -249,7 +249,7 @@ def build_bedetheque_catalog_index_sync(scraper):
         conn.close()
         print(f"✓ Index catalogue Bédéthèque reconstruit: {len(seen)} séries")
     except Exception as e:
-        _build_progress['error'] = str(e)
+        _build_progress['error'] = 'Erreur interne'
         print(f"⚠️ Échec construction index catalogue Bédéthèque: {e}")
     finally:
         _build_progress['running'] = False

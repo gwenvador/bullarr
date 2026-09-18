@@ -120,7 +120,7 @@ def get_libraries():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/libraries/<int:library_id>/monitor', methods=['POST'])
@@ -164,7 +164,7 @@ def configure_library_monitor(library_id):
         return jsonify({'success': True})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/libraries/<int:library_id>/series', methods=['GET'])
@@ -210,7 +210,7 @@ def get_library_series(library_id):
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/config', methods=['GET', 'POST'])
@@ -264,7 +264,7 @@ def monitor_config():
                 return jsonify({'success': False, 'error': 'Erreur sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/series', methods=['GET'])
@@ -284,7 +284,7 @@ def get_monitored_series():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/series/<int:series_id>/monitor', methods=['POST'])
@@ -339,7 +339,7 @@ def configure_series_monitor(series_id):
         return jsonify({'success': True, 'monitored': bool(enabled)})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/search', methods=['POST'])
@@ -404,7 +404,7 @@ def search_volume():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/download', methods=['POST'])
@@ -434,7 +434,7 @@ def trigger_download():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 
@@ -458,7 +458,7 @@ def get_monitor_stats():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/performance', methods=['GET'])
@@ -492,7 +492,7 @@ def get_performance_stats():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/history', methods=['GET'])
@@ -513,7 +513,7 @@ def get_download_history():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/attach-pending-series', methods=['POST'])

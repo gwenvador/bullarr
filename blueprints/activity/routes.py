@@ -52,7 +52,7 @@ def _qbittorrent_status():
         torrents = response.json()
     except Exception as e:
         _qbittorrent_session_cache['session'] = None  # forcer une reconnexion propre au prochain appel
-        return {'client': 'qbittorrent', 'label': 'qBittorrent', 'error': str(e)[:200], 'items': []}
+        return {'client': 'qbittorrent', 'label': 'qBittorrent', 'error': 'Erreur interne'[:200], 'items': []}
 
     items = [{
         'id': t.get('hash'),  # requis par POST /api/qbittorrent/remove
@@ -84,9 +84,9 @@ def _rtorrent_status():
             '', 'main', 'd.hash=', 'd.name=', 'd.bytes_done=', 'd.size_bytes=', 'd.down.rate=', 'd.complete='
         )
     except (xmlrpc.client.Fault, xmlrpc.client.ProtocolError, OSError, RtorrentError) as e:
-        return {'client': 'rtorrent', 'label': 'rTorrent', 'error': str(e)[:200], 'items': []}
+        return {'client': 'rtorrent', 'label': 'rTorrent', 'error': 'Erreur interne'[:200], 'items': []}
     except Exception as e:
-        return {'client': 'rtorrent', 'label': 'rTorrent', 'error': str(e)[:200], 'items': []}
+        return {'client': 'rtorrent', 'label': 'rTorrent', 'error': 'Erreur interne'[:200], 'items': []}
 
     items = []
     for torrent_hash, name, done, size, rate, complete in rows:
@@ -117,9 +117,9 @@ def _deluge_status():
             {}, ['name', 'progress', 'state', 'download_payload_rate', 'eta', 'total_size']
         ])
     except DelugeError as e:
-        return {'client': 'deluge', 'label': 'Deluge', 'error': str(e)[:200], 'items': []}
+        return {'client': 'deluge', 'label': 'Deluge', 'error': 'Erreur interne'[:200], 'items': []}
     except Exception as e:
-        return {'client': 'deluge', 'label': 'Deluge', 'error': str(e)[:200], 'items': []}
+        return {'client': 'deluge', 'label': 'Deluge', 'error': 'Erreur interne'[:200], 'items': []}
 
     items = []
     for torrent_id, torrent in (result or {}).items():
@@ -278,7 +278,7 @@ def _amule_status_uncached(config):
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
     except Exception as e:
-        return {'client': 'amule', 'label': 'aMule', 'error': str(e)[:200], 'items': [], 'shared_hashes': set()}
+        return {'client': 'amule', 'label': 'aMule', 'error': 'Erreur interne'[:200], 'items': [], 'shared_hashes': set()}
 
     if result.returncode != 0:
         return {'client': 'amule', 'label': 'aMule', 'error': (result.stderr or 'Erreur amulecmd')[:200], 'items': [], 'shared_hashes': set()}

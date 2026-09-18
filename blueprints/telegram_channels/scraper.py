@@ -214,7 +214,7 @@ async def _scrape_all(api_id, api_hash, session_string, channels, limit, loop, s
                 title, files = await _scrape_channel(client, channel, limit, search=search)
                 results[channel] = {'title': title, 'files': files, 'error': None}
             except Exception as e:
-                results[channel] = {'title': channel, 'files': [], 'error': str(e)}
+                results[channel] = {'title': channel, 'files': [], 'error': 'Erreur interne'}
         return results
     finally:
         await client.disconnect()
@@ -344,7 +344,7 @@ def run_backfill_background(api_id, api_hash, session_string, channels, stop_fla
             # dans les logs container pour diagnostic.
             print(f"✗ Erreur backfill {channel}: {e}")
             channel_state['done'] = True
-            channel_state['error'] = str(e)
+            channel_state['error'] = 'Erreur interne'
             state[channel] = channel_state
             _save_backfill_state(state)
             pending.pop(0)

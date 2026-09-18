@@ -126,7 +126,7 @@ def deluge_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @deluge_bp.route('/test', methods=['POST', 'GET'])
@@ -160,9 +160,9 @@ def test_deluge_connection():
         })
 
     except DelugeError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
 
 
 @deluge_bp.route('/add', methods=['POST'])
@@ -204,9 +204,9 @@ def add_torrent():
         return jsonify({'success': True, 'message': 'Torrent ajouté à Deluge'})
 
     except DelugeError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
 
 
 @deluge_bp.route('/remove', methods=['POST'])
@@ -229,6 +229,6 @@ def remove_torrent():
         return jsonify({'success': True})
 
     except DelugeError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500

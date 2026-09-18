@@ -47,7 +47,7 @@ def prowlarr_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @prowlarr_bp.route('/test', methods=['POST', 'GET'])
@@ -100,7 +100,7 @@ def test_prowlarr_connection():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f"Erreur: {str(e)}"
+            'error': f"Erreur: {'Erreur interne'}"
         }), 500
 
 
@@ -133,7 +133,7 @@ def search_prowlarr():
     try:
         results = search_prowlarr_raw(query, volume_num=volume or None)
     except Exception as e:
-        return jsonify({'error': f'Erreur de recherche: {str(e)}'}), 500
+        return jsonify({'error': f'Erreur de recherche: {'Erreur interne'}'}), 500
 
     # search_prowlarr_raw avale ses propres erreurs réseau/HTTP (voir search.py, pensé
     # pour des appelants qui veulent juste "aucun résultat" en silence) et renvoie None -
@@ -278,7 +278,7 @@ def prowlarr_indexers():
         except Exception as e:
             return jsonify({
                 'success': False,
-                'error': f'Erreur: {str(e)}'
+                'error': f'Erreur: {'Erreur interne'}'
             }), 500
     
     else:  # POST - Sauvegarder la sélection
@@ -297,4 +297,4 @@ def prowlarr_indexers():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
                 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
