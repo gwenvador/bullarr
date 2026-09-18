@@ -1,3 +1,19 @@
+
+function _replaceWithSanitizedDom(target, markup) {
+    const parsed = new DOMParser().parseFromString(String(markup || ''), 'text/html');
+    for (const element of parsed.querySelectorAll('script, iframe, object, embed, link, meta, style')) element.remove();
+    for (const element of parsed.querySelectorAll('*')) {
+        for (const attribute of [...element.attributes]) {
+            const name = attribute.name.toLowerCase();
+            const value = attribute.value.trim().toLowerCase();
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'style' ||
+                ((name === 'href' || name === 'src' || name === 'action') && value.startsWith('javascript:'))) {
+                element.removeAttribute(attribute.name);
+            }
+        }
+    }
+    target.replaceChildren(...[...parsed.body.childNodes].map(node => document.importNode(node, true)));
+}
 // Le libraryId est défini par le template HTML
 // Si ce n'est pas défini (par exemple depuis index.html), on le récupère depuis l'URL
 if (typeof window.libraryId === 'undefined') {
@@ -6578,7 +6594,7 @@ function displaySearchResults(seriesTitle, volumeNumber, results, displayLabel, 
     `;
 
     // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
-    searchModalBody.innerHTML = html;
+    _replaceWithSanitizedDom(searchModalBody, html);
     initClearableSearchInputs(searchModalBody);
 
     // Vérifier si aMule est activé pour afficher/cacher les boutons "Ajouter à eMule"
