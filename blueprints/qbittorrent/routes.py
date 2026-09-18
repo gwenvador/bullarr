@@ -74,7 +74,7 @@ def qbittorrent_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @qbittorrent_bp.route('/test', methods=['POST', 'GET'])
@@ -166,7 +166,7 @@ def test_qbittorrent_connection():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f"Erreur: {str(e)}"
+            'error': f"Erreur: {'Erreur interne'}"
         }), 500
 
 
@@ -234,7 +234,7 @@ def get_categories_and_tags():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f"Erreur: {str(e)}",
+            'error': f"Erreur: {'Erreur interne'}",
             'categories': [],
             'tags': []
         }), 500
@@ -393,7 +393,7 @@ def remove_torrent():
             return jsonify({'success': False, 'error': f'HTTP {response.status_code}'}), 500
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @qbittorrent_bp.route('/add', methods=['POST'])
@@ -509,7 +509,7 @@ def add_torrent():
             except Exception as e:
                 return jsonify({
                     'success': False,
-                    'error': f"Erreur lors du téléchargement du torrent: {str(e)}"
+                    'error': f"Erreur lors du téléchargement du torrent: {'Erreur interne'}"
                 }), 500
 
         # Convertir tous les paramètres en strings pour le form-data
@@ -611,5 +611,5 @@ def add_torrent():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f"Erreur: {str(e)}"
+            'error': f"Erreur: {'Erreur interne'}"
         }), 500

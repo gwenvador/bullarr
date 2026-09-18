@@ -494,7 +494,7 @@ def search_bedetheque():
         logger.error(f"Erreur lors de la recherche Bedetheque: {e}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Erreur interne'
         }), 500
 
 
@@ -576,7 +576,7 @@ def search_bedetheque_authors():
         return jsonify({'success': True, 'query': query, 'results': results})
     except Exception as e:
         logger.error(f"Erreur lors de la recherche d'auteur Bedetheque: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/authors/albums', methods=['GET'])
@@ -611,7 +611,7 @@ def get_bedetheque_author_albums():
         return jsonify({'success': True, 'url': url, 'albums': albums})
     except Exception as e:
         logger.error(f"Erreur lors de la récupération de la bibliographie auteur: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _get_cached_author_photos(urls):
@@ -715,7 +715,7 @@ def get_authors_photos():
         return jsonify({'success': True, 'photos': photos})
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des photos auteurs: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/authors/photos/backfill', methods=['POST'])
@@ -800,7 +800,7 @@ def get_bedetheque_info():
         logger.error(f"Erreur lors de la récupération des infos: {e}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Erreur interne'
         }), 500
 
 
@@ -903,7 +903,7 @@ def enrich_series(series_id):
         logger.error(f"Erreur lors de l'enrichissement: {e}", exc_info=True)
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Erreur interne'
         }), 500
 
 
@@ -996,7 +996,7 @@ def get_series_bedetheque_info(series_id):
 
     except Exception as e:
         logger.error(f"Erreur: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/read-also/<int:series_id>', methods=['GET'])
@@ -1050,7 +1050,7 @@ def get_series_read_also(series_id):
         return jsonify({'success': True, 'items': read_also})
     except Exception as e:
         logger.error(f"Erreur récupération À lire aussi série #{series_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/universe/<int:series_id>', methods=['GET'])
@@ -1098,7 +1098,7 @@ def get_series_universe(series_id):
         })
     except Exception as e:
         logger.error(f"Erreur récupération univers série #{series_id}: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/universe/<int:universe_id>/name', methods=['PUT'])
@@ -1221,7 +1221,7 @@ def rename_universe(universe_id):
         return jsonify({'success': True, 'name': name, 'moved_folders': moved_folders, 'errors': move_errors})
     except Exception as e:
         logger.error(f"Erreur renommage univers #{universe_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 # État de progression de _write_series_volumes_metadata_async, en mémoire (process
@@ -1326,7 +1326,7 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
                     skipped.append({'filename': lv['filename'], 'reason': str(e)})
                 except Exception as e:
                     logger.error(f"Erreur écriture ComicInfo.xml pour {lv['filepath']}: {e}", exc_info=True)
-                    errors.append({'filename': lv['filename'], 'error': str(e)})
+                    errors.append({'filename': lv['filename'], 'error': 'Erreur interne'})
                     continue
 
                 _refresh_volume_cover(lv['id'], bd_volume)
@@ -1534,7 +1534,7 @@ def update_metadata_series(series_id):
 
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour des métadonnées de la série #{series_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/update-metadata/series/<int:series_id>/progress', methods=['GET'])
@@ -1676,7 +1676,7 @@ def preview_volume_bedetheque_metadata(volume_id):
 
     except Exception as e:
         logger.error(f"Erreur lors du preview Bedetheque du volume #{volume_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/reviews/volume/<int:volume_id>', methods=['GET'])
@@ -1729,7 +1729,7 @@ def get_volume_bedetheque_reviews(volume_id):
 
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des avis Bedetheque du volume #{volume_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _link_single_volume_to_bedetheque(cursor, db_path, vol):
@@ -1810,10 +1810,10 @@ def link_volume_to_bedetheque(volume_id):
         return jsonify({'success': True, 'comicinfo': new_comicinfo})
 
     except UnsupportedFormatError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
         logger.error(f"Erreur lors du rattachement Bédéthèque du volume #{volume_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 _link_volumes_job = {}
@@ -1859,7 +1859,7 @@ def _link_volumes_batch_async(app, db_path, volume_ids):
                     success, error, _new_comicinfo = _link_single_volume_to_bedetheque(cursor, db_path, vol)
                 except Exception as e:
                     logger.error(f"Erreur rattachement Bédéthèque du volume #{volume_id}: {e}", exc_info=True)
-                    success, error = False, str(e)
+                    success, error = False, 'Erreur interne'
 
                 if success:
                     linked += 1
@@ -1877,7 +1877,7 @@ def _link_volumes_batch_async(app, db_path, volume_ids):
             _link_volumes_job['result'] = {'linked': linked, 'total': total, 'failed': failed}
     except Exception as e:
         logger.error(f"Erreur rattachement Bédéthèque en lot: {e}", exc_info=True)
-        _link_volumes_job['result'] = {'linked': 0, 'total': len(volume_ids), 'failed': [], 'error': str(e)}
+        _link_volumes_job['result'] = {'linked': 0, 'total': len(volume_ids), 'failed': [], 'error': 'Erreur interne'}
     finally:
         _link_volumes_job['running'] = False
 
@@ -2019,10 +2019,10 @@ def update_metadata_volume(volume_id):
         return jsonify({'success': True, 'comicinfo': new_comicinfo})
 
     except UnsupportedFormatError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
         logger.error(f"Erreur lors de la mise à jour des métadonnées du volume #{volume_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _classify_bedetheque_number(number, title, is_oneshot_series):
@@ -2594,7 +2594,7 @@ def add_series_from_bedetheque():
 
     except Exception as e:
         logger.error(f"Erreur lors de l'ajout de série depuis Bedetheque: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
     finally:
         if lock_acquired:
             _import_execution_lock.release()
@@ -2795,10 +2795,10 @@ def _convert_volume_to_cbz(volume_id, source_format, convert_fn, error_cls):
 
     except error_cls as e:
         logger.error(f"Erreur conversion {source_format}->cbz pour le volume #{volume_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
     except Exception as e:
         logger.error(f"Erreur lors de la conversion du volume #{volume_id}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/convert-cbr/<int:volume_id>', methods=['POST'])

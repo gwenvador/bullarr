@@ -417,7 +417,7 @@ def search_ed2k():
         return jsonify({'results': all_results})
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur interne'}), 500
 
 
 @search_bp.route('/api/search/prowlarr')
@@ -449,5 +449,5 @@ def search_prowlarr_api():
         print(f"Erreur recherche Prowlarr: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Erreur interne'
         }), 500

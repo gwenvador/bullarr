@@ -146,7 +146,7 @@ def ebdz_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
         
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @ebdz_bp.route('/scrape', methods=['POST'])
@@ -236,7 +236,7 @@ def scrape():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @ebdz_bp.route('/scrape/status', methods=['GET'])
@@ -293,7 +293,7 @@ def auto_scrape_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
         
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 def _build_nouveautes_title_match_index(series_rows, title_match_key):
@@ -560,7 +560,7 @@ def latest_scrape():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @ebdz_bp.route('/nouveautes/new-count', methods=['GET'])
@@ -605,7 +605,7 @@ def nouveautes_new_count():
 
         return jsonify({'success': True, 'count': ebdz_count + telegram_count})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @ebdz_bp.route('/auto-scrape/status', methods=['GET'])
@@ -629,4 +629,4 @@ def auto_scrape_status():
             'next_run': next_run
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
