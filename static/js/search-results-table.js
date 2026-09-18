@@ -798,10 +798,11 @@ async function _loadOwnedVolumeLabels(seriesId) {
             fetch(`/api/series/${seriesId}`).then(r => r.json())
         ]);
         if (generation !== _ownedVolumesGeneration) return; // une recherche plus récente a démarré entre-temps
+        const physicallyOwned = v => !!v.filepath && v.filesystem_present !== false && v.filesystem_present !== 0;
         _searchTableOwnedLabels = new Set(
-            (volumes || []).filter(v => v.filepath).map(_ownedVolumeLabel).filter(Boolean)
+            (volumes || []).filter(physicallyOwned).map(_ownedVolumeLabel).filter(Boolean)
         );
-        _searchTableOneshotOwned = !!series.is_oneshot && (volumes || []).some(v => v.filepath);
+        _searchTableOneshotOwned = !!series.is_oneshot && (volumes || []).some(physicallyOwned);
         _renderSearchResultsTbody();
     } catch (error) {
         console.warn('Erreur récupération des tomes déjà possédés:', error);

@@ -173,7 +173,13 @@
 }
 
 .settings-section {
-    max-width: 1400px;
+    width: 100%;
+    max-width: none;
+}
+
+.settings-transfer-mode {
+    width: min(100%, 560px);
+    margin-top: 8px;
 }
 
 .section-header {
@@ -395,6 +401,10 @@
     border-radius: 10px;
     border: 2px solid var(--color-border);
     transition: all 0.3s;
+}
+
+.checkbox-group + .checkbox-group {
+    margin-top: 14px;
 }
 
 .checkbox-group:hover {
@@ -988,3 +998,19 @@
 .verification-folder-universe-summary .verification-folder-universe-chevron { flex: 0 0 auto; transition: transform .15s ease; }
 .verification-series-collapse[open] .verification-folder-universe-chevron { transform: rotate(180deg); }
 .verification-folder-universe-summary .verification-series-collapse-count { margin-left: 0; }
+
+
+/* Vérification > fichiers absents : actions volontairement compactes, sur une seule ligne. */
+.missing-files-icon-actions,
+.missing-files-bulk-actions {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.missing-files-icon-actions .btn-icon-only,
+.missing-files-bulk-actions .btn-icon-only {
+    flex: 0 0 auto;
+}

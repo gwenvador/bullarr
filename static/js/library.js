@@ -7,10 +7,6 @@ if (typeof window.libraryId === 'undefined') {
 }
 
 let seriesData = [];
-// "la page /library/2 il n'y a pas de bouton pour selectionner les series" - même pattern
-// que selectedVolumeIds (fiche série): un Set d'id, partagé par les 3 vues (affiches/
-// aperçu/tableau) plutôt qu'un mécanisme par vue - voir toggleSeriesSelection/
-// updateSeriesBulkActionsBar plus bas.
 let selectedSeriesIds = new Set();
 // Filtres actifs (multi-sélection): clés comme 'missing', 'oneshot', 'ebdz-unmatched',
 // 'genre:Histoire', 'author:Alcante', 'year:2020'. Plusieurs filtres d'une même catégorie
@@ -293,10 +289,6 @@ let _libraryFreshnessMarker = null;
 let _libraryPollTimer = null;
 
 async function pollLibraryFreshness() {
-    // "met dans les periodes ou il ne passe rien ca fera du polling pour rien" - onglet
-    // en arrière-plan (changé d'onglet, fenêtre minimisée...): personne ne regarde,
-    // inutile de sonder. Rattrapé immédiatement par le listener visibilitychange plus
-    // bas dès que l'onglet redevient visible, pas seulement au prochain tick régulier.
     if (document.hidden) return;
     try {
         const response = await fetch(`/api/library/${libraryId}/last-updated`);
@@ -556,8 +548,6 @@ function buildOverviewRowHtml(s) {
 // _seriesTableSortValue...), qui applique escapeHtml() sur la valeur retournée - du HTML
 // y ressortirait échappé tel quel, affiché comme du texte littéral au lieu d'être rendu.
 function _matchStatusHtml(matched) {
-    // "#5 retire oui / non garde juste l'icone" - l'icône seule suffit (colonne dédiée,
-    // déjà nommée "EBDZ"/"Komga" dans l'en-tête).
     return matched ? '✓' : '✗';
 }
 
@@ -586,12 +576,6 @@ const TABLE_FIXED_COLUMNS = [
     { key: 'genre', label: 'Genre', icon: '🏷️' },
 ];
 
-// "make sure that if komga or ebdz is not configured they dont show up in the table" -
-// une colonne "Matching EBDZ"/"Matching Komga" affichant "✗" sur CHAQUE ligne (jamais
-// actionnable, l'intégration n'étant même pas configurée) n'a rien d'un vrai signal.
-// Filtrées ici, au seul endroit qui lit TABLE_OPTIONAL_COLUMNS, plutôt que dans chaque
-// appelant séparément - enabledIntegrations vient de nav.js (refreshEnabledIntegrations),
-// seul script chargé sur toutes les pages ayant besoin de cette info.
 function _availableTableOptionalColumns() {
     return TABLE_OPTIONAL_COLUMNS.filter(col => {
         if (col.key === 'ebdzMatch') return enabledIntegrations.ebdz;
@@ -627,9 +611,6 @@ function toggleTableColumn(key) {
     filterSeries();
 }
 
-// Reconstruit le contenu du menu "⚙️ Colonnes" - pas de classe autoclose puisqu'on veut
-// pouvoir cocher/décocher plusieurs colonnes sans que le menu se referme à chaque clic
-// (même logique que les menus de filtre Genre/Auteur/Année)
 function renderTableColumnsMenu() {
     const menu = document.getElementById('table-columns-menu');
     if (!menu) return;
@@ -650,19 +631,6 @@ function buildTableRowHtml(s) {
     const statusLabel = _seriesStatusLabel(s);
     const volumeLabel = buildVolumeCountLabel(s);
 
-    // Colonnes optionnelles bornées en largeur (voir .series-table-optional-cell): sans
-    // ça, un genre/auteur un peu long forçait le tableau entier à s'élargir bien au-delà
-    // du conteneur, avec un scroll horizontal peu lisible dès 2-3 colonnes activées à la
-    // fois - la troncature ellipsis (+ title="" pour voir la valeur complète au survol)
-    // garde le tableau contenu quel que soit le nombre de colonnes cochées
-    // data-label: ignoré en desktop, utilisé uniquement par le CSS mobile (::before,
-    // voir @media max-width:768px dans style-library-search.css) pour afficher "Label :
-    // valeur" sur les colonnes optionnelles - leur valeur seule (ex: "Drugstore") ne dit
-    // pas de quelle colonne elle vient une fois l'en-tête masqué sur mobile.
-    // data-tooltip (pas title): "quand c'est trop [long] il faudrait afficher un
-    // tooltip instantanément" - un title="" natif se déclenche avec le délai de survol
-    // de l'OS/navigateur (~1s), contrairement au système d'infobulle instantané déjà en
-    // place partout ailleurs dans l'app (voir showJsTooltip, nav.js).
     const optionalCellsHtml = _availableTableOptionalColumns()
         .filter(col => _isTableColumnVisible(col.key))
         .map(col => {
@@ -777,8 +745,6 @@ function filterSeriesTableRows() {
             const cell = row.children[f.colIndex];
             if (!cell) return false;
             const text = cell.textContent.trim();
-            // "si j'ai un accent de type é ca trouve pas. vire les accents" - comparaison
-            // insensible aux accents (voir normalizeForSearch), pas juste à la casse.
             if (!f.isSelect) return normalizeForSearch(text).includes(normalizeForSearch(f.value));
             return f.isMulti ? splitMultiValue(text).includes(f.value) : text === f.value;
         });
@@ -837,13 +803,6 @@ function setSeriesTableSort(column) {
     filterSeries();
 }
 
-// filterCol/colIndex optionnels: fusionne le contrôle de filtre (voir _tableFilterColumns)
-// directement dans l'en-tête triable, sur la même ligne que le libellé plutôt qu'une
-// seconde <tr> dédiée ou empilé dessous ("les filtres tu peux les mettre dans le header
-// pour eviter d'avoir une ligne en plus", puis "change toutes les filtre des tableaux
-// avec le filter sur la meme ligne style hoover") - replié sur une icône loupe, déplié
-// au survol/focus (voir .th-filterable-* dans style-library-search.css). Le filtre a son
-// propre onclick stopPropagation pour ne pas déclencher le tri au clic/à la sélection.
 function _seriesTableHeaderHtml(column, label, filterCol, colIndex) {
     const active = seriesTableSort.column === column;
     const arrow = active ? (seriesTableSort.direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
@@ -965,11 +924,6 @@ function displaySeries(series) {
     updateSeriesBulkActionsBar();
 }
 
-// ===== SÉLECTION MULTIPLE / ACTIONS GROUPÉES - LISTE DES SÉRIES =====
-// "la page /library/2 il n'y a pas de bouton pour selectionner les series" - même case à
-// cocher/Set/barre d'actions que la sélection de tomes sur la fiche série
-// (selectedVolumeIds), partagée par les 3 vues (affiches/aperçu/tableau) au lieu d'un
-// mécanisme par vue.
 function toggleSeriesSelection(seriesId, checked) {
     if (checked) selectedSeriesIds.add(seriesId); else selectedSeriesIds.delete(seriesId);
     updateSeriesBulkActionsBar();
@@ -1119,19 +1073,10 @@ async function bulkDeleteSelectedSeries() {
 // "Terminé" reprend le vocabulaire de Bédéthèque (bedetheque_status y est déjà
 // "Terminée") plutôt que "Finie", qui n'existe nulle part ailleurs dans l'appli.
 function _seriesBadgeInfo(series) {
-    // Déclaration manuelle ("je voudrais ameliorer si un album est complet ou non...
-    // ajoute une option dans la molette pour déclarer cet album complet") - prime sur
-    // TOUT calcul automatique ci-dessous, y compris le one-shot: c'est un choix explicite
-    // de l'utilisateur, jamais reconsidéré (voir toggle_series_complete_override, routes.py).
     if (series.manual_complete_override) {
         return { key: 'complete', icon: 'check', label: 'Terminé', reason: 'Déclarée complète manuellement' };
     }
 
-    // "ajoute un statut vide ou j'ai la serie en bibliotheque mais pas de volume
-    // telecharger" - une série ajoutée (ex: depuis Découvrir, voir add_series_from_bedetheque)
-    // mais dont aucun fichier n'a encore été importé n'a par définition ni tome possédé ni
-    // trou à signaler - avant le check one-shot: un one-shot pas encore téléchargé est
-    // "vide" lui aussi, pas "Terminé" (qui laisserait croire qu'il est déjà possédé).
     if (!series.total_volumes) {
         return { key: 'empty', icon: '📭', label: 'Vide', reason: 'Série ajoutée à la bibliothèque, aucun volume téléchargé pour l\'instant' };
     }
@@ -1181,12 +1126,7 @@ function _seriesBadgeInfo(series) {
     }
 
     // 1. "Terminé" : rien ne manque dans la séquence possédée ET série terminée sur Bédéthèque
-    if (isFullyOwned && !hasMissingVolumes) {
-        // "584 explique pourquoi c'est complet... explique mieux" - même texte que la
-        // fiche série (series.bedetheque_complete_reason, calculé une seule fois côté
-        // serveur), plutôt qu'un ratio brut ici (trompeur si la série n'est possédée
-        // qu'au travers d'une intégrale, ex: Ter - "1 volume(s) possédé(s)" ne dit rien
-        // sur POURQUOI c'est considéré complet).
+    if (isFullyOwned && isBedethequeComplete) {
         return {
             key: 'complete', icon: 'check', label: 'Terminé',
             reason: `Série terminée (${series.bedetheque_status}) - ${series.bedetheque_complete_reason || `${series.total_volumes} ${pluralize(series.total_volumes, 'volume')} ${pluralize(series.total_volumes, 'possédé')} sur ${series.bedetheque_total_volumes}`}`
@@ -1258,12 +1198,6 @@ function seriesMatchesFilterKey(s, key) {
 }
 
 function filterSeries() {
-    // "retire rechercher une série field dans bibliothèque" - le champ de recherche en
-    // page (#search) a été retiré (redondant avec la recherche globale du header, voir
-    // initHeaderSearch dans nav.js), mais filterSeries() reste le point d'entrée central
-    // du filtrage/tri de la bibliothèque (appelé par les filtres de catégorie, le tri...
-    // pas seulement par ce champ) - getElementById renvoie donc null ici désormais, d'où
-    // ce garde plutôt que de casser tout le filtrage.
     const searchInput = document.getElementById('search');
     const searchTerm = normalizeForSearch(searchInput ? searchInput.value : '');
     // Recherche sur titre + auteur + genre + tags (texte pré-normalisé et mis en cache
@@ -1272,10 +1206,6 @@ function filterSeries() {
         (s._searchHaystack || buildSearchHaystack(s)).includes(searchTerm)
     );
 
-    // "affiche maintenant les serie vide" - une série ajoutée à la bibliothèque (ex:
-    // depuis Découvrir) mais dont aucun fichier n'a encore été importé n'était jusqu'ici
-    // jamais montrée du tout - elle a désormais son propre statut "Vide" (voir
-    // _seriesBadgeInfo) plutôt que de disparaître silencieusement de la liste.
 
     if (activeFilters.size > 0) {
         const byCategory = new Map();
@@ -1561,7 +1491,6 @@ function restoreFilterState() {
     updateSortDropdownActiveButton();
 }
 
-// Ajoute/retire une clé de filtre de la sélection multiple active
 function toggleSeriesFilter(key) {
     if (activeFilters.has(key)) {
         activeFilters.delete(key);
@@ -1748,17 +1677,6 @@ async function scanSeries(seriesId, forceFull) {
     }
 }
 
-// Upload direct d'un fichier de tome depuis la fiche série ("ajoute une option upload
-// fichier pour mettre à jour une série") - alternative au dépôt dans un répertoire
-// surveillé (aMule/torrents) suivi d'une assignation manuelle sur /import, pour un ajout
-// ponctuel sans attendre un téléchargement externe. Un seul <input type="file"> caché est
-// créé/réutilisé à la demande (id fixe) plutôt qu'un par série: la fiche série n'a qu'une
-// seule instance affichée à la fois.
-// forcedVolumeOverride: connu d'avance quand l'envoi part du menu ⚙️ d'UN tome précis
-// (voir buildVolumeActionsGearHtml) - pas besoin de redemander à l'utilisateur quel tome
-// c'est (_confirmUploadVolumeSlot) puisque c'est justement celui dont il vient de cliquer
-// le menu. undefined depuis le header de la série (one-shot): là, le tome cible n'est pas
-// encore connu, la confirmation reste nécessaire.
 function triggerSeriesFileUpload(seriesId, forcedVolumeOverride) {
     let input = document.getElementById('series-file-upload-input');
     if (!input) {
@@ -1999,9 +1917,6 @@ async function toggleOneshot(seriesId) {
     }
 }
 
-// Bascule la déclaration manuelle "série complète" ("ajoute une option dans la molette
-// pour déclarer cet album complet") - prime sur le calcul automatique du badge
-// (_seriesBadgeInfo) quel qu'il soit, voir toggle_series_complete_override côté Flask.
 async function toggleSeriesCompleteOverride(seriesId) {
     setSeriesActionsGearBusy(seriesId, true);
     try {
@@ -2183,18 +2098,6 @@ function buildVolumeMetaBadgesHtml(v) {
 // propre ligne de détail, pas celle-ci)
 function buildVolumeFileDetailHtml(v) {
     const ci = v.comicinfo || {};
-    // Note Bédéthèque: existait déjà en colonne optionnelle de la vue tableau (voir
-    // VOLUME_TABLE_OPTIONAL_COLUMNS) mais un one-shot n'affiche jamais cette table (pas
-    // de carte volume classique, voir renderSeriesDetail) - sans l'ajouter ici aussi, sa
-    // note restait invisible nulle part. buildVolumeFileDetailHtml est partagé avec la
-    // carte tome classique (buildVolumeItemHtml), qui en profite donc aussi.
-    // Cliquable -> modale des avis de lecteurs Bédéthèque (voir openBedethequeReviewsModal):
-    // la note seule ne dit rien du POURQUOI, l'utilisateur a demandé à pouvoir lire le
-    // texte des avis sans quitter la fiche série
-    // "avis est incorrect, c'est le nombre de votes" - communityratingcount (Bédéthèque)
-    // compte les gens qui ont NOTÉ l'album, pas ceux qui ont écrit un texte d'avis (les
-    // deux peuvent diverger) - "votes" est le mot exact, "avis" laissait croire à tort
-    // qu'il y avait forcément ce nombre de textes à lire dans la modale.
     const ratingHtml = ci.communityrating
         ? ` • <span class="bd-rating-link" data-tooltip="Voir les avis Bédéthèque" onclick="openBedethequeReviewsModal(${v.id})">⭐ ${escapeHtml(String(ci.communityrating))}/5${ci.communityratingcount ? ` (${escapeHtml(String(ci.communityratingcount))} votes)` : ''}</span>`
         : '';
@@ -2244,15 +2147,6 @@ function buildVolumeLinksIconHtml(v) {
     `;
 }
 
-// Menu ⚙️ Actions pour un tome manquant/placeholder (pas de fichier) - "les fichiers
-// manquants aussi doivent avoir la molette avec les options MAJ, rechercher, ajouter un
-// volume", pendant du menu ⚙️ d'un tome possédé (buildVolumeActionsGearHtml) mais réduit
-// aux trois actions qui ont un sens sans fichier: rafraîchir les infos Bédéthèque déjà
-// connues du placeholder, chercher une source, ou envoyer directement un fichier trouvé
-// à la main. Avant, la seule façon de lancer la recherche pour ce tome était le badge
-// "Non possédé" affiché dans la colonne Emplacement/le détail de la carte ("il y a pour
-// remplacer l'existant mais pas ceux que je n'ai pas") - le badge reste cliquable en plus
-// (pas retiré), ce menu ajoute juste un chemin cohérent avec les tomes possédés.
 function buildVolumeMissingActionsGearHtml(v) {
     const volNum = v.volume_number ?? v.integral_number ?? v.hs_number ?? v.episode_number ?? 'null';
     // Même garde que le menu d'un tome possédé: n'a de sens que si la série est déjà
@@ -2262,14 +2156,6 @@ function buildVolumeMissingActionsGearHtml(v) {
         ? `<button type="button" class="toolbar-dropdown-item" onclick="updateVolumeMetadataFromBedetheque(${v.id}, event)">${svgIcon('tag')} MAJ de ce tome</button>`
         : '';
     const searchItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="searchMissingVolume(currentSeriesDetail.title, ${volNum}, {seriesId: currentSeriesDetail.id, isIntegral: ${!!v.is_integral}, isHs: ${!!v.is_hs}, isEpisode: ${!!v.is_episode}})">${svgIcon('radar')} Rechercher</button>`;
-    // "ajouter aussi recherche automatique... dans la molette des volumes" - alternative
-    // à "Rechercher" ci-dessus (voir runSeriesAutoAcquire, search-results-table.js).
-    // "Recherche automatique est explicitement désactivé pour ces types dans l'UI. oui
-    // ajoute cela" - couvrait auparavant seulement les tomes numérotés classiques
-    // (is_integral/is_hs/is_episode excluaient le bouton), route Flask corrigée pour
-    // transmettre le bon label ("Intégrale N"/"HS N"/"Épisode N") à
-    // _confirms_requested_volume plutôt que de laisser un numéro seul se faire rejeter à
-    // tort comme "ce n'est pas le tome N demandé".
     const autoAcquireItemHtml = (volNum !== 'null')
         ? `<button type="button" class="toolbar-dropdown-item" onclick="runSeriesAutoAcquire(currentSeriesDetail.id, {volumeNumber: ${volNum}, isIntegral: ${!!v.is_integral}, isHs: ${!!v.is_hs}, isEpisode: ${!!v.is_episode}, seriesTitle: currentSeriesDetail.title, buttonEl: this})">${svgIcon('radar')} Recherche automatique</button>`
         : '';
@@ -2277,10 +2163,6 @@ function buildVolumeMissingActionsGearHtml(v) {
     // triggerSeriesFileUpload, comme pour un tome possédé - "Ajouter un fichier" plutôt
     // que "Remplacer" puisqu'il n'y a justement rien à remplacer.
     const uploadFileItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(currentSeriesDetail.id, {volume: ${v.volume_number ?? 'null'}, is_integral: ${!!v.is_integral}, integral_number: ${v.integral_number ?? 'null'}, is_hs: ${!!v.is_hs}, hs_number: ${v.hs_number ?? 'null'}, is_episode: ${!!v.is_episode}, episode_number: ${v.episode_number ?? 'null'}})">${svgIcon('upload')} Ajouter un fichier</button>`;
-    // "depuis les volumes d'une serie ajoute dans action supprimer le volume" - retire ce
-    // tome placeholder de la liste de suivi (rien à effacer sur le disque, voir
-    // delete_volume côté Flask qui gère déjà ce cas filepath NULL), même action que celle
-    // déjà utilisée par la modale d'édition manuelle (deleteVolume).
     const missingVolumeLabel = `Tome ${v.volume_number != null ? v.volume_number : '?'}`;
     const deleteItemHtml = `<button type="button" class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteVolume(${v.id}, currentSeriesDetail.id, '${escapeForAttribute(missingVolumeLabel)}', true)">${svgIcon('trash-2')} Retirer ce tome</button>`;
     const menuId = `volume-missing-actions-menu-${v.id}`;
@@ -2345,9 +2227,6 @@ function buildVolumeActionsGearHtml(v) {
     // ce cas: volumeNumber null/0 = recherche sans filtre de numéro, jamais bloquée)
     const searchAgainNumber = v.volume_number ?? v.integral_number ?? v.hs_number ?? v.episode_number ?? 'null';
     const searchAgainItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="searchMissingVolume(currentSeriesDetail.title, ${searchAgainNumber}, {seriesId: currentSeriesDetail.id, isIntegral: ${!!v.is_integral}, isHs: ${!!v.is_hs}, isEpisode: ${!!v.is_episode}, currentVolumeId: ${v.id}})">${svgIcon('radar')} Rechercher un remplacement</button>`;
-    // "ajouter aussi recherche automatique... dans la molette des volumes" - même
-    // correctif que buildVolumeMissingActionsGearHtml (voir son commentaire): plus limité
-    // aux tomes numérotés classiques.
     const autoAcquireAgainItemHtml = (searchAgainNumber !== 'null')
         ? `<button type="button" class="toolbar-dropdown-item" onclick="runSeriesAutoAcquire(currentSeriesDetail.id, {volumeNumber: ${searchAgainNumber}, isIntegral: ${!!v.is_integral}, isHs: ${!!v.is_hs}, isEpisode: ${!!v.is_episode}, seriesTitle: currentSeriesDetail.title, buttonEl: this})">${svgIcon('radar')} Recherche automatique</button>`
         : '';
@@ -2362,20 +2241,8 @@ function buildVolumeActionsGearHtml(v) {
     // pour un tome MANQUANT (pas encore de fichier): buildVolumeMissingActionsGearHtml,
     // libellé "Ajouter un fichier" là où il n'y a rien à remplacer.
     const uploadFileItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(currentSeriesDetail.id, {volume: ${v.volume_number ?? 'null'}, is_integral: ${!!v.is_integral}, integral_number: ${v.integral_number ?? 'null'}, is_hs: ${!!v.is_hs}, hs_number: ${v.hs_number ?? 'null'}})">${svgIcon('upload')} Remplacer le fichier</button>`;
-    // "seuls #16 indique size 1B. ajoute un bouton actualiser" - relit taille/nombre de
-    // pages depuis le fichier réel sur disque pour CE tome seul (voir refreshVolumeFromDisk),
-    // sans passer par un scan complet de la série: une DB désynchronisée d'un fichier
-    // corrigé après coup (re-téléchargé, remplacé manuellement...) n'a sinon aucun moyen
-    // simple de se remettre à jour sans déclencher un scan pesant sur toute la série.
     const refreshItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="refreshVolumeFromDisk(${v.id}, event)">${svgIcon('refresh-cw')} Actualiser</button>`;
-    // "ajoute une option dans la molette pour telecharger le fichier (pour le volume)" -
-    // simple navigation vers la route de téléchargement (voir download_volume côté
-    // Flask, Content-Disposition: attachment), pas un appel fetch: le navigateur gère
-    // le téléchargement nativement sans quitter la page.
     const downloadItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="window.location.href='/api/volumes/${v.id}/download'">${svgIcon('download')} Télécharger le fichier</button>`;
-    // "depuis les volumes d'une serie ajoute dans action supprimer le volume" - jusqu'ici
-    // seule la modale d'édition manuelle permettait de supprimer un tome (voir
-    // deleteVolume, réutilisée telle quelle ici) - il fallait l'ouvrir juste pour ça.
     const deleteVolumeLabel = v.filename || `Tome ${v.volume_number != null ? v.volume_number : '?'}`;
     const deleteItemHtml = `<button type="button" class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteVolume(${v.id}, currentSeriesDetail.id, '${escapeForAttribute(deleteVolumeLabel)}')">${svgIcon('trash-2')} Supprimer le fichier</button>`;
     // Actions regroupées derrière une icône molette (au lieu d'icônes séparées par tome):
@@ -2432,20 +2299,8 @@ function _bedethequeCodePrefix(v) {
 }
 
 function volumeNumberLabel(v, isOneshot) {
-    // "au lieu de mettre ? dans les albums met just -" - même convention "—" que partout
-    // ailleurs dans l'app pour une valeur inconnue/absente, plutôt qu'un "?" qui suggère
-    // une erreur alors que c'est simplement un numéro pas encore trouvé.
-    // "in valerian still tome 0 show -" - `v.volume_number || '—'` traitait un vrai tome 0
-    // (existe sur Bédéthèque, ex. Valérian) exactement comme une valeur absente (0 est
-    // falsy en JS) - `!= null` distingue enfin "vraiment absent" de "vaut zéro". Même
-    // correctif pour integral_number/hs_number/episode_number ci-dessous, exposés au même
-    // risque si l'un de ces types est un jour numéroté à partir de 0.
     let numberLabel = isOneshot ? 'OS' : (v.volume_number != null ? v.volume_number : '—');
     if (v.is_bis && v.volume_number != null) {
-        // "13 bis is not special it is part of the album" - reste dans le groupe
-        // "Volumes" (is_special=0, voir scanner.py/routes.py), badge affiché avec le
-        // même numéro que le tome de base + le suffixe exact Bédéthèque ("13 Bis",
-        // jamais renuméroté - "meme notations que dans bedetheque").
         numberLabel = `${v.volume_number} ${v.bis_suffix || ''}`.trim();
     } else if (v.is_integral) {
         numberLabel = _bedethequeCodePrefix(v) || (v.integral_number != null ? `INT ${v.integral_number}` : 'INT');
@@ -2454,21 +2309,6 @@ function volumeNumberLabel(v, isOneshot) {
     } else if (v.is_episode) {
         numberLabel = v.episode_number != null ? `ÉP ${v.episode_number}` : 'ÉP';
     } else if (v.is_special && !isOneshot) {
-        // special_label: code brut Bédéthèque ("COF", "MBD05"...) - pas de numéro
-        // structuré côté spéciaux, pas de dictionnaire de noms "traduits" à maintenir
-        // (voir _parse_special_prefix, scraper.py).
-        // "il y a SP qui n'a pas de tooltip" - bug réel: le repli utilisé ici quand un
-        // spécial n'a AUCUN code (titre Bédéthèque sans préfixe du tout, ex: "Making
-        // of" - voir CLAUDE.md "plain-titled unnumbered spin-offs") était le texte
-        // littéral "SP", visuellement IDENTIQUE au vrai code Bédéthèque "SP" (Service
-        // Presse, voir SPECIAL_CODE_LABELS) - un badge "SP" pouvait donc soit être ce
-        // vrai code (avec tooltip), soit ce simple repli "aucun code" (jamais de
-        // tooltip, puisque special_label vaut alors NULL, rien à chercher dans le
-        // dictionnaire) - impossible à distinguer visuellement. "bedetheque has no
-        // entry for this so it should stay as - ... keep the same as bedetheque" -
-        // même convention "—" que le tout premier repli de cette fonction (valeur
-        // vraiment absente, jamais inventée) plutôt qu'un nouveau texte qui n'existe
-        // pas côté Bédéthèque. 121 tomes de la bibliothèque sont dans ce cas.
         numberLabel = v.special_label || '—';
     }
     return numberLabel;
@@ -2489,15 +2329,6 @@ function _displayVolumeTitle(v) {
     return title;
 }
 
-// "not this should explain what COF is according to the list I mentioned before" - codes
-// DOCUMENTÉS (éditions/tirages/provenance/collections particulières de la nomenclature
-// BEL/Bédéthèque fournie par l'utilisateur), pas un dictionnaire de TOUS les codes
-// rencontrés en pratique (135 recensés sur cette bibliothèque, la plupart des codes
-// promotionnels ponctuels propres à un seul éditeur - "MBD05", "Quick1", "Lidl"... aucun
-// vocabulaire officiel à traduire pour ceux-là, voir _parse_special_prefix, scraper.py).
-// Clé = code SANS le suffixe numérique éventuel (comparé après avoir retiré les chiffres
-// de fin, voir ci-dessous - "PIR1"/"PIR2"/"PIR3"/"PIR4" partagent tous "Collection
-// Pirate", juste avec un numéro différent).
 const SPECIAL_CODE_LABELS = {
     // Tirages
     TT: 'Tirage de Tête', TL: 'Tirage de Luxe', TS: 'Tirage Spécial', HC: 'Hors Commerce',
@@ -2549,8 +2380,6 @@ function _volumeNumberBadgeTooltip(v) {
     const ci = v.comicinfo || {};
     const rawTitle = ci.title || '';
     const label = v.special_label || '';
-    // "N&B" garde son "&" (pas un chiffre à retirer) - seul un suffixe numérique final
-    // ("PIR1" -> "PIR" + "1") est isolé pour la recherche dans le dictionnaire.
     const m = label.match(/^([A-Za-zÀ-ÿ&]+)(\d*)$/);
     const codeBase = m ? m[1].toUpperCase() : label.toUpperCase();
     const codeNum = m ? m[2] : '';
@@ -2563,12 +2392,6 @@ function _volumeNumberBadgeTooltip(v) {
     return rawTitle;
 }
 
-// "c'est pas son nom??" - un one-shot dont le titre ComicInfo du tome est identique au
-// titre de la SÉRIE (cas fréquent: une œuvre jamais publiée sous un autre nom que la
-// série elle-même) n'apporte rien à afficher en suffixe ("OS - À l'intérieur" sous une
-// série déjà nommée "À l'intérieur" ne fait que répéter la même information) - comparaison
-// insensible aux accents/casse (normalizeForSearch) plutôt qu'une égalité stricte, pour
-// que "À L'INTÉRIEUR" et "à l'intérieur" comptent comme le même titre.
 function _volumeTitleSuffix(title, seriesTitle) {
     if (!title) return '';
     if (seriesTitle && normalizeForSearch(title.trim()) === normalizeForSearch(seriesTitle.trim())) return '';
@@ -2596,6 +2419,15 @@ function volumeProgressLabel(v, isOneshot) {
 // éditer), un bouton "Chercher une source" à la place - fusionné directement dans cette
 // liste plutôt que dans une grille "volumes manquants" séparée, pour que tous les tomes
 // (possédés ou non) apparaissent triés ensemble au même endroit.
+// Un chemin en base ne prouve pas qu'un fichier existe encore. La vérification
+// filesystem conserve le chemin pour récupération, mais les vues de possession doivent
+// utiliser cette présence physique quand elle est connue.
+function hasVolumeFile(v) {
+    // SQLite expose 0/1 in JSON; absence is therefore either false or 0.
+    // null/undefined means an older unchecked row and stays backward-compatible.
+    return !!v.filepath && v.filesystem_present !== false && v.filesystem_present !== 0;
+}
+
 function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
     const ci = v.comicinfo || {};
     const coverHtml = v.cover_path
@@ -2604,7 +2436,7 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
 
     const numberLabel = volumeNumberLabel(v, isOneshot);
 
-    if (!v.filepath) {
+    if (!hasVolumeFile(v)) {
         return `
             <div class="volume-item volume-item-placeholder">
                 <div class="volume-number${v.is_integral ? ' volume-number-integral' : ''}${v.is_hs ? ' volume-number-hs' : ''}${v.is_episode ? ' volume-number-episode' : ''}${v.is_special ? ' volume-number-special' : ''}"${v.is_special ? ` data-tooltip="${escapeHtml(_volumeNumberBadgeTooltip(v))}"` : ''}>${numberLabel}</div>
@@ -2711,13 +2543,6 @@ function setVolumesTableSort(column) {
     }
 }
 
-// Colonnes optionnelles de la vue tableau des tomes, désactivées par défaut - même
-// principe que TABLE_OPTIONAL_COLUMNS (liste des séries, voir son commentaire) via un
-// bouton "⚙️ Colonnes" ("je veux l'icône molette pour ajouter des entrées"), persistées
-// dans localStorage. render(v) lit le ComicInfo du tome, pas de champ dédié en base pour
-// ces valeurs (elles vivent uniquement dans le JSON comicinfo, voir CLAUDE.md).
-// Date (année de publication) est un des 7 colonnes par défaut demandées explicitement
-// ("numero, nom, date, format, taille, emplacement et actions") - pas ici.
 const VOLUME_TABLE_OPTIONAL_COLUMNS = [
     { key: 'author', label: 'Auteur', icon: '✍️', header: 'Auteur', render: v => (v.comicinfo || {}).writer || v.author || '—' },
     { key: 'publisher', label: 'Éditeur', icon: '🏢', header: 'Éditeur', render: v => (v.comicinfo || {}).publisher || '—' },
@@ -2738,10 +2563,6 @@ const VOLUME_TABLE_OPTIONAL_COLUMNS = [
         if (!ci.communityrating) return '—';
         return `${ci.communityrating}/5${ci.communityratingcount ? ` (${ci.communityratingcount} votes)` : ''}`;
     } },
-    // "pareil pour le tableau de série. pas de releaser ni qualité" - resolution/
-    // release_group viennent directement de la colonne `volumes` (pas du ComicInfo,
-    // contrairement aux colonnes ci-dessus), même champs déjà affichés en badge sur la
-    // carte tome/le header one-shot (voir buildVolumeMetaBadgesHtml).
     { key: 'quality', label: 'Qualité', icon: '🖼️', header: 'Qualité', filterType: 'text', render: v => v.resolution || '—' },
     { key: 'releaser', label: 'Releaser', icon: '📀', header: 'Releaser', filterType: 'text', render: v => v.release_group || '—' },
 ];
@@ -2771,9 +2592,6 @@ function toggleVolumeTableColumn(key) {
     }
 }
 
-// Reconstruit le contenu du menu "⚙️ Colonnes" - même logique que renderTableColumnsMenu
-// (liste des séries): pas de classe autoclose, pour cocher/décocher plusieurs colonnes
-// sans que le menu se referme à chaque clic.
 function renderVolumeTableColumnsMenu() {
     const menu = document.getElementById('volume-table-columns-menu');
     if (!menu) return;
@@ -2810,21 +2628,6 @@ function _volumeTableSortValue(v, column) {
     }
 }
 
-// Un tome numéroté, une intégrale (INT), un hors-série (HS) et un épisode ont chacun
-// leur propre compteur (volume_number/integral_number/hs_number/episode_number) - les
-// comparer entre eux directement (ex: tome 2 vs INT1) mélangerait ces échelles
-// indépendantes et intercalerait les INT/HS au milieu des tomes numérotés ("1, INT 1,
-// 2"). On les classe donc d'abord par palier (tomes numérotés avant INT avant HS avant
-// épisode avant non-numéroté), toujours dans cet ordre quel que soit le sens du tri, et
-// on ne trie par valeur numérique qu'à l'intérieur d'un palier - même principe que côté
-// serveur dans get_series_volumes().
-// "for example for Hors-serie it has order HS 2, HS 3 mais n'order pas HS" - bug réel:
-// le tri se faisait sur la PRÉSENCE d'un numéro (integral_number/hs_number/episode_number
-// non NULL), pas sur le TYPE réel du tome (is_integral/is_hs/is_episode) - un HS SANS
-// numéro (hs_number NULL, une série qui n'a qu'un seul hors-série) ne remontait donc
-// jamais dans le même groupe que HS2/HS3, retombant dans le fourre-tout de la dernière
-// tier avec les Spéciaux et autres one-shots. Basé sur le type lui-même désormais, jamais
-// sur son numéro.
 function _volumeNumberSortTier(v) {
     if (v.volume_number !== null && v.volume_number !== undefined) return 0;
     if (v.is_integral) return 1;
@@ -2840,12 +2643,6 @@ function _compareVolumesForSort(a, b, column, direction) {
         const tierB = _volumeNumberSortTier(b);
         if (tierA !== tierB) return tierA - tierB;
 
-        // "just order by name in each section" - une seule règle au sein d'une même
-        // section (Tomes/Intégrales/HS/Épisodes/Spéciaux, voir _volumeNumberSortTier):
-        // trier par le libellé affiché dans cette même colonne (volumeNumberLabel, ex.
-        // "Tome 5"/"HS 2"/"HS"/"BO1") - `numeric: true` compare déjà les nombres qu'il
-        // contient dans le bon ordre ("Tome 2" avant "Tome 10"), pas besoin de
-        // distinguer le champ numérique propre à chaque type.
         const la = volumeNumberLabel(a);
         const lb = volumeNumberLabel(b);
         const cmp = String(la).localeCompare(String(lb), 'fr', { numeric: true, sensitivity: 'base' });
@@ -2890,7 +2687,7 @@ function buildVolumeTableRowHtml(v, isOneshot) {
     const ci = v.comicinfo || {};
     const numberLabel = volumeNumberLabel(v, isOneshot);
     const name = _displayVolumeTitle(v) || v.filename || `Tome ${numberLabel}`;
-    const isPlaceholder = !v.filepath;
+    const isPlaceholder = !hasVolumeFile(v);
     const actionsHtml = isPlaceholder
         ? `${buildVolumeLinksIconHtml(v)}${buildVolumeMissingActionsGearHtml(v)}`
         : buildVolumeActionIconsHtml(v);
@@ -2936,7 +2733,7 @@ function buildVolumeTableRowHtml(v, isOneshot) {
             <td style="white-space:nowrap;">${escapeHtml(String(_volumeDateLabel(v)))}</td>
             <td>${isPlaceholder ? '—' : escapeHtml((v.format || '?').toUpperCase())}</td>
             <td style="white-space:nowrap;" data-raw-size="${v.file_size || 0}">${isPlaceholder ? '—' : formatBytes(v.file_size)}</td>
-            <td class="volume-table-path" title="${escapeHtml(v.filepath || '')}">${v.filepath ? escapeHtml(v.filepath) : buildVolumeTableMissingBadgeHtml(v)}</td>
+            <td class="volume-table-path" title="${escapeHtml(v.filepath || '')}">${hasVolumeFile(v) ? escapeHtml(v.filepath) : buildVolumeTableMissingBadgeHtml(v)}</td>
             ${optionalCellsHtml}
             <td class="volume-table-actions"><div class="volume-table-actions-inner">${actionsHtml}</div></td>
         </tr>
@@ -2996,7 +2793,7 @@ function _volumeTableFilterColumns(volumes) {
         { label: '#', type: 'text' },
         { label: 'Nom', type: 'text' },
         { label: 'Date', type: 'select', getValue: v => String(_volumeDateLabel(v)) },
-        { label: 'Format', type: 'select', getValue: v => v.filepath ? (v.format || '?').toUpperCase() : '—' },
+        { label: 'Format', type: 'select', getValue: v => hasVolumeFile(v) ? (v.format || '?').toUpperCase() : '—' },
         { label: 'Taille', type: 'size-bucket' },
         { label: 'Emplacement', type: 'text' },
         ...optional.map(col => ({
@@ -3037,8 +2834,6 @@ function filterVolumesTableRows() {
             // pourrait rien comparer.
             if (f.isSizeBucket) return _searchResultMatchesSizeBucket({ size: Number(cell.dataset.rawSize || 0) }, f.value);
             const text = cell.textContent.trim();
-            // "si j'ai un accent de type é ca trouve pas. vire les accents" - comparaison
-            // insensible aux accents (voir normalizeForSearch), pas juste à la casse.
             return f.isSelect ? text === f.value : normalizeForSearch(text).includes(normalizeForSearch(f.value));
         });
         // Section repliable (voir toggleVolumeGroupSection): une ligne reste visible
@@ -3120,21 +2915,8 @@ function buildVolumesTableHtml(volumes, isOneshot) {
     `;
 }
 
-// Bascule Aperçu/Tableau pour la liste des tomes (voir volumesViewMode/setVolumesViewMode
-// ci-dessus) - même habillage visuel que .view-switcher (liste des séries) pour rester
-// cohérent, bouton actif en évidence.
-// "dans les volumes ajoute un filtre existant / non existant" - pas persisté
-// (contrairement à volumesViewMode): ouvrir une autre série avec un filtre "Manquants"
-// oublié d'une visite précédente masquerait ses tomes possédés sans qu'on comprenne
-// pourquoi, mieux vaut repartir de "Tout" à chaque fiche série.
 let volumesOwnershipFilter = 'all'; // 'all' | 'owned' | 'missing'
 
-// Sélection multiple en vue tableau des tomes ("en mode tableau add a checkbox pour
-// selectionner plusieurs volumes et ajoute un fonction pour supprimer / convertir / edit
-// / MAJ ... pour la selection") - un Set d'ids de tomes RÉELS (jamais un placeholder,
-// voir buildVolumeTableRowHtml: aucune des 4 actions groupées n'a de sens sur un tome pas
-// encore possédé). Vidé à chaque reconstruction du tableau (nouvelle série, changement de
-// filtre/vue) plutôt que persisté, même raisonnement que volumesOwnershipFilter ci-dessus.
 let selectedVolumeIds = new Set();
 
 function buildVolumesViewSwitcherHtml() {
@@ -3173,20 +2955,9 @@ function setVolumesOwnershipFilter(filter) {
     }
 }
 
-// Bascule (switcher) + liste des tomes, dans le mode courant (volumesViewMode) - extrait
-// de renderSeriesDetail pour être réutilisable par setVolumesViewMode SANS refaire un
-// fetch réseau ni reconstruire header/toolbar: changer juste la vue des tomes n'a besoin
-// d'aucune donnée nouvelle, currentSeriesDetail (déjà en mémoire) suffit. Avant cette
-// extraction, changer de vue rappelait renderSeriesDetail au complet - un aller-retour
-// réseau et un re-rendu de toute la fiche pour changer un simple affichage local.
-// "dans les volumes ajoute un filtre existant / non existant" - un tome "existant" a un
-// fichier (v.filepath non nul), un "non existant" est un placeholder Bédéthèque sans
-// fichier (voir buildVolumeItemHtml). Filtre appliqué ici, en amont de toutes les vues
-// (tableau/parties/liste simple), pour qu'elles restent cohérentes entre elles sans
-// dupliquer la condition dans chacune.
 function _matchesVolumesOwnershipFilter(v) {
-    if (volumesOwnershipFilter === 'owned') return !!v.filepath;
-    if (volumesOwnershipFilter === 'missing') return !v.filepath;
+    if (volumesOwnershipFilter === 'owned') return hasVolumeFile(v);
+    if (volumesOwnershipFilter === 'missing') return !hasVolumeFile(v);
     return true;
 }
 
@@ -3203,10 +2974,6 @@ function _matchesVolumesOwnershipFilter(v) {
 // scraper.py - pas de vocabulaire fermé possible côté Bédéthèque).
 const VOLUME_GROUP_ORDER = ['volume', 'episode', 'integral', 'hs', 'special'];
 const VOLUME_GROUP_LABELS = { volume: 'Volumes', integral: 'Intégrales', hs: 'Hors-série', episode: 'Épisodes', special: 'Spéciaux' };
-// "interesting to have a tooltip for the speciaux sections to understand what it is" -
-// seule "Spéciaux" en a besoin (les 3 autres sont déjà explicites) : coffrets, tirages,
-// rééditions promotionnelles... Bédéthèque n'a aucun vocabulaire fermé pour ces codes,
-// voir _parse_special_prefix (blueprints/bedetheque/scraper.py).
 const VOLUME_GROUP_TOOLTIPS = {
     special: 'Coffrets, tirages spéciaux, rééditions promotionnelles, recueils... tout ce qui n\'est ni un tome classique, ni une intégrale/hors-série/épisode. Le code affiché (ex. "COF", "TT") vient directement de Bédéthèque.'
 };
@@ -3234,18 +3001,12 @@ function _groupVolumesByType(volumes, isOneshot = false) {
         const key = _volumeGroupKey(v, isOneshot);
         (buckets[key] = buckets[key] || []).push(v);
     }
-    // "quand il n'y a que des volumes et pas d'intégrales il n'y a pas de groupes
-    // volumes... ajoute le" - l'en-tête "Volumes" (avec son compte possédé/total) reste
-    // utile même seul, pas la peine d'être multi-type pour le justifier.
     return VOLUME_GROUP_ORDER.filter(key => buckets[key] && buckets[key].length)
         .map(key => ({ key, label: VOLUME_GROUP_LABELS[key], items: buckets[key] }));
 }
 
-// "met le nombre de volumes possédés / total" - le total seul ne dit pas combien
-// manquent réellement dans CETTE section (un placeholder Bédéthèque non possédé compte
-// pareil qu'un tome réel dans g.items.length).
 function _volumeGroupCountLabel(items) {
-    const owned = items.filter(v => v.filepath).length;
+    const owned = items.filter(v => hasVolumeFile(v)).length;
     return `${owned} / ${items.length}`;
 }
 
@@ -3360,13 +3121,6 @@ function buildVolumesSectionHtml(data) {
     return `${volumesViewSwitcherHtml}${volumeBulkActionsBarHtml}${volumesHtml}`;
 }
 
-// ===== SÉLECTION MULTIPLE / ACTIONS GROUPÉES - VUE TABLEAU DES TOMES =====
-// "en mode tableau add a checkbox pour selectionner plusieurs volumes et ajoute un
-// fonction pour supprimer / convertir / edit / MAJ ... pour la selection". "Editer" ne
-// fusionne pas les champs de plusieurs tomes différents dans un seul formulaire (la
-// modale d'édition manuelle reste volontairement centrée sur un seul tome à la fois,
-// voir CLAUDE.md) - plutôt un parcours un par un avec un bouton "Suivant" (voir
-// startBulkEditQueue/bulkEditNext, renderManualEditModalSingleVolume).
 
 function toggleVolumeTableRowSelection(volumeId, checked) {
     if (checked) selectedVolumeIds.add(volumeId); else selectedVolumeIds.delete(volumeId);
@@ -3463,15 +3217,6 @@ async function bulkDeleteSelectedVolumes() {
     );
 }
 
-// "toujours erreur pour conversion [...] quand je quitte la page" - contrairement aux 3
-// autres actions groupées (delete/refresh/update-metadata, voir _runBulkVolumeAction),
-// la conversion ne passe plus par une boucle JS séquentielle (un fetch par tome, le
-// suivant attend la réponse du précédent) : fermer l'onglet/naviguer ailleurs
-// interrompait cette boucle elle-même, laissant tout tome pas encore lancé jamais
-// converti. Un seul appel à /api/bedetheque/convert-volumes-batch (qui lance SON PROPRE
-// thread côté serveur pour traiter toute la liste, format par tome relu depuis la base -
-// voir sa docstring) remplace ça : la page peut être fermée immédiatement après, la
-// conversion continue sans elle.
 async function bulkConvertSelectedVolumes() {
     const volumes = _selectedVolumesData();
     const convertible = volumes.filter(v => ['cbr', 'pdf', 'zip'].includes((v.format || '').toLowerCase()));
@@ -3501,11 +3246,6 @@ async function bulkConvertSelectedVolumes() {
     }
 }
 
-// "ajouter actualiser aussi à la page série dans les options" - même endpoint que le
-// menu ⚙️ d'un tome isolé (voir POST /api/volumes/<id>/refresh, CLAUDE.md: relit juste
-// file_size/page_count depuis le disque sans rescanner toute la série, utile quand un
-// fichier a été remplacé à la main et que la taille en base est périmée), en sélection
-// groupée plutôt qu'un par un.
 async function bulkRefreshSelectedVolumes() {
     const volumes = _selectedVolumesData();
     if (volumes.length === 0) return;
@@ -3599,14 +3339,6 @@ async function loadSeriesUniverse(seriesId) {
         const otherMembers = data.universe.members.filter(m => m.series_id !== seriesId);
         if (otherMembers.length === 0) return;
 
-        // "les liens sont moches" - chips uniformes (même gabarit possédé/non possédé,
-        // juste le logo Bédéthèque en plus pour distinguer un lien externe) plutôt
-        // qu'une liste de liens texte à virgules mélangés à une image inline.
-        // "met une petite icone + pour ajouter la bd dans l'application" - un membre pas
-        // encore possédé garde son lien Bédéthèque (voir la fiche avant d'ajouter reste
-        // utile) mais gagne un bouton "+" séparé, à côté plutôt que sur le lien
-        // lui-même pour ne pas transformer un clic "je veux voir la fiche" en ajout
-        // accidentel.
         const membersHtml = otherMembers.map(m => m.series_id
             ? `<a href="/series/${m.series_id}" class="universe-member-chip">${escapeHtml(m.title)}</a>`
             : `<span class="universe-member-chip universe-member-chip-external-wrap">
@@ -3630,17 +3362,8 @@ async function loadSeriesUniverse(seriesId) {
     }
 }
 
-// "met une petite icone + pour ajouter la bd dans l'application" - ajout direct d'une
-// série liée pas encore possédée, même endpoint que "Albums de l'auteur"
-// (author-albums.js) plutôt qu'une nouvelle route pour le même besoin. viewingSeriesId:
-// rafraîchit la section univers de LA FICHE ACTUELLEMENT AFFICHÉE une fois l'ajout fait,
-// pour que le chip bascule immédiatement en "possédée" (lien interne, plus de bouton +).
 async function addUniverseMemberSeries(bedethequeUrl, libraryId, viewingSeriesId, title, button) {
     button.disabled = true;
-    // "ca ne fait rien et le toast apparait seulement apres qu'il ait chargé. ajoute le
-    // toast instantané avec le nom de la série" - feedback immédiat au clic, avant même
-    // la requête réseau (scraping Bédéthèque, peut prendre plusieurs secondes), plutôt
-    // que de laisser le bouton "+" comme seul indice qu'un clic a bien été pris en compte.
     showToast('universe-add-series', `⏳ Ajout de « ${title} »...`, { icon: 'loader-circle' });
     try {
         const response = await fetch('/api/bedetheque/add-series', {
@@ -3662,10 +3385,6 @@ async function addUniverseMemberSeries(bedethequeUrl, libraryId, viewingSeriesId
     }
 }
 
-// "renaming the universe will have to rename the files" - le backend déplace le(s)
-// dossier(s) d'univers déjà nichés (voir rename_universe côté bedetheque/routes.py), pas
-// juste la ligne en base - le toast reflète donc le résultat réel (nb de séries
-// déplacées / erreurs) plutôt qu'un simple "renommé" optimiste.
 async function renameUniverse(universeId, currentName, viewingSeriesId) {
     const newName = prompt('Nouveau nom de l\'univers:', currentName);
     if (!newName || !newName.trim() || newName.trim() === currentName) return;
@@ -3718,7 +3437,141 @@ async function _computeAdjacentSeriesNav(seriesId, libraryId) {
 // Taille totale de la collection (somme des fichiers) - pas exposée telle quelle par
 // l'API, calculée côté client à partir des volumes déjà chargés.
 function _computeSeriesTotalSize(volumes) {
-    return (volumes || []).reduce((sum, v) => sum + (v.file_size || 0), 0);
+    return (volumes || []).filter(hasVolumeFile).reduce((sum, v) => sum + (v.file_size || 0), 0);
+}
+
+let seriesPathCorrectionId = null;
+let seriesPathCorrectionSelectedPath = null;
+let seriesPathCorrectionSearchTimer = null;
+let seriesPathCorrectionSearchQuery = '';
+let seriesPathCorrectionRequestId = 0;
+
+async function openSeriesPathCorrection(seriesId) {
+    let data = currentSeriesDetail;
+    if (!data || data.id !== Number(seriesId) || !data.path) {
+        try {
+            const response = await fetch(`/api/series/${seriesId}`);
+            data = await response.json();
+            if (!response.ok || !data || !data.id || !data.path) {
+                throw new Error(data?.error || 'Série ou emplacement introuvable');
+            }
+            currentSeriesDetail = data;
+        } catch (error) {
+            alert(`❌ Impossible de charger la série : ${error.message}`);
+            return;
+        }
+    }
+    seriesPathCorrectionId = Number(seriesId);
+    seriesPathCorrectionSelectedPath = null;
+    seriesPathCorrectionSearchQuery = '';
+    let modal = document.getElementById('series-path-correction-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'series-path-correction-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width:720px; min-height:min(760px, 86vh);">
+            <span class="close-modal" onclick="closeSeriesPathCorrection()">×</span>
+            <h2>Corriger l'emplacement</h2>
+            <p>Choisis le dossier réel dans la bibliothèque. Bullarr modifiera uniquement ses chemins enregistrés ; aucun fichier ne sera déplacé ni renommé.</p>
+            <div id="series-path-correction-browser" style="margin-top:14px;"></div>
+            <p id="series-path-correction-selection" style="margin:12px 0;color:var(--text-secondary,#6b7280);">Aucun dossier sélectionné</p>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+                <button class="btn-neutral" onclick="closeSeriesPathCorrection()">Annuler</button>
+                <button id="series-path-correction-apply" class="btn" disabled onclick="applySeriesPathCorrection()">Appliquer</button>
+            </div>
+        </div>`;
+    modal.classList.add('active');
+    loadSeriesPathCorrectionFolders();
+}
+
+async function loadSeriesPathCorrectionFolders(path = null, search = '') {
+    const browser = document.getElementById('series-path-correction-browser');
+    if (!browser || !seriesPathCorrectionId) return;
+    if (path) seriesPathCorrectionSearchQuery = '';
+    const requestId = ++seriesPathCorrectionRequestId;
+    const previousSearchInput = browser.querySelector('#series-path-correction-folder-search');
+    const searchWasFocused = document.activeElement === previousSearchInput;
+    const previousResults = browser.querySelector('.series-path-folder-results');
+    if (previousResults) previousResults.innerHTML = '<p class="series-path-folder-empty">Recherche…</p>';
+    else browser.textContent = 'Chargement des dossiers…';
+    try {
+        const params = new URLSearchParams();
+        if (path) params.set('path', path);
+        if (search) params.set('search', search);
+        const query = params.size ? `?${params}` : '';
+        const response = await fetch(`/api/series/${seriesPathCorrectionId}/path-correction/folders${query}`);
+        const result = await response.json();
+        if (requestId !== seriesPathCorrectionRequestId || search !== seriesPathCorrectionSearchQuery) return;
+        if (!response.ok || !result.success) throw new Error(result.error || 'Dossiers indisponibles');
+        const searching = !!result.search;
+        const parent = result.parent_path
+            ? `<button type="button" class="btn-neutral-sm series-path-folder-parent">← Dossier parent</button>` : '';
+        const options = result.folders.map(folder =>
+            `<button type="button" class="toolbar-dropdown-item series-path-folder-option" data-path="${escapeHtml(folder.path)}" data-action="${searching ? 'select' : 'navigate'}">${svgIcon('folder')} ${escapeHtml(folder.name)}</button>`
+        ).join('') || `<p class="series-path-folder-empty">${searching ? 'Aucun dossier correspondant.' : 'Aucun sous-dossier.'}</p>`;
+        browser.innerHTML = `<div><code>${escapeHtml(searching ? 'Recherche dans la bibliothèque' : result.path)}</code></div><div class="series-path-picker-row">${parent}<div class="toolbar-dropdown series-path-folder-dropdown"><span class="series-path-folder-label">Dossier de destination</span><button type="button" class="toolbar-btn" id="series-path-correction-folder-trigger" aria-haspopup="listbox">${svgIcon('folder')}<span class="series-path-folder-trigger-label">Choisir un dossier</span><span class="series-path-folder-trigger-chevron">${svgIcon('chevron-down')}</span></button><div class="toolbar-dropdown-menu series-path-folder-dropdown-menu" id="series-path-correction-folder-menu" style="display:none;"><input type="search" id="series-path-correction-folder-search" class="series-path-folder-search" value="${escapeHtml(search)}" placeholder="Rechercher un dossier…" autocomplete="off"><button type="button" class="toolbar-dropdown-item series-path-folder-current" data-path="${escapeHtml(result.path)}">${svgIcon('check')} Sélectionner ce dossier</button><div class="toolbar-dropdown-separator"></div><div class="series-path-folder-results" role="listbox">${options}</div></div></div></div>`;
+        if (parent) browser.querySelector('.series-path-folder-parent').onclick = () => loadSeriesPathCorrectionFolders(result.parent_path);
+        if (!searching && result.folders.length === 0) selectSeriesPathCorrectionFolder(result.path);
+        const trigger = browser.querySelector('#series-path-correction-folder-trigger');
+        const menu = browser.querySelector('#series-path-correction-folder-menu');
+        const searchInput = browser.querySelector('#series-path-correction-folder-search');
+        trigger.onclick = event => { event.stopPropagation(); toggleToolbarDropdown(menu.id); setTimeout(() => searchInput.focus(), 0); };
+        if (searchWasFocused) {
+            menu.style.display = 'block';
+            searchInput.focus();
+            searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+        }
+        searchInput.oninput = event => {
+            seriesPathCorrectionSearchQuery = event.target.value;
+            clearTimeout(seriesPathCorrectionSearchTimer);
+            seriesPathCorrectionSearchTimer = setTimeout(() => loadSeriesPathCorrectionFolders(null, event.target.value), 180);
+        };
+        browser.querySelector('.series-path-folder-current').onclick = event => selectSeriesPathCorrectionFolder(event.currentTarget.dataset.path);
+        browser.querySelectorAll('.series-path-folder-option').forEach(button => {
+            button.onclick = event => {
+                const target = event.currentTarget;
+                if (target.dataset.action === 'select') selectSeriesPathCorrectionFolder(target.dataset.path);
+                else loadSeriesPathCorrectionFolders(target.dataset.path);
+            };
+        });
+    } catch (error) {
+        browser.innerHTML = `<div class="error-message">${escapeHtml(error.message)}</div>`;
+    }
+}
+
+function selectSeriesPathCorrectionFolder(path) {
+    seriesPathCorrectionSelectedPath = path;
+    const selection = document.getElementById('series-path-correction-selection');
+    const apply = document.getElementById('series-path-correction-apply');
+    if (selection) selection.innerHTML = `Dossier sélectionné : <code>${escapeHtml(path)}</code>`;
+    if (apply) apply.disabled = false;
+}
+
+function closeSeriesPathCorrection() {
+    const modal = document.getElementById('series-path-correction-modal');
+    if (modal) modal.classList.remove('active');
+    seriesPathCorrectionSelectedPath = null;
+    seriesPathCorrectionId = null;
+}
+
+async function applySeriesPathCorrection() {
+    if (!seriesPathCorrectionId || !seriesPathCorrectionSelectedPath) return;
+    if (!confirm('Mettre à jour les chemins enregistrés dans Bullarr ? Le dossier sera validé avant écriture et aucun fichier ne sera déplacé.')) return;
+    const response = await fetch(`/api/series/${seriesPathCorrectionId}/path-correction`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: seriesPathCorrectionSelectedPath, confirm: true})
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+        alert(`Erreur: ${result.error || 'Correction impossible'}`);
+        return;
+    }
+    const seriesId = seriesPathCorrectionId;
+    document.dispatchEvent(new CustomEvent('seriesPathCorrectionApplied', { detail: { seriesId } }));
+    closeSeriesPathCorrection();
+    renderSeriesDetail(seriesId);
 }
 
 async function renderSeriesDetail(seriesId) {
@@ -3747,13 +3600,6 @@ async function renderSeriesDetail(seriesId) {
             // fréquent et normal (pas un vrai problème serveur) pour son propre message,
             // avec un lien pour repartir vers la bibliothèque plutôt qu'une page bloquée.
             if (response.status === 404) {
-                // "c'est un peu moche. tout est collé. le lien en bleu j'aime pas" -
-                // .no-results (utilisée juste avant) n'est stylée que dans style-search.css,
-                // jamais chargée sur cette page (library.html/series-detail.html) - h2/p/a
-                // s'affichaient donc avec les styles par défaut du navigateur, dont le bleu
-                // natif du lien. .no-data (style.css, déjà chargée ici et déjà utilisée
-                // ailleurs dans ce même fichier pour un message similaire) + le lien "retour"
-                // déjà établi de cette page (.series-detail-back-link) plutôt qu'un <a> nu.
                 modalBody.innerHTML = `
                     <div class="no-data">
                         <span class="no-data-icon">🗑️</span>
@@ -3808,55 +3654,12 @@ async function renderSeriesDetail(seriesId) {
             ? `<a href="${escapeHtml(seriesBedethequeUrl)}" target="_blank" rel="noopener" class="volume-link-icon" title="Ouvrir sur Bédéthèque"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque"></a>`
             : '';
 
-        // Un one-shot n'affiche pas de carte volume plus bas (un seul fichier, déjà
-        // représenté par la couverture/le titre ci-dessus): ses tags/auteur/artistes/
-        // éditeur/genre (lus depuis son ComicInfo.xml) sont donc affichés ici, dans le
-        // header, plutôt que perdus faute de carte pour les porter. Pas d'icônes
-        // d'action (🏷️/✏️) ici: pour un one-shot/intégrale, seuls les liens externes
-        // (seriesLinksHtml) sont affichés à cet endroit - MAJ métadonnées et Renommer
-        // restent accessibles via la toolbar en haut de page, pas doublés ici. La
-        // recherche EBDZ/Prowlarr (manquant ou remplacement) n'a pas cet équivalent
-        // ailleurs pour un one-shot (pas de carte volume = pas de bouton "Rechercher"):
-        // un bouton dédié est ajouté dans la toolbar, à côté de "⚙️ Actions" (voir plus
-        // bas, oneshotSearchNumber/oneshotSearchToolbarHtml).
-        // "2020 • pages null • N/A" - un one-shot pouvait porter DEUX lignes volumes en
-        // base (un placeholder vide + le fichier réellement possédé, voir le correctif
-        // dans add_series_from_bedetheque, blueprints/bedetheque/routes.py, pour la cause
-        // racine) - data.volumes[0] prenait alors le premier de la liste sans distinguer
-        // lequel, affichant parfois les stats (pages/taille) du placeholder vide au lieu
-        // du vrai fichier. Préfère toujours une ligne avec un fichier réel (filepath) si
-        // l'une existe, quel que soit son rang dans le tableau.
         const oneshotFile = (data.is_oneshot && (data.volumes || []).length > 0)
-            ? (data.volumes.find(v => v.filepath) || data.volumes[0])
+            ? (data.volumes.find(v => hasVolumeFile(v)) || data.volumes[0])
             : null;
         const oneshotSearchNumber = oneshotFile
             ? (oneshotFile.volume_number ?? oneshotFile.integral_number ?? oneshotFile.hs_number ?? 'null')
             : 'null';
-        // Plus de badges auteur/dessinateur/éditeur/genre ici (buildVolumeMetaBadgesHtml):
-        // doublon avec la grille de métadonnées de l'en-tête (Auteur/Éditeur/Genre/Statut,
-        // voir bdMetaHtml) qui couvre déjà ces champs pour toute série matchée, one-shot
-        // compris - juste le détail du fichier lui-même (format/taille), qui lui n'a pas
-        // d'équivalent ailleurs.
-        // "dans les pages one-shot je n'ai pas l'information du releaser et de la qualité"
-        // - resolution/release_group ne sont PAS dans bdMetaHtml (ce sont des champs du
-        // FICHIER, pas de la fiche Bédéthèque de la série), donc pas de doublon à éviter
-        // ici contrairement aux badges retirés ci-dessus - le premier passage n'avait
-        // ajouté ces deux champs qu'à buildVolumeMetaBadgesHtml, jamais appelée pour un
-        // one-shot (celui-ci n'affiche pas de carte volume, voir plus haut), donc restés
-        // invisibles pour toute série one-shot malgré la donnée déjà présente en base.
-        // "too big. remove the background. keep it at the same level as the details
-        // section. on the right of the details" - retour sur le premier essai (badges
-        // .badge, ligne séparée en dessous): texte simple sans fond, sur la MÊME ligne
-        // que buildVolumeFileDetailHtml (flex + space-between plutôt que deux <div>).
-        // "les releasers ne les met pas a droite mais collé apres les details" -
-        // resolution reste à droite (demande d'origine ci-dessus, inchangée), mais le
-        // releaser rejoint maintenant le texte de détails lui-même (même <span>, à la
-        // suite) plutôt que le bloc droit - ce n'est pas une "qualité" au même titre
-        // que la résolution, juste une info supplémentaire sur le fichier.
-        // "the quality is too much on the right with one-shot. this should be close
-        // to the releaser separated by ." - retour sur le bloc droit ci-dessus:
-        // qualité déplacée dans le même <span> que le releaser, à sa suite, séparée
-        // par un "." plutôt qu'un bloc à part en justify-content:space-between.
         const oneshotQualityText = oneshotFile && oneshotFile.resolution
             ? `🖼️ ${escapeHtml(String(oneshotFile.resolution))}` : '';
         const oneshotReleaserText = oneshotFile && oneshotFile.release_group
@@ -3869,19 +3672,6 @@ async function renderSeriesDetail(seriesId) {
               </div>`
             : '';
 
-        // Petite icône à côté du titre - "third implementation of the completeness
-        // check? ask for unification": refaisait son PROPRE calcul divergent (comparaison
-        // brute total_volumes/bdTotalVolumes, qui mélange à tort tomes + intégrales +
-        // spéciaux) au lieu de réutiliser data.bedetheque_complete_reason, calculé UNE
-        // SEULE fois côté serveur par update_series_stats et déjà rédigé en texte prêt à
-        // afficher (voir son commentaire: "584 explique pourquoi c'est complet... tu
-        // mets juste les volumes alors que j'ai l'intégrale" - le ratio brut de tomes
-        // classiques seul seul est trompeur si la série n'est possédée qu'au travers
-        // d'une intégrale, ex: Ter - "0/3 tomes parus" mais bien complète). null (série
-        // jamais matchée) -> pas d'icône, rien à comparer.
-        //
-        // "tooltip doit etre instantanés" - data-tooltip (JS custom, instantané, voir
-        // nav.js), jamais l'attribut natif title (délai navigateur ~1s).
         let completenessIconHtml = '';
         if (data.bedetheque_complete != null) {
             const icon = data.bedetheque_complete ? '✅' : '⚠️';
@@ -3957,13 +3747,6 @@ async function renderSeriesDetail(seriesId) {
         // Machin"), chacun cliquable indépendamment - même séparateur ", " que le join()
         // qui a produit cette chaîne côté serveur (voir update_series_bedetheque_info).
         const authorLinks = bd.author_links || {};
-        // "dans panthéon tu as les icones des auteurs. c'est possible de les récupérer
-        // en static pour les afficher dans les pages de serie" - un slot vide par
-        // auteur cliquable (donc avec URL connue), rempli après coup par
-        // loadSeriesAuthorPhotos une fois la fiche série déjà affichée (voir plus bas):
-        // aucune photo n'est encore en cache local la première fois qu'un auteur est
-        // vu, et la récupérer bloquerait l'affichage de plusieurs secondes (anti-bot
-        // Bédéthèque, voir get_author_photo_path côté Flask).
         function _authorNamesHtml(namesString) {
             if (!namesString) return '';
             return namesString.split(', ').map(name => {
@@ -4027,10 +3810,10 @@ async function renderSeriesDetail(seriesId) {
                             // hors-série, lui, reste un one-shot valide (une parution spéciale
                             // publiée seule n'est pas contradictoire) : il ne supprime pas ce
                             // libellé
-                            ((data.is_oneshot || data.bedetheque_complete_reason === 'One-Shot') && !(oneshotFile && oneshotFile.is_integral)) ? ' 🔸 One-Shot' : ''
+                            (data.is_oneshot && !(oneshotFile && oneshotFile.is_integral)) ? ' 🔸 One-shot' : ''
                         }${data.has_parts ? ' • arcs/parties' : ''}</span>
                         <span>💾 ${formatBytes(totalSize)}</span>
-                        <span>📁 ${escapeHtml(data.path)}</span>
+                        <span class="series-location-tooltip" data-tooltip="${escapeHtml(data.path)}" tabindex="0">📁 ${escapeHtml(data.path)} <button type="button" class="btn-icon-only" style="vertical-align:middle;" data-tooltip="Corriger l'emplacement enregistré" aria-label="Corriger l'emplacement enregistré" onclick="openSeriesPathCorrection(${seriesId})">${svgIcon('pencil')}</button></span>
                         ${oneshotFile ? `<span>📄 ${escapeHtml(oneshotFile.filename)}</span>` : ''}
                         ${seriesLinksHtml}
                     </div>
@@ -4078,14 +3861,6 @@ async function renderSeriesDetail(seriesId) {
                             ${(data.total_volumes > 1 && !data.is_oneshot) ? `
                             <button class="toolbar-dropdown-item" onclick="downloadSeriesZip(${seriesId})" title="Télécharge tous les tomes possédés de cette série dans une seule archive zip">${svgIcon('download')} Télécharger la série (zip)</button>
                             ` : ''}
-                            <!-- "supprimer dans one-shot. je voudrais d'abord supprimer le fichier. ensuite on
-                                 pourra supprimer la série. 2 étapes distinctes" puis "met Supprimer le fichier
-                                 et Supprimer la série en derniere position. one-shot met le avant" - les deux
-                                 actions de suppression sont désormais TOUJOURS les deux derniers éléments du
-                                 menu, adjacentes (le toggle One-shot/Intégrale ci-dessus est passé avant elles,
-                                 pas entre les deux comme précédemment) - "Supprimer le fichier" (deleteVolume,
-                                 garde la fiche comme tome manquant) reste avant "Supprimer la série"
-                                 (deleteSeries, tout en bas) pour un one-shot avec fichier. -->
                             ${(data.is_oneshot && oneshotFile && oneshotFile.filepath) ? `
                             <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteVolume(${oneshotFile.id}, ${seriesId}, '${escapeForAttribute(data.title)}')" title="Supprime uniquement le fichier - la fiche de cette série reste, pour supprimer aussi la série elle-même utilisez 'Supprimer la série' ci-dessous">${svgIcon('trash-2')} Supprimer le fichier</button>
                             ` : ''}
@@ -4119,10 +3894,6 @@ async function renderSeriesDetail(seriesId) {
                     <button class="toolbar-btn toolbar-btn-accent" onclick="runSeriesAutoAcquire(${seriesId}, {seriesTitle: currentSeriesDetail.title, buttonEl: this})" data-tooltip="Cherche et télécharge directement chaque tome manquant trouvé avec confiance, sans recherche manuelle">
                         <span class="toolbar-btn-icon">${svgIcon('radar')}</span><span class="toolbar-btn-label">Recherche auto</span>
                     </button>` : ''}
-                    <!-- "pour les one-shot il n'y a pas de recherche automatique" - numéroté
-                         (intégrale/HS/tome identifiable) -> même chemin que la molette d'un
-                         tome (confiance par numéro exact) ; sans numéro -> confiance par
-                         similarité de titre (voir runSeriesAutoAcquire, oneshot:true). -->
                     ${data.is_oneshot ? (oneshotSearchNumber !== 'null' ? `
                     <button class="toolbar-btn toolbar-btn-accent" onclick="runSeriesAutoAcquire(${seriesId}, {volumeNumber: ${oneshotSearchNumber}, seriesTitle: currentSeriesDetail.title, buttonEl: this})" data-tooltip="Cherche et télécharge directement une source trouvée avec confiance, sans recherche manuelle">
                         <span class="toolbar-btn-icon">${svgIcon('radar')}</span><span class="toolbar-btn-label">Recherche auto</span>
@@ -4169,15 +3940,6 @@ async function renderSeriesDetail(seriesId) {
             </div>
         `;
 
-        // Les tomes manquants "connus" (data.missing_volumes: gap filesystem + tomes
-        // placeholder Bédéthèque, voir update_series_stats côté Flask) apparaissent
-        // directement dans volumesHtml, une carte par tome à côté des tomes possédés (voir
-        // buildVolumeItemHtml). "retire autre volumes manquants ebdz dans l'interface... je
-        // n'en veux pas" - la section supplémentaire "Autres volumes manquants (détectés
-        // via EBDZ)" (volumes que le thread EBDZ matché laisse deviner mais absents de
-        // cette liste connue) est retirée; le badge de match EBDZ (ratio possédé/EBDZ,
-        // lien vers le thread, parcourir les fichiers) reste inchangé - voir
-        // buildEbdzStatusHtml.
         cleanupDetachedDropdownMenus();
         modalBody.innerHTML = `
             ${headerHtml}
@@ -4506,10 +4268,6 @@ async function convertVolumeToCbz(volumeId, evt, format) {
     }
 }
 
-// Relit taille/nombre de pages depuis le fichier réel sur disque pour CE tome (voir
-// POST /api/volumes/<id>/refresh) - "seuls #16 indique size 1B. ajoute un bouton
-// actualiser", pour un fichier corrigé/remplacé après coup sans qu'un scan de la série
-// n'ait eu lieu depuis. Même pattern UI que convertVolumeToCbz.
 async function refreshVolumeFromDisk(volumeId, evt) {
     const button = evt.currentTarget;
     const originalHtml = button.innerHTML;
@@ -4689,22 +4447,13 @@ async function confirmBedethequeMatch(seriesId, url) {
 
 function _renderNoSearchResults(seriesTitle, displayLabel, hasNumber, options, volumeNumber) {
     const searchModalBody = document.getElementById('search-modal-body');
-    // Recherche filtrée par numéro de tome infructueuse: proposer de retenter sans ce
-    // filtre (recherche "série entière") plutôt que de laisser l'utilisateur relancer
-    // manuellement une recherche par le nom de la série. Pas de bouton si la recherche
-    // était déjà "série entière" (hasNumber déjà false): rien de plus large à proposer.
-    // "ajoute une option pour que je change la recherche manuellement" - le titre utilisé
-    // (celui de la série en base, ex. "(AUT) Serre, Claude") ne correspond pas toujours à
-    // la façon dont une release est réellement nommée chez les indexeurs/EBDZ/Telegram -
-    // un champ pré-rempli permet de retenter avec un texte différent sans quitter la
-    // modale, plutôt que d'être bloqué sur "aucun résultat" sans recours.
     searchModalBody.innerHTML = `
         <div class="search-header">
             <h2>🔍 Recherche: ${escapeHtml(seriesTitle)} - ${escapeHtml(displayLabel)}</h2>
         </div>
         <div class="no-data">
             <h3>😕 Aucun résultat</h3>
-            <p>Aucun lien trouvé. Vérifiez que vos sources sont configurées et activées dans Configuration → Indexeurs (EBDZ, Prowlarr, Telegram ou sources web).</p>
+            <p>Aucun lien trouvé pour ce tome sur EBDZ, Prowlarr ou Telegram</p>
             ${hasNumber ? `
                 <p style="margin-top: 10px; color: #666;">Essayer une recherche plus large, sur la série entière ?</p>
                 <button class="btn" id="search-retry-whole-series-btn" style="margin-top: 10px;">${svgIcon('search')} Rechercher la série entière</button>
@@ -4750,7 +4499,6 @@ async function searchMissingVolume(seriesTitle, volumeNumber, options = {}) {
         ? (isIntegral ? 'Intégrale' : (isHs ? 'Hors-série' : (isEpisode ? 'Épisode' : 'Série entière')))
         : (isIntegral ? `Intégrale ${volumeNumber}` : (isHs ? `HS ${volumeNumber}` : (isEpisode ? `Épisode ${volumeNumber}` : `Volume ${volumeNumber}`)));
 
-    // "aussi ajouter une section recherche dans l'historique" - voir logSearchHistoryEvent, nav.js.
     if (typeof logSearchHistoryEvent === 'function') logSearchHistoryEvent(seriesTitle, displayLabel, seriesId);
 
     const searchModal = document.getElementById('search-ed2k-modal');
@@ -4769,11 +4517,6 @@ async function searchMissingVolume(seriesTitle, volumeNumber, options = {}) {
     let telegramDone = false;
     let fourtouticiDone = false;
     let annasArchiveDone = false;
-    // "quand prowlarr est mis à jour dans la recherche ça reset tous mes changements" -
-    // Prowlarr (le plus lent) rappelle render() après EBDZ déjà affiché; sans ce
-    // drapeau, buildSearchResultsTableHtml (via displaySearchResults) recommençait
-    // filtres/tri/checkbox à zéro à chaque rappel au lieu de seulement compléter la
-    // liste avec les nouveaux résultats.
     let renderedOnce = false;
     const allSlowSourcesDone = () => prowlarrDone && telegramDone && fourtouticiDone && annasArchiveDone;
     const render = () => {
@@ -4791,8 +4534,6 @@ async function searchMissingVolume(seriesTitle, volumeNumber, options = {}) {
         } else if (allSlowSourcesDone()) {
             _renderNoSearchResults(seriesTitle, displayLabel, hasNumber, { seriesId, isIntegral, isHs, isEpisode }, volumeNumber);
         }
-        // sinon: EBDZ vide et Prowlarr/Telegram pas encore finis - on laisse le spinner
-        // initial, pas de "aucun résultat" prématuré tant qu'ils n'ont pas répondu
     };
 
     const ebdzPromise = searchMissingVolumeSource('ebdz', seriesTitle, volumeNumber, seriesId, isIntegral, isHs, isEpisode)
@@ -4863,8 +4604,7 @@ function buildEbdzStatusHtml({ seriesId, context, ownedCount, ebdzCount, missing
     // existe): le rafraîchissement du matching se fait ici, dans les actions au survol
     const rematchHtml = `
         <span class="toolbar-status-actions">
-            <button class="btn" onclick="rescrapeEbdzThread(${seriesId}, this)" style="padding: 4px 8px; font-size: 0.75em;" title="Rescraper ce thread EBDZ">${svgIcon('download')}</button>
-            <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Recomparer avec le cache EBDZ">${svgIcon('refresh-cw')}</button>
+            <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Recomparer avec EBDZ">${svgIcon('refresh-cw')}</button>
             <button class="btn" onclick="openEbdzMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Changer le match EBDZ">${svgIcon('pencil')}</button>
             <button class="btn" onclick="unmatchEbdzSeries(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #ef4444;" title="Retirer le match EBDZ">${svgIcon('ban')}</button>
         </span>
@@ -4967,7 +4707,7 @@ async function openSeriesEditModal(seriesId) {
     if (s && s.is_oneshot) {
         try {
             const detail = await (await fetch(`/api/series/${seriesId}`)).json();
-            oneshotFile = (detail.volumes || []).find(v => v.filepath) || null;
+            oneshotFile = (detail.volumes || []).find(v => hasVolumeFile(v)) || null;
         } catch (e) { /* best-effort - repli sur "Supprimer la série" seule */ }
     }
 
@@ -4985,11 +4725,6 @@ async function openSeriesEditModal(seriesId) {
                 </button>
     ` : '';
 
-    // "dans editer mets l'icone de la serie... le cover de la serie" - même helper que
-    // la grille/aperçu/tableau (buildCoverHtml), pour confirmer visuellement QUELLE série
-    // on est en train d'éditer plutôt que le seul titre en texte. `s` peut être null (série
-    // pas trouvée dans seriesData/currentSeriesDetail, cas limite) - pas de couverture
-    // dans ce cas plutôt que de planter sur pickPosterCoverPath(null).
     const coverHtml = s ? buildCoverHtml(s, 'series-edit-modal-cover', 'series-edit-modal-cover-placeholder') : '';
 
     modal.innerHTML = `
@@ -5033,11 +4768,8 @@ function closeSeriesEditModal() {
     if (modal) modal.classList.remove('active');
 }
 
-// "j'aimerai que tu ajoutes un fiche histoire par serie... fichier telecharge, nom
-// d'origine, clients, supprimer, renommer" - même 3 sources/le même rendu que la page
-// Recommandations éditoriales « A lire aussi » de la fiche Bédéthèque. Les URL sont
-// issues du cache serveur et `series_id` est recalculé à chaque chargement de la fiche,
-// donc le statut possédé/non possédé reste exact sans refaire le scraping.
+// Builds the series history section from cached server URLs and the current series ID.
+// The ownership state is recalculated when the series page loads.
 function closeReadAlsoModal() {
     const modal = document.getElementById('bedetheque-read-also-modal');
     if (modal) modal.classList.remove('active');
@@ -5192,13 +4924,6 @@ function closeSeriesHistoryModal() {
     if (modal) modal.classList.remove('active');
 }
 
-// "dans panthéon tu as les icones des auteurs. c'est possible de les récupérer en
-// static pour les afficher dans les pages de serie" puis "add it" puis "but only when
-// adding a new serie" - remplit après coup les slots .author-photo-slot posés par
-// _authorNamesHtml (renderSeriesDetail) avec ce qui est DÉJÀ en cache, sans jamais
-// déclencher de scraping depuis cette page: le seul déclencheur de scraping est
-// l'ajout de série (voir _start_author_photos_fetch_thread côté Flask). GET (pas de
-// body) plutôt que POST, cohérent avec une route qui ne fait plus qu'une lecture DB.
 async function loadSeriesAuthorPhotos(authorLinks) {
     const urls = [...new Set(Object.values(authorLinks || {}).filter(Boolean))];
     if (urls.length === 0) return;
@@ -5325,11 +5050,6 @@ async function confirmMergeSeries(sourceId, sourceTitle, targetId, targetTitle) 
     }
 }
 
-// "can you change edit to be able to move albums to another serie" - déplace UN tome
-// (pas toute la série, voir openMergeSeriesModal ci-dessus dont ce flux reprend le même
-// principe de recherche/liste de candidats) vers une autre série de la même
-// bibliothèque. Ouvert depuis le bouton "Déplacer vers une autre série" de la vue
-// single-tome de l'édition manuelle (buildManualEditVolumeFieldsHtml).
 async function openMoveVolumeModal(seriesId, volumeId, volumeLabel) {
     let modal = document.getElementById('move-volume-modal');
     if (!modal) {
@@ -5726,16 +5446,6 @@ function _manualEditVolumeOptionLabel(v) {
     return buildVolumeOptionLabel(v, { preferBedethequeTitle: true });
 }
 
-// "met une option dans editer manuellement de pouvoir changer le numéro du volume" - un
-// fichier peut être mal identifié (numéro Bédéthèque ambigu, nom de fichier trompeur:
-// "La caste des Méta-Barons - #01 ... n'est pas le bon volume, le correct c'est ... une
-// HS1") sans que rien dans son propre nom ne permette de le corriger automatiquement.
-// Dropdown des tomes déjà connus de la série (GET /api/series/<id>/volumes, chargé une
-// fois à l'ouverture de la modale - voir openManualEditModal/_manualEditAllVolumes) +
-// repli "Autre" pour un numéro/type totalement libre. La valeur de chaque option encode
-// directement type:numéro (ex: "hs:1") plutôt qu'un index - un tome pas encore possédé
-// (entrée synthétique de get_series_volumes, sans id) reste choisissable de la même façon
-// qu'un tome réel, aucune référence à son id nécessaire côté client.
 function buildManualEditVolumeRenumberHtml(v, seriesId) {
     const others = (_manualEditAllVolumes || []).filter(ov => !(ov.id != null && ov.id === v.id));
     const currentType = v.is_integral ? 'integral' : v.is_hs ? 'hs' : v.is_episode ? 'episode' : 'volume';
@@ -5750,7 +5460,7 @@ function buildManualEditVolumeRenumberHtml(v, seriesId) {
         const type = ov.is_integral ? 'integral' : ov.is_hs ? 'hs' : ov.is_episode ? 'episode' : 'volume';
         const number = ov.is_integral ? ov.integral_number : ov.is_hs ? ov.hs_number : ov.is_episode ? ov.episode_number : ov.volume_number;
         const value = `${type}:${number != null ? number : ''}`;
-        const owned = ov.filepath ? ' (en bibliothèque)' : '';
+        const owned = hasVolumeFile(ov) ? ' (en bibliothèque)' : '';
         return `<option value="${escapeHtml(value)}">${escapeHtml(_manualEditVolumeOptionLabel(ov))}${owned}</option>`;
     }).join('');
 
@@ -5842,15 +5552,10 @@ async function changeVolumeNumber(volumeId, seriesId) {
 
 function buildManualEditVolumeFieldsHtml(v, seriesId, seriesTitle, renameModalVolumeLabel) {
     const ci = v.comicinfo || {};
-    const isPlaceholder = !v.filepath;
+    const isPlaceholder = !hasVolumeFile(v);
     const writable = !isPlaceholder && (v.format || '').toLowerCase() === 'cbz';
     const volumeLabel = v.filename || `Tome ${v.volume_number != null ? v.volume_number : '?'}`;
     const deleteButtonHtml = `<button class="btn-danger-sm" onclick="deleteVolume(${v.id}, ${seriesId}, '${escapeForAttribute(volumeLabel)}', ${isPlaceholder})" title="${isPlaceholder ? 'Retire ce tome de la liste de suivi' : 'Supprime le fichier - le tome reste suivi comme manquant'}">${svgIcon('trash-2')} ${isPlaceholder ? 'Retirer ce tome' : 'Supprimer le fichier'}</button>`;
-    // "can you change edit to be able to move albums to another serie" - un tome mal
-    // rattaché (ex: un tome qui appartient en réalité à une autre série Bédéthèque) doit
-    // pouvoir changer de série sans passer par Fusionner (qui déplace TOUTE la série).
-    // Disponible même sur un placeholder/format non convertible: rien dans move-to-series
-    // (Flask) n'exige un cbz, contrairement à l'édition du ComicInfo ci-dessous.
     const moveButtonHtml = `<button class="btn-neutral-sm" onclick="openMoveVolumeModal(${seriesId}, ${v.id}, '${escapeForAttribute(volumeLabel)}')" title="Déplace ce tome vers une autre série existante (même bibliothèque)">${svgIcon('git-merge')} Déplacer vers une autre série</button>`;
 
     if (isPlaceholder) {
@@ -5892,10 +5597,6 @@ function buildManualEditVolumeFieldsHtml(v, seriesId, seriesTitle, renameModalVo
             <label>Éditeur <input type="text" id="manual-vol-publisher-${v.id}" value="${escapeHtml(ci.publisher || '')}"></label>
             <label>Genre <input type="text" id="manual-vol-genre-${v.id}" value="${escapeHtml(ci.genre || '')}"></label>
         </div>
-        <!-- "add a way in editer de modify la qualite et releaser" - resolution/release_group
-        sont des colonnes volumes brutes (pas du ComicInfo, voir v.resolution/v.release_group
-        déjà affichés partout ailleurs en lecture seule via des badges), donc lues sur v
-        et non sur ci comme les champs ci-dessus. -->
         <div class="manual-edit-field-row">
             <label>Qualité <input type="text" id="manual-vol-resolution-${v.id}" value="${escapeHtml(v.resolution || '')}" placeholder="ex: 1400x2150"></label>
             <label>Releaser <input type="text" id="manual-vol-release-group-${v.id}" value="${escapeHtml(v.release_group || '')}"></label>
@@ -5966,13 +5667,7 @@ function renderManualEditModal(data, focusVolumeId) {
     // "← Retour à l'édition" (voir _matchModalBackButtonHtml/backToManualEditFromMatch).
     const bdLogo = '/static/img/bedetheque-logo.png';
     const editReturnCtx = `{seriesId: ${data.id}, volumeId: null}`;
-    // "dans renommer tous les tomes pour one-shot il faudrait afficher le nom du fichier
-    // en dessous de la série" - "tous les tomes" d'un one-shot n'est jamais qu'UN seul
-    // fichier ("tomes" au plural est trompeur ici), montrer LEQUEL avant même de lire
-    // l'aperçu plus bas a le même intérêt que pour un renommage de tome unique (voir
-    // volumeLabel/openRenameModal) - vide (pas de sous-titre supplémentaire) pour une
-    // série à plusieurs tomes, où "tous les tomes" est déjà sans ambiguïté.
-    const oneshotRenameVolume = data.is_oneshot ? (data.volumes || []).find(v => v.filepath) : null;
+    const oneshotRenameVolume = data.is_oneshot ? (data.volumes || []).find(v => hasVolumeFile(v)) : null;
     const oneshotRenameFileLabel = oneshotRenameVolume ? (oneshotRenameVolume.filename || '') : '';
     const manualUniverseFieldHtml = buildManualUniverseFieldHtml(data.universes || [], data.universe ? data.universe.id : null);
     const topActionsHtml = `
@@ -5983,7 +5678,6 @@ function renderManualEditModal(data, focusVolumeId) {
             <button class="btn-neutral-sm" onclick="closeManualEditModal(); openEbdzMatchModal(${data.id}, 'modal', ${editReturnCtx})">
                 <img src="/static/img/ebdz-logo.png" alt="" style="width:14px;height:14px;">EBDZ ${data.ebdz.thread_url ? '✅' : '❌'}
             </button>
-            ${data.ebdz.thread_url ? `<button class="btn-neutral-sm" onclick="rescrapeEbdzThread(${data.id}, this)" title="Relit ce thread EBDZ et met à jour ses liens"><img src="/static/img/ebdz-logo.png" alt="" style="width:14px;height:14px;">Rescraper</button>` : ''}
             <button class="btn-neutral-sm" onclick="closeManualEditModal(); openKomgaMatchModal(${data.id}, 'modal', ${editReturnCtx})">
                 <img src="/static/img/komga-logo.svg" alt="" style="width:14px;height:14px;">Komga ${data.komga.url ? '✅' : '❌'}
             </button>
@@ -6357,21 +6051,6 @@ async function deleteVolume(volumeId, seriesId, label, isPlaceholder = false) {
     }
 }
 
-
-async function rescrapeEbdzThread(seriesId, button) {
-    const original = button.innerHTML;
-    button.disabled = true; button.textContent = '⏳ Rescrape…';
-    try {
-        const response = await fetch(`/api/series/${seriesId}/ebdz-rescrape`, {method: 'POST'});
-        const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.error || 'Erreur inconnue');
-        button.textContent = `✓ ${data.links_inserted || 0} lien ajouté`;
-        await renderSeriesDetail(seriesId);
-    } catch (error) {
-        button.innerHTML = original; button.disabled = false; alert('❌ ' + error.message);
-    }
-}
-
 // ===== FICHIERS EBDZ D'UNE SÉRIE MATCHÉE =====
 // Liste des fichiers ed2k trouvés sur le thread EBDZ matché à la série, affichée dans la
 // modale ouverte en cliquant sur le badge ratio possédé/EBDZ (📊 x/y)
@@ -6404,10 +6083,6 @@ function closeEbdzFilesModal() {
     document.getElementById('ebdz-files-modal').classList.remove('active');
 }
 
-// "créer une modale quand je clique sur review" - avis de lecteurs Bédéthèque pour ce
-// tome (texte complet, pas juste la note déjà affichée en permanence). L'URL d'album
-// utilisée côté serveur est celle figée dans le ComicInfo <Web> du tome, pas de re-match
-// à la volée - voir GET /api/bedetheque/reviews/volume/<id>.
 async function openBedethequeReviewsModal(volumeId) {
     const modal = document.getElementById('bedetheque-reviews-modal');
     const body = document.getElementById('bedetheque-reviews-modal-body');
@@ -6465,13 +6140,8 @@ function closeBedethequeReviewsModal() {
 // (voir LibraryScanner.parse_filename): numéro de tome si trouvé, sinon tag intégrale/HS/épisode
 // (avec son propre numéro s'il existe pour HS/INT/épisode), sinon "?" si rien n'a pu être déterminé
 function buildEbdzVolumeLabel(f) {
-    // EBDZ fournit parfois le numéro dans parsed_volume (ex. « Tome 46 »).
-    // Afficher uniquement le numéro pour un tome normal.
-    if (f.volume != null && f.volume !== '') return String(f.volume);
-    const parsedVolume = String(f.parsed_volume || '');
-    const regularVolume = parsedVolume.match(/^Tome\s+(\d+)$/i);
-    if (regularVolume) return regularVolume[1];
-    if (parsedVolume) return parsedVolume;
+    const volume = f.volume || f.parsed_volume;
+    if (volume) return String(volume);
     if (f.is_integral) return f.integral_number ? `📦 INT ${f.integral_number}` : '📦 INT';
     if (f.is_hs) return f.hs_number ? `✨ HS ${f.hs_number}` : '✨ HS';
     if (f.is_episode) return f.episode_number ? `🎬 Ép ${f.episode_number}` : '🎬 Ép';
@@ -6482,42 +6152,68 @@ function buildEbdzVolumeLabel(f) {
 // on veut la liste complète) et les affiche sous forme de tableau (une ligne par fichier,
 // une colonne par métadonnée parsée) pour une lecture rapide, avec un bouton pour ajouter
 // chaque fichier à eMule
-let _ebdzFiles = [];
-let _ebdzFileSelection = new Set();
-let _ebdzFileFilters = { volume: '', filename: '', resolution: '', year: '', format: '', size: '', owned: '' };
-let _ebdzFileSort = { column: null, direction: 'asc' };
-function _ebdzFileKey(file) { return `${file.link || ''}|${file.filename || ''}`; }
-function _ebdzFileVolume(file) { return String(buildEbdzVolumeLabel(file)); }
-function _ebdzFileSizeBucket(file) { const size=parseInt(file.filesize,10)||0; return size<100*1024*1024?'lt100':size<=300*1024*1024?'100-300':'gt300'; }
-function _ebdzFileIsOwned(file, missing) { if (typeof file.already_owned === 'boolean') return file.already_owned; const v=file.volume ?? file.parsed_volume; return v!=null && !missing.has(v); }
-function _filteredEbdzFiles() {
-    const missing=new Set(window._ebdzMissingVolumes||[]);
-    return _ebdzFiles.filter(file => {
-        const v=_ebdzFileVolume(file), n=decodeFilename(file.filename||''), r=String(file.resolution||''), y=String(file.year||''), f=String(file.format||'').toUpperCase(), owned=_ebdzFileIsOwned(file,missing);
-        return (!_ebdzFileFilters.volume || v===_ebdzFileFilters.volume) && (!_ebdzFileFilters.filename || n.toLowerCase().includes(_ebdzFileFilters.filename.toLowerCase())) && (!_ebdzFileFilters.resolution || r.toLowerCase().includes(_ebdzFileFilters.resolution.toLowerCase())) && (!_ebdzFileFilters.year || y.includes(_ebdzFileFilters.year)) && (!_ebdzFileFilters.format || f===_ebdzFileFilters.format) && (!_ebdzFileFilters.size || _ebdzFileSizeBucket(file)===_ebdzFileFilters.size) && (!_ebdzFileFilters.owned || (_ebdzFileFilters.owned==='owned')===owned);
-    });
+async function loadEbdzThreadFiles(threadId, missingVolumes) {
+    const resultsEl = document.getElementById('ebdz-files-results');
+    resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    const missingSet = new Set(missingVolumes || []);
+
+    try {
+        const response = await fetch(`/api/search?thread_id=${encodeURIComponent(threadId)}`);
+        const data = await response.json();
+        const files = (data.results || []).slice().sort(
+            (a, b) => (a.volume || a.parsed_volume || 0) - (b.volume || b.parsed_volume || 0)
+        );
+
+        if (files.length === 0) {
+            resultsEl.innerHTML = `<div class="no-data"><p>😕 Aucun fichier trouvé sur EBDZ pour ce thread</p></div>`;
+            return;
+        }
+
+        const rowsHtml = files.map(f => {
+            const decodedFilename = decodeFilename(f.filename);
+            const volume = f.volume || f.parsed_volume;
+            const isMissing = volume && missingSet.has(volume);
+            const rowStyle = isMissing
+                ? 'border-bottom: 1px solid var(--color-border);'
+                : 'border-bottom: 1px solid var(--color-border);';
+            return `
+                <tr class="${isMissing ? 'ebdz-modal-missing-row' : ''}" style="${rowStyle}">
+                    <td class="${isMissing ? 'ebdz-modal-missing-cell' : ''}" style="padding: 8px; text-align: center; white-space: nowrap; ${isMissing ? 'font-weight: 600;' : ''}">${escapeHtml(buildEbdzVolumeLabel(f))}${isMissing ? ' ❌' : ''}</td>
+                    <td style="padding: 8px; word-break: break-word;">${escapeHtml(decodedFilename)}</td>
+                    <td style="padding: 8px; white-space: nowrap;">${f.resolution ? escapeHtml(f.resolution) : '-'}</td>
+                    <td style="padding: 8px; white-space: nowrap;">${f.year || '-'}</td>
+                    <td style="padding: 8px; white-space: nowrap;">${f.format ? escapeHtml(f.format.toUpperCase()) : '-'}</td>
+                    <td style="padding: 8px; white-space: nowrap;">${formatBytes(parseInt(f.filesize, 10) || 0)}</td>
+                    <td style="padding: 8px; white-space: nowrap; text-align: center;">
+                        <button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}', this, '${escapeForAttribute(decodedFilename)}')">${svgIcon('plus')} Ajouter</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        resultsEl.innerHTML = `
+            ${missingSet.size > 0 ? `<p class="ebdz-modal-missing-hint" style="margin: 0 0 10px 0; font-size: 0.9em;">🟡 Surligné = tome absent de votre collection</p>` : ''}
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                    <thead>
+                        <tr class="ebdz-modal-header-row">
+                            <th style="padding: 8px; text-align: center; font-weight: 600;">Vol.</th>
+                            <th style="padding: 8px; text-align: left; font-weight: 600;">Fichier</th>
+                            <th style="padding: 8px; text-align: left; font-weight: 600;">Résolution</th>
+                            <th style="padding: 8px; text-align: left; font-weight: 600;">Année</th>
+                            <th style="padding: 8px; text-align: left; font-weight: 600;">Format</th>
+                            <th style="padding: 8px; text-align: left; font-weight: 600;">Taille</th>
+                            <th style="padding: 8px; text-align: center; font-weight: 600;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        resultsEl.innerHTML = `<div class="no-data"><p>❌ ${escapeHtml(error.message)}</p></div>`;
+    }
 }
-function _ebdzFileSortValue(file,column) { const m=new Set(window._ebdzMissingVolumes||[]); switch(column) { case 'volume': return parseInt(_ebdzFileVolume(file).match(/\d+/)?.[0]||'999999',10); case 'filename': return decodeFilename(file.filename||'').toLowerCase(); case 'resolution': return parseInt(String(file.resolution||'').match(/\d+/)?.[0]||'0',10); case 'year': return Number(file.year)||0; case 'format': return String(file.format||'').toUpperCase(); case 'size': return parseInt(file.filesize,10)||0; case 'owned': return _ebdzFileIsOwned(file,m)?1:0; default:return 0; } }
-function _setEbdzFileSort(column) { _ebdzFileSort=_ebdzFileSort.column===column?{column,direction:_ebdzFileSort.direction==='asc'?'desc':'asc'}:{column,direction:'asc'}; _renderEbdzFilesTable(window._ebdzMissingVolumes||[]); }
-function _sortEbdzFiles(files) { if(!_ebdzFileSort.column)return files; const d=_ebdzFileSort.direction==='asc'?1:-1; return [...files].sort((a,b)=>{const va=_ebdzFileSortValue(a,_ebdzFileSort.column),vb=_ebdzFileSortValue(b,_ebdzFileSort.column);return (typeof va==='number'&&typeof vb==='number'?va-vb:String(va).localeCompare(String(vb),'fr',{numeric:true,sensitivity:'base'}))*d;}); }
-function _setEbdzFileFilter(field,value) { _ebdzFileFilters[field]=value; _renderEbdzFilesTable(window._ebdzMissingVolumes||[]); }
-function _toggleEbdzFileSelection(key,checked) { checked?_ebdzFileSelection.add(key):_ebdzFileSelection.delete(key); _renderEbdzFilesTable(window._ebdzMissingVolumes||[]); }
-function _toggleAllEbdzFileSelection(checked) { _filteredEbdzFiles().forEach(f=>checked?_ebdzFileSelection.add(_ebdzFileKey(f)):_ebdzFileSelection.delete(_ebdzFileKey(f))); _renderEbdzFilesTable(window._ebdzMissingVolumes||[]); }
-async function downloadSelectedEbdzFiles() { const selected=_ebdzFiles.filter(f=>_ebdzFileSelection.has(_ebdzFileKey(f))); if(!selected.length)return; await Promise.all(selected.map(f=>addToEmule(f.link,document.createElement('button'),decodeFilename(f.filename||''),null,null,f.volume??null,'ebdz',null,false))); _ebdzFileSelection.clear(); _renderEbdzFilesTable(window._ebdzMissingVolumes||[]); }
-function _ebdzHeader(label,column,control) { const arrow=_ebdzFileSort.column===column?(_ebdzFileSort.direction==='asc'?' ↑':' ↓'):''; return `<div class="th-filterable-row"><span class="search-results-sort-label" onclick="_setEbdzFileSort('${column}')">${label}${arrow}</span>${control?`<span class="th-filterable-filter" onclick="event.stopPropagation()">${control}</span>`:''}</div>`; }
-function _renderEbdzFilesTable(missingVolumes) {
-    const el=document.getElementById('ebdz-files-results'); if(!el)return; const missing=new Set(missingVolumes||[]), filtered=_sortEbdzFiles(_filteredEbdzFiles()), all=filtered.length>0&&filtered.every(f=>_ebdzFileSelection.has(_ebdzFileKey(f))), some=filtered.some(f=>_ebdzFileSelection.has(_ebdzFileKey(f)));
-    const volumes=[...new Set(_ebdzFiles.map(_ebdzFileVolume))].sort((a,b)=>a.localeCompare(b,'fr',{numeric:true})); const formats=[...new Set(_ebdzFiles.map(f=>String(f.format||'').toUpperCase()).filter(Boolean))].sort();
-    const option=(v,label,selected)=>`<option value="${escapeHtml(v)}"${selected===v?' selected':''}>${escapeHtml(label)}</option>`;
-    const volumeSelect=`<select class="search-results-filter-select th-filterable-control" onchange="_setEbdzFileFilter('volume',this.value)" aria-label="Filtrer par volume"><option value="">Tout</option>${volumes.map(v=>option(v,v,_ebdzFileFilters.volume)).join('')}</select>`;
-    const formatSelect=`<select class="search-results-filter-select th-filterable-control" onchange="_setEbdzFileFilter('format',this.value)" aria-label="Filtrer par format"><option value="">Tout</option>${formats.map(v=>option(v,v,_ebdzFileFilters.format)).join('')}</select>`;
-    const sizeSelect=`<select class="search-results-filter-select th-filterable-control" onchange="_setEbdzFileFilter('size',this.value)" aria-label="Filtrer par taille"><option value="">Toutes</option>${option('lt100','< 100 Mo',_ebdzFileFilters.size)}${option('100-300','100-300 Mo',_ebdzFileFilters.size)}${option('gt300','> 300 Mo',_ebdzFileFilters.size)}</select>`;
-    const ownedSelect=`<select class="search-results-filter-select th-filterable-control" onchange="_setEbdzFileFilter('owned',this.value)" aria-label="Filtrer par possession"><option value="">Tout</option>${option('missing','✗ Manquant',_ebdzFileFilters.owned)}${option('owned','✓ Possédé',_ebdzFileFilters.owned)}</select>`;
-    const rows=filtered.map(f=>{const name=decodeFilename(f.filename||''),key=_ebdzFileKey(f),vol=f.volume??f.parsed_volume,miss=vol!=null&&missing.has(vol);return `<tr class="${miss?'ebdz-modal-missing-row':''}"><td><input type="checkbox" ${_ebdzFileSelection.has(key)?'checked':''} onchange="_toggleEbdzFileSelection(${escapeForAttribute(JSON.stringify(key))},this.checked)" aria-label="Sélectionner ${escapeHtml(name)}"></td><td class="ebdz-owned-cell">${_ebdzFileIsOwned(f,missing)?'✓':'✗'}</td><td>${escapeHtml(buildEbdzVolumeLabel(f))}</td><td>${escapeHtml(name)}</td><td>${f.resolution?escapeHtml(f.resolution):'-'}</td><td>${f.year||'-'}</td><td>${f.format?escapeHtml(f.format.toUpperCase()):'-'}</td><td>${formatBytes(parseInt(f.filesize,10)||0)}</td><td><button class="btn-icon-only" onclick="copyLink('${escapeForAttribute(f.link)}',this)" data-tooltip="Copier le lien ed2k" aria-label="Copier le lien ed2k">${svgIcon('copy')}</button><button class="btn-icon-only result-action-emule search-result-download-action" onclick="addToEmule('${escapeForAttribute(f.link)}',this,'${escapeForAttribute(name)}')" data-tooltip="Ajouter à eMule/aMule" aria-label="Ajouter à eMule/aMule"><img src="/static/img/emule-logo.svg" alt="aMule" class="torrent-client-logo"></button></td></tr>`;}).join('');
-    el.innerHTML=`${missing.size?'<p class="ebdz-modal-missing-hint">🟡 Surligné = tome absent de votre collection</p>':''}<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;"><button class="btn-neutral-sm" onclick="downloadSelectedEbdzFiles()" ${some?'':'disabled'}>${svgIcon('download')} Télécharger la sélection</button><span>${_ebdzFileSelection.size} sélectionné(s) · ${filtered.length}/${_ebdzFiles.length} affiché(s)</span></div><div style="overflow-x:auto"><table class="replace-results-table" style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr class="ebdz-modal-header-row"><th><input type="checkbox" ${all?'checked':''} onchange="_toggleAllEbdzFileSelection(this.checked)" aria-label="Tout sélectionner"></th><th>${_ebdzHeader('Possédé','owned',ownedSelect)}</th><th>${_ebdzHeader('Vol.','volume',volumeSelect)}</th><th>${_ebdzHeader('Fichier','filename',`<input type="search" class="search-results-filter-input th-filterable-control" value="${escapeHtml(_ebdzFileFilters.filename)}" placeholder="Filtrer..." oninput="_setEbdzFileFilter('filename',this.value)" aria-label="Filtrer par fichier">`)}</th><th>${_ebdzHeader('Résolution','resolution',`<input type="search" class="search-results-filter-input th-filterable-control" value="${escapeHtml(_ebdzFileFilters.resolution)}" placeholder="Filtrer..." oninput="_setEbdzFileFilter('resolution',this.value)" aria-label="Filtrer par résolution">`)}</th><th>${_ebdzHeader('Année','year',`<input type="search" class="search-results-filter-input th-filterable-control" value="${escapeHtml(_ebdzFileFilters.year)}" placeholder="Filtrer..." oninput="_setEbdzFileFilter('year',this.value)" aria-label="Filtrer par année">`)}</th><th>${_ebdzHeader('Format','format',formatSelect)}</th><th>${_ebdzHeader('Taille','size',sizeSelect)}</th><th>Action</th></tr></thead><tbody>${rows||'<tr><td colspan="9" style="padding:15px;text-align:center">Aucun résultat pour ces filtres.</td></tr>'}</tbody></table></div>`;
-    const cb=el.querySelector('thead input[type="checkbox"]'); if(cb)cb.indeterminate=some&&!all;
-}
-async function loadEbdzThreadFiles(threadId,missingVolumes){const el=document.getElementById('ebdz-files-results');el.innerHTML='<div class="loading"><div class="spinner"></div></div>';window._ebdzMissingVolumes=missingVolumes||[];_ebdzFileSelection.clear();_ebdzFileFilters={volume:'',filename:'',resolution:'',year:'',format:'',size:'',owned:''};_ebdzFileSort={column:null,direction:'asc'};try{const response=await fetch(`/api/search?thread_id=${encodeURIComponent(threadId)}`),data=await response.json();_ebdzFiles=(data.results||[]).slice().sort((a,b)=>(a.volume||a.parsed_volume||0)-(b.volume||b.parsed_volume||0));if(!_ebdzFiles.length){el.innerHTML='<div class="no-data"><p>😕 Aucun fichier trouvé sur EBDZ pour ce thread</p></div>';return;}_renderEbdzFilesTable(window._ebdzMissingVolumes);}catch(error){el.innerHTML=`<div class="no-data"><p>❌ ${escapeHtml(error.message)}</p></div>`;}}
 
 // ===== KOMGA =====
 const KOMGA_STATUS_LABELS = { ONGOING: 'En cours', ENDED: 'Terminée', ABANDONED: 'Abandonnée', HIATUS: 'En pause' };
@@ -6790,18 +6486,6 @@ async function unmatchKomgaSeries(seriesId, context) {
 // partagé avec la page Recherche (search.js) qui affiche le même tableau - voir ce fichier
 // pour l'implémentation, series-detail.html doit charger ce script avant celui-ci.
 
-// Modale de résultats de recherche (tome manquant ou remplacement d'un tome possédé, voir
-// searchMissingVolume) - tableau compact unique trié par pertinence (voir
-// compareSearchResults). Remplace l'ancien affichage en
-// grosses cartes séparées EBDZ/Prowlarr (bannières dégradées, grilles espacées) qui
-// prenait beaucoup de place à l'écran pour peu d'information utile par résultat.
-// Contexte de la recherche actuellement affichée dans la modale (search-ed2k-modal) -
-// alimente la recherche manuelle en haut à droite ("met en haut à droite une recherche
-// manuelle donc je peux changer le titre comme je veux"): le titre suivi en base
-// (seriesTitle) ne correspond pas toujours à la façon dont une release est réellement
-// nommée chez les indexeurs, ce champ permet de relancer la recherche avec un texte
-// différent sans quitter la modale, à tout moment (pas seulement quand elle ne renvoie
-// rien - voir aussi _renderNoSearchResults pour le même besoin côté "aucun résultat").
 let _searchModalRetryContext = null;
 
 function _searchModalManualRetry() {
@@ -6871,22 +6555,13 @@ function displaySearchResults(seriesTitle, volumeNumber, results, displayLabel, 
         `;
     }
 
-    // Le nom de fichier réel du résultat sert de titre suivi (voir trackingTitle côté
-    // search-results-table.js) - seul volumeNumber (le tome recherché) est transmis ici en
-    // plus de seriesId/volumeId, "get the volume number and album name not from a matching
-    // but from when the file was added".
-    // "Remplacer quand même" - currentFile n'est non-null QUE pour une recherche de
-    // remplacement explicite (voir searchMissingVolume/currentVolumeId) ; filepath en plus
-    // par prudence (un tome jamais réellement possédé ne devrait normalement jamais
-    // atteindre ici avec un currentFile non-null, mais force_replace n'a de sens que face
-    // à un fichier réellement existant à comparer).
     const isReplacementSearch = !!(currentFile && currentFile.filepath);
     const tableHtml = buildSearchResultsTableHtml(results, volumeNumber, seriesId, volumeId, !!searchOptions.preserveFilters, isReplacementSearch);
     if (!tableHtml) {
         html += `
             <div class="no-data">
                 <h3>😕 Aucun résultat</h3>
-            <p>Aucun lien trouvé. Vérifiez que vos sources sont configurées et activées dans Configuration → Indexeurs (EBDZ, Prowlarr, Telegram ou sources web).</p>
+                <p>Aucun lien trouvé pour ce volume sur EBDZ, Prowlarr ou Telegram</p>
             </div>
         `;
     } else {
@@ -6941,9 +6616,6 @@ async function copyLink(link, button) {
 }
 
 async function addToEmule(link, button, title, seriesId = null, volumeId = null, volumeNumber = null, source = 'ebdz', sourceLink = null, forceReplace = false) {
-    // "laisse l'icone comme c'est mais met ajouté. je veux que ce soit la meme chose pour
-    // les 3 clients" - icône capturée telle quelle (innerHTML, pas juste textContent) pour
-    // pouvoir la remettre à l'identique + "Ajouté" à côté, plutôt que de la remplacer.
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳ Envoi...';
     button.disabled = true;
@@ -7059,7 +6731,6 @@ function toggleTruncatedText(btn) {
 // ===== qBITTORRENT =====
 // Ajouter un torrent à qBittorrent avec la catégorie par défaut
 async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = null, forceReplace = false) {
-    // "laisse l'icone comme c'est mais met ajouté" - même traitement que addToEmule ci-dessus.
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳ Envoi...';
     button.disabled = true;
@@ -7075,12 +6746,8 @@ async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = nul
             series_id: seriesId,
             volume_id: volumeId,
             volume_number: volumeNumber,
-            // "dans historique il faudrait voir quelle est la source du téléchargement
-            // et cliquable aussi" - source fixe 'prowlarr': ce bouton n'est jamais rendu
-            // pour un résultat EBDZ/Telegram/fourtoutici (voir search-results-table.js).
             source: 'prowlarr',
             source_link: sourceLink,
-            // "Remplacer quand même" - voir mark_download_pending (downloader.py).
             force_replace: forceReplace
         };
 
@@ -7123,7 +6790,6 @@ async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = nul
 // logique de catégorie (pas de notion équivalente câblée côté rTorrent/Deluge pour
 // l'instant)
 async function addTorrentToClient(clientName, clientLabel, torrentUrl, button, title, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = null, forceReplace = false) {
-    // "laisse l'icone comme c'est mais met ajouté" - même traitement que addToEmule ci-dessus.
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳ Envoi...';
     button.disabled = true;
@@ -7196,10 +6862,6 @@ async function downloadTelegramFile(channel, messageId, button, channelTitle, fi
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Erreur inconnue');
 
-        // "laisse l'icone comme c'est mais met ajouté. je veux que ce soit la meme chose
-        // pour les 3 clients" - icône conservée + "Ajouté" à côté, même traitement que
-        // addToEmule/addTorrentToQbittorrent/addTorrentToClient ci-dessus. Persisté sur le
-        // résultat (voir _markTelegramResultAdded), même raison que les autres clients.
         if (typeof _markTelegramResultAdded === 'function') _markTelegramResultAdded(channel, messageId);
         button.innerHTML = `${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span>`;
         button.classList.add('add-button-added');
@@ -7266,12 +6928,6 @@ window.onclick = function(event) {
     }
 }
 
-// ========== RENOMMAGE AU FORMAT CONFIGURABLE ==========
-// Format personnalisable dans Paramètres > Bibliothèque (voir
-// blueprints/settings/rename_config_store.py côté serveur, chargé ici juste pour
-// l'affichage d'aide). Chaque bloc entre accolades est omis en entier (texte littéral
-// compris) si le tag qu'il contient n'a pas de valeur pour ce fichier - ex: pas d'année
-// ComicInfo -> pas de " - (2020)" du tout, plutôt qu'un " - ()" orphelin.
 
 let currentRenameSeriesId = null;
 let currentRenameVolumeId = null;
@@ -7305,17 +6961,6 @@ async function openRenameModal(seriesId, seriesTitle, volumeId = null, allVolume
         document.body.appendChild(renameModal);
     }
 
-    // Un nom personnalisé n'a de sens que pour une cible unique (dossier de série ou un
-    // seul fichier de tome): pour "tous les tomes", chaque fichier a son propre nom
-    // calculé depuis le template, il n'y a rien d'unique à saisir ici
-    // "ca met deja au format standard (donc je peux pas) mais j'aimerais quand meme le
-    // renommer manuellement. je suis dans un one-shot" - allVolumes=true masquait ce
-    // champ inconditionnellement, y compris pour un one-shot (qui n'a qu'UN tome, envoyé
-    // via "Renommer tomes"/allVolumes=true faute de bouton dédié "un seul tome" pour ce
-    // cas - voir oneshotRenameFileLabel plus haut). volumeLabel n'est renseigné QUE dans
-    // ce cas précis (un seul fichier concerné malgré allVolumes) - _apply_custom_volume_name
-    // côté serveur a le même garde (len(file_plan) == 1), donc jamais de risque d'appliquer
-    // un nom unique à plusieurs tomes d'une vraie série multi-tomes.
     const customNameHtml = (allVolumes && !volumeLabel) ? '' : `
                 <div class="rename-section">
                     <h3>Nom personnalisé ${(volumeId || allVolumes) ? 'du fichier' : 'du dossier'}</h3>
@@ -7349,10 +6994,6 @@ async function openRenameModal(seriesId, seriesTitle, volumeId = null, allVolume
                 ${backButtonHtml}
                 <h2>✏️ Renommer ${modalTitle}</h2>
                 <p class="rename-modal-subtitle">Série: <strong>${escapeHtml(seriesTitle)}</strong></p>
-                <!-- "dans renommer afficher le nom du tome sous le nom série" - jusqu'ici,
-                     renommer UN tome précis affichait le même en-tête générique ("Renommer
-                     ce tome" + le nom de la série) que renommer tout/le dossier, sans jamais
-                     dire LEQUEL des tomes est concerné avant de lire l'aperçu plus bas. -->
                 ${volumeLabel ? `<p class="rename-modal-subtitle">Tome: <strong>${escapeHtml(volumeLabel)}</strong></p>` : ''}
                 <p class="rename-help-text" id="rename-format-help">Format: <em>chargement...</em></p>
             </div>
@@ -7613,32 +7254,19 @@ async function executeRename() {
 
         const renamedFiles = (data.files || []).filter(f => f.success && !f.skipped).length;
         const failedFiles = (data.files || []).filter(f => !f.success).length;
-        const movedFiles = Number(data.folder?.moved_files || 0);
 
-        // Any file or folder error makes the whole operation a failure in the
-        // result dialog. Do not show the green validation when only part succeeded.
-        const folderFailed = Boolean(data.folder && !data.folder.success);
-        const renameFailed = failedFiles > 0 || folderFailed;
-        let resultMessage = renameFailed ? '❌ Renommage échoué !' : '✅ Renommage terminé !';
-        if (renamedFiles > 0) {
-            resultMessage += `
-
-${renamedFiles} ${pluralize(renamedFiles, 'fichier')} ${pluralize(renamedFiles, 'renommé')}`;
-        }
-        if (failedFiles > 0) {
-            resultMessage += `
-❌ ${failedFiles} ${pluralize(failedFiles, 'erreur')} sur des fichiers`;
+        let resultMessage = '✅ Renommage terminé !';
+        if (currentRenameVolumeId || currentRenameAllVolumes || alsoVolumes) {
+            resultMessage += `\n\n${renamedFiles} ${pluralize(renamedFiles, 'fichier')} ${pluralize(renamedFiles, 'renommé')}`;
+            if (failedFiles > 0) {
+                resultMessage += `\n⚠️ ${failedFiles} ${pluralize(failedFiles, 'erreur')} sur des fichiers`;
+            }
         }
         if (data.folder) {
-            if (data.folder.success && data.folder.merged_into_existing) {
-                resultMessage += `
-📁 ${movedFiles} fichier(s) déplacé(s) dans le dossier existant`;
-            } else if (data.folder.success && data.folder.changed) {
-                resultMessage += `
-📁 Dossier de la série renommé`;
+            if (data.folder.success && data.folder.changed) {
+                resultMessage += `\n📁 Dossier de la série renommé`;
             } else if (!data.folder.success) {
-                resultMessage += `
-❌ Dossier non renommé: ${data.folder.error}`;
+                resultMessage += `\n⚠️ Dossier non renommé: ${data.folder.error}`;
             }
         }
 

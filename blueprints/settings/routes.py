@@ -7,7 +7,9 @@ import json
 import shutil
 import sqlite3
 import tempfile
+import threading
 import zipfile
+from archive_utils import detect_actual_format
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -36,7 +38,8 @@ def verification_page():
     (même raison que /history ci-dessus - un diagnostic qu'on consulte directement, pas
     un réglage qu'on configure une fois) - voir static/js/verification.js pour le
     chargement des données et GET /api/settings/verification pour l'analyse."""
-    return render_template('verification.html')
+    from blueprints.komga.config_store import is_komga_configured
+    return render_template('verification.html', komga_configured=is_komga_configured())
 
 
 @settings_bp.route('/api/settings/rename', methods=['GET', 'POST'])
@@ -231,11 +234,10 @@ def restore_backup():
 
 
 def _check_volume_file_validity(filepath, fmt):
-    """Vérifie qu'un fichier tome n'est pas corrompu/tronqué ("add in verification
-    checking the validity of files. like Foudroyants ... is not valid file") - un test
+    """Vérifie qu'un fichier tome n'est pas corrompu ou tronqué avec un test
+    d'intégrité rapide
     d'intégrité rapide (CRC des membres pour cbz/zip, testrar pour cbr/rar, simple
-    ouverture pour pdf) plutôt qu'une lecture complète des pages: suffisant pour
-    détecter un téléchargement tronqué (voir l'incident Capitaine Crown, deux
+    ouverture pour pdf) plutôt qu'une lecture complète des pages.
     téléchargements Telegram tronqués en silence côté taille de fichier) sans alourdir
     excessivement un scan qui porte déjà sur toute la bibliothèque à chaque lancement.
     Retourne None si le fichier est valide, sinon un message d'erreur explicite."""
@@ -308,6 +310,38 @@ def _load_verification_series_and_volumes():
         volumes_by_series.setdefault(v['series_id'], []).append(v)
 
     return series_rows, volume_rows, volumes_by_series
+
+
+def _verify_archive_formats(series_rows, volumes_by_series):
+    """Report archive files whose declared format disagrees with their binary content."""
+    archive_formats = {'cbz', 'zip', 'cbr', 'rar'}
+    items = []
+    titles = {s['id']: s['title'] for s in series_rows}
+    for series_id, volumes in volumes_by_series.items():
+        for volume in volumes:
+            value = (lambda key: volume[key] if isinstance(volume, sqlite3.Row) else volume.get(key))
+            filepath = value('filepath')
+            declared = (value('format') or '').lower()
+            if not filepath or declared not in archive_formats or not os.path.exists(filepath):
+                continue
+            actual = detect_actual_format(filepath, declared)
+            if actual == declared:
+                continue
+            suffix = os.path.splitext(value('filename') or filepath)[1].lower().lstrip('.')
+            items.append({
+                'series_id': series_id,
+                'series_title': titles.get(series_id, ''),
+                'volume_id': volume['id'],
+                'filename': value('filename'),
+                'filepath': filepath,
+                'declared_format': declared,
+                'actual_format': actual,
+                'reason': (
+                    f"Extension/format déclaré {declared.upper()} mais contenu réel "
+                    f"{actual.upper()} (extension .{suffix or '?'})"
+                ),
+            })
+    return items
 
 
 def _verify_missing_metadata(series_rows, volumes_by_series):
@@ -530,6 +564,28 @@ def _verify_unmatched_owned_komga(series_rows, volumes_by_series):
     return unmatched, True
 
 
+def _verify_missing_files(series_rows, volumes_by_series):
+    """Signale les chemins référencés en base mais absents du disque, sans mutation."""
+    missing = []
+    for series in series_rows:
+        series_volumes = volumes_by_series.get(series['id'], [])
+        if series['path'] and series_volumes and not os.path.isdir(series['path']):
+            missing.append({
+                'kind': 'series_folder', 'series_id': series['id'], 'series_title': series['title'],
+                'volume_id': None, 'filepath': series['path'],
+                'reason': 'Dossier source introuvable',
+            })
+        for volume in volumes_by_series.get(series['id'], []):
+            if not volume['filepath'] or os.path.exists(volume['filepath']):
+                continue
+            missing.append({
+                'kind': 'volume_file', 'series_id': series['id'], 'series_title': series['title'],
+                'volume_id': volume['id'], 'filename': volume['filename'], 'filepath': volume['filepath'],
+                'reason': 'Fichier référencé introuvable',
+            })
+    return missing
+
+
 def _verify_unmatched_owned_volumes(series_rows, volumes_by_series):
     """Tomes RÉELLEMENT possédés (un vrai fichier sur disque) dont le ComicInfo n'a
     aucun lien Bédéthèque (comicinfo.web) - "ca doit etre fichier non detecté de
@@ -697,9 +753,6 @@ def _verify_duplicate_empty_series(series_rows, volumes_by_series):
                 })
                 reported_pairs.add(pair)
 
-    # Variantes de casse/accents/séparateurs : "I.R.$", "I.R.$." et
-    # "I R $" deviennent la même clé, sans rapprocher "Blueberry" de
-    # "Blueberry (La Jeunesse de)" puisque les mots restent différents.
     by_normalized_title = {}
     for series in series_rows:
         key = _normalized_duplicate_title(series['title'])
@@ -992,6 +1045,63 @@ def cleanup_duplicate_empty_series():
         conn.close()
 
 
+@settings_bp.route('/api/settings/verification/missing-files/<int:series_id>/auto-acquire', methods=['POST'])
+def auto_acquire_missing_files(series_id):
+    """Lance une acquisition ponctuelle des fichiers manquants, sans surveillance."""
+    from blueprints.library.routes import get_db_connection
+    conn = get_db_connection()
+    try:
+        series = conn.execute('SELECT id, title FROM series WHERE id = ?', (series_id,)).fetchone()
+        if not series:
+            return jsonify({'success': False, 'error': 'Série introuvable'}), 404
+        volumes = conn.execute('SELECT volume_number, filepath FROM volumes WHERE series_id = ?', (series_id,)).fetchall()
+    finally:
+        conn.close()
+
+    missing = sorted({row['volume_number'] for row in volumes
+                      if row['volume_number'] is not None and row['filepath'] and not os.path.exists(row['filepath'])})
+    if not missing:
+        return jsonify({'success': False, 'error': 'Aucun tome numéroté absent à rechercher'}), 400
+
+    from blueprints.bedetheque.auto_acquire import run_auto_acquire_for_series
+    app = current_app._get_current_object()
+    threading.Thread(
+        target=run_auto_acquire_for_series,
+        args=(app, series_id, series['title'], missing),
+        kwargs={'search_mode': 'series'},
+        daemon=True,
+    ).start()
+    return jsonify({'success': True, 'started': True, 'count': len(missing)})
+
+
+@settings_bp.route('/api/settings/verification/missing-files/<int:series_id>/remove-record', methods=['DELETE'])
+def remove_missing_files_series_record(series_id):
+    """Supprime les données d'une série absente sans toucher au système de fichiers."""
+    if not (request.get_json(silent=True) or {}).get('confirm'):
+        return jsonify({'success': False, 'error': 'Confirmation explicite requise'}), 400
+    from blueprints.library.routes import get_db_connection
+    conn = get_db_connection()
+    try:
+        series = conn.execute('SELECT id, title, path, library_id FROM series WHERE id = ?', (series_id,)).fetchone()
+        if not series:
+            return jsonify({'success': False, 'error': 'Série introuvable'}), 404
+        volumes = conn.execute('SELECT filepath FROM volumes WHERE series_id = ?', (series_id,)).fetchall()
+        is_missing = bool(series['path'] and not os.path.isdir(series['path'])) or any(
+            row['filepath'] and not os.path.exists(row['filepath']) for row in volumes)
+        if not is_missing:
+            return jsonify({'success': False, 'error': 'La série n’est plus signalée comme absente'}), 409
+        conn.execute('DELETE FROM missing_volume_monitor WHERE series_id = ?', (series_id,))
+        conn.execute('DELETE FROM volumes WHERE series_id = ?', (series_id,))
+        conn.execute('DELETE FROM series WHERE id = ?', (series_id,))
+        conn.commit()
+        return jsonify({'success': True, 'series_id': series_id, 'library_id': series['library_id'], 'title': series['title']})
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(exc)}), 500
+    finally:
+        conn.close()
+
+
 @settings_bp.route('/api/settings/verification', methods=['GET'])
 def run_verification():
     """Scanne toute la bibliothèque pour repérer les tomes/séries à métadonnées
@@ -1009,7 +1119,7 @@ def run_verification():
     clic sur "métadonnées manquantes" n'a plus à l'attendre. Sans ?type (compatibilité
     d'éventuels autres appelants), toutes les catégories sont calculées et renvoyées comme avant."""
     verif_type = request.args.get('type')
-    valid_types = {'missing_metadata', 'misnamed', 'misplaced_folders', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series'}
+    valid_types = {'missing_metadata', 'misnamed', 'misplaced_folders', 'invalid_files', 'unmatched_owned_volumes', 'unmatched_owned_komga', 'duplicate_series', 'missing_files', 'archive_formats'}
     if verif_type is not None and verif_type not in valid_types:
         return jsonify({'error': f"type invalide, attendu l'un de {sorted(valid_types)}"}), 400
 
@@ -1033,6 +1143,10 @@ def run_verification():
         result['komga_configured'] = komga_configured
     if verif_type in (None, 'unmatched_owned_volumes'):
         result['unmatched_owned_volumes'] = _verify_unmatched_owned_volumes(series_rows, volumes_by_series)
+    if verif_type in (None, 'missing_files'):
+        result['missing_files'] = _verify_missing_files(series_rows, volumes_by_series)
+    if verif_type in (None, 'archive_formats'):
+        result['archive_formats'] = _verify_archive_formats(series_rows, volumes_by_series)
     if verif_type in (None, 'unmatched_owned_komga'):
         unmatched_komga, komga_configured = _verify_unmatched_owned_komga(series_rows, volumes_by_series)
         result['unmatched_owned_komga'] = unmatched_komga

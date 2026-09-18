@@ -2922,6 +2922,67 @@ def convert_zip(volume_id):
     return _convert_volume_to_cbz(volume_id, 'zip', convert_zip_to_cbz, ZipConversionError)
 
 
+@bedetheque_bp.route('/convert-archive-formats-batch', methods=['POST'])
+def convert_archive_formats_batch():
+    """Convertit les volumes sélectionnés dont le contenu réel est RAR en CBZ,
+    puis réécrit leurs métadonnées Bédéthèque dans le CBZ."""
+    data = request.get_json() or {}
+    try:
+        volume_ids = list(dict.fromkeys(int(value) for value in (data.get('volume_ids') or [])))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'volume_ids invalides'}), 400
+    if not volume_ids or len(volume_ids) > 100:
+        return jsonify({'success': False, 'error': 'Sélection vide ou trop grande'}), 400
+    app = current_app._get_current_object()
+    def _run_batch():
+        from archive_utils import detect_actual_format
+        with app.app_context():
+            for volume_id in volume_ids:
+                original = None; working_path = None
+                try:
+                    conn = get_db_connection()
+                    vol = conn.execute('SELECT id, filepath, filename, format FROM volumes WHERE id = ?', (volume_id,)).fetchone()
+                    conn.close()
+                    if not vol or not vol['filepath'] or not os.path.isfile(vol['filepath']):
+                        raise RuntimeError('fichier absent')
+                    original = (vol['filepath'], vol['filename'], vol['format'])
+                    working_path = vol['filepath']
+                    actual = detect_actual_format(working_path, vol['format'])
+                    if actual == 'cbr':
+                        if working_path.lower().endswith('.cbz'):
+                            target = working_path[:-4] + '.cbr'
+                            if os.path.exists(target): raise RuntimeError('le fichier .cbr cible existe déjà')
+                            os.rename(working_path, target); working_path = target
+                        conn = get_db_connection()
+                        conn.execute('UPDATE volumes SET filepath=?, filename=?, format=? WHERE id=?', (working_path, os.path.basename(working_path), 'cbr', volume_id)); conn.commit(); conn.close()
+                        response = convert_cbr(volume_id)
+                        payload = response[0].get_json(silent=True) if isinstance(response, tuple) else response.get_json(silent=True)
+                        if not payload or not payload.get('success'): raise RuntimeError((payload or {}).get('error', 'conversion échouée'))
+                        working_path = payload.get('filepath') or working_path
+                    elif actual in ('cbz', 'zip'):
+                        if not working_path.lower().endswith('.cbz'):
+                            target = os.path.splitext(working_path)[0] + '.cbz'
+                            if os.path.exists(target): raise RuntimeError('le fichier .cbz cible existe déjà')
+                            os.rename(working_path, target); working_path = target
+                        conn = get_db_connection()
+                        conn.execute('UPDATE volumes SET filepath=?, filename=?, format=?, file_size=? WHERE id=?', (working_path, os.path.basename(working_path), 'cbz', os.path.getsize(working_path), volume_id)); conn.commit(); conn.close()
+                    else:
+                        raise RuntimeError(f'format réel non pris en charge: {actual}')
+                    metadata_response = update_metadata_volume(volume_id)
+                    metadata_payload = metadata_response[0].get_json(silent=True) if isinstance(metadata_response, tuple) else metadata_response.get_json(silent=True)
+                    if not metadata_payload or not metadata_payload.get('success'): raise RuntimeError((metadata_payload or {}).get('error', 'mise à jour metadata échouée'))
+                    logger.info('✓ Archive batch terminé pour le volume #%s: CBZ + metadata', volume_id)
+                except Exception as exc:
+                    logger.error('Archive batch échec volume #%s: %s', volume_id, exc, exc_info=True)
+                    if original:
+                        try:
+                            if working_path and working_path != original[0] and os.path.exists(working_path) and not os.path.exists(original[0]): os.rename(working_path, original[0])
+                            conn = get_db_connection(); conn.execute('UPDATE volumes SET filepath=?, filename=?, format=? WHERE id=?', (*original, volume_id)); conn.commit(); conn.close()
+                        except Exception: logger.exception('Restauration impossible pour le volume #%s', volume_id)
+    threading.Thread(target=_run_batch, daemon=True).start()
+    return jsonify({'success': True, 'count': len(volume_ids)})
+
+
 @bedetheque_bp.route('/convert-volumes-batch', methods=['POST'])
 def convert_volumes_batch():
     """Version "en arrière-plan" de convert-cbr/convert-pdf/convert-zip pour plusieurs
