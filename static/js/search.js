@@ -34,7 +34,7 @@ function decodeFilename(filename) {
 
 // Fonction pour échapper les caractères spéciaux dans les attributs HTML
 function escapeForAttribute(text) {
-    return String(text ?? '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return String(text ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // Fonction pour échapper le HTML (contenu texte inséré via innerHTML) : les données

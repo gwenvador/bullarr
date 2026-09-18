@@ -6598,7 +6598,7 @@ function decodeFilename(filename) {
 }
 
 function escapeForAttribute(text) {
-    return String(text ?? '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return String(text ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 async function copyLink(link, button) {

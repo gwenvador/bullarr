@@ -3770,7 +3770,7 @@ function escapeHtml(text) {
 }
 
 function escapeForAttribute(text) {
-    return String(text ?? '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return String(text ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ===== HISTORIQUE RÉCENT DES IMPORTS (résumé en bas de /import) =====
