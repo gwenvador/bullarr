@@ -5,7 +5,6 @@ from flask import request, jsonify, current_app
 from . import emule_bp
 import re
 import subprocess
-import shlex
 from encryption import load_encrypted_json_config, save_encrypted_json_config
 
 
@@ -142,11 +141,10 @@ def add_to_emule():
             '-h', config['host'],
             '-P', config.get('password_decrypted', ''),
             '-p', str(config['ec_port']),
-            '-c', f'add {shlex.quote(link)}'
         ]
 
         # lgtm [py/command-line-injection] link/hash are validated before command construction; shell=False is explicit.
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(cmd, input=f'add {link}\n', capture_output=True, text=True, timeout=10)
 
         from blueprints.missing_monitor.downloader import log_manual_download, mark_download_pending
         if result.returncode == 0:
@@ -203,10 +201,9 @@ def remove_download():
             '-h', config['host'],
             '-P', config.get('password_decrypted', ''),
             '-p', str(config['ec_port']),
-            '-c', f'cancel {shlex.quote(file_hash)}'
         ]
         # lgtm [py/command-line-injection] link/hash are validated before command construction; shell=False is explicit.
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(cmd, input=f'cancel {file_hash}\n', capture_output=True, text=True, timeout=15)
         if result.returncode != 0:
             return jsonify({'success': False, 'error': (result.stderr or 'Erreur amulecmd')[:200]}), 500
         return jsonify({'success': True})
