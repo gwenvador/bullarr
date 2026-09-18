@@ -1187,8 +1187,12 @@ class BedethequeScraper:
 
     @staticmethod
     def _strip_trailing_annotation(title):
-        ""
-        return re.sub(r'\s*[(\[][^)\]]*[)\]]\s*$', '', title or '').strip()
+        value = (title or '').rstrip()
+        if not value or value[-1] not in ')]':
+            return value.strip()
+        opener = '(' if value[-1] == ')' else '['
+        start = value.rfind(opener)
+        return value[:start].rstrip() if start >= 0 else value.strip()
 
     @classmethod
     def _bedetheque_evidence_tokens(cls, info):
