@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 import re
 import copy
 import sqlite3
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import time
 import random
 import json
@@ -24,6 +24,14 @@ from pathlib import Path
 import hashlib
 
 logger = logging.getLogger(__name__)
+_ALLOWED_HOSTS = {'www.bedetheque.com', 'bedetheque.com'}
+
+
+def _safe_bedetheque_url(value):
+    parsed = urlparse(value or '')
+    if parsed.scheme != 'https' or parsed.hostname not in _ALLOWED_HOSTS:
+        raise ValueError('URL Bédéthèque non autorisée')
+    return value
 
 
 def _reformat_bedetheque_author_name(name):
@@ -565,7 +573,7 @@ class BedethequeScraper:
         directement sur Bédéthèque."""
         try:
             self._ensure_session()
-            response = self.session.get(author_url, timeout=15)
+            response = self.session.get(_safe_bedetheque_url(author_url), timeout=15)
             response.encoding = 'utf-8'
             _anti_bot_delay()
 
