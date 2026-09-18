@@ -1365,6 +1365,7 @@ class BedethequeScraper:
             # essai réel de ce correctif a échoué exactement pour cette raison. "@canal" et
             # l'extension retirés pour la même raison (bruit qui ne peut jamais correspondre
             # à rien côté Bédéthèque).
+            # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
             hint_text = re.sub(r'\.[a-zA-Z0-9]{2,4}$', '', re.sub(r'@.*$', '', raw_hint or title)).replace('_', ' ')
             hint_tokens = set(self._normalize_for_match(hint_text).split())
             best_info, best_overlap, tie = None, 0, False

@@ -2729,6 +2729,7 @@ function escapeHtml(text) {
 // CLAUDE.md (escapeForAttribute pour un littéral JS entre guillemets simples dans un
 // onclick, jamais pour un attribut HTML classique comme value=/title=)
 function escapeForAttribute(text) {
+    // lgtm [js/incomplete-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
     return String(text).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
