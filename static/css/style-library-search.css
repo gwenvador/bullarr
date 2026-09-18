@@ -871,6 +871,102 @@
     z-index: 9999;
 }
 
+.series-path-picker-row {
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-end;
+    gap: 8px;
+    width: 100%;
+    margin-top: 12px;
+}
+
+.series-path-folder-dropdown {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    flex: 1 1 100%;
+}
+
+/* Le libellé reste réellement aligné à gauche; seul le chevron est poussé à droite. */
+.series-path-folder-trigger-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+}
+
+.series-path-folder-trigger-chevron {
+    display: inline-flex;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.series-path-folder-label {
+    display: block;
+    margin: 0 0 5px 2px;
+    color: var(--color-text-secondary, #667085);
+    font-size: 0.78em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.series-path-folder-dropdown .toolbar-btn {
+    width: 100%;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    text-align: left;
+    padding: 9px 12px;
+    border: 1px solid var(--color-accent);
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+    font-size: 0.9em;
+    font-weight: 700;
+}
+
+.series-path-folder-dropdown .toolbar-btn:hover {
+    background: var(--color-surface);
+    border-color: var(--color-accent);
+}
+
+.series-path-folder-dropdown-menu {
+    width: 100%;
+    max-width: calc(100vw - 40px);
+    box-sizing: border-box;
+    max-height: min(620px, 72vh);
+    overflow: hidden;
+}
+
+.series-path-folder-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.85em;
+}
+
+.series-path-folder-search:focus {
+    outline: 2px solid color-mix(in srgb, var(--color-accent-hover) 45%, transparent);
+    outline-offset: 1px;
+}
+
+.series-path-folder-results {
+    max-height: 470px;
+    overflow-y: auto;
+    margin-top: 6px;
+}
+
+.series-path-folder-empty {
+    margin: 8px 10px;
+    color: var(--color-text-secondary, #667085);
+    font-size: 0.85em;
+}
+
 /* Les menus Genre/Auteur/Année ont besoin de plus de largeur que Statut/Ordonner car ils
    contiennent des puces qui se répartissent sur plusieurs colonnes en flux plutôt que de
    s'empiler en une longue liste verticale */
