@@ -1,3 +1,19 @@
+function _replaceWithSanitizedDom(target, markup) {
+    const parsed = new DOMParser().parseFromString(String(markup || ''), 'text/html');
+    for (const element of parsed.querySelectorAll('script, iframe, object, embed, link, meta, style')) element.remove();
+    for (const element of parsed.querySelectorAll('*')) {
+        for (const attribute of [...element.attributes]) {
+            const name = attribute.name.toLowerCase();
+            const value = attribute.value.trim().toLowerCase();
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'style' ||
+                ((name === 'href' || name === 'src' || name === 'action') && value.startsWith('javascript:'))) {
+                element.removeAttribute(attribute.name);
+            }
+        }
+    }
+    target.replaceChildren(...[...parsed.body.childNodes].map(node => document.importNode(node, true)));
+}
+
 // ===== TABLEAU COMPACT DE RÉSULTATS DE RECHERCHE (EBDZ + Prowlarr) =====
 // Partagé entre la modale de recherche/remplacement d'un tome (static/js/library.js,
 // series-detail.html) et la page Recherche (static/js/search.js, search.html) - même
@@ -875,9 +891,9 @@ function _renderSearchResultsTbody() {
     if (!tbody) return;
     const filtered = _filteredSearchTableResults();
     // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
-    tbody.innerHTML = filtered.length
+    _replaceWithSanitizedDom(tbody, filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
-        : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>';
+        : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>');
     _updateSearchBatchDownloadToolbar();
 }
 

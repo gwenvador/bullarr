@@ -1,3 +1,19 @@
+function _replaceWithSanitizedDom(target, markup) {
+    const parsed = new DOMParser().parseFromString(String(markup || ''), 'text/html');
+    for (const element of parsed.querySelectorAll('script, iframe, object, embed, link, meta, style')) element.remove();
+    for (const element of parsed.querySelectorAll('*')) {
+        for (const attribute of [...element.attributes]) {
+            const name = attribute.name.toLowerCase();
+            const value = attribute.value.trim().toLowerCase();
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'style' ||
+                ((name === 'href' || name === 'src' || name === 'action') && value.startsWith('javascript:'))) {
+                element.removeAttribute(attribute.name);
+            }
+        }
+    }
+    target.replaceChildren(...[...parsed.body.childNodes].map(node => document.importNode(node, true)));
+}
+
 /**
  * Script pour la page de découverte et d'ajout de séries
  */
@@ -756,7 +772,7 @@ async function searchSources() {
         const render = () => {
             if (combined.length > 0) {
                 // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
-                document.getElementById('sources-results-list').innerHTML = buildSearchResultsTableHtml(combined, null, seriesId, null, renderedOnce);
+                _replaceWithSanitizedDom(document.getElementById('sources-results-list'), buildSearchResultsTableHtml(combined, null, seriesId, null, renderedOnce));
                 // "je veux celui la partout" (loupe carrée sur les filtres texte, voir
                 // bedetheque-indispensables.js) - tableau injecté après coup, hors de
                 // portée du scan une-fois-au-chargement de nav.js.
