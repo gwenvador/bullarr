@@ -8,7 +8,7 @@ import hashlib
 from pathlib import Path
 from zipfile import ZipFile
 import rarfile
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 from PIL import Image
 import io
 from archive_utils import detect_actual_format
