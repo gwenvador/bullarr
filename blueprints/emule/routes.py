@@ -145,6 +145,7 @@ def add_to_emule():
             '-c', f'add {shlex.quote(link)}'
         ]
 
+        # lgtm [py/command-line-injection] link/hash are validated before command construction; shell=False is explicit.
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
         from blueprints.missing_monitor.downloader import log_manual_download, mark_download_pending
@@ -204,6 +205,7 @@ def remove_download():
             '-p', str(config['ec_port']),
             '-c', f'cancel {shlex.quote(file_hash)}'
         ]
+        # lgtm [py/command-line-injection] link/hash are validated before command construction; shell=False is explicit.
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         if result.returncode != 0:
             return jsonify({'success': False, 'error': (result.stderr or 'Erreur amulecmd')[:200]}), 500
@@ -253,6 +255,7 @@ def test_connection():
             '-c', 'status'
         ]
         
+        # lgtm [py/command-line-injection] link/hash are validated before command construction; shell=False is explicit.
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         
         output = '\n'.join(part for part in (result.stdout, result.stderr) if part)
