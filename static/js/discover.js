@@ -877,7 +877,7 @@ function escapeHtml(text) {
 
 function escapeAttr(text) {
     if (!text) return '';
-    return text.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    return String(text).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // Si la page est ouverte avec ?q=..., préremplir et lancer la recherche automatiquement
