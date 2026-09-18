@@ -1446,8 +1446,6 @@ function switchTab(tabName) {
         loadTelegramSettings();
     } else if (tabName === 'oidc') {
         loadOidcSettings();
-    } else if (tabName === 'theme') {
-        initThemeSwitch();
     } else if (tabName === 'search-formats') {
         initSearchFormatPriority();
         initSearchSourcePriority();
@@ -1703,32 +1701,89 @@ async function resetRenameTemplateSettings() {
 }
 
 // ===== THÈME =====
-// setTheme/getTheme vivent dans nav.js (chargé sur toutes les pages, pas seulement ici) -
-// ce switch ne fait que refléter/déclencher l'état déjà géré là-bas.
-function initThemeSwitch() {
-    _updateThemeSwitchUI(getTheme());
-}
-
-function selectThemeOption(mode) {
-    // setTheme (nav.js) appelle déjà _updateThemeSwitchUI lui-même, pour rester synchronisé
-    // avec le bouton clair/sombre de l'en-tête si ce dernier bascule le thème à la place.
-    setTheme(mode);
-}
-
-function _updateThemeSwitchUI(mode) {
-    document.querySelectorAll('#themeSwitch .theme-switch-option').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.themeValue === mode);
+async function initSearchSourcePriority() {
+    // Affiche d'abord la valeur locale connue (rendu instantané), puis se resynchronise
+    // sur le serveur (référence désormais, voir syncSearchSourcePriorityFromServer côté
+    // search-results-table.js) - sans ça, ouvrir cet onglet dans un navigateur qui n'a
+    // jamais sauvegardé cet ordre localement affichait à tort l'ordre par défaut plutôt
+    // que l'ordre réellement actif.
+    searchSourcePriorityDraft = [...getSearchSourcePriority()];
+    try { if (typeof refreshEnabledIntegrations === 'function') await refreshEnabledIntegrations(); } catch (e) {}
+    const active = source => source === 'prowlarr' ? enabledIntegrations.prowlarr
+        : source === 'ebdz' ? enabledIntegrations.ebdz
+        : source === 'fourtoutici' ? enabledIntegrations.fourtoutici
+        : source === 'annas_archive' ? enabledIntegrations.annas_archive
+        : true;
+    try {
+        const config = await (await fetch('/api/import/config')).json();
+        if (Array.isArray(config.auto_acquire_sources) && config.auto_acquire_sources.length) {
+            searchSourcePriorityDraft = [...config.auto_acquire_sources];
+        }
+    } catch (e) {}
+    searchSourcePriorityDraft = searchSourcePriorityDraft.filter(active);
+    SEARCH_SOURCE_PRIORITY_DEFAULT.filter(active).forEach(source => {
+        if (!searchSourcePriorityDraft.includes(source)) searchSourcePriorityDraft.push(source);
     });
+    renderSearchSourcePriorityList();
 }
 
-// ===== BADGES =====
-// ===== FORMATS DE RECHERCHE =====
-// Ordre de PRÉFÉRENCE (pas un filtre - voir search-results-table.js) entre formats dans
-// les résultats EBDZ/Prowlarr (voir getSearchFormatPriority dans search-results-table.js,
-// chargé aussi sur cette page pour partager SEARCH_FORMAT_PRIORITY_DEFAULT plutôt que de
-// dupliquer la liste des formats connus ici). Édité en mémoire (searchFormatPriorityDraft)
-// et seulement écrit en localStorage au clic sur "Sauvegarder", comme le reste de cette
-// page (pas d'auto-save à chaque case cochée/déplacement).
+function renderSearchSourcePriorityList() {
+    const list = document.getElementById('searchSourcePriorityList');
+    if (!list) return;
+    list.innerHTML = searchSourcePriorityDraft.map((source, i) => `
+        <li class="format-priority-item">
+            <span class="format-priority-rank">${i + 1}</span>
+            <span class="format-priority-name">${SEARCH_SOURCE_LABELS[source] || source}</span>
+            <div class="format-priority-controls">
+                <button type="button" onclick="moveSearchSourcePriority(${i}, -1)" ${i === 0 ? 'disabled' : ''} title="Monter">▲</button>
+                <button type="button" onclick="moveSearchSourcePriority(${i}, 1)" ${i === searchSourcePriorityDraft.length - 1 ? 'disabled' : ''} title="Descendre">▼</button>
+            </div>
+        </li>
+    `).join('');
+}
+
+function moveSearchSourcePriority(index, delta) {
+    const target = index + delta;
+    if (target < 0 || target >= searchSourcePriorityDraft.length) return;
+    [searchSourcePriorityDraft[index], searchSourcePriorityDraft[target]] =
+        [searchSourcePriorityDraft[target], searchSourcePriorityDraft[index]];
+    renderSearchSourcePriorityList();
+}
+
+function saveSearchSourcePriority() {
+    localStorage.setItem('searchSourcePriority', JSON.stringify(searchSourcePriorityDraft));
+    showToast('search-source-priority-saved', '✅ Ordre des sources sauvegardé !', { icon: 'check', autoHideMs: 3000 });
+
+    // Cet ordre n'existait jusqu'ici qu'en localStorage (uniquement lu côté client, pour
+    // trier le tableau de résultats de /search - voir getSearchSourcePriority,
+    // search-results-table.js). L'acquisition automatique à l'ajout d'une série
+    // (blueprints/bedetheque/auto_acquire.py) tourne elle côté serveur, dans un thread
+    // d'arrière-plan sans accès au localStorage du navigateur - "l'ordre des sources
+    // c'est déjà dans recherche, supprime cette partie de import" (pas de 2ème réglage
+    // dupliqué) implique donc de transmettre CE même ordre au serveur aussi, plutôt que
+    // de le re-régler ailleurs. Best-effort, silencieux: ne doit jamais faire échouer la
+    // sauvegarde locale qui vient de réussir juste au-dessus.
+    fetch('/api/import/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_acquire_sources: searchSourcePriorityDraft })
+    }).catch(() => {});
+}
+
+function resetSearchSourcePriority() {
+    if (!confirm('Êtes-vous sûr de vouloir réinitialiser l\'ordre des sources aux valeurs par défaut ?')) {
+        return;
+    }
+    const active = source => source === 'prowlarr' ? enabledIntegrations.prowlarr
+        : source === 'ebdz' ? enabledIntegrations.ebdz
+        : source === 'fourtoutici' ? enabledIntegrations.fourtoutici
+        : source === 'annas_archive' ? enabledIntegrations.annas_archive
+        : true;
+    searchSourcePriorityDraft = SEARCH_SOURCE_PRIORITY_DEFAULT.filter(active);
+    renderSearchSourcePriorityList();
+    saveSearchSourcePriority();
+}
+
 let searchFormatPriorityDraft = [];
 
 function initSearchFormatPriority() {
@@ -1781,21 +1836,8 @@ function resetSearchFormatPriority() {
     saveSearchFormatPriority();
 }
 
-// Ordre de préférence entre sources (Prowlarr/EBDZ) - même mécanique que le tri des
-// formats juste au-dessus mais sans case à cocher (on ne peut pas "désactiver" une source
-// ici, juste la faire passer en second, voir getSearchSourcePriority dans
-// search-results-table.js). Demandé explicitement en plus du filtre de formats: "ajoute
-// aussi ordre prowlarr > ebdz".
 let searchSourcePriorityDraft = [];
 
-// "dans l'ordre des sources mets bien les icones de prowlarr, telegram" - les mêmes
-// logos que ceux affichés dans la colonne Source des résultats de recherche (voir
-// _searchResultSourceIconHtml, search-results-table.js), pas des emojis/texte brut;
-// telegram manquait entièrement (SEARCH_SOURCE_PRIORITY_DEFAULT l'inclut pourtant déjà).
-// Taille en style inline plutôt que via .replace-results-source-icon ("les icones sont
-// gigantesques"): cette classe vit dans style-library-search.css, jamais chargé sur la
-// page Settings - sans règle de taille applicable, l'image s'affichait à sa résolution
-// native.
 const _SEARCH_SOURCE_ICON_STYLE = 'width:16px; height:16px; object-fit:contain; vertical-align:-3px;';
 const SEARCH_SOURCE_LABELS = {
     prowlarr: `<img src="/static/img/prowlarr-logo.svg" alt="" style="${_SEARCH_SOURCE_ICON_STYLE}"> Prowlarr`,
@@ -1887,6 +1929,7 @@ function resetSearchSourcePriority() {
     renderSearchSourcePriorityList();
     saveSearchSourcePriority();
 }
+
 
 // ===== QBITTORRENT =====
 let qbittorrentPasswordVisible = false;
@@ -2311,6 +2354,8 @@ async function loadAutoImportConfig() {
 
         const packSearchEnabled = document.getElementById('auto-acquire-pack-search-enabled');
         if (packSearchEnabled) packSearchEnabled.checked = !!config.auto_acquire_pack_search_enabled;
+        const createFolderOnAdd = document.getElementById('create-series-folder-on-add-enabled');
+        if (createFolderOnAdd) createFolderOnAdd.checked = config.create_series_folder_on_add !== false;
 
         const acquireOnAddEnabled = document.getElementById('auto-acquire-on-add-enabled');
         if (acquireOnAddEnabled) acquireOnAddEnabled.checked = !!config.auto_acquire_on_add_enabled;
@@ -2351,7 +2396,8 @@ async function saveAutoImportConfig() {
             auto_convert_to_cbz: document.getElementById('auto-convert-to-cbz').checked,
             import_mode: document.getElementById('import-mode').value,
             auto_acquire_pack_search_enabled: document.getElementById('auto-acquire-pack-search-enabled')?.checked || false,
-            auto_acquire_on_add_enabled: document.getElementById('auto-acquire-on-add-enabled')?.checked || false
+            auto_acquire_on_add_enabled: document.getElementById('auto-acquire-on-add-enabled')?.checked || false,
+            create_series_folder_on_add: document.getElementById('create-series-folder-on-add-enabled')?.checked !== false
         };
 
         const response = await fetch('/api/import/config', {

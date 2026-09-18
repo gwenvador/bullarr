@@ -8,7 +8,7 @@ import hashlib
 from pathlib import Path
 from zipfile import ZipFile
 import rarfile
-from pypdf import PdfReader
+from PyPDF2 import PdfReader
 from PIL import Image
 import io
 from archive_utils import detect_actual_format
@@ -216,6 +216,10 @@ class LibraryScanner:
             # calculées ici comme le reste des local_*, à chaque update_series_stats.
             ('volumes_without_metadata', 'INTEGER DEFAULT 0'),
             ('oneshot_is_integral', 'INTEGER DEFAULT 0'),
+            ('filesystem_state', "TEXT DEFAULT 'unknown'"),
+            ('filesystem_checked_at', 'TIMESTAMP'),
+            ('filesystem_missing_count', 'INTEGER DEFAULT 0'),
+            ('filesystem_verification_error', 'TEXT'),
         ]
 
         for col_name, col_type in series_columns:
@@ -303,6 +307,8 @@ class LibraryScanner:
             ('validation_valid', 'INTEGER'),
             ('validation_error', 'TEXT'),
             ('release_group', 'TEXT'),
+            ('filesystem_present', 'INTEGER'),
+            ('filesystem_checked_at', 'TIMESTAMP'),
         ]
 
         for col_name, col_type in volume_columns:
@@ -654,8 +660,7 @@ class LibraryScanner:
                         normalized_name, re.IGNORECASE
                     )
                 if range_match:
-                    if not info['is_pack']:
-                        info['is_integral'] = True
+                    info['is_integral'] = True
                     info['integral_tome_start'] = tome_range[0]
                     info['integral_tome_end'] = tome_range[1]
                     normalized_name = normalized_name[:range_match.start()] + ' ' + normalized_name[range_match.end():]
@@ -1060,7 +1065,7 @@ class LibraryScanner:
             raise Exception(f"Le chemin n'est pas un répertoire: '{library_path}'")
 
         # Extensions supportées
-        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
+        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
 
         # Structure pour grouper les fichiers par série
         # Clé = nom du sous-répertoire (= nom de la série)
@@ -1494,7 +1499,7 @@ class LibraryScanner:
         print(f"\n📂 Scan de la série: {series_title}")
         
         # Extensions supportées
-        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
+        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
         
         # Lister les fichiers dans le répertoire de la série
         volumes_data = []
@@ -1804,31 +1809,31 @@ class LibraryScanner:
             cursor.execute('''
                 SELECT DISTINCT volume_number
                 FROM volumes
-                WHERE series_id = ? AND volume_number IS NOT NULL AND filepath IS NOT NULL AND is_bis = 0
+                WHERE series_id = ? AND volume_number IS NOT NULL AND filepath IS NOT NULL AND COALESCE(filesystem_present, 1) = 1 AND is_bis = 0
                 ORDER BY volume_number
             ''', (series_id,))
         else:
             cursor.execute('''
                 SELECT DISTINCT episode_number
                 FROM volumes
-                WHERE series_id = ? AND is_episode = 1 AND episode_number IS NOT NULL AND filepath IS NOT NULL
+                WHERE series_id = ? AND is_episode = 1 AND episode_number IS NOT NULL AND filepath IS NOT NULL AND COALESCE(filesystem_present, 1) = 1
                 ORDER BY episode_number
             ''', (series_id,))
 
         volume_numbers = [row[0] for row in cursor.fetchall()]
 
-        # Le nombre d'éléments principaux possédés reste indépendant de la numérotation :
+        # Le nombre d'albums possédés doit rester indépendant de la numérotation :
         # certaines fiches Bédéthèque mélangent tome 0, albums sans numéro et numéros
         # absents. On compare donc les albums principaux réellement présents, en
-        # excluant les intégrales/HS/spéciaux, qui ne sont pas des éléments de la
+        # excluant les intégrales/HS/spéciaux/épisodes qui ne sont pas des albums de la
         # séquence principale (leur couverture éventuelle est traitée séparément).
         cursor.execute('''
             SELECT COUNT(*)
             FROM volumes
-            WHERE series_id = ? AND filepath IS NOT NULL
-              AND is_integral = 0
+            WHERE series_id = ? AND filepath IS NOT NULL AND COALESCE(filesystem_present, 1) = 1
+              AND is_special = 0 AND is_integral = 0 AND is_hs = 0 AND is_episode = 0
         ''', (series_id,))
-        owned_main_item_count = cursor.fetchone()[0]
+        owned_main_album_count = cursor.fetchone()[0]
 
         # Référence Bédéthèque du nombre total de tomes de la série, si connue (matching
         # déjà fait). Utilisée pour ne pas perdre les tomes manquants au-delà du dernier
@@ -1859,22 +1864,18 @@ class LibraryScanner:
             except (TypeError, ValueError, KeyError):
                 bedetheque_album_numbers = set()
 
-        # La liste Bédéthèque peut être fiable même si son total n’a pas été extrait.
-        if not bedetheque_total and bedetheque_album_numbers:
-            bedetheque_total = len(bedetheque_album_numbers)
-
         if volume_numbers:
             min_vol = min(volume_numbers)
             max_vol = max(volume_numbers)
             actual_volumes = set(volume_numbers)
-            if bedetheque_total and owned_main_item_count >= bedetheque_total:
+            if bedetheque_total and owned_main_album_count >= bedetheque_total:
                 expected_volumes = actual_volumes
             elif bedetheque_album_numbers and (
                 not bedetheque_total or len(bedetheque_album_numbers) == bedetheque_total
             ):
                 expected_volumes = bedetheque_album_numbers
             elif bedetheque_album_numbers:
-                expected_volumes = set(range(1, max(max_vol, max(bedetheque_album_numbers), bedetheque_total or 0) + 1))
+                expected_volumes = set(range(1, max(max_vol, max(bedetheque_album_numbers)) + 1))
             elif bedetheque_total:
                 expected_volumes = set(range(1, max(max_vol, bedetheque_total) + 1))
             else:
@@ -1886,7 +1887,7 @@ class LibraryScanner:
         cursor.execute('''
             SELECT filename, comicinfo
             FROM volumes
-            WHERE series_id = ? AND is_integral = 1 AND filepath IS NOT NULL
+            WHERE series_id = ? AND is_integral = 1 AND filepath IS NOT NULL AND COALESCE(filesystem_present, 1) = 1
         ''', (series_id,))
         integral_covered_volumes = set()
         for filename, comicinfo_json in cursor.fetchall():
@@ -1918,11 +1919,6 @@ class LibraryScanner:
         placeholder_missing_volumes = {row[0] for row in cursor.fetchall()} - integral_covered_volumes
 
         missing_volumes = sorted(gap_missing_volumes | placeholder_missing_volumes)
-
-        # Sans numéro exploitable, une série incomplète doit tout de même exposer un manque.
-        # Les numéros exacts étant inconnus, on expose la plage attendue.
-        if bedetheque_total and owned_main_item_count < bedetheque_total and not missing_volumes:
-            missing_volumes = list(range(1, bedetheque_total + 1))
 
         # Vérifier si la série a des parties
         cursor.execute('''
@@ -1957,7 +1953,7 @@ class LibraryScanner:
         cursor.execute('''
             SELECT cover_path, comicinfo
             FROM volumes
-            WHERE series_id = ? AND filepath IS NOT NULL
+            WHERE series_id = ? AND filepath IS NOT NULL AND COALESCE(filesystem_present, 1) = 1
             ORDER BY (volume_number IS NULL), volume_number, integral_number, filename
         ''', (series_id,))
 
@@ -2010,9 +2006,9 @@ class LibraryScanner:
             # calculé plus haut) ne compte QUE les tomes réellement possédés avec un
             # numéro, jamais les intégrales/HS/spéciaux qui gonfleraient artificiellement
             # total_volumes au-delà du nombre de tomes classiques annoncé.
-            if owned_main_item_count >= bedetheque_total:
+            if owned_main_album_count >= bedetheque_total:
                 bedetheque_complete = 1
-                bedetheque_complete_reason = f"{owned_main_item_count}/{bedetheque_total} éléments principaux"
+                bedetheque_complete_reason = f"{owned_main_album_count}/{bedetheque_total} albums parus"
             else:
                 # 2. Une seule intégrale possédée qui couvre TOUTE la série ("INT . ...",
                 # sans numéro propre - une série qui n'a qu'une intégrale n'a souvent
@@ -2054,28 +2050,21 @@ class LibraryScanner:
                         bedetheque_complete_reason = (
                             f"tomes manquants : {', '.join(str(n) for n in missing_volumes)}"
                             if missing_volumes
-                            else f"{owned_main_item_count}/{bedetheque_total} éléments principaux"
+                            else f"{owned_main_album_count}/{bedetheque_total} albums parus"
                         )
 
         # Une série Bédéthèque à album unique est complète dès que son album
         # réellement possédé existe, même si Bédéthèque ne la classe pas « One shot »
         # et même si le fichier local n'a aucun numéro de tome.
-        if bedetheque_total == 1 and owned_main_item_count > 0:
+        if bedetheque_total == 1 and total_volumes > 0:
             bedetheque_complete = 1
-            bedetheque_complete_reason = "One-Shot"
+            bedetheque_complete_reason = "album unique Bédéthèque possédé"
 
         # "one-shot is in bedetheque written as One Shot so there should not be a one
         # shot mistake" - comparaison insensible à la casse par précaution (Bédéthèque
         # n'est pas toujours cohérent sur la casse de ce statut d'une fiche à l'autre),
         # même si la valeur observée en base jusqu'ici est bien 'One shot' (s minuscule).
         bedetheque_status_is_oneshot = (bedetheque_status or '').strip().lower() == 'one shot'
-
-        # Un one-shot n'a souvent aucun numéro exploitable dans sa fiche. Sans ligne
-        # réelle possédée, le calcul par intervalles laisse donc missing_volumes vide
-        # alors que la série est bien incomplète. Utiliser 1 comme identifiant d'unique
-        # album permet à la Surveillance de le filtrer et de l'afficher comme manquant.
-        if bedetheque_status_is_oneshot:
-            missing_volumes = [] if total_volumes > 0 else [1]
 
         # Bédéthèque indique explicitement qu'un One shot est une série complète. Cette
         # règle doit primer même quand la fiche fournit `bedetheque_total_volumes = 1`:

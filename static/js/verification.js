@@ -34,6 +34,8 @@ const VERIFICATION_CATEGORIES = {
     unmatched_owned_volumes: { runBtnId: 'verifRunUnmatchedOwnedBtn', render: renderUnmatchedOwnedVolumes },
     unmatched_owned_komga: { runBtnId: 'verifRunUnmatchedOwnedKomgaBtn', render: renderUnmatchedOwnedKomga },
     duplicate_series: { runBtnId: 'verifRunDuplicateSeriesBtn', render: renderDuplicateSeries },
+    missing_files: { runBtnId: 'verifRunMissingFilesBtn', render: renderMissingFiles },
+    archive_formats: { runBtnId: 'verifRunArchiveFormatsBtn', render: renderArchiveFormats },
 };
 
 function _updateVerificationSummary(data) {
@@ -97,7 +99,7 @@ function renderMissingMetadata(data) {
             <table class="series-table series-table-compact">
                 <thead>
                     <tr>
-                        <th class="volume-table-select-cell"></th>
+                        <th class="volume-table-select-cell"><input type="checkbox" id="verifMetaSelectAll" onchange="verifToggleSelectAllMeta(this)" aria-label="Tout sélectionner"></th>
                         <th><div class="th-filterable-row"><span class="th-filterable-label">Série</span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><input class="series-table-filter-input th-filterable-control" type="text" value="${escapeHtml(query)}" placeholder="Filtrer..." aria-label="Filtrer les séries" oninput="_syncFilterControlActive(this); filterVerifMetaTable(this.value)"></span></div></th>
                         <th>Détail</th>
                         <th>Action</th>
@@ -133,8 +135,7 @@ function renderMissingMetadata(data) {
         initClearableSearchInputs(metaList);
     }
     const selectAllEl = document.getElementById('verifMetaSelectAll');
-    selectAllEl.checked = false;
-    selectAllEl.disabled = false;
+    if (selectAllEl) { selectAllEl.checked = false; selectAllEl.disabled = false; }
     document.getElementById('verifMetaBulkControls').style.display = verifMetaItems.length > 0 ? 'flex' : 'none';
     verifUpdateMetaSelectionCount();
 }
@@ -203,18 +204,18 @@ function _verifRenameItemRowHtml(item, groupKey = null, isDetail = false) {
 }
 
 
-function _folderPlacementRowHtml(item) {
-    const action = item.can_reconcile
-        ? `<button class="btn-icon-only" onclick="verifReconcileFolder(${item.series_id}, this)" data-tooltip="Déplacer vers le dossier attendu" aria-label="Déplacer vers le dossier attendu">${svgIcon('folder')}</button>`
+function _folderPlacementActionHtml(item) {
+    return item.can_reconcile
+        ? `<button class="btn-icon-only" onclick="verifReconcileFolder(${item.series_id}, this)" data-tooltip="Déplacer vers l’emplacement attendu" aria-label="Déplacer vers l’emplacement attendu">${svgIcon('folder')}</button>`
         : '<span class="help-text">Conflit à résoudre</span>';
-    return `<tr class="series-table-row">
-        <td class="volume-table-select-cell">${item.can_reconcile ? `<input type="checkbox" class="verif-folder-move-select" data-series-id="${item.series_id}" aria-label="Sélectionner ${escapeHtml(item.series_title)}" onchange="verifUpdateFolderMoveSelectionCount()">` : ''}</td>
-        <td><a href="/series/${item.series_id}" class="missing-series-link">${escapeHtml(item.series_title)}</a></td>
-        <td><code>${escapeHtml(item.current_path || '')}</code></td>
-        <td>${item.expected_path ? `<code>${escapeHtml(item.expected_path)}</code>` : '—'}</td>
-        <td>${escapeHtml(item.reason)}</td>
-        <td>${action}</td>
-    </tr>`;
+}
+
+function _folderPlacementCompactRowHtml(item, groupKey = null, isDetail = false) {
+    const checkbox = item.can_reconcile
+        ? `<input type="checkbox" class="verif-folder-move-select" data-series-id="${item.series_id}"${groupKey ? ` data-group="${groupKey}"` : ''} aria-label="Sélectionner ${escapeHtml(item.series_title)}" onchange="verifUpdateFolderMoveSelectionCount()">`
+        : '';
+    const detail = `<div class="help-text">Actuel : <code>${escapeHtml(item.current_path || '')}</code></div><div class="help-text">Attendu : ${item.expected_path ? `<code>${escapeHtml(item.expected_path)}</code>` : '—'}</div><div class="help-text">${escapeHtml(item.reason)}</div>`;
+    return `<tr class="series-table-row"${groupKey && isDetail ? ` data-group="${groupKey}" style="display:none;"` : ''}><td class="volume-table-select-cell">${checkbox}</td><td>${isDetail ? `<span class="help-text" style="padding-left:20px;">${escapeHtml(item.universe_name || 'Sans univers')}</span>` : `<a href="/series/${item.series_id}" class="missing-series-link">${escapeHtml(item.series_title)}</a>`}</td><td>${detail}</td><td>${isDetail ? '' : _folderPlacementActionHtml(item)}</td></tr>`;
 }
 
 function renderMisplacedFolders(data) {
@@ -224,32 +225,25 @@ function renderMisplacedFolders(data) {
     if (!items.length) {
         list.innerHTML = '<p class="help-text">Tous les dossiers correspondent au template et à leur univers.</p>';
     } else {
-        const universeGroups = new Map();
+        const groups = [];
+        const bySeries = {};
         items.forEach(item => {
-            const universeName = item.universe_name || 'Sans univers';
-            if (!universeGroups.has(universeName)) universeGroups.set(universeName, []);
-            universeGroups.get(universeName).push(item);
+            let group = bySeries[item.series_id];
+            if (!group) { group = { id: item.series_id, title: item.series_title, items: [] }; bySeries[item.series_id] = group; groups.push(group); }
+            group.items.push(item);
         });
-        list.innerHTML = [...universeGroups.entries()]
-            .sort(([a], [b]) => a.localeCompare(b, 'fr'))
-            .map(([universeName, groupItems], index) => {
-                const groupKey = `folder-universe-${index}`;
-                const selectableCount = groupItems.filter(item => item.can_reconcile).length;
-                return `
-                    <details class="verification-series-collapse" style="margin-bottom:8px;">
-                        <summary class="verification-series-collapse-title verification-folder-universe-summary" style="justify-content:flex-start; text-align:left;" onclick="event.preventDefault(); const details = this.parentElement; details.open = !details.open;">
-                            <svg class="icon verification-folder-universe-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-                            <span>${escapeHtml(universeName)}</span>
-                            <span class="verification-series-collapse-count">${groupItems.length} dossier(s)</span>
-                            ${selectableCount ? `<span class="verification-folder-universe-controls"><input type="checkbox" class="verif-folder-move-group-select" data-group="${groupKey}" aria-label="Sélectionner les dossiers de ${escapeHtml(universeName)}" onclick="event.stopPropagation()" onchange="verifToggleFolderMoveGroup(this, '${groupKey}')"></span>` : ''}
-                        </summary>
-                        <table class="series-table"><thead><tr><th></th><th>Série</th><th>Actuel</th><th>Attendu</th><th>État</th><th>Action</th></tr></thead><tbody>${groupItems.map(item => _folderPlacementRowHtml(item).replace('class="verif-folder-move-select"', `class="verif-folder-move-select" data-group="${groupKey}"`)).join('')}</tbody></table>
-                    </details>`;
-            }).join('');
+        groups.sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+        list.innerHTML = `<table class="series-table series-table-compact"><thead><tr><th class="volume-table-select-cell"><input type="checkbox" id="verifFolderMoveSelectAll" onchange="verifToggleSelectAllFolderMoves(this)" data-tooltip="Tout sélectionner" aria-label="Tout sélectionner"></th><th>Série</th><th>Détail</th><th>Action</th></tr></thead><tbody>${groups.map(group => {
+            if (group.items.length === 1) return _folderPlacementCompactRowHtml(group.items[0]);
+            const groupKey = `folder-series-${group.id}`;
+            const selectable = group.items.some(item => item.can_reconcile);
+            return `<tr class="series-table-row verif-group-row" data-group="${groupKey}"><td class="volume-table-select-cell">${selectable ? `<input type="checkbox" class="verif-folder-move-group-select" data-series-id="${group.id}" aria-label="Sélectionner ${escapeHtml(group.title)}" onchange="verifToggleFolderMoveGroup(this, '${groupKey}')">` : ''}</td><td colspan="2"><button type="button" class="verif-section-toggle verif-group-toggle" onclick="verifToggleGroupRows('${groupKey}', this)" data-tooltip="Déplier/replier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; vertical-align:-5px; color:inherit; transition:transform 0.15s ease; transform:rotate(-90deg);">${svgIcon('chevron-down')}</button><a href="/series/${group.id}" class="missing-series-link">${escapeHtml(group.title)}</a><span class="help-text">(${group.items.length} emplacements)</span></td><td>${_folderPlacementActionHtml(group.items.find(item => item.can_reconcile) || group.items[0])}</td></tr>${group.items.map(item => _folderPlacementCompactRowHtml(item, groupKey, true)).join('')}`;
+        }).join('')}</tbody></table>`;
     }
     const controls = document.getElementById('verifFolderMoveBulkControls');
-    controls.style.display = items.some(item => item.can_reconcile) ? 'flex' : 'none';
-    document.getElementById('verifFolderMoveSelectAll').checked = false;
+    controls.style.display = items.some(item => item.can_reconcile) ? 'inline-flex' : 'none';
+    const selectAll = document.getElementById('verifFolderMoveSelectAll');
+    if (selectAll) selectAll.checked = false;
     verifUpdateFolderMoveSelectionCount();
 }
 
@@ -282,18 +276,22 @@ function verifToggleFolderMoveGroup(checkboxEl, groupKey) {
 }
 
 function verifToggleSelectAllFolderMoves(checkboxEl) {
-    document.querySelectorAll('.verif-folder-move-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    document.querySelectorAll('.verif-folder-move-select, .verif-folder-move-group-select').forEach(cb => { cb.checked = checkboxEl.checked; });
     verifUpdateFolderMoveSelectionCount();
 }
 
 function verifUpdateFolderMoveSelectionCount() {
-    const count = document.querySelectorAll('.verif-folder-move-select:checked').length;
-    document.getElementById('verifFolderMoveSelectedCount').textContent = count;
-    document.getElementById('verifBulkFolderMoveBtn').disabled = count === 0;
+    const selectedIds = new Set([...document.querySelectorAll('.verif-folder-move-select:checked, .verif-folder-move-group-select:checked')].map(cb => cb.dataset.seriesId));
+    const count = selectedIds.size;
+    const button = document.getElementById('verifBulkFolderMoveBtn');
+    button.disabled = count === 0;
+    button.dataset.tooltip = `Déplacer la sélection (${count})`;
+    const countEl = document.getElementById('verifFolderMoveSelectedCount');
+    if (countEl) countEl.textContent = count;
 }
 
 async function verifBulkReconcileFolders() {
-    const ids = [...document.querySelectorAll('.verif-folder-move-select:checked')].map(cb => Number(cb.dataset.seriesId));
+    const ids = [...new Set([...document.querySelectorAll('.verif-folder-move-select:checked, .verif-folder-move-group-select:checked')].map(cb => Number(cb.dataset.seriesId)))];
     const button = document.getElementById('verifBulkFolderMoveBtn');
     button.disabled = true;
     let failed = 0;
@@ -326,7 +324,7 @@ function renderMisnamed(data) {
             <table class="series-table series-table-compact">
                 <thead>
                     <tr>
-                        <th class="volume-table-select-cell"></th>
+                        <th class="volume-table-select-cell"><input type="checkbox" id="verifRenameSelectAll" onchange="verifToggleSelectAllRename(this)" aria-label="Tout sélectionner"></th>
                         <th><div class="th-filterable-row"><span class="th-filterable-label">Série</span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><input class="series-table-filter-input th-filterable-control" type="text" value="${escapeHtml(query)}" placeholder="Filtrer..." aria-label="Filtrer les séries" oninput="_syncFilterControlActive(this); filterVerifRenameTable(this.value)"></span></div></th>
                         <th>Actuel</th>
                         <th>Attendu</th>
@@ -399,6 +397,216 @@ function filterVerifRenameTable(query) {
     });
 }
 
+let missingFilesSelectedSeriesIds = new Set();
+let missingFilesItems = [];
+
+async function _startMissingFilesAutoAcquire(seriesId) {
+    const response = await fetch(`/api/settings/verification/missing-files/${seriesId}/auto-acquire`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Recherche automatique impossible');
+    return data;
+}
+
+async function missingFilesAutoAcquire(seriesId) {
+    if (!confirm('Rechercher et télécharger automatiquement les tomes absents de cette série ?\nCette action est ponctuelle et ne crée pas de surveillance.')) return;
+    const data = await _startMissingFilesAutoAcquire(seriesId);
+    alert(`Recherche automatique lancée pour ${data.count} tome(s).`);
+}
+
+async function _removeMissingFilesSeriesRecord(seriesId) {
+    const response = await fetch(`/api/settings/verification/missing-files/${seriesId}/remove-record`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Suppression impossible');
+    return data;
+}
+
+function removeMissingFilesSeriesFromView(seriesId) {
+    const id = Number(seriesId);
+    missingFilesItems = missingFilesItems.filter(item => Number(item.series_id) !== id);
+    missingFilesSelectedSeriesIds.delete(id);
+    missingFilesSeriesTitles.delete(id);
+    renderMissingFiles({ missing_files: missingFilesItems });
+}
+
+document.addEventListener('seriesPathCorrectionApplied', event => {
+    const seriesId = Number(event.detail?.seriesId);
+    if (seriesId && missingFilesItems.some(item => Number(item.series_id) === seriesId)) {
+        removeMissingFilesSeriesFromView(seriesId);
+    }
+});
+
+async function removeMissingFilesSeriesRecord(seriesId) {
+    if (!confirm('Supprimer cette série de la base Bullarr?\nLes fichiers sur le disque ne seront pas supprimés.')) return;
+    await _removeMissingFilesSeriesRecord(seriesId);
+    // La réponse confirmée est l'autorité : mettre à jour immédiatement, sans rescanner.
+    removeMissingFilesSeriesFromView(seriesId);
+}
+
+function toggleMissingFilesSeries(seriesId, checked) {
+    if (checked) missingFilesSelectedSeriesIds.add(Number(seriesId));
+    else missingFilesSelectedSeriesIds.delete(Number(seriesId));
+    updateMissingFilesBulkActions();
+}
+
+function toggleAllMissingFilesSeries(checked) {
+    document.querySelectorAll('#missingFilesList .missing-files-series-select').forEach(input => {
+        const seriesId = Number(input.dataset.seriesId);
+        input.checked = checked;
+        if (checked) missingFilesSelectedSeriesIds.add(seriesId);
+        else missingFilesSelectedSeriesIds.delete(seriesId);
+    });
+    updateMissingFilesBulkActions();
+}
+
+function updateMissingFilesBulkActions() {
+    const count = missingFilesSelectedSeriesIds.size;
+    const autoBtn = document.getElementById('missingFilesBatchAutoBtn');
+    const deleteBtn = document.getElementById('missingFilesBatchDeleteBtn');
+    if (autoBtn) { autoBtn.disabled = count === 0; autoBtn.dataset.tooltip = `Recherche + téléchargement automatique (${count})`; }
+    if (deleteBtn) { deleteBtn.disabled = count === 0; deleteBtn.dataset.tooltip = `Supprimer de la base (${count})`; }
+    const all = [...document.querySelectorAll('#missingFilesList .missing-files-series-select')];
+    const allToggle = document.getElementById('missingFilesSelectAll');
+    if (allToggle) { allToggle.checked = all.length > 0 && all.every(input => input.checked); allToggle.indeterminate = all.some(input => input.checked) && !allToggle.checked; }
+}
+
+async function batchMissingFilesAutoAcquire() {
+    const ids = [...missingFilesSelectedSeriesIds];
+    if (!ids.length || !confirm(`Lancer la recherche et le téléchargement automatique pour ${ids.length} série(s) ?\nAucune surveillance ne sera créée.`)) return;
+    const failures = [];
+    for (const seriesId of ids) { try { await _startMissingFilesAutoAcquire(seriesId); } catch (error) { failures.push(`#${seriesId}: ${error.message}`); } }
+    alert(failures.length ? `Recherche lancée avec ${failures.length} erreur(s):\n${failures.join('\n')}` : `Recherche automatique lancée pour ${ids.length} série(s).`);
+}
+
+async function batchRemoveMissingFilesSeriesRecords() {
+    const ids = [...missingFilesSelectedSeriesIds];
+    if (!ids.length || !confirm(`Supprimer ${ids.length} série(s) sélectionnée(s) de la base Bullarr?\nLes fichiers sur le disque ne seront pas supprimés.`)) return;
+    const failures = [];
+    for (const seriesId of ids) {
+        try { await _removeMissingFilesSeriesRecord(seriesId); removeMissingFilesSeriesFromView(seriesId); }
+        catch (error) { failures.push(`#${seriesId}: ${error.message}`); }
+    }
+    if (failures.length) alert(`${failures.length} suppression(s) n'ont pas abouti:\n${failures.join('\n')}`);
+}
+
+const missingFilesSeriesTitles = new Map();
+
+function missingFilesManualSearch(seriesId) {
+    const title = missingFilesSeriesTitles.get(Number(seriesId));
+    if (!title) { alert('Titre de série introuvable. Relance la vérification.'); return; }
+    // Même composant et même parcours que la fiche série : résultats progressifs,
+    // filtres, actions de téléchargement et file d’import existants.
+    searchMissingVolume(title, null, { seriesId });
+}
+
+function _missingFilesActionIcons(seriesId) {
+    return `<span class="missing-files-icon-actions"><button type="button" class="btn-icon-only" onclick="missingFilesManualSearch(${seriesId})" data-tooltip="Recherche manuelle" aria-label="Recherche manuelle">${svgIcon('search')}</button><button type="button" class="btn-icon-only" onclick="missingFilesAutoAcquire(${seriesId})" data-tooltip="Recherche + téléchargement automatique" aria-label="Recherche + téléchargement automatique">${svgIcon('download')}</button><button type="button" class="btn-icon-only" onclick="openSeriesPathCorrection(${seriesId})" data-tooltip="Corriger le dossier enregistré" aria-label="Corriger le dossier enregistré">${svgIcon('pencil')}</button><button type="button" class="btn-icon-only" onclick="removeMissingFilesSeriesRecord(${seriesId})" data-tooltip="Supprimer de la base" aria-label="Supprimer de la base">${svgIcon('trash-2')}</button></span>`;
+}
+
+function _missingFilesDetailRowHtml(item, groupKey = null, isDetail = false) {
+    const itemLabel = item.kind === 'series_folder' ? 'Dossier de série' : escapeHtml(item.filename || 'Fichier');
+    const checked = missingFilesSelectedSeriesIds.has(Number(item.series_id)) ? ' checked' : '';
+    const selectCell = isDetail ? '' : `<input type="checkbox" class="missing-files-series-select" data-series-id="${item.series_id}"${checked} aria-label="Sélectionner ${escapeHtml(item.series_title)}" onchange="toggleMissingFilesSeries(${item.series_id}, this.checked)">`;
+    return `<tr class="series-table-row"${groupKey ? ` data-group="${groupKey}" style="display:none;"` : ''}><td class="volume-table-select-cell">${selectCell}</td><td>${isDetail ? `<span class="help-text" style="padding-left:20px;">${itemLabel}</span>` : `<a href="/series/${item.series_id}" class="missing-series-link">${escapeHtml(item.series_title)}</a>`}</td><td><div>${isDetail ? '' : itemLabel}</div><div class="help-text"><code>${escapeHtml(item.filepath)}</code></div><div class="help-text">${escapeHtml(item.reason)}</div></td><td>${isDetail ? '' : _missingFilesActionIcons(item.series_id)}</td></tr>`;
+}
+
+function renderMissingFiles(data) {
+    const list = document.getElementById('missingFilesList');
+    const items = data.missing_files || [];
+    missingFilesItems = items;
+    document.getElementById('missingFilesCount').textContent = items.length;
+    if (!items.length) {
+        list.innerHTML = '<p class="help-text">Aucun fichier ou dossier absent détecté.</p>';
+        document.getElementById('missingFilesBulkControls').style.display = 'none';
+        return;
+    }
+
+    const groups = [];
+    const bySeries = {};
+    items.forEach(item => {
+        let group = bySeries[item.series_id];
+        if (!group) { group = { id: item.series_id, title: item.series_title, items: [] }; bySeries[item.series_id] = group; groups.push(group); }
+        group.items.push(item);
+    });
+    missingFilesSeriesTitles.clear();
+    groups.forEach(group => missingFilesSeriesTitles.set(Number(group.id), group.title));
+    groups.sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+    const visibleIds = new Set(groups.map(group => Number(group.id)));
+    missingFilesSelectedSeriesIds = new Set([...missingFilesSelectedSeriesIds].filter(id => visibleIds.has(id)));
+    list.innerHTML = `<table class="series-table series-table-compact"><thead><tr><th class="volume-table-select-cell"></th><th>Série</th><th>Détail</th><th>Action</th></tr></thead><tbody>${groups.map(group => {
+        if (group.items.length === 1) return _missingFilesDetailRowHtml(group.items[0]);
+        const groupKey = `missing-files-${group.id}`;
+        const checked = missingFilesSelectedSeriesIds.has(Number(group.id)) ? ' checked' : '';
+        return `<tr class="series-table-row verif-group-row" data-group="${groupKey}"><td class="volume-table-select-cell"><input type="checkbox" class="missing-files-series-select" data-series-id="${group.id}"${checked} aria-label="Sélectionner ${escapeHtml(group.title)}" onchange="toggleMissingFilesSeries(${group.id}, this.checked)"></td><td colspan="2"><button type="button" class="verif-section-toggle verif-group-toggle" onclick="verifToggleGroupRows('${groupKey}', this)" data-tooltip="Déplier/replier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; vertical-align:-5px; color:inherit; transition:transform 0.15s ease; transform:rotate(-90deg);">${svgIcon('chevron-down')}</button><a href="/series/${group.id}" class="missing-series-link">${escapeHtml(group.title)}</a><span class="help-text">(${group.items.length} éléments absents)</span></td><td>${_missingFilesActionIcons(group.id)}</td></tr>${group.items.map(item => _missingFilesDetailRowHtml(item, groupKey, true)).join('')}`;
+    }).join('')}</tbody></table>`;
+    document.getElementById('missingFilesBulkControls').style.display = 'inline-flex';
+    updateMissingFilesBulkActions();
+}
+
+
+let verifArchiveFormatItems = [];
+function renderArchiveFormats(data) {
+    const list = document.getElementById('archiveFormatsList');
+    verifArchiveFormatItems = data.archive_formats || [];
+    document.getElementById('archiveFormatsCount').textContent = verifArchiveFormatItems.length;
+    const controls = document.getElementById('verifArchiveFormatsBulkControls');
+    if (!verifArchiveFormatItems.length) {
+        list.innerHTML = `<p class="help-text">${svgIcon('check')} Tous les fichiers CBZ/CBR correspondent à leur contenu réel.</p>`;
+        controls.style.display = 'none';
+        return;
+    }
+    list.innerHTML = `<table class="series-table series-table-compact"><thead><tr><th class="volume-table-select-cell"><input type="checkbox" id="verifArchiveFormatsHeaderSelectAll" onchange="verifToggleSelectAllArchiveFormats(this)"></th><th>Série</th><th>Fichier</th><th>Déclaré</th><th>Réel</th><th>Raison</th></tr></thead><tbody>${verifArchiveFormatItems.map(item => `
+        <tr class="series-table-row"><td class="volume-table-select-cell"><input type="checkbox" class="verif-archive-format-select" data-volume-id="${item.volume_id}" onchange="verifUpdateArchiveFormatsSelectionCount()" aria-label="Sélectionner ${escapeHtml(item.filename || item.series_title)}"></td><td><a href="/series/${item.series_id}" class="missing-series-link">${escapeHtml(item.series_title)}</a></td><td><code>${escapeHtml(item.filename || item.filepath)}</code></td><td>${escapeHtml((item.declared_format || '').toUpperCase())}</td><td>${escapeHtml((item.actual_format || '').toUpperCase())}</td><td class="help-text">${escapeHtml(item.reason)}</td></tr>`).join('')}</tbody></table>`;
+    controls.style.display = 'inline-flex';
+    const archiveSelectAll = document.getElementById('verifArchiveFormatsSelectAll'); if (archiveSelectAll) archiveSelectAll.checked = false;
+    verifUpdateArchiveFormatsSelectionCount();
+}
+function verifToggleSelectAllArchiveFormats(checkboxEl) {
+    document.querySelectorAll('.verif-archive-format-select').forEach(cb => { if (!cb.closest('tr').hidden) cb.checked = checkboxEl.checked; });
+    ['verifArchiveFormatsHeaderSelectAll','verifArchiveFormatsSelectAll'].forEach(id => { const el=document.getElementById(id); if (el && el !== checkboxEl) el.checked=checkboxEl.checked; });
+    verifUpdateArchiveFormatsSelectionCount();
+}
+function verifUpdateArchiveFormatsSelectionCount() {
+    const count = document.querySelectorAll('.verif-archive-format-select:checked').length;
+    document.getElementById('verifArchiveFormatsSelectedCount').textContent = count;
+    document.getElementById('verifConvertArchiveFormatsBtn').disabled = count === 0;
+}
+async function verifPollArchiveFormatsConversion(ids, attempt = 0) {
+    if (attempt >= 120) {
+        showToast('verif-archive-convert', 'La conversion continue peut-être en arrière-plan. Relancez « Lancer » pour vérifier.');
+        return;
+    }
+    try {
+        const response = await fetch('/api/settings/verification?type=archive_formats');
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Erreur de vérification');
+        _updateVerificationSummary(data);
+        renderArchiveFormats(data);
+        const remaining = new Set((data.archive_formats || []).map(item => Number(item.volume_id)));
+        const pending = ids.filter(id => remaining.has(id));
+        if (!pending.length) {
+            showToast('verif-archive-convert', 'Conversion et mise à jour des métadonnées terminées.');
+            return;
+        }
+        setTimeout(() => verifPollArchiveFormatsConversion(ids, attempt + 1), 3000);
+    } catch (error) {
+        setTimeout(() => verifPollArchiveFormatsConversion(ids, attempt + 1), 5000);
+    }
+}
+
+async function verifConvertArchiveFormatsAndUpdateMetadata() {
+    const ids = [...document.querySelectorAll('.verif-archive-format-select:checked')].map(cb => Number(cb.dataset.volumeId));
+    if (!ids.length) return;
+    if (!confirm(`Convertir ${ids.length} volume(s) en CBZ puis mettre à jour leurs métadonnées ?`)) return;
+    const btn = document.getElementById('verifConvertArchiveFormatsBtn'); btn.disabled = true;
+    try {
+        const response = await fetch('/api/bedetheque/convert-archive-formats-batch', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({volume_ids:ids}) });
+        const data = await response.json(); if (!data.success) throw new Error(data.error || 'Erreur inconnue');
+        showToast('verif-archive-convert', `${ids.length} conversion(s) lancée(s), avec mise à jour des métadonnées.`);
+        verifPollArchiveFormatsConversion(ids);
+    } catch (error) { alert('❌ ' + error.message); btn.disabled = false; }
+}
 function renderInvalidFiles(data) {
     const invalidList = document.getElementById('invalidFilesList');
     const invalidFiles = data.invalid_files || [];
@@ -440,8 +648,7 @@ function renderInvalidFiles(data) {
         initClearableSearchInputs(invalidList);
     }
     const selectAllEl = document.getElementById('verifInvalidSelectAll');
-    selectAllEl.checked = false;
-    selectAllEl.disabled = false;
+    if (selectAllEl) { selectAllEl.checked = false; selectAllEl.disabled = false; }
     document.getElementById('verifInvalidBulkControls').style.display = invalidFiles.length > 0 ? 'flex' : 'none';
     verifUpdateInvalidSelectionCount();
 }
@@ -492,7 +699,7 @@ async function verifBulkDeleteInvalidFiles() {
     if (failed.length > 0) {
         alert(`⚠️ Suppression terminée avec ${failed.length} ${pluralize(failed.length, 'échec')} sur ${selected.length}: ${failed.join(', ')}.`);
     }
-    runVerificationCategory('invalid_files');
+    if (document.getElementById('verificationInvalidCard')) runVerificationCategory('invalid_files');
 }
 
 // "c'est pas clair... ca doit etre fichier non detecté de bedetheque. ca regarde si le
@@ -569,8 +776,7 @@ function renderUnmatchedOwnedVolumes(data) {
     filterVerifUnmatchedOwnedTable(query);
     initClearableSearchInputs(list);
     const selectAllEl = document.getElementById('verifUnmatchedOwnedSelectAll');
-    selectAllEl.checked = false;
-    selectAllEl.disabled = false;
+    if (selectAllEl) { selectAllEl.checked = false; selectAllEl.disabled = false; }
     document.getElementById('verifUnmatchedOwnedBulkControls').style.display = 'flex';
     verifUpdateUnmatchedOwnedSelectionCount();
 }
@@ -587,8 +793,8 @@ function renderUnmatchedOwnedKomga(data) {
     card.style.display = '';
     const items = data.unmatched_owned_komga || [];
     document.getElementById('unmatchedOwnedKomgaCount').textContent = items.length;
-    document.getElementById('verifKomgaSelectAll').checked = false;
-    document.getElementById('verifKomgaSelectAll').disabled = items.length === 0;
+    const komgaSelectAll = document.getElementById('verifKomgaSelectAll');
+    if (komgaSelectAll) { komgaSelectAll.checked = false; komgaSelectAll.disabled = items.length === 0; }
     verifUpdateKomgaSelectionCount();
     if (items.length === 0) {
         list.innerHTML = `<p class="help-text">${svgIcon('check')} Tous les tomes possédés sont liés à Komga.</p>`;
@@ -601,7 +807,7 @@ function renderUnmatchedOwnedKomga(data) {
         }
         bySeries.get(item.series_id).items.push(item);
     });
-    list.innerHTML = Array.from(bySeries.entries()).map(([seriesId, series]) => `
+    list.innerHTML = Array.from(bySeries.entries()).map(([seriesId, series], seriesIndex) => `
         <div class="verification-series-group">
         <div class="verification-series-header">
         <details class="verification-series-collapse">
@@ -613,7 +819,7 @@ function renderUnmatchedOwnedKomga(data) {
                 </span>
             </summary>
             <table class="series-table series-table-compact unmatched-owned-komga-table">
-                <thead><tr><th>Fichier</th></tr></thead>
+                <thead><tr><th>${seriesIndex === 0 ? '<input type="checkbox" id="verifKomgaSelectAll" onchange="verifToggleSelectAllKomga(this)" aria-label="Tout sélectionner">' : ''} Fichier</th></tr></thead>
                 <tbody>${series.items.map(item => `
                     <tr class="series-table-row">
                         <td><input type="checkbox" class="verif-komga-select" data-series-id="${seriesId}" data-series-title="${escapeForAttribute(series.title)}" onchange="verifUpdateKomgaSelectionCount()" aria-label="Sélectionner ${escapeHtml(item.filename || '')}"> <span class="verification-komga-filename">${escapeHtml(item.filename || '')}</span></td>
@@ -870,7 +1076,7 @@ async function verifBulkUpdateUnmatchedOwned() {
 
     const btn = document.getElementById('verifBulkUpdateUnmatchedOwnedBtn');
     btn.disabled = true;
-    document.getElementById('verifUnmatchedOwnedSelectAll').disabled = true;
+    const unmatchedSelectAll = document.getElementById('verifUnmatchedOwnedSelectAll'); if (unmatchedSelectAll) unmatchedSelectAll.disabled = true;
 
     try {
         const response = await fetch('/api/bedetheque/link-volumes-batch', {
@@ -882,13 +1088,13 @@ async function verifBulkUpdateUnmatchedOwned() {
         if (!data.success) {
             alert('❌ ' + (data.error || 'Erreur inconnue'));
             btn.disabled = false;
-            document.getElementById('verifUnmatchedOwnedSelectAll').disabled = false;
+            const unmatchedSelectAll = document.getElementById('verifUnmatchedOwnedSelectAll'); if (unmatchedSelectAll) unmatchedSelectAll.disabled = false;
             return;
         }
     } catch (error) {
         alert('❌ Erreur de connexion: ' + error.message);
         btn.disabled = false;
-        document.getElementById('verifUnmatchedOwnedSelectAll').disabled = false;
+        const unmatchedSelectAll = document.getElementById('verifUnmatchedOwnedSelectAll'); if (unmatchedSelectAll) unmatchedSelectAll.disabled = false;
         return;
     }
 
@@ -1049,7 +1255,7 @@ async function verifUpdateMetadata(seriesId, volumeId, seriesTitle, buttonEl) {
 // Bédéthèque" des séries non matchées n'a pas de case: chaque match doit être confirmé
 // individuellement, pas de sélection multiple possible pour cette action-là)
 function verifToggleSelectAllMeta(checkboxEl) {
-    document.querySelectorAll('.verif-meta-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    document.querySelectorAll('.verif-meta-select, .verif-meta-group-select').forEach(cb => { cb.checked = checkboxEl.checked; });
     verifUpdateMetaSelectionCount();
 }
 
@@ -1105,7 +1311,7 @@ async function verifBulkUpdateMetadata() {
 
     const btn = document.getElementById('verifBulkUpdateBtn');
     btn.disabled = true;
-    document.getElementById('verifMetaSelectAll').disabled = true;
+    const metaSelectAll = document.getElementById('verifMetaSelectAll'); if (metaSelectAll) metaSelectAll.disabled = true;
     const toastId = 'verif-bulk-metadata';
     const failed = [];
 
@@ -1335,7 +1541,7 @@ async function verifRenameItem(seriesId, volumeId, isFolder, buttonEl) {
 
 // Coche/décoche toutes les lignes de nommage d'un coup
 function verifToggleSelectAllRename(checkboxEl) {
-    document.querySelectorAll('.verif-rename-select').forEach(cb => { cb.checked = checkboxEl.checked; });
+    document.querySelectorAll('.verif-rename-select, .verif-rename-group-select').forEach(cb => { cb.checked = checkboxEl.checked; });
     verifUpdateRenameSelectionCount();
 }
 
@@ -1360,7 +1566,7 @@ async function verifBulkRenameItems() {
 
     const btn = document.getElementById('verifBulkRenameBtn');
     btn.disabled = true;
-    document.getElementById('verifRenameSelectAll').disabled = true;
+    const renameSelectAll = document.getElementById('verifRenameSelectAll'); if (renameSelectAll) renameSelectAll.disabled = true;
     const toastId = 'verif-bulk-rename';
     const failed = [];
 
@@ -1706,6 +1912,7 @@ function verifCollapseAllSections() {
         ['misnamedList', 'misnamedToggle'],
         ['missing-table-container', 'matchingToggle'],
         ['invalidFilesList', 'invalidFilesToggle'],
+        ['missingFilesList', 'missingFilesToggle'],
         ['unmatchedOwnedList', 'unmatchedOwnedToggle'],
         ['unmatchedOwnedKomgaList', 'unmatchedOwnedKomgaToggle'],
         ['duplicateSeriesList', 'duplicateSeriesToggle'],
@@ -1743,6 +1950,7 @@ document.addEventListener('DOMContentLoaded', () => {
     runVerificationCategory('misnamed');
     runVerificationCategory('misplaced_folders');
     runVerificationCategory('invalid_files');
+    runVerificationCategory('missing_files');
     runVerificationCategory('unmatched_owned_volumes');
     runVerificationCategory('unmatched_owned_komga');
     runVerificationCategory('duplicate_series');

@@ -6,8 +6,7 @@ from . import library_bp
 from .scanner import LibraryScanner, SeriesDirectoryMissingError, COMICINFO_FIELDS, scan_import_lock
 from blueprints.bedetheque.cbr_converter import convert_cbr_to_cbz, CbrConversionError
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
-from .zip_converter import convert_zip_to_cbz, package_zip_folders_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
-from archive_utils import list_archive_members
+from .zip_converter import convert_zip_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
 from blueprints.bedetheque.comicinfo_writer import write_comicinfo_cbz, build_comicinfo_fields, WRITABLE_FORMATS, derive_author_year_from_comicinfo
 from blueprints.bedetheque.scraper import match_bedetheque_volume
 import sqlite3
@@ -20,7 +19,6 @@ import shutil
 import unicodedata
 import zipfile
 import rarfile
-from pathlib import Path
 from collections import Counter
 from .import_worker import (
     ImportWorkerError, ImportWorkerTimeout, prepare_import_file,
@@ -42,6 +40,7 @@ def _import_staging_directory():
     )
     os.makedirs(path, exist_ok=True)
     return path
+
 
 
 _import_execution_lock = scan_import_lock
@@ -93,19 +92,6 @@ def _check_import_file_validity_cached(filepath, fmt):
     _import_file_validity_cache[cache_key] = error
     return error
 
-# "the conversion to pdf is very slow and takes a lot of memory. how can you improve so
-# the app don't get stucked" - une conversion pdf/cbr->cbz (rendu page par page en JPEG
-# pour le pdf) est un travail CPU/mémoire non négligeable par fichier (des centaines de
-# Mo de pixmaps successifs pour un gros scan, plusieurs minutes), et rien n'empêchait
-# jusqu'ici plusieurs conversions de tourner VRAIMENT en parallèle (serveur de dev Flask
-# threaded=True: un bouton "Convertir" cliqué sur plusieurs fichiers à la fois, ou un clic
-# manuel pendant que l'import automatique convertit aussi son propre fichier) - constaté
-# en réel: jusqu'à 3 fichiers temporaires de conversion actifs simultanément, chacun
-# consommant sa propre mémoire de rendu. Un verrou global sérialise toute conversion
-# (pdf ET cbr, voir son acquisition dans convert_import_file/_maybe_convert_import_file_to_cbz)
-# à UNE SEULE à la fois pour tout le process, quelle que soit la source du déclenchement -
-# n'accélère pas une conversion individuelle, mais plafonne le pic mémoire à celui d'une
-# seule conversion au lieu de plusieurs cumulées.
 _conversion_lock = threading.Lock()
 
 
@@ -145,13 +131,6 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
 
         conn = get_db_connection()
         bedetheque_url_by_series = {}
-        # "notification de telegram met un lien vers komga" - komga_book_url (voir
-        # buildVolumeLinksIconHtml, library.js, même champ) n'est quasi jamais déjà connu
-        # pour un tome tout juste importé: le scan Komga qui le découvrirait tourne en
-        # arrière-plan avec un délai (trigger_scan_async, voir CLAUDE.md), pas encore
-        # passé au moment où cette notification part. series.komga_url (la fiche SÉRIE,
-        # matchée une fois et stable d'un import à l'autre) est en revanche déjà connu -
-        # moins précis qu'un lien direct vers CE tome, mais réellement disponible ici.
         komga_url_by_series = {}
         blocks = []
         for entry in relevant_entries:
@@ -187,24 +166,11 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
 
         message = "BD Importé :"
         if blocks:
-            # "je ne reçois plus de notification telegram" - un gros import (70 fichiers
-            # d'un coup, constaté en réel) listant CHAQUE fichier peut dépasser la limite
-            # Telegram (4096 caractères en texte, 1024 en légende de photo) - l'API rejette
-            # alors le message ENTIER, et send_telegram_notification renvoyait ce rejet
-            # sans que rien ici ne le vérifie ni le journalise (voir plus bas): la
-            # notification disparaissait silencieusement pour tout gros import, jamais
-            # pour un petit. Même convention d'échantillon que _check_new_files_available
-            # (scheduler.py, "X nouveau(x) fichier(s)... et Y autre(s)") plutôt qu'une
-            # troncature arbitraire à l'aveugle.
             sample = blocks[:10]
             message += "\n\n" + "\n\n".join(sample)
             if len(blocks) > len(sample):
                 message += f"\n\n… et {len(blocks) - len(sample)} autre(s)"
 
-        # "add the cover to telegram notification" - une couverture parle plus qu'une
-        # liste de noms de fichiers, mais l'API Telegram n'accepte qu'UNE photo par
-        # message (sendPhoto) : pertinent uniquement quand ce batch d'import concerne
-        # une seule et même série, jamais choisie arbitrairement parmi plusieurs.
         photo_path = None
         series_ids = {entry['series_id'] for entry in relevant_entries if entry.get('series_id')}
         if len(series_ids) == 1:
@@ -351,13 +317,6 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
             query = 'SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND is_hs = 1 AND hs_number IS NULL'
             params = (series_id,)
     elif parsed.get('is_special'):
-        # "in rugby there is a file BO4... i cannot select it" - un bonus/promo (is_special,
-        # voir volume_override plus haut) n'a par nature pas de numéro: partage la même
-        # identité "vide" (volume_number/is_integral/is_hs/is_episode tous NULL/0) qu'un
-        # one-shot OU qu'un AUTRE fichier spécial de la même série (BO1 et BO4 n'ont rien
-        # de commun hormis "sans numéro") - la branche one-shot ci-dessous les aurait
-        # fusionnés à tort. special_label distingue s'il est connu, sinon chaque import
-        # "Spécial" reste unique (jamais fusionné au hasard avec un autre).
         special_label = parsed.get('special_label')
         if special_label:
             query = 'SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND is_special = 1 AND special_label = ?'
@@ -664,13 +623,6 @@ def library_operations(library_id):
         return jsonify({'success': True, 'name': name})
 
     if request.method == 'GET':
-        # "why loading the name of the bibliotheque on top take so long" - cette route
-        # faisait un SELECT * sur TOUTES les séries de la bibliothèque (500+ lignes,
-        # chaque colonne y compris les gros champs texte comme bedetheque_description/
-        # bedetheque_albums) rien que pour répondre au nom/chemin affichés dans l'en-tête
-        # (voir loadLibraryInfo, library.js) - le seul appelant GET de cette route,
-        # jamais la clé `series` de la réponse. Aucun autre appelant ne la lit non plus
-        # (vérifié: index.js n'appelle cette route qu'en DELETE, library.js qu'en GET/PUT).
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -694,6 +646,9 @@ def library_operations(library_id):
             cursor = conn.cursor()
             
             cursor.execute('DELETE FROM libraries WHERE id = ?', (library_id,))
+            if cursor.rowcount == 0:
+                conn.close()
+                return jsonify({'success': False, 'error': 'Bibliothèque non trouvée'}), 404
             
             conn.commit()
             conn.close()
@@ -853,6 +808,12 @@ def scan_series(series_id):
     try:
         force_metadata_refresh = request.args.get('force', '').lower() in ('1', 'true')
 
+        check_conn = get_db_connection()
+        check_row = check_conn.execute('SELECT id FROM series WHERE id = ?', (series_id,)).fetchone()
+        check_conn.close()
+        if not check_row:
+            return jsonify({'success': False, 'error': 'Série non trouvée'}), 404
+
         scanner = LibraryScanner()
         volumes_count = scanner.scan_single_series(series_id, force_metadata_refresh=force_metadata_refresh)
 
@@ -1007,9 +968,6 @@ def _bulk_ebdz_autodetect(library_id):
                 WHERE id = ?
             ''', (ebdz_count, json.dumps(missing_volumes), ebdz_thread_url, matched_thread_id, matched_title, series_id))
         else:
-            # Rien trouvé, ou plusieurs threads différents possibles: laisse l'utilisateur
-            # choisir manuellement plutôt que de deviner (même comportement que
-            # _ebdz_enrich_series)
             cursor.execute('''
                 UPDATE series
                 SET ebdz_volumes_count = NULL, ebdz_missing_volumes = NULL, ebdz_checked_at = CURRENT_TIMESTAMP,
@@ -1122,8 +1080,6 @@ def _ebdz_enrich_series(series_id):
             rows = all_rows
             matched_title = next((row[3] for row in rows if row[3]), None)
         else:
-            # Rien trouvé, ou plusieurs threads différents possibles: on laisse
-            # l'utilisateur choisir manuellement plutôt que de deviner
             match_status = 'unmatched'
             rows = []
             seen = set()
@@ -1183,32 +1139,6 @@ def _ebdz_enrich_series(series_id):
         'unnumbered_missing': unnumbered_missing,
         'ebdz_thread_url': ebdz_thread_url if match_status == 'matched' else None
     }
-
-
-@library_bp.route('/api/series/<int:series_id>/ebdz-rescrape', methods=['POST'])
-def rescrape_series_ebdz_thread(series_id):
-    """Refresh only the EBDZ thread explicitly matched to this series."""
-    try:
-        conn = get_db_connection()
-        row = conn.execute("SELECT ebdz_thread_id, ebdz_thread_url, ebdz_matched_title FROM series WHERE id = ?", (series_id,)).fetchone()
-        conn.close()
-        if not row:
-            return jsonify({'success': False, 'error': 'Série introuvable'}), 404
-        if not row['ebdz_thread_id'] or not row['ebdz_thread_url']:
-            return jsonify({'success': False, 'error': 'Aucun thread EBDZ n’est associé à cette série'}), 400
-        from blueprints.ebdz.routes import load_ebdz_config
-        from blueprints.ebdz.scraper import MyBBScraper
-        config = load_ebdz_config()
-        scraper = MyBBScraper('https://ebdz.net/forum/forumdisplay.php?fid=23', current_app.config['DB_FILE'], config.get('username', ''), config.get('password_decrypted', ''), 'Bande Dessinées')
-        if not scraper.login():
-            return jsonify({'success': False, 'error': 'Connexion EBDZ impossible'}), 502
-        links = scraper.scrape_thread(row['ebdz_thread_url'], row['ebdz_matched_title'] or '')
-        inserted = scraper.save_to_db(links) or 0
-        result = _ebdz_enrich_series(series_id)
-        return jsonify({'success': True, 'links_found': len(links), 'links_inserted': inserted, **result})
-    except Exception as e:
-        current_app.logger.exception('EBDZ thread refresh failed for series #%s', series_id)
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/ebdz-enrich', methods=['POST'])
@@ -1396,7 +1326,7 @@ def _sync_komga_books(series_id, komga_series_id, client):
     numéro qui peut différer (Komga peut numéroter une "édition"/collection différemment
     des numéros absolus locaux, voir "Boule et Bill -02-"), ou être totalement absente
     pour un omnibus/hors-série/anthologie sans "number" ni "#INT"/"#HS" dans le nom
-    (voir "Astérix (Autres)", livres nommés "#201610 - ..." - un code date, pas un
+    (voir "Le Gaulois (Autres)", livres nommés "#201610 - ..." - un code date, pas un
     numéro de séquence). L'ancienne logique par numéro laissait ~550 tomes sans lien sur
     cette bibliothèque avant ce changement.
 
@@ -1409,14 +1339,6 @@ def _sync_komga_books(series_id, komga_series_id, client):
     from blueprints.komga.client import KomgaError, KomgaSeriesNotFoundError
 
     def _resync_stale_match():
-        # "j'ai ajouté un fichier manuellement mais ça a pas mis à jour les liens komga" -
-        # komga_series_id pointait vers une série qui n'existe plus du tout côté Komga
-        # (recréée avec un nouvel id après un rescan, ex: dossier renommé/déplacé) -
-        # _sync_komga_books avalait cette erreur silencieusement à chaque appel sans
-        # jamais se corriger. Retenter un matching par titre plutôt que d'abandonner:
-        # _try_komga_title_match, si concluant, appelle _apply_komga_match qui relance
-        # lui-même _sync_komga_books avec le nouvel id - pas de récursion si aucun match
-        # n'est trouvé (retourne None sans jamais rappeler cette fonction).
         conn = get_db_connection()
         row = conn.execute('SELECT title FROM series WHERE id = ?', (series_id,)).fetchone()
         conn.close()
@@ -1428,9 +1350,9 @@ def _sync_komga_books(series_id, komga_series_id, client):
         books = client.get_series_books(komga_series_id)
     except KomgaSeriesNotFoundError:
         _resync_stale_match()
-        return 0
+        return
     except KomgaError:
-        return 0
+        return
 
     if not books:
         # Une série avec un komga_series_id périmé (recréée sous un nouvel id côté Komga)
@@ -1447,7 +1369,7 @@ def _sync_komga_books(series_id, komga_series_id, client):
                 client.get_series(komga_series_id)
             except KomgaSeriesNotFoundError:
                 _resync_stale_match()
-                return 0
+                return
             except KomgaError:
                 pass
 
@@ -1463,7 +1385,6 @@ def _sync_komga_books(series_id, komga_series_id, client):
 
     import os as _os
     from blueprints.bedetheque.scraper import _local_title_from_filename, BedethequeScraper
-    matched_count = 0
 
     books_by_exact_name = {}
     for book in books:
@@ -1498,11 +1419,9 @@ def _sync_komga_books(series_id, komga_series_id, client):
                 'UPDATE volumes SET komga_book_id = ?, komga_book_url = ? WHERE id = ?',
                 (book['komga_book_id'], book['url'], vol['id'])
             )
-            matched_count += 1
 
     conn.commit()
     conn.close()
-    return matched_count
 
 
 def _apply_komga_match(series_id, series_info, client):
@@ -1531,7 +1450,7 @@ def _apply_komga_match(series_id, series_info, client):
     conn.commit()
     conn.close()
 
-    matched_books = _sync_komga_books(series_id, series_info['komga_series_id'], client)
+    _sync_komga_books(series_id, series_info['komga_series_id'], client)
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1549,7 +1468,6 @@ def _apply_komga_match(series_id, series_info, client):
         'matched_title': row['komga_matched_title'],
         'komga_url': row['komga_url'],
         'komga_cover_path': row['komga_cover_path']
-        , 'matched_books': matched_books
     }
 
 
@@ -1596,6 +1514,36 @@ def _normalize_title_for_match(title):
     normalized = re.sub(r'[^\w\s]', ' ', normalized, flags=re.UNICODE)
     return re.sub(r'\s+', ' ', normalized).strip()
 
+
+
+def _mark_imported_volumes_present(conn, volume_ids):
+    # Import has already completed its file transfer before this is called;
+    # recording presence prevents a pre-import verification result from hiding it.
+    ids = sorted({volume_id for volume_id in volume_ids if volume_id is not None})
+    if not ids:
+        return
+    cursor = conn.cursor()
+    placeholders = ','.join('?' * len(ids))
+    cursor.execute(
+        f'UPDATE volumes SET filesystem_present = 1, filesystem_checked_at = CURRENT_TIMESTAMP '
+        f'WHERE id IN ({placeholders})', ids
+    )
+    series_ids = [row[0] for row in cursor.execute(
+        f'SELECT DISTINCT series_id FROM volumes WHERE id IN ({placeholders})', ids
+    ).fetchall()]
+    for series_id in series_ids:
+        missing = cursor.execute("""
+            SELECT volume_number FROM volumes
+            WHERE series_id = ? AND filepath IS NOT NULL AND filesystem_present = 0
+            ORDER BY volume_number
+        """, (series_id,)).fetchall()
+        missing_numbers = [row[0] for row in missing if row[0] is not None]
+        state = 'partial' if missing else 'present'
+        cursor.execute("""
+            UPDATE series SET filesystem_state = ?, filesystem_missing_count = ?,
+                missing_volumes = ?, filesystem_checked_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (state, len(missing), json.dumps(missing_numbers), series_id))
 
 def get_owned_volume_signatures(series_ids, conn=None):
     """Pour chaque série de `series_ids`, l'ensemble des numéros RÉELLEMENT POSSÉDÉS
@@ -1676,7 +1624,7 @@ def komga_match_candidates(series_id):
 
         query = request.args.get('q', '').strip() or series_row['title']
 
-        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
+        from blueprints.komga.client import KomgaClient, KomgaError
         try:
             client = KomgaClient()
             candidates = client.search_series(query)
@@ -1714,7 +1662,7 @@ def komga_match_series(series_id):
         if not exists:
             return jsonify({'success': False, 'error': 'Série introuvable'}), 404
 
-        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
+        from blueprints.komga.client import KomgaClient, KomgaError
         try:
             client = KomgaClient()
             series_info = client.get_series(komga_series_id)
@@ -1754,15 +1702,23 @@ def komga_unmatch_series(series_id):
 # de matching automatique des séries nouvellement créées par un scan.
 # Retourne le dict de résultat de _apply_komga_match si matché, sinon None (avec
 # candidates rempli en sortie via le paramètre out_candidates si fourni).
+
+def _komga_title_search_queries(series_title):
+    """Return title queries that preserve intent but avoid Komga punctuation limits."""
+    queries = [series_title]
+    stripped = _strip_bracketed_suffix(series_title)
+    normalized = _normalize_title_for_match(stripped)
+    for query in (stripped, normalized):
+        if query and query not in queries:
+            queries.append(query)
+    return queries
+
 def _try_komga_title_match(series_id, series_title, client, out_candidates=None):
-    candidates = client.search_series(series_title)
-    if not candidates:
-        # Le titre local contient souvent un suffixe entre parenthèses/crochets
-        # (auteurs, article déplacé pour le tri...) que la recherche Komga ne
-        # gère pas toujours bien (ex: "/" entre deux auteurs) -> on retente sans
-        stripped_title = _strip_bracketed_suffix(series_title)
-        if stripped_title and stripped_title != series_title:
-            candidates = client.search_series(stripped_title)
+    candidates = []
+    for query in _komga_title_search_queries(series_title):
+        candidates = client.search_series(query)
+        if candidates:
+            break
 
     if out_candidates is not None:
         out_candidates.extend(candidates)
@@ -1806,7 +1762,7 @@ def komga_enrich_series(series_id):
         series_title = series_row['title']
         matched_id = series_row['komga_series_id']
 
-        from blueprints.komga.client import KomgaClient, KomgaError, KomgaSeriesNotFoundError
+        from blueprints.komga.client import KomgaClient, KomgaError
         try:
             client = KomgaClient()
         except KomgaError as e:
@@ -1814,17 +1770,10 @@ def komga_enrich_series(series_id):
 
         try:
             if matched_id:
-                try:
-                    series_info = client.get_series(matched_id)
-                    result = _apply_komga_match(series_id, series_info, client)
-                    if result.get('matched_books', 0) == 0:
-                        return jsonify({'success': False, 'error': 'Aucun tome local ne correspond aux livres de cette série Komga.', 'match_status': 'unmatched'})
-                    result.update({'success': True, 'candidates': []})
-                    return jsonify(result)
-                except KomgaSeriesNotFoundError:
-                    # L’identifiant peut devenir obsolète après une recréation de série
-                    # côté Komga : reprendre la recherche par titre au lieu d’abandonner.
-                    matched_id = None
+                series_info = client.get_series(matched_id)
+                result = _apply_komga_match(series_id, series_info, client)
+                result.update({'success': True, 'candidates': []})
+                return jsonify(result)
 
             candidates = []
             result = _try_komga_title_match(series_id, series_title, client, out_candidates=candidates)
@@ -1860,33 +1809,16 @@ def _synthetic_bd_volume_entry(album, **kwargs):
 
 @library_bp.route('/api/series/<int:series_id>/volumes', methods=['GET'])
 def get_series_volumes(series_id):
-    """Récupère tous les volumes d'une série - tomes déjà possédés (table `volumes`) fusionnés
-    avec la liste COMPLÈTE des albums connus de Bédéthèque (series.bedetheque_albums, y
-    compris ceux pas encore possédés) quand elle est disponible. "il faudrait que pour les
-    volumes tu mettes une dropdown avec les volumes de la série. regarde dans la base de
-    données tu auras tous les volumes de la serie" - sans cette fusion, un tome pas encore
-    téléchargé n'apparaissait jamais dans le sélecteur de tome (voir
-    updateVolumeOverrideVisibility/_confirmUploadVolumeSlot), qui ne listait que ce qui
-    était déjà sur disque."""
+    ""
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # (volume_number IS NULL) avant volume_number: un tome numéroté a toujours
-    # volume_number renseigné, une intégrale/hors-série non ("quand tu ordonnes les
-    # volumes par numéro il faudrait que les INT soit à la fin") - sans ce tri, NULL se
-    # classe AVANT toute valeur en SQLite par défaut, faisant remonter les
-    # intégrales/hors-séries avant même le tome 1. Même correctif déjà appliqué à la
-    # requête de la fiche série (voir get_series_detail) mais pas répercuté ici.
     cursor.execute('''
         SELECT * FROM volumes
         WHERE series_id = ?
         ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, hs_number
     ''', (series_id,))
     owned_volumes = [dict(row) for row in cursor.fetchall()]
-    # A stale filepath can survive a move/deletion outside Bullarr. The dropdown's
-    # checkmark must mean the file is physically available, not merely recorded.
-    for entry in owned_volumes:
-        entry['is_owned'] = bool(entry.get('filepath') and os.path.isfile(entry['filepath']))
 
     cursor.execute('SELECT bedetheque_albums FROM series WHERE id = ?', (series_id,))
     series_row = cursor.fetchone()
@@ -1894,9 +1826,7 @@ def get_series_volumes(series_id):
 
     bd_albums = json.loads(series_row[0]) if series_row and series_row[0] else []
     if not bd_albums:
-        # Sans catalogue, seuls les tomes encore physiquement présents sont fiables.
-        # Une ligne volumes orpheline ne doit jamais créer un faux choix d'import.
-        return jsonify([v for v in owned_volumes if v.get('is_owned')])
+        return jsonify(owned_volumes)
 
     from blueprints.bedetheque.scraper import _index_bedetheque_volumes
     by_number, by_integral, by_hs, by_episode = _index_bedetheque_volumes(bd_albums)
@@ -1988,10 +1918,6 @@ def get_series_volumes(series_id):
     for v in owned_volumes:
         if v.get('id') in used_owned_ids:
             continue
-        # Sans album Bédéthèque correspondant, une entrée locale n'est un choix
-        # légitime que si son fichier existe encore. Écarte les tomes fantômes.
-        if not v.get('is_owned'):
-            continue
         if v.get('is_episode'):
             albums = by_episode.get(v.get('episode_number')) or []
         elif v.get('volume_number') is not None:
@@ -2060,9 +1986,6 @@ def create_series():
     data = request.get_json() or {}
     library_id = data.get('library_id')
     title = (data.get('title') or '').strip()
-    # "creer une nouveau album devrait faire un match bedetheque" - optionnel: choisi côté
-    # UI via la même modale de matching que #select-destination-modal (voir
-    # openBedethequeImportModal/getBedethequeMatchForTitle, import.js).
     bedetheque_url = data.get('bedetheque_url')
     if not library_id or not title:
         return jsonify({'success': False, 'error': 'Bibliothèque et titre requis'}), 400
@@ -2089,7 +2012,9 @@ def create_series():
             conn.close()
             return jsonify({'success': True, 'series_id': existing[0], 'title': series_title})
 
-        os.makedirs(series_path, exist_ok=True)
+        import_config = load_library_import_config()
+        if import_config.get('create_series_folder_on_add', True):
+            os.makedirs(series_path, exist_ok=True)
         cursor.execute('''
             INSERT INTO series (library_id, title, path, total_volumes, missing_volumes, has_parts)
             VALUES (?, ?, ?, 0, '[]', 0)
@@ -2114,27 +2039,6 @@ def get_library_series(library_id):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Récupérer toutes les séries avec les données Bédéthèque, EBDZ et Komga.
-        # volumes_without_metadata/oneshot_is_integral: "should be in the database. no
-        # need of complicated queries. just list the database" - colonnes stockées,
-        # recalculées par update_series_stats (scanner.py) à chaque scan/import/écriture
-        # ComicInfo, plutôt que deux sous-requêtes corrélées sur `volumes` exécutées ici
-        # à chaque chargement (SCAN complet de la table par série, sans index).
-        # year: "check why certain série don't have a year despite having one in their
-        # série details" -> "i want one single table in the database with the
-        # information. i don't want overcomplicated calculation" - la fiche série
-        # affiche déjà une année via bd.year_start (Bédéthèque) même quand local_year
-        # (dérivé uniquement du ComicInfo.xml LOCAL, jamais écrit tant qu'aucune "MAJ
-        # métadonnées" n'a tourné) est vide. Un premier essai calculait ce repli côté
-        # client (s._displayYear, library.js) - rejeté: un JS qui recombine 3 colonnes à
-        # chaque chargement est exactement le genre de "calcul compliqué" à éviter, et ça
-        # a cassé le tri/filtre (bedetheque_year_start/manual_year_start sont des
-        # INTEGER, local_year un TEXT - un Set mélangeant nombres et chaînes fait planter
-        # .localeCompare, "a.localeCompare is not a function"). Résolu ici en UNE seule
-        # expression SQL (COALESCE, pas une vraie table séparée mais une seule colonne
-        # DÉJÀ résolue dans la réponse) - CAST en TEXT pour que le JSON renvoyé soit
-        # toujours du même type quelle que soit la source retenue, le frontend n'a plus
-        # aucun repli à recalculer.
         cursor.execute('''
             SELECT s.id, s.title, s.path, s.total_volumes, s.missing_volumes, s.has_parts, s.last_scanned,
                    s.ebdz_volumes_count, s.ebdz_missing_volumes, s.ebdz_checked_at, s.ebdz_thread_url,
@@ -2148,12 +2052,13 @@ def get_library_series(library_id):
                    s.volumes_without_metadata, s.oneshot_is_integral,
                    s.tags,
                    s.manual_complete_override, s.bedetheque_complete, s.bedetheque_complete_reason,
-                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL
+                   s.filesystem_state, s.filesystem_checked_at, s.filesystem_missing_count, s.filesystem_verification_error,
+                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND COALESCE(v.filesystem_present, 1) = 1
                      AND v.is_integral = 0 AND v.is_hs = 0 AND v.is_episode = 0 AND v.is_special = 0) AS owned_tomes,
-                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.is_integral = 1) AS owned_integrals,
-                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.is_hs = 1) AS owned_hs,
-                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.is_episode = 1) AS owned_episodes,
-                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL
+                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND COALESCE(v.filesystem_present, 1) = 1 AND v.is_integral = 1) AS owned_integrals,
+                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND COALESCE(v.filesystem_present, 1) = 1 AND v.is_hs = 1) AS owned_hs,
+                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND COALESCE(v.filesystem_present, 1) = 1 AND v.is_episode = 1) AS owned_episodes,
+                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND COALESCE(v.filesystem_present, 1) = 1
                      AND v.is_special = 1 AND v.is_integral = 0 AND v.is_hs = 0 AND v.is_episode = 0) AS owned_specials,
                    u.name AS universe_name
             FROM series s
@@ -2209,6 +2114,10 @@ def get_library_series(library_id):
                 'manual_complete_override': bool(row['manual_complete_override']),
                 'bedetheque_complete': row['bedetheque_complete'] if row['bedetheque_complete'] is None else bool(row['bedetheque_complete']),
                 'bedetheque_complete_reason': row['bedetheque_complete_reason'],
+                'filesystem_state': row['filesystem_state'],
+                'filesystem_checked_at': row['filesystem_checked_at'],
+                'filesystem_missing_count': row['filesystem_missing_count'],
+                'filesystem_verification_error': row['filesystem_verification_error'],
                 'owned_tomes': row['owned_tomes'],
                 'owned_integrals': row['owned_integrals'],
                 'owned_hs': row['owned_hs'],
@@ -2321,12 +2230,6 @@ def merge_series(series_id):
             conn.close()
             return jsonify({'success': False, 'error': f'Chemin de série invalide: {e}'}), 400
 
-        # "je ne peux pas fusionner les 2" - une série ajoutée depuis Bédéthèque sans
-        # aucun fichier encore possédé (voir add_series_from_bedetheque, "SANS créer son
-        # dossier physique - créé plus tard, au premier téléchargement/import réel") n'a
-        # jamais eu de dossier créé sur le disque tant qu'aucun tome n'a été importé -
-        # une cible parfaitement valide pour une fusion (on est justement en train d'y
-        # déplacer des fichiers), pas une erreur. Créé ici au lieu d'échouer.
         if not os.path.isdir(target_dir):
             try:
                 os.makedirs(target_dir, exist_ok=True)
@@ -2354,13 +2257,6 @@ def merge_series(series_id):
                 'error': 'Fichier(s) du même nom déjà présent(s) dans la série cible: ' + ', '.join(conflicts)
             }), 409
 
-        # "serie 775 ca a creer d'autres tomes duplique" - avant ce correctif, TOUS les
-        # tomes de la source étaient rattachés à la cible sans jamais vérifier qu'un même
-        # tome (même volume_number, ou même intégrale/hors-série) n'existait déjà côté
-        # cible: un placeholder Bédéthèque (filepath NULL) pour le tome 1 côté cible et un
-        # tome 1 bien réel côté source (deux séries autrefois distinctes, fusionnées après
-        # coup) finissaient tous les deux en base au lieu que le second prenne la place du
-        # premier - doublon silencieux à chaque tome partagé par les deux séries.
         cursor.execute('''
             SELECT id, filename, filepath, volume_number, is_integral, integral_number, is_hs, hs_number,
                    is_episode, episode_number
@@ -2445,7 +2341,7 @@ def merge_series(series_id):
         # (un fichier non scanné qui traînerait là ne doit jamais partir avec le dossier)
         source_dir_removed = False
         if os.path.isdir(source_dir) and source_dir != target_dir:
-            comic_exts = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
+            comic_exts = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
             leftover_comics = [
                 f for _root, _dirs, files in os.walk(source_dir) for f in files
                 if os.path.splitext(f)[1].lower() in comic_exts
@@ -2460,13 +2356,6 @@ def merge_series(series_id):
         from blueprints.komga.client import trigger_scan_async
         trigger_scan_async()
 
-        # "il faudrait que dans l'historique on ai toutes les actions de l'utilisateur" -
-        # une fusion déplace/supprime des fichiers et fait disparaître une série entière,
-        # ça méritait déjà d'être journalisé (constaté par son absence lors de
-        # l'investigation des doublons de la série 775 - non fautive ici, mais la
-        # fusion n'aurait de toute façon laissé aucune trace si elle l'avait été).
-        # Journalisée sur la série CIBLE (celle qui survit, id encore valide après coup) -
-        # la source, elle, vient d'être supprimée de la table `series`.
         from blueprints.library.action_history import log_action
         log_action('merge', target_series_id, target['title'],
                     f"Fusion de « {source['title']} » ({moved} tome(s) déplacé(s))")
@@ -2518,27 +2407,165 @@ def _set_series_universe(conn, series_id, universe_id):
         ''', (universe_id, bedetheque_url, title, series_id))
 
 
-def _move_series_folder_for_universe(conn, series_id):
-    """Apply the configured universe-aware folder layout to one existing series.
+def _list_series_path_correction_folders(conn, series_id, requested_path=None, search=None):
+    """List one safe directory level, or safe matching descendants, for the path picker."""
+    row = conn.execute('''
+        SELECT l.path AS library_path FROM series s JOIN libraries l ON l.id = s.library_id
+        WHERE s.id = ?
+    ''', (series_id,)).fetchone()
+    if not row:
+        raise ValueError('Série introuvable')
+    library_path = os.path.realpath(row['library_path'])
+    selected_path = os.path.realpath(requested_path) if requested_path else library_path
+    try:
+        if os.path.commonpath([library_path, selected_path]) != library_path:
+            raise ValueError('Dossier hors de la bibliothèque')
+    except ValueError:
+        raise ValueError('Dossier hors de la bibliothèque')
+    if not os.path.isdir(selected_path):
+        raise ValueError('Dossier introuvable')
 
-    This is the sole filesystem consequence of changing ``series.universe_id``.
-    Imports remain copy-only; this helper is invoked only after an explicit or
-    Bédéthèque-derived universe assignment has committed to the database.
-    """
-    from blueprints.settings.rename_config_store import load_rename_config
+    search = str(search or '').strip()
+    if search:
+        needle = unicodedata.normalize('NFKD', search).encode('ascii', 'ignore').decode().casefold()
+        folders = []
+        for current_path, dirnames, _filenames in os.walk(library_path, followlinks=False):
+            dirnames[:] = [name for name in dirnames if not name.startswith('@')]
+            for name in dirnames:
+                entry_path = os.path.join(current_path, name)
+                real_entry = os.path.realpath(entry_path)
+                try:
+                    if os.path.commonpath([library_path, real_entry]) != library_path:
+                        continue
+                except ValueError:
+                    continue
+                normalized_name = unicodedata.normalize('NFKD', os.path.relpath(entry_path, library_path)).encode('ascii', 'ignore').decode().casefold()
+                if needle in normalized_name:
+                    folders.append({'name': os.path.relpath(entry_path, library_path).replace(os.sep, ' / '), 'path': entry_path})
+                    if len(folders) >= 100:
+                        break
+            if len(folders) >= 100:
+                break
+        folders.sort(key=lambda item: item['name'].casefold())
+        return {'path': library_path, 'parent_path': None, 'folders': folders, 'search': search}
 
+    folders = []
+    for entry in os.scandir(selected_path):
+        if entry.name.startswith('@') or not entry.is_dir(follow_symlinks=False):
+            continue
+        real_entry = os.path.realpath(entry.path)
+        try:
+            if os.path.commonpath([library_path, real_entry]) != library_path:
+                continue
+        except ValueError:
+            continue
+        folders.append({'name': entry.name, 'path': entry.path})
+    folders.sort(key=lambda item: item['name'].casefold())
+    parent_path = os.path.dirname(selected_path) if selected_path != library_path else None
+    return {'path': selected_path, 'parent_path': parent_path, 'folders': folders, 'search': ''}
+
+
+@library_bp.route('/api/series/<int:series_id>/path-correction/folders', methods=['GET'])
+def list_series_path_correction_folders(series_id):
+    conn = get_db_connection()
+    try:
+        return jsonify({'success': True, **_list_series_path_correction_folders(conn, series_id, request.args.get('path'), request.args.get('search'))})
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    finally:
+        conn.close()
+
+
+def _build_series_path_correction(conn, series_id, requested_path):
+    """Preflight a DB-only series path correction without changing the filesystem."""
+    if not isinstance(requested_path, str) or not requested_path.strip():
+        raise ValueError('Nouvel emplacement manquant')
     cursor = conn.cursor()
-    series = _fetch_series_for_rename(cursor, series_id)
-    if not series or not series['path']:
-        return {'success': True, 'changed': False}
-    config = load_rename_config()
-    result = _rename_series_folder(
-        conn, series_id, series['path'], series['title'], series['library_path'], {},
-        config['series_template'], universe_name=series['universe_name'],
-    )
-    if result.get('success') and result.get('changed'):
-        _log_rename_action(series_id, series['title'], [], result)
-    return result
+    row = cursor.execute('''
+        SELECT s.path, l.path AS library_path
+        FROM series s JOIN libraries l ON l.id = s.library_id
+        WHERE s.id = ?
+    ''', (series_id,)).fetchone()
+    if not row:
+        raise ValueError('Série introuvable')
+    old_path = os.path.abspath(row['path'])
+    library_path = os.path.abspath(row['library_path'])
+    new_path = os.path.abspath(requested_path.strip())
+    try:
+        if os.path.commonpath([library_path, new_path]) != library_path:
+            raise ValueError('Le nouvel emplacement doit rester dans la bibliothèque')
+    except ValueError:
+        raise ValueError('Le nouvel emplacement doit rester dans la bibliothèque')
+    if not os.path.isdir(new_path):
+        raise ValueError("Le nouvel emplacement n'est pas un dossier existant")
+
+    volume_updates = []
+    placeholders = 0
+    for volume in cursor.execute('SELECT id, filepath FROM volumes WHERE series_id = ?', (series_id,)).fetchall():
+        filepath = volume['filepath']
+        if not filepath:
+            placeholders += 1
+            continue
+        filepath = os.path.abspath(filepath)
+        try:
+            if os.path.commonpath([old_path, filepath]) != old_path:
+                raise ValueError(f'Le tome #{volume["id"]} ne dépend pas du chemin actuel')
+        except ValueError:
+            raise ValueError(f'Le tome #{volume["id"]} ne dépend pas du chemin actuel')
+        replacement = os.path.join(new_path, os.path.relpath(filepath, old_path))
+        if not os.path.isfile(replacement):
+            raise ValueError(f'Fichier introuvable dans le nouvel emplacement: {os.path.basename(replacement)}')
+        volume_updates.append((volume['id'], replacement))
+    return {
+        'old_path': old_path, 'new_path': new_path,
+        'volume_updates': volume_updates, 'placeholder_count': placeholders,
+    }
+
+
+@library_bp.route('/api/series/<int:series_id>/path-correction/preview', methods=['POST'])
+def preview_series_path_correction(series_id):
+    data = request.get_json(silent=True) or {}
+    conn = get_db_connection()
+    try:
+        plan = _build_series_path_correction(conn, series_id, data.get('path'))
+        return jsonify({
+            'success': True, 'old_path': plan['old_path'], 'new_path': plan['new_path'],
+            'affected_volumes': len(plan['volume_updates']), 'placeholder_count': plan['placeholder_count'],
+            'files': [{'volume_id': volume_id, 'new_path': new_path} for volume_id, new_path in plan['volume_updates']],
+        })
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    finally:
+        conn.close()
+
+
+@library_bp.route('/api/series/<int:series_id>/path-correction', methods=['POST'])
+def execute_series_path_correction(series_id):
+    data = request.get_json(silent=True) or {}
+    if data.get('confirm') is not True:
+        return jsonify({'success': False, 'error': 'Confirmation explicite requise'}), 400
+    conn = get_db_connection()
+    try:
+        plan = _build_series_path_correction(conn, series_id, data.get('path'))
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE series SET path = ?, filesystem_state = 'present', filesystem_missing_count = 0,
+                filesystem_checked_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (plan['new_path'], series_id))
+        cursor.executemany('''
+            UPDATE volumes SET filepath = ?, filesystem_present = 1,
+                filesystem_checked_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', [(new_path, volume_id) for volume_id, new_path in plan['volume_updates']])
+        conn.commit()
+        return jsonify({'success': True, 'old_path': plan['old_path'], 'new_path': plan['new_path'],
+                        'affected_volumes': len(plan['volume_updates'])})
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    finally:
+        conn.close()
 
 
 @library_bp.route('/api/series/<int:series_id>')
@@ -2568,6 +2595,7 @@ def get_series_details(series_id):
                    s.manual_year_start, s.manual_year_end, s.manual_complete_override,
                    s.universe_id, u.name AS universe_name,
                    s.bedetheque_complete, s.bedetheque_complete_reason,
+                   s.filesystem_state, s.filesystem_checked_at, s.filesystem_missing_count, s.filesystem_verification_error,
                    mm.enabled AS monitor_enabled, mm.auto_download_enabled AS monitor_auto_download
                    FROM series s
                    JOIN libraries l ON s.library_id = l.id
@@ -2587,7 +2615,7 @@ def get_series_details(series_id):
 
         # Récupérer tous les volumes
         cursor.execute('''
-            SELECT id, part_number, part_name, volume_number, filename, filepath,
+            SELECT id, part_number, part_name, volume_number, filename, filepath, filesystem_present, filesystem_checked_at,
                    author, year, resolution, release_group, file_size, page_count, format, comicinfo, cover_path,
                    komga_book_url, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
                    is_special, special_label
@@ -2605,13 +2633,11 @@ def get_series_details(series_id):
                 'volume_number': vol['volume_number'],
                 'filename': vol['filename'],
                 'filepath': vol['filepath'],
+                'filesystem_present': vol['filesystem_present'],
+                'filesystem_checked_at': vol['filesystem_checked_at'],
                 'author': vol['author'],
                 'year': vol['year'],
                 'resolution': vol['resolution'],
-                # "dans les pages one-shot je n'ai pas l'information du releaser et de la
-                # qualité" / "pareil pour le tableau de série" - release_group était déjà
-                # en base (voir LibraryScanner.parse_filename) mais jamais renvoyé par
-                # cette route, donc invisible côté frontend quel que soit l'écran.
                 'release_group': vol['release_group'],
                 'file_size': vol['file_size'],
                 'page_count': vol['page_count'],
@@ -2625,8 +2651,6 @@ def get_series_details(series_id):
                 'hs_number': vol['hs_number'],
                 'is_episode': bool(vol['is_episode']),
                 'episode_number': vol['episode_number'],
-                # "il y a un volume COF. ce n'est pas un volume, c'est un spécial" -
-                # voir _parse_special_prefix (blueprints/bedetheque/scraper.py).
                 'is_special': bool(vol['is_special']),
                 'special_label': vol['special_label']
             })
@@ -2664,13 +2688,12 @@ def get_series_details(series_id):
             'has_parts': bool(series_row['has_parts']),
             'is_oneshot': bool(series_row['is_oneshot']),
             'manual_complete_override': bool(series_row['manual_complete_override']),
-            # "now we can validate if a serie is complete or no" - calculé par
-            # update_series_stats (scanner.py), même source que celle utilisée côté liste
-            # de bibliothèque (_seriesBadgeInfo, library.js) - la fiche série ne doit
-            # jamais refaire son propre calcul divergent ("third implementation... ask
-            # for unification").
             'bedetheque_complete': series_row['bedetheque_complete'] if series_row['bedetheque_complete'] is None else bool(series_row['bedetheque_complete']),
             'bedetheque_complete_reason': series_row['bedetheque_complete_reason'],
+            'filesystem_state': series_row['filesystem_state'],
+            'filesystem_checked_at': series_row['filesystem_checked_at'],
+            'filesystem_missing_count': series_row['filesystem_missing_count'],
+            'filesystem_verification_error': series_row['filesystem_verification_error'],
             'library': {
                 'id': series_row['library_id'],
                 'name': series_row['library_name']
@@ -2791,6 +2814,7 @@ def update_series_manual_metadata(series_id):
             cursor.execute(f"UPDATE series SET {', '.join(updates)} WHERE id = ?", params)
             conn.commit()
 
+        folder_result = None
         if 'universe_id' in data:
             raw_universe_id = data.get('universe_id')
             universe_id = int(raw_universe_id) if raw_universe_id not in (None, '') else None
@@ -2802,17 +2826,40 @@ def update_series_manual_metadata(series_id):
                 conn.close()
                 return jsonify({'success': False, 'error': str(e)}), 400
 
-            # An universe assignment is structural: keep the persisted path aligned
-            # immediately. This never applies to imports, which remain copy-only.
+            # "assigner un univers via _set_series_universe devrait déplacer les
+            # fichiers. Pourquoi c'est pas?" - INCOHÉRENCE CORRIGÉE (2026-09-03):
+            # _set_series_universe() ne fait QUE poser series.universe_id, jamais de
+            # déplacement disque - alors que le matching Bédéthèque
+            # (_align_title_and_start_metadata_write, blueprints/bedetheque/routes.py)
+            # DÉPLACE bien automatiquement le dossier vers <univers>/<série> à chaque
+            # changement d'univers, via le même _rename_series_folder que le bouton
+            # "Renommer la série". Deux points d'entrée qui posent universe_id, un
+            # seul qui en tirait les conséquences sur le disque - repris ici à
+            # l'identique (même fonction, même signature, même best-effort: un
+            # renommage échoué ne fait jamais échouer l'assignation d'univers déjà
+            # commitée juste au-dessus).
             try:
-                folder_result = _move_series_folder_for_universe(conn, series_id)
-                if not folder_result.get('success'):
-                    current_app.logger.warning(
-                        f"Déplacement après changement d'univers échoué pour la série #{series_id}: {folder_result}"
+                from blueprints.library.routes import _fetch_series_for_rename, _rename_series_folder, _log_rename_action
+                from blueprints.settings.rename_config_store import load_rename_config
+                series_for_rename = _fetch_series_for_rename(cursor, series_id)
+                if series_for_rename and series_for_rename['path']:
+                    rename_cfg = load_rename_config()
+                    folder_result = _rename_series_folder(
+                        conn, series_id, series_for_rename['path'], series_for_rename['title'],
+                        series_for_rename['library_path'], {}, rename_cfg['series_template'],
+                        universe_name=series_for_rename['universe_name']
                     )
-            except Exception as exc:
+                    if folder_result and folder_result.get('success') and folder_result.get('changed'):
+                        _log_rename_action(series_id, series_for_rename['title'], [], folder_result)
+                    elif not (folder_result and folder_result.get('success')):
+                        current_app.logger.warning(
+                            f"Renommage automatique du dossier échoué pour la série #{series_id} "
+                            f"après changement d'univers: {folder_result}"
+                        )
+            except Exception as e:
                 current_app.logger.warning(
-                    f"Déplacement après changement d'univers échoué pour la série #{series_id}: {exc}"
+                    f"Renommage automatique du dossier échoué pour la série #{series_id} "
+                    f"après changement d'univers: {e}"
                 )
 
         conn.close()
@@ -2831,7 +2878,7 @@ def update_series_manual_metadata(series_id):
 def refresh_volume(volume_id):
     """Actualise taille/nombre de pages d'UN tome directement depuis le fichier sur
     disque, sans repasser par un scan complet de la série (scan_single_series) -
-    "seuls #16 indique size 1B. ajoute un bouton actualiser dans les actions des
+    "seuls
     volumes": un fichier corrigé/re-téléchargé après coup peut laisser volumes.file_size
     désynchronisé de la réalité tant qu'aucun scan de la série n'a eu lieu; ce bouton
     corrige ça pour CE seul tome, sans attendre/déclencher un rescan de toute la série."""
@@ -3135,32 +3182,7 @@ def _volume_row_identity(row):
 
 @library_bp.route('/api/volumes/<int:volume_id>/renumber', methods=['PUT'])
 def renumber_volume(volume_id):
-    """Change manuellement le type/numéro de tome (Tome/Intégrale/Hors-série/Épisode +
-    numéro) d'un volume déjà en base - "La caste des Méta-Barons - #01 ... n'est pas le
-    bon volume. le correct c'est ... une HS1. met une option ... de pouvoir changer le
-    numéro du volume": parse_filename/le matching Bédéthèque devinent ce type à partir du
-    nom de fichier ou de la fiche Bédéthèque, mais peuvent se tromper (numéro ambigu,
-    fichier mal nommé) - ceci permet une correction manuelle explicite depuis la modale
-    "Éditer manuellement", sans repasser par un renommage de fichier ou un rematching
-    complet.
-
-    Body JSON: {type: 'volume'|'integral'|'hs'|'episode', number: int|null}.
-
-    Si le nouveau type/numéro correspond déjà à un AUTRE tome de la même série (même
-    logique d'identité que merge_series, voir _volume_row_identity): un placeholder
-    (filepath NULL) cède simplement la place, retiré silencieusement - rien à perdre. Un
-    tome RÉEL existant, en revanche, N'EST JAMAIS remplacé/supprimé automatiquement -
-    "si plusieurs volumes sont mal notés ... il faudrait pouvoir changer le volume sans
-    ecraser celui qui a ce numéro. donc par exemple volume 2 et 3 et volume 3 et 4. donc
-    ne pas ecraser par défaut": corriger une CHAÎNE de tomes mal numérotés (le vrai tome 2
-    est étiqueté 3, le vrai tome 3 est étiqueté 4...) exige de pouvoir renuméroter l'un
-    SANS que l'autre disparaisse avant d'avoir pu être corrigé à son tour. Le tome édité
-    prend son nouveau numéro tel quel, laissant un doublon temporaire du même numéro le
-    temps que l'utilisateur règle la chaîne puis supprime lui-même celui qui est en trop
-    ("il suffira que l'utilisateur supprime manuellement le volume mal numéroté" - bouton
-    "Supprimer le fichier" déjà existant, voir delete_volume). Le nom de cet éventuel
-    doublon est renvoyé dans la réponse (`duplicate_filename`) pour affichage, en simple
-    avertissement non bloquant - pas une confirmation à valider."""
+    ""
     data = request.get_json(silent=True) or {}
     new_type = data.get('type')
     if new_type not in ('volume', 'integral', 'hs', 'episode'):
@@ -3205,10 +3227,6 @@ def renumber_volume(volume_id):
             return jsonify({'success': False, 'error': 'Tome introuvable'}), 404
         series_id = vol['series_id']
 
-        # "on ne devrait pas pouvoir changer le numéro au meme numero" - soumettre le
-        # même type/numéro que l'actuel ne doit rien faire (pas de résolution Bédéthèque
-        # ni de renommage inutiles, pas de faux "doublon" détecté avec soi-même) plutôt
-        # que de silencieusement traverser tout le pipeline pour ne rien changer.
         if (vol['volume_number'] == new_fields['volume_number']
                 and vol['is_integral'] == new_fields['is_integral']
                 and vol['integral_number'] == new_fields['integral_number']
@@ -3273,9 +3291,6 @@ def renumber_volume(volume_id):
                     apply_volume_comicinfo(current_app.config['DATABASE'], volume_id, vol['filepath'], vol['format'], fields)
                 except UnsupportedFormatError:
                     pass
-            # "le cover tome 16 n'est pas bon et MAJ metadatas ... ne change rien" -
-            # apply_volume_comicinfo ne touche jamais cover_path (voir son docstring), un
-            # changement de numéro doit aussi rafraîchir la couverture pour le nouvel album.
             _refresh_volume_cover(volume_id, bd_volume)
         except Exception as e:
             print(f"MAJ ComicInfo après renumber_volume #{volume_id} échouée (non bloquant): {e}")
@@ -3455,13 +3470,7 @@ def toggle_series_oneshot(series_id):
 
 @library_bp.route('/api/series/<int:series_id>/toggle-complete-override', methods=['POST'])
 def toggle_series_complete_override(series_id):
-    """Bascule la déclaration manuelle "cette série est complète" ("je voudrais ameliorer
-    si un album est complet ou non... ca devient compliqué si j'ai un mix d'intégrales et
-    d'albums. ajoute une option dans la molette pour déclarer cet album complet") - prend
-    le pas sur le calcul automatique (_seriesBadgeInfo, library.js) quel qu'il soit, sans
-    jamais être reconsidéré par un scan/une MAJ Bédéthèque ultérieurs (même principe que
-    toggle_series_oneshot ci-dessus: un choix manuel explicite n'est jamais
-    silencieusement écrasé)."""
+    ""
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'])
         cursor = conn.cursor()
@@ -3755,7 +3764,7 @@ def upload_series_file(series_id):
     if not uploaded or not uploaded.filename:
         return jsonify({'success': False, 'error': 'Aucun fichier reçu'}), 400
 
-    import_roots = list(current_app.config['IMPORT_DIRECTORIES']) + ['/tmp/bullarr-package-temp']
+    import_roots = current_app.config['IMPORT_DIRECTORIES']
     if not import_roots:
         return jsonify({'success': False, 'error': "Aucun répertoire d'import configuré"}), 500
 
@@ -3774,7 +3783,7 @@ def upload_series_file(series_id):
 
     import_config = load_library_import_config()
     supported_extensions = set(import_config.get(
-        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
+        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
     ))
     ext = os.path.splitext(uploaded.filename)[1].lower()
     if ext not in supported_extensions:
@@ -3913,23 +3922,7 @@ def _zip_is_single_packaged_comic(archive_path):
 
 
 def _extract_archive_containers(import_directories):
-    """Un .zip/.rar posé dans un répertoire d'import surveillé est en général un
-    CONTENEUR (le tracker/l'utilisateur l'a empaqueté ainsi, souvent pour regrouper
-    plusieurs tomes ou pour la taille) - jamais lui-même un tome à importer tel quel,
-    contrairement à un .cbz/.cbr ("il faudrait que tu geres les fichiers zip ou rar. donc
-    à l'import tu dois les extraire"). Extrait AVANT le scan normal, dans un sous-dossier
-    nommé d'après l'archive - ce sous-dossier devient alors le folder_name (signal de
-    regroupement par série) des fichiers qu'il contenait, comme n'importe quel autre
-    dossier de tomes déjà groupés. Best-effort par archive: une extraction échouée
-    (corrompue...) laisse l'archive en place (jamais supprimée sans succès confirmé) et
-    n'empêche pas les autres.
-
-    Exception: un .zip qui ne contient QUE des images (voir
-    _zip_is_single_packaged_comic) n'est PAS un conteneur mais un album déjà empaqueté
-    sous la mauvaise extension - il est laissé intact ici pour rester proposable à la
-    conversion cbz explicite (scan_import_directory / file.convertible == 'zip'), au
-    lieu d'être irréversiblement dépaqueté en pages individuelles avant même que
-    l'utilisateur ait pu choisir."""
+    ""
     for import_path in import_directories:
         if not os.path.exists(import_path):
             continue
@@ -3953,10 +3946,6 @@ def _extract_archive_containers(import_directories):
                 try:
                     _extract_one_archive(archive_path, ext, target_dir)
                     print(f"✓ Archive extraite: {filename} -> {target_dir}")
-                    # "dans import naufrage du temps alors que cest fini" - le
-                    # téléchargement de CETTE archive est terminé dès qu'elle est
-                    # extraite, indépendamment du sort de ses tomes individuels ensuite
-                    # (voir clear_pending_download_by_title)
                     try:
                         from blueprints.missing_monitor.downloader import clear_pending_download_by_title
                         clear_pending_download_by_title(filename)
@@ -3995,36 +3984,9 @@ def _download_folder_identities(download, torrent_names_by_hash):
     return list(identities)
 
 
-
-
-def _existing_import_conflict(destination, parsed, source_size):
-    """Décrit le fichier local comparé par les règles d'import."""
-    if not destination or not destination.get('series_id'):
-        return None
-    try:
-        conn = get_db_connection()
-        existing = _find_existing_volume_for_import(conn.cursor(), destination['series_id'], parsed, single_album=bool(destination.get('is_single_album')))
-        conn.close()
-        _volume_id, path, size, _format = existing
-        if not path or not os.path.exists(path):
-            return None
-        return {'path': path, 'size': size or 0, 'will_replace': bool(destination.get('force_replace') or is_better_volume(source_size, size or 0))}
-    except Exception as exc:
-        print(f"Erreur aperçu conflit import: {exc}")
-        return None
-
-def _pack_file_matches_destination(parsed, destination):
-    """Only auto-import a pack member when its parsed series is exact."""
-    parsed_title = (parsed or {}).get('title')
-    series_title = (destination or {}).get('series_title')
-    if not parsed_title or not series_title:
-        return False
-    return _normalize_title_for_match(parsed_title) == _normalize_title_for_match(series_title)
-
-
 def _append_scanned_file(filepath, import_root, filename, destination, scanner, telegram_filenames,
                           manual_override_filepaths, import_config, files_found, pack_download_id=None,
-                          validate_file=True, packaged_filepaths=None):
+                          validate_file=True):
     """Construit et ajoute une entrée files_found - factorisé entre le fichier isolé (à
     la racine d'un répertoire surveillé) et chaque fichier trouvé dans le dossier d'un
     téléchargement (voir _collect_download_folder_files)."""
@@ -4051,33 +4013,11 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
     # Copie superficielle: plusieurs fichiers d'un même dossier de téléchargement
     # partagent le même `destination` de départ, jamais le même objet en sortie.
     file_destination = dict(destination) if destination else None
-    # Une archive affichée avec « Voir le contenu » est un conteneur à examiner ou à
-    # empaqueter, pas encore un album importable. Elle peut conserver la série connue,
-    # mais ne doit jamais hériter d'un volume suivi ni déclencher un conflit de tome.
-    if ext in ('.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.7z'):
-        file_destination = None
-        parsed['volume'] = None
-        parsed['integral_number'] = None
-        parsed['hs_number'] = None
-        parsed['episode_number'] = None
-    # Complète parsed['volume'] depuis le tome connu au moment du téléchargement quand le
-    # nom de fichier ne le fournit pas lui-même (voir apply_tracked_volume_and_gate) - pas
-    # de "gate" ici contrairement à l'import automatique: cette page laisse de toute façon
-    # l'utilisateur revoir/valider avant d'importer, mais autant pré-remplir le dropdown de
-    # tome avec ce qu'on sait déjà plutôt que de laisser "—" alors que l'info est disponible.
-    # Le résultat (True/False) est gardé pour expliquer, dans auto_import_skip_reason plus
-    # bas, POURQUOI ce fichier reste "en attente" côté import automatique alors que
-    # cette page-ci, elle, le montre déjà prêt pour un import manuel ("il faut que
-    # l'interface indique pourquoi l'import n'est pas possible" - avant ce correctif, ce
-    # cas retournait toujours None silencieusement, sans jamais remonter jusqu'à l'UI).
     gate_passed = True
     if file_destination:
         gate_passed = apply_tracked_volume_and_gate(parsed, file_destination)
 
-    packaged_filepaths = packaged_filepaths or set()
-    if filepath in packaged_filepaths:
-        client = 'packaged'
-    elif filename in telegram_filenames:
+    if filename in telegram_filenames:
         client = 'telegram'
     elif import_root == current_app.config.get('TELEGRAM_IMPORT_DIRECTORY'):
         # Filet de sécurité si jamais absent de telegram_filenames (ex: base
@@ -4100,33 +4040,19 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
         'relative_path': relative_path,
         'folder_name': folder_name,
         'file_size': os.path.getsize(filepath),
-        'existing_conflict': _existing_import_conflict(file_destination, parsed, os.path.getsize(filepath)),
         # Date d'arrivée sur disque ("tableau comme historique", qui a une colonne Date) -
         # mtime plutôt que ctime: survit à un déplacement/renommage du fichier par le
         # client de téléchargement une fois l'écriture terminée.
         'mtime': os.path.getmtime(filepath),
         'parsed': parsed,
         'client': client,
-        # "files inside the folder easy peasy" - simple appartenance au dossier du
-        # téléchargement (voir _collect_download_folder_files), aucun matching de
-        # série/titre nécessaire pour ce regroupement d'AFFICHAGE (voir _pendingPackGroups
-        # côté import.js) - None pour un fichier isolé sans dossier conteneur.
         'pack_download_id': pack_download_id,
         # "si jai a faire manuelement un matching alors met un flag pas dimport
         # automayique" - persisté en base (import_manual_overrides) plutôt qu'un simple
         # état frontend, pour survivre à un rechargement de page.
         'manual_override': filepath in manual_override_filepaths,
-        # "c'est redondant. c'est pas clair pourquoi l'import n'est pas fait" - le
-        # frontend préfixe déjà ce texte avec "Pas repris par l'import automatique : "
-        # (voir import.js) - répéter "import automatique désactivé"/"import automatique
-        # désactivé dans les paramètres" ici formait une phrase redondante ("Pas repris
-        # par l'import automatique : ... import automatique désactivé pour ce fichier").
-        # Chaque raison complète maintenant directement la phrase du préfixe, sans se
-        # répéter elle-même.
         'auto_import_skip_reason': (
-            f"mauvaise série détectée : « {parsed.get('title') or 'titre inconnu'} » au lieu de « {file_destination.get('series_title')} » — vérifiez que c’est la bonne série et importez manuellement"
-            if file_destination and not _pack_file_matches_destination(parsed, file_destination)
-            else "assignation faite à la main - cliquez sur « Importer » pour valider"
+            "assignation faite à la main - cliquez sur « Importer » pour valider"
             if filepath in manual_override_filepaths
             else _repeated_failure_skip_reason(filepath)
             or ("désactivé dans les paramètres" if not import_config.get('auto_import_enabled', False) else None)
@@ -4216,14 +4142,14 @@ def _scan_tracked_import_files(validate_files=True):
     scanner = LibraryScanner()
     import_config = load_library_import_config()
     supported_extensions = set(import_config.get(
-        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
+        'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
     ))
 
     from blueprints.telegram_channels.scraper import get_downloaded_filenames
     telegram_filenames = get_downloaded_filenames()
 
     from blueprints.missing_monitor.downloader import get_trackable_active_downloads
-    trackable_downloads = get_trackable_active_downloads(include_failed=True)
+    trackable_downloads = get_trackable_active_downloads()
 
     from blueprints.qbittorrent.routes import get_qbittorrent_torrent_names
     qbittorrent_hashes = {
@@ -4240,13 +4166,8 @@ def _scan_tracked_import_files(validate_files=True):
         for identity in _download_folder_identities(d, torrent_names_by_hash):
             downloads_by_folder_name.setdefault(identity, d)
 
-    from .import_history import get_manual_override_filepaths, get_packaged_filepaths, get_packaged_destinations, get_finalized_import_source_paths
+    from .import_history import get_manual_override_filepaths
     manual_override_filepaths = get_manual_override_filepaths()
-    packaged_filepaths = get_packaged_filepaths()
-    packaged_destinations = get_packaged_destinations()
-    finalized_import_paths = get_finalized_import_source_paths()
-    finalized_import_names = {os.path.basename(path) for path in finalized_import_paths}
-    manual_override_filepaths -= finalized_import_paths
 
     files_found = []
     incompatible_folders = []
@@ -4294,26 +4215,14 @@ def _scan_tracked_import_files(validate_files=True):
                         match = _build_active_download_destination(
                             torrent_download['series_id'], torrent_download.get('volume_number'), torrent_download['id']
                         )
-                if not match and os.path.realpath(entry.path) not in manual_override_filepaths:
+                if not match:
                     continue
                 _append_scanned_file(
                     entry.path, import_path, entry.name, match, scanner, telegram_filenames,
                     manual_override_filepaths, import_config, files_found,
-                    pack_download_id=match.get('tracking_id') if match else None,
-                    validate_file=validate_files, packaged_filepaths=packaged_filepaths
+                    pack_download_id=match.get('tracking_id'),
+                    validate_file=validate_files
                 )
-
-    package_temp = '/tmp/bullarr-package-temp'
-    if os.path.isdir(package_temp):
-        for entry in os.scandir(package_temp):
-            if not entry.is_file() or os.path.splitext(entry.name)[1].lower() not in supported_extensions:
-                continue
-            if (os.path.realpath(entry.path) not in manual_override_filepaths
-                    and entry.path not in packaged_filepaths
-                    and os.path.realpath(entry.path) not in finalized_import_paths
-                    and entry.name not in finalized_import_names):
-                continue
-            _append_scanned_file(entry.path, package_temp, entry.name, packaged_destinations.get(entry.path), scanner, telegram_filenames, manual_override_filepaths, import_config, files_found, validate_file=validate_files, packaged_filepaths=packaged_filepaths)
 
     return files_found, incompatible_folders
 
@@ -4343,7 +4252,10 @@ def scan_import_directory():
         # l'archive d'origine une fois extraite) volontairement absent de
         # _scan_tracked_import_files, réutilisée aussi par le badge sondé toutes les 60s
         # depuis n'importe quelle page - pas le bon endroit pour déclencher ça.
-        _extract_archive_containers(current_app.config['IMPORT_DIRECTORIES'])
+        import_directories = current_app.config.get('IMPORT_DIRECTORIES')
+        if not import_directories:
+            return jsonify({'success': False, 'error': 'Répertoires d’import non configurés'}), 400
+        _extract_archive_containers(import_directories)
 
         files_found, incompatible_folders = _scan_tracked_import_files()
 
@@ -4516,7 +4428,6 @@ def delete_import_file():
     relative_path = data.get('relative_path', '')
     filename = data.get('filename', '')
     client = data.get('client', '')
-    tracking_id = data.get('tracking_id')
 
     if not import_root or not relative_path:
         return jsonify({'error': 'import_root et relative_path requis'}), 400
@@ -4551,36 +4462,10 @@ def delete_import_file():
         except Exception as e:
             print(f"Erreur annulation téléchargement client pour '{filename}': {e}")
 
-    # Retirer aussi le hold manuel lorsqu'il n'existe plus de tracking actif.
-    try:
-        from .import_history import remove_import_file_manual
-        remove_import_file_manual(filepath)
-    except Exception as exc:
-        print(f"Erreur retrait assignation manuelle lors de la suppression de {filepath}: {exc}")
-
-    # Les sources aMule sont exposées en lecture seule dans Bullarr. Une suppression
-    # locale ne peut donc pas fonctionner, même si le fichier est visible; ne pas
-    # transformer ce cas en Errno 30 et ne jamais retenter l'opération.
-    if not os.access(import_root, os.W_OK):
-        # Suppression logique: la source aMule reste intacte, mais la ligne explicitement
-        # supprimée ne doit plus revenir dans Import ni rester en état failed.
-        if tracking_id:
-            from blueprints.missing_monitor.downloader import mark_download_cancelled
-            mark_download_cancelled(tracking_id)
-        return jsonify({
-            'success': True,
-            'cancelled_at_client': cancelled_at_client,
-            'source_preserved': True,
-            'removed_from_import': True
-        })
-
     try:
         os.remove(filepath)
         cleanup_empty_directories(import_root)
-        if tracking_id:
-            from blueprints.missing_monitor.downloader import mark_download_cancelled
-            mark_download_cancelled(tracking_id)
-        return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client, 'removed_from_import': True})
+        return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client})
     except OSError as e:
         return jsonify({'error': str(e)}), 500
 
@@ -4629,80 +4514,6 @@ def list_incompatible_folder_files():
     return jsonify({'success': True, 'files': files, 'total_count': len(entries), 'truncated': len(entries) > LIMIT})
 
 
-@library_bp.route('/api/import/archive-content', methods=['GET'])
-def list_import_archive_content():
-    """Liste une archive en lecture seule, sans extraction ni modification."""
-    import_root = request.args.get('import_root', '')
-    relative_path = request.args.get('relative_path', '')
-    if not import_root or not relative_path:
-        return jsonify({'error': 'import_root et relative_path requis'}), 400
-    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
-    root = os.path.realpath(import_root)
-    if root not in roots:
-        return jsonify({'error': "Répertoire d'import non autorisé"}), 403
-    filepath = os.path.realpath(os.path.join(root, relative_path))
-    if os.path.commonpath([filepath, root]) != root:
-        return jsonify({'error': 'Chemin de fichier invalide'}), 403
-    if not os.path.isfile(filepath):
-        return jsonify({'error': 'Archive introuvable'}), 404
-    try:
-        result = list_archive_members(filepath)
-    except Exception as exc:
-        return jsonify({'error': str(exc)}), 422
-    result['filename'] = os.path.basename(filepath)
-    result['writable_roots'] = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents' and os.access(d, os.W_OK)]
-    return jsonify({'success': True, **result})
-
-
-
-@library_bp.route('/api/import/archive-package-folders', methods=['POST'])
-def package_import_archive_folders():
-    """Empaquete explicitement chaque dossier image d'un ZIP en CBZ."""
-    data = request.get_json(silent=True) or {}
-    import_root, relative_path = data.get('import_root', ''), data.get('relative_path', '')
-    root = os.path.realpath(import_root)
-    roots = [os.path.realpath(d) for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
-    # Les CBZ générés restent strictement dans le filesystem privé du conteneur.
-    # Ne jamais utiliser un répertoire d'import monté (/downloads/telegram, etc.).
-    output_root = '/tmp/bullarr-package-temp'
-    os.makedirs(output_root, exist_ok=True)
-    if root not in roots:
-        return jsonify({'error': "Répertoire d'import non autorisé"}), 403
-    output_root = os.path.realpath(output_root)
-    if not os.access(output_root, os.W_OK):
-        return jsonify({'error': "Le répertoire de sortie est en lecture seule"}), 400
-    filepath = os.path.realpath(os.path.join(root, relative_path))
-    if os.path.commonpath([filepath, root]) != root or not os.path.isfile(filepath):
-        return jsonify({'error': 'Archive introuvable'}), 404
-    try:
-        created = package_zip_folders_to_cbz(filepath, output_root, data.get('folder_paths'))
-        from .import_history import mark_import_file_manual, mark_import_file_packaged
-        for item in created:
-            mark_import_file_manual(item['path'])
-            mark_import_file_packaged(item['path'])
-    except (ZipConversionError, OSError) as exc:
-        return jsonify({'error': str(exc)}), 422
-
-    # Le ZIP source peut être un téléchargement suivi avec une série déjà confirmée.
-    # Transmettre cette série aux CBZ produits, sans propager le volume du ZIP (le nom
-    # de l'archive peut contenir un numéro de dossier sans rapport avec l'album choisi).
-    source_destination = None
-    try:
-        from blueprints.missing_monitor.downloader import get_trackable_active_downloads
-        source_destination = find_active_download_destination(
-            os.path.basename(filepath), get_trackable_active_downloads(include_failed=True)
-        )
-        if source_destination:
-            source_destination.pop('volume_id', None)
-            source_destination.pop('volume_number', None)
-            source_destination.pop('tracking_id', None)
-            source_destination['is_packaging_source'] = True
-    except Exception as exc:
-        print(f"Erreur matching série source de l'archive {filepath}: {exc}")
-
-    return jsonify({'success': True, 'created': created, 'output_root': output_root,
-                    'source_destination': source_destination})
-
 def _resolve_incompatible_folder_path(import_root, relative_path):
     """Valide et résout (import_root, relative_path) fournis par le client vers un chemin
     de dossier réel - factorisé pour convert-to-cbz (preview + exécution), même contrôle
@@ -4731,18 +4542,6 @@ def _resolve_incompatible_folder_path(import_root, relative_path):
 # n'est justement PAS déjà empaqueté en .cbz/.cbr.
 _LOOSE_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 
-# Numéro de page final du nom de fichier ("Monstre - 001.jpg" -> préfixe "Monstre -",
-# numéro 001) - séparateurs espace/underscore/tiret/point optionnels, numéro
-# éventuellement entre parenthèses ("Monstre (12).jpg"), avec une lettre de variante
-# optionnelle après le chiffre ("NDT01-00b.jpg" -> même page "00", variante "b" -
-# planche alternative/redessinée, convention courante des scans BD). "le matching est
-# pas correct... il n'y a que NDT01 jusqu'a NDT10... le matching est trop large" -
-# sans le "[a-zA-Z]?" final, "NDT01-00b" ne matchait PAS ce pattern du tout (la lettre
-# finale casse l'ancrage `\d{1,4}$`), tombant dans le repli "stem entier comme préfixe"
-# et formant son propre groupe à un seul fichier au lieu de rejoindre le groupe "NDT01"
-# où sont toutes les autres pages de cet album - constaté en réel sur un pack "Les
-# Naufragés du Temps" (10 albums réels NDT01..NDT10, 15 pages variantes en trop
-# formant chacune un groupe fantôme).
 _PAGE_NUMBER_RE = re.compile(r'^(.*?)[\s_.\-]*\(?(\d{1,4})\)?[a-zA-Z]?$')
 
 _TOME_NUMBER_RE = re.compile(r'\bt(\d{1,3})\b', re.IGNORECASE)
@@ -4899,14 +4698,7 @@ def _group_loose_images_by_album(filenames):
 
 
 def _apply_folder_name_fallback(groups, folder_path):
-    """Remplace le label sentinelle "(sans titre)" (voir _group_loose_images_by_album)
-    par le nom du DOSSIER contenant les images - "j'ai empaqueter en cbz. ca a perdu le
-    titre": des pages nommées juste par leur numéro ("001.jpg", "002.jpg"...) ne portent
-    aucun titre à extraire du nom de fichier lui-même, mais le dossier qui les contient,
-    lui, est presque toujours nommé d'après l'album/la série
-    ("Monstre (Enki Bilal)/001.jpg"...) - sans ce repli, le .cbz produit se retrouvait
-    littéralement nommé "(sans titre).cbz" alors qu'un vrai titre était disponible juste
-    un niveau au-dessus."""
+    ""
     folder_label = os.path.basename(folder_path.rstrip(os.sep)) or 'Album'
     for group in groups:
         if group['label'] == '(sans titre)':
@@ -5060,12 +4852,6 @@ def preview_convert_incompatible_folder_to_cbz():
     groups = _apply_folder_name_fallback(_group_loose_images_by_album(image_files), folder_path)
     return jsonify({
         'success': True,
-        # "c'etait quoi (sans titre).cbz ? je ne peux pas savoir" - un label + un compte
-        # ne suffit pas pour juger si un regroupement est correct avant de confirmer;
-        # sample_files (quelques noms réels, premiers ET derniers de chaque groupe -
-        # utile pour repérer un regroupement "trop large" qui mélangerait le début d'un
-        # album avec la fin d'un autre) permet de vérifier visuellement le contenu réel
-        # d'un groupe, pas seulement son étiquette devinée.
         'groups': [
             {
                 'label': g['label'],
@@ -5118,17 +4904,6 @@ def convert_incompatible_folder_to_cbz():
 
     groups = _apply_folder_name_fallback(_group_loose_images_by_album(image_files), folder_path)
 
-    # "ajoute une option pour aussi empaqueter manuellement. je voudrais choisir
-    # manuellement si ca marche pas automatiquement" - manual_groups (envoyé par la
-    # modale d'ajustement manuel, import.js) redéfinit label/fusion/exclusion PAR-DESSUS
-    # le regroupement recalculé ci-dessus (jamais celui, potentiellement périmé, affiché
-    # au preview) - chaque entrée référence les groupes auto-détectés par INDEX
-    # (`group_indices`, positions dans `groups` ci-dessus) plutôt que par liste de
-    # fichiers, pour rester correct même si le dossier a légèrement changé entre le
-    # preview et cette exécution (un fichier disparu dans l'intervalle est juste ignoré
-    # sans faire échouer tout l'empaquetage). Un groupe auto-détecté non référencé par la
-    # moindre entrée (l'utilisateur l'a laissé de côté / "Ignorer") reste tel quel en
-    # pages non empaquetées, jamais supprimé.
     manual_groups = data.get('manual_groups')
     if manual_groups:
         resolved_groups = []
@@ -5151,10 +4926,6 @@ def convert_incompatible_folder_to_cbz():
 
     created, errors = _package_loose_image_groups_as_cbz(folder_path, groups)
 
-    # "lempaquetage devrait être dans l'historique" - ce dossier n'est encore rattaché à
-    # aucune série/volume en base (comme convert_import_file juste au-dessus), donc
-    # series_id/series_title restent NULL ; le détail liste chaque .cbz produit pour que
-    # Historique puisse afficher ce qui a réellement été empaqueté.
     from blueprints.library.action_history import log_action
     folder_label = os.path.basename(folder_path.rstrip(os.sep)) or relative_path
     if created:
@@ -5252,14 +5023,6 @@ def _convert_single_import_file(import_root, relative_path):
     scanner = LibraryScanner()
     new_filename = os.path.basename(new_path)
 
-    # "il faudrait que dans l'historique on ai toutes les actions de l'utilisateur:
-    # import, renommage, telechargement, conversion, suppression" - contrairement aux
-    # autres actions journalisées ici (rename/delete/merge/renumber), ce fichier n'est
-    # encore rattaché à AUCUNE série/volume (le fichier attend justement d'être importé) -
-    # series_id/series_title restent donc NULL (colonnes nullable, voir
-    # action_history.py), le nom du fichier fait office de "titre" affiché côté
-    # Historique. Rien à rescanner côté Komga ici non plus (mêmes raisons que
-    # delete_import_file/delete_incompatible_folder).
     from blueprints.library.action_history import log_action
     log_action('convert', None, new_filename, f"{os.path.basename(filepath)} → {new_filename} ({ext.lstrip('.')} → cbz)")
     return {
@@ -5418,23 +5181,6 @@ def mark_import_file_manual_route():
     if mark_import_file_manual(filepath):
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Erreur lors de l\'enregistrement'}), 500
-
-
-@library_bp.route('/api/import/check-conflict', methods=['POST'])
-def check_import_file_conflict():
-    data = request.get_json(silent=True) or {}
-    filepath = data.get('filepath', '')
-    destination = data.get('destination') or {}
-    parsed = data.get('parsed') or {}
-    filepath_real = os.path.realpath(filepath)
-    roots = [os.path.realpath(r) for r in current_app.config['IMPORT_DIRECTORIES']]
-    if not filepath or not any(os.path.commonpath([filepath_real, root]) == root for root in roots):
-        return jsonify({'success': False, 'error': "Chemin d'import invalide"}), 400
-    if not os.path.isfile(filepath_real):
-        return jsonify({'success': False, 'error': 'Fichier introuvable'}), 404
-    if not destination.get('series_id') and not destination.get('is_new_series'):
-        return jsonify({'success': True, 'existing_conflict': None})
-    return jsonify({'success': True, 'existing_conflict': _existing_import_conflict(destination, parsed, os.path.getsize(filepath_real))})
 
 
 @library_bp.route('/api/import/rescan-file', methods=['POST'])
@@ -5607,7 +5353,7 @@ def _maybe_complete_tracking_after_move(source_path, destination, outcome='impor
             finalize(tracking_id)
             return
 
-        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf'}
+        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
         for root, _dirs, files in os.walk(top_level_dir):
             if any(os.path.splitext(f)[1].lower() in supported_extensions for f in files):
                 return  # il reste au moins un tome à importer, ne rien faire
@@ -5691,9 +5437,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
     # Slow preparation runs without the shared scan lock. Atomic per-file claims below
     # prevent duplicate work across scheduler/manual triggers; the shared lock is acquired
     # only for each file's short final destination/SQLite mutation.
-    import_roots = list(current_app.config['IMPORT_DIRECTORIES']) + ['/tmp/bullarr-package-temp']
+    import_roots = current_app.config['IMPORT_DIRECTORIES']
     import_config = load_library_import_config()
-    hardlink_requested = import_config.get('import_mode') == 'hardlink'
     cleanup_stale_staging(_import_staging_directory())
     operation_id = None
     imported_count = 0
@@ -5702,13 +5447,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
     failed_count = 0
     failures = []
     cleaned_dirs = 0
-    # "il faut faire 3 essais. pas plus" - suivi separe du compteur failed_count/failures
-    # (qui restent inconditionnels, le scheduler en a besoin pour son propre backoff par
-    # fichier, voir suppress_log ci-dessous): True des qu AU MOINS un echec du lot est
-    # encore un retry silencieux de corruption dans son budget - dans ce cas, ne PAS
-    # creer/finaliser de ligne import_history du tout pour cette tentative-ci, plutot que
-    # d en dupliquer une identique a chaque passage du scheduler (5-10s) jusqu a
-    # epuisement du budget.
     any_suppressed_failure = False
 
     try:
@@ -5770,17 +5508,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     })
                     continue
 
-                # "it should have in db the all cycle of importing... importing" - un
-                # téléchargement suivi (destination.tracking_id, posé par
-                # find_active_download_destination/_by_torrent_name) passe de 'completed'
-                # ("waiting to import" - fichier arrivé, voir clear_pending_downloads_by_
-                # filenames/mark_download_completed) à 'importing' pile à cet instant :
-                # avant, active_downloads ne distinguait pas "en attente de son tour" de
-                # "en cours de traitement RIGHT NOW", pourtant une conversion PDF peut
-                # légitimement prendre plusieurs minutes (voir CLAUDE.md) pendant
-                # lesquelles ce fichier précis est bloqué ici. Remis à 'completed' dans le
-                # bloc except plus bas si CE fichier échoue, pour qu'il soit repris au
-                # prochain passage plutôt que de rester bloqué en 'importing' pour de bon.
                 tracking_id = destination.get('tracking_id')
                 if tracking_id:
                     mark_download_importing(tracking_id)
@@ -5862,7 +5589,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     _, early_existing_path, early_existing_size, _ = early_existing
                     if early_existing_path and os.path.exists(early_existing_path) \
                             and not destination.get('force_replace') and not is_better_volume(source_size, early_existing_size):
-                        source_was_copied = True
+                        source_was_copied = _should_preserve_import_source(original_source_path)
                         if not source_was_copied and os.path.exists(original_source_path):
                             os.remove(original_source_path)
                         if staged_source_path and os.path.exists(staged_source_path):
@@ -5894,8 +5621,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 # Copy to a local atomic staging directory, optionally convert, and
                 # validate in a killable subprocess. No NFS/archive/PDF work runs in the
                 # Flask process. The original is untouched until the final DB commit.
-                source_was_copied = True
-                original_format = (file_data['parsed'].get('format') or Path(original_source_path).suffix.lstrip('.')).lower()
+                source_was_copied = _should_preserve_import_source(original_source_path)
                 preparation = prepare_import_file(
                     original_source_path,
                     file_data['parsed'].get('format'),
@@ -5904,12 +5630,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     timeout=IMPORT_STEP_TIMEOUT_SECONDS,
                 )
                 staged_source_path = preparation['path']
-                # Converted files cannot be hardlinked; use the staged result instead.
-                hardlink_source_path = (
-                    original_source_path
-                    if hardlink_requested and preparation.get('format', '').lower() == original_format
-                    else None
-                )
                 source_path = staged_source_path
                 file_data['filename'] = preparation['filename']
                 file_data['parsed']['format'] = preparation['format']
@@ -5935,11 +5655,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 per_file_lock_acquired = True
                 rollback_source_path = original_source_path
 
-                # "so you should match it to volume 38 not volume 2 as the title says" -
-                # visibilité dans Historique quand apply_tracked_volume_and_gate a corrigé
-                # le numéro de tome au profit de celui suivi (recherche/remplacement) plutôt
-                # que de laisser croire silencieusement que le fichier portait ce numéro
-                # depuis le départ.
                 overridden_from = file_data['parsed'].get('tracked_volume_overridden_from')
                 if overridden_from is not None:
                     conversion_message = (conversion_message + ' - ' if conversion_message else '') \
@@ -6090,7 +5805,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         transfer_import_file(
                             source_path, moved_target_path, _import_staging_directory(),
                             timeout=IMPORT_STEP_TIMEOUT_SECONDS,
-                            link_source_path=hardlink_source_path,
                         )
                         tracking_finalization = (original_source_path, destination, 'imported', source_was_copied)
                         action_taken = 'replaced'
@@ -6121,7 +5835,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         # haut ("once Doublon ignoré -> state will be imported. so
                         # nothing should go after that") - le suivi doit toujours être
                         # clos ici, que la source ait été supprimée ou préservée.
-                        source_was_copied = True
+                        source_was_copied = _should_preserve_import_source(original_source_path)
                         if not source_was_copied and os.path.exists(original_source_path):
                             os.remove(original_source_path)
                         if staged_source_path and os.path.exists(staged_source_path):
@@ -6174,7 +5888,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     transfer_import_file(
                         source_path, moved_target_path, _import_staging_directory(),
                         timeout=IMPORT_STEP_TIMEOUT_SECONDS,
-                        link_source_path=hardlink_source_path,
                     )
                     tracking_finalization = (original_source_path, destination, 'imported', source_was_copied)
                     action_taken = 'imported'
@@ -6235,6 +5948,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         cursor.execute('''
                             UPDATE volumes SET
                                 part_number = ?, part_name = ?, filename = ?, filepath = ?,
+                                filesystem_present = 1, filesystem_checked_at = CURRENT_TIMESTAMP,
                                 author = ?, year = ?, resolution = ?, release_group = ?, file_size = ?, page_count = ?,
                                 format = ?, comicinfo = ?, cover_path = ?
                             WHERE id = ?
@@ -6347,10 +6061,10 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         cursor.execute('''
                             INSERT INTO volumes
                             (series_id, part_number, part_name, volume_number, filename, filepath,
-                             author, year, resolution, release_group, file_size, page_count, format,
+                             filesystem_present, filesystem_checked_at, author, year, resolution, release_group, file_size, page_count, format,
                              is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
                              is_special, special_label, comicinfo, cover_path)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             series_id, parsed.get('part_number'), parsed.get('part_name'), parsed.get('volume'),
                             os.path.basename(target_path), target_path, author_value, year_value,
@@ -6358,9 +6072,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                             int(bool(parsed.get('is_integral'))), parsed.get('integral_number'),
                             int(bool(parsed.get('is_hs'))), parsed.get('hs_number'),
                             int(bool(parsed.get('is_episode'))), parsed.get('episode_number'),
-                            # "in rugby there is a file BO4... i cannot select it" - un
-                            # bonus/promo sans numéro (voir volume_override plus haut,
-                            # is_special) doit pouvoir être importé tel quel.
                             int(bool(parsed.get('is_special'))), parsed.get('special_label'),
                             resolved_comicinfo,
                             volume_cover_path
@@ -6467,16 +6178,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     'error': str(e)
                 })
 
-                # "don't put the error in the log until the file has finished download" -
-                # une "Fichier corrompu" encore dans son budget de tentatives rapprochées
-                # (voir AUTO_IMPORT_CORRUPTION_RETRY_DELAYS/MAX_AUTO_IMPORT_CORRUPTION_RETRIES,
-                # scheduler.py) est très probablement juste un fichier encore en train
-                # d'être copié sur disque, pas une vraie erreur digne d'apparaître dans
-                # Historique ou les logs - failures.append ci-dessus reste inconditionnel
-                # (le scheduler en a besoin pour son propre suivi d'échecs/backoff), mais
-                # l'AFFICHAGE utilisateur (print, ligne Historique) attend que le fichier
-                # ait vraiment épuisé sa chance de "juste pas encore fini" avant de le
-                # montrer comme un échec.
                 from .scheduler import library_import_scheduler, MAX_AUTO_IMPORT_CORRUPTION_RETRIES
                 is_corruption = str(e).startswith('Fichier corrompu')
                 prior_failures = library_import_scheduler._failure_counts.get(file_data.get('filepath'), 0)
@@ -6608,6 +6309,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         # vient de fixer series.is_oneshot, utilisé par le gabarit de nom) et avant la
         # connexion suivante ci-dessous qui lit déjà le nom de fichier final
         _rename_new_volumes_after_import(conn, new_volume_ids)
+        _mark_imported_volumes_present(conn, new_volume_ids)
+        conn.commit()
 
         unmatched_komga_series = []
         matched_komga_series = []
@@ -6642,10 +6345,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         for series_id, series_info in new_series_with_bedetheque.items():
             trigger_new_series_bedetheque_fetch(series_id, series_info['title'], series_info['url'])
 
-        # Déclenché ici (tôt) plutôt qu'en toute fin de fonction: le rescan Komga tourne en
-        # arrière-plan côté serveur Komga, donc le lancer maintenant lui laisse le temps de
-        # tourner pendant le reste de l'import (nettoyage...) avant la tentative de
-        # matching Komga ci-dessous
         if imported_count or replaced_count:
             from blueprints.komga.client import trigger_scan_async
             trigger_scan_async()
@@ -6666,39 +6365,11 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
             if os.path.exists(root_dir):
                 cleaned_dirs += cleanup_empty_directories(root_dir)
 
-        # "j'ai l'entrée aucun fichier. vire ça" / "aucun fichier détaillé pour cet import" -
-        # un lot dont TOUS les fichiers ont fini "continue" silencieusement (déjà pris en
-        # charge par un import concurrent entre le scan et l'exécution, voir le
-        # commentaire sur "os.path.exists(source_path)" plus haut) termine avec les 4
-        # compteurs à zéro et aucune ligne import_history_files - rien de significatif à
-        # montrer, juste du bruit sans même un nom de fichier auquel se raccrocher.
-        # Supprimée plutôt que marquée 'completed' dans ce seul cas précis.
         if imported_count == 0 and replaced_count == 0 and skipped_count == 0 and failed_count == 0:
             delete_import_operation(operation_id)
         elif imported_count == 0 and replaced_count == 0 and skipped_count == 0 and failed_count > 0 and any_suppressed_failure:
-            # "il faut faire 3 essais. pas plus" - un lot dont le SEUL échec est un retry
-            # silencieux de corruption encore dans son budget (any_suppressed_failure) ne
-            # crée pas non plus de ligne visible dans Historique, symétrique au cas 100%
-            # "continue" ci-dessus - failed_count/failures restent inconditionnels pour le
-            # scheduler (self._failure_counts, backoff), mais rien à montrer côté UI tant
-            # que ce budget n'est pas épuisé (sinon une ligne identique par tentative,
-            # jusqu'à autant de doublons que de passages du scheduler).
             delete_import_operation(operation_id)
         elif imported_count == 0 and replaced_count == 0 and skipped_count == 0 and failed_count > 0:
-            # "erreur statut doit être échec pas ok" - un lot dont AUCUN fichier n'a
-            # abouti (que des échecs, ex: permission NAS refusée) marquait quand même
-            # l'opération 'completed' (la boucle elle-même n'avait pas planté) - le badge
-            # ✓ vert dans l'historique (import.js/history.js: success = status==='completed')
-            # laissait croire à tort que tout s'était bien passé. Réservé au cas pur
-            # échec/échec (aucun succès mélangé) pour ne pas priver un lot partiellement
-            # réussi de son statut 'completed', dont dépend l'annulation (undo_import_operation
-            # exige ce statut).
-            #
-            # "il faudrait quand meme mettre le nom du fichier" - failures[0]['error'] ne
-            # portait que le message d'erreur brut, jamais le nom du fichier concerné -
-            # préfixé ici avec failures[0]['file'] pour que l'historique identifie
-            # immédiatement DE QUEL fichier il s'agit, sans devoir ouvrir le détail par
-            # fichier (souvent vide justement pour ce cas, voir suppress_log ci-dessus).
             update_import_operation(operation_id, 'failed', imported_count, replaced_count, skipped_count, failed_count,
                                      details=f"{failures[0]['file']} : {failures[0]['error']}" if failures else None)
         else:
@@ -6772,13 +6443,6 @@ def execute_import():
     if not files_to_import:
         return jsonify({'error': 'Aucun fichier à importer'}), 400
 
-    # "pourquoi il y a Aucun fichier détaillé pour cet import" - un import manuel et un
-    # import automatique démarrés à 2 secondes d'écart (voir execute_auto_import, appelé
-    # depuis un thread APScheduler séparé) ont déjà laissé une opération bloquée sur
-    # 'started' sans un seul fichier journalisé : chacun ouvre plusieurs connexions
-    # SQLite successives. _import_execution_lock (dans _execute_import_batch) sérialise
-    # les deux plutôt que de les laisser se percuter - timeout généreux mais fini, pour ne
-    # jamais bloquer indéfiniment une requête si l'autre import est réellement resté coincé.
     lock_acquired, operation_id, stats = _execute_import_batch(
         files_to_import, operation_type='manual_import', lock_timeout=180,
         strict_missing_file=True, notify_source='manuel'
@@ -7075,6 +6739,7 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
 
     try:
         raw_name = custom_name if custom_name else render_series_folder_name(series_title, series_template, universe_name)
+
         folder_segments = [sanitize_path_component(part, 'Titre de série') for part in raw_name.split('/') if part]
         if not folder_segments:
             raise UnsafePathError(f"Titre de série invalide: {raw_name!r}")
@@ -7087,49 +6752,10 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
     if current_path_real == new_series_path:
         return {'success': True, 'changed': False, 'old_path': series_path, 'new_path': series_path}
 
-    destination_dir_exists = os.path.isdir(new_series_path)
-    if os.path.exists(new_series_path) and not destination_dir_exists:
+    if os.path.exists(new_series_path):
         return {
             'success': False, 'old_path': series_path, 'new_path': new_series_path,
-            'error': 'Un fichier existe déjà à cet emplacement'
-        }
-
-    # If the destination directory already exists, merge this series folder into it:
-    # move direct files only, after checking every name so nothing is overwritten.
-    if destination_dir_exists:
-        source_dir_obj = Path(current_path_real)
-        destination_dir_obj = Path(new_series_path)
-        source_files = [entry for entry in source_dir_obj.iterdir() if entry.is_file()]
-        collisions = [entry.name for entry in source_files
-                      if (destination_dir_obj / entry.name).exists()]
-        if collisions:
-            return {
-                'success': False, 'old_path': series_path, 'new_path': new_series_path,
-                'error': 'Fichier destination existe déjà: ' + ', '.join(collisions)
-            }
-        try:
-            for source_file in source_files:
-                destination_file = destination_dir_obj / source_file.name
-                shutil.move(source_file, destination_file)
-        except OSError as e:
-            return {
-                'success': False, 'old_path': series_path, 'new_path': new_series_path,
-                'error': f'Erreur lors du déplacement vers le dossier existant: {e}'
-            }
-        cursor.execute('UPDATE series SET path = ? WHERE id = ?', (new_series_path, series_id))
-        cursor.execute('SELECT id, filename FROM volumes WHERE series_id = ?', (series_id,))
-        for row in cursor.fetchall():
-            filename = final_name_by_volume.get(row['id'], row['filename'])
-            if filename is not None:
-                cursor.execute(
-                    'UPDATE volumes SET filepath = ? WHERE id = ?',
-                    (os.path.join(new_series_path, filename), row['id'])
-                )
-        conn.commit()
-        return {
-            'success': True, 'changed': True, 'merged_into_existing': True,
-            'old_path': series_path, 'new_path': new_series_path,
-            'moved_files': len(source_files)
+            'error': 'Un dossier existe déjà à cet emplacement'
         }
 
     try:
@@ -7218,14 +6844,6 @@ def preview_rename(series_id):
 
             from rename_handler import FileRenamer
             file_plan = FileRenamer.build_rename_plan(series_title, volumes, is_oneshot, rename_cfg['volume_template'], series['universe_name'], rename_cfg['oneshot_template'])
-            # "ca met deja au format standard (donc je peux pas) mais j'aimerais quand
-            # meme le renommer manuellement" - _apply_custom_volume_name suppose un plan
-            # d'UN SEUL fichier (elle réécrit file_plan[0] sans condition) : le garde
-            # d'origine excluait tout `all_volumes=True`, mais un one-shot envoie
-            # justement all_volumes=True pour son unique tome ("Renommer tomes", pas de
-            # bouton dédié "un seul tome" pour ce cas) - len(file_plan) == 1 couvre les
-            # deux à la fois (volume_id précis, OU all_volumes qui se résout à un seul
-            # volume) sans jamais risquer d'appliquer un nom unique à plusieurs fichiers.
             if custom_name and len(file_plan) == 1:
                 file_plan = _apply_custom_volume_name(file_plan, custom_name)
             return jsonify({
@@ -7435,13 +7053,6 @@ def can_auto_assign(parsed, config):
     if not config.get('auto_assign_enabled', True):
         return False
 
-    # Le titre est la seule info toujours requise. Le numéro de tome n'est PAS exigé ici:
-    # un one-shot (parsed['volume'] est None, aucun numéro dans le nom de fichier) doit
-    # pouvoir s'auto-assigner aussi ("pourquoi l'import automatique ne marche pas" - un
-    # one-shot posé dans /amule n'était jamais repris, faute de numéro de tome à parser).
-    # find_auto_assign_destination applique le vrai garde-fou dans ce cas: un fichier sans
-    # numéro n'est accepté que s'il matche une série DÉJÀ marquée one-shot en base, jamais
-    # de création automatique.
     if not parsed.get('title'):
         return False
 
@@ -7454,7 +7065,7 @@ def _match_series_for_auto_import(normalized_title, all_series):
     _normalize_title_for_match), puis en repli un préfixe NON AMBIGU: le titre parsé du
     fichier commence par le titre de la série suivi d'un mot supplémentaire. Couvre le
     sous-titre d'un hors-série/intégrale non séparé du nom de la série par le parsing (ex:
-    "Yoko Tsuno - L'écume de l'aube" pour la série "Yoko Tsuno") et un nom d'auteur en fin
+    "Mika Tanaka - L'écume de l'aube" pour la série "Mika Tanaka") et un nom d'auteur en fin
     de nom de fichier qu'aucun pattern de parse_filename n'a pu isoler faute de marqueur
     de tome à côté duquel s'ancrer (ex: "Un espoir sans papiers Ingrid Chabbert" pour la
     série "Un espoir sans papiers"). "pourquoi 4 imports ne marchent pas automatiquement".
@@ -7564,11 +7175,6 @@ def _build_active_download_destination(series_id, volume_number, tracking_id, fo
             # quand le nom de fichier lui-même ne le fournit pas (voir order.md, étape 5-6:
             # l'import automatique ne doit jamais se faire sans numéro de tome connu).
             'volume_number': volume_number,
-            # "pourquoi je ne peux pas choisir intégrale" - une correction manuelle
-            # (update_active_download_tracking) peut avoir marqué ce téléchargement comme
-            # une Intégrale/HS/Épisode plutôt qu'un tome classique - transmis tel quel
-            # jusqu'à apply_tracked_volume_and_gate, qui les injecte dans parsed comme le
-            # ferait le nom de fichier lui-même (voir parse_filename).
             'is_integral': bool(is_integral),
             'integral_number': integral_number,
             'is_hs': bool(is_hs),
@@ -7660,46 +7266,12 @@ def find_active_download_destination_by_torrent_name(folder_name, trackable_down
 
 
 def apply_tracked_volume_and_gate(parsed, destination):
-    """Complète parsed['volume'] depuis le tome connu au moment du téléchargement (voir
-    find_active_download_destination) quand le nom de fichier ne le fournit pas lui-même,
-    PUIS confirme que l'import automatique peut avoir lieu - "l'import automatique est fait
-    si on a toutes les informations... si on n'a pas toutes les informations... il ne faut
-    pas que l'import automatique soit activé" (order.md). Un destination trouvé via
-    active_downloads (série connue avec certitude) ne suffit pas à lui seul: sans numéro de
-    tome nulle part (ni le nom de fichier, ni le suivi, ni un one-shot/hors-série/intégrale
-    déjà auto-numéroté), importer quand même laisserait un tome en base sans numéro.
-
-    Retourne True si l'import automatique peut procéder (parsed a été mis à jour au
-    passage), False sinon - l'appelant doit alors traiter `destination` comme absent (repli
-    sur find_auto_assign_destination, ou laissé pour assignation manuelle sur /import).
-
-    "j'ai quand meme importé cette integrale. mais pourtant dans l'import il n'a pas fait
-    de remarque. juste à valider tome 1" - le fichier réellement téléchargé peut ne pas
-    être le tome demandé au moment de la recherche (voir unconfirmed_volume/
-    _confirms_requested_volume côté searcher.py, même mismatch possible ici si l'
-    utilisateur télécharge quand même un résultat déjà signalé comme non confirmé): si le
-    fichier s'avère être une intégrale/hors-série/one-shot d'après son PROPRE nom, injecter
-    quand même le numéro de tome suivi par-dessus créait un état incohérent
-    (is_integral=True ET volume=1 en même temps) affiché comme un simple "Tome 1" sans
-    rien pour signaler le problème. Ce type détecté dans le fichier prime désormais sur le
-    numéro suivi - le conflit est mémorisé (tracked_volume_conflict) pour que l'appelant
-    l'affiche, et l'import automatique refuse ce cas (comme pour "pas de numéro trouvé
-    nulle part") plutôt que d'importer à l'aveugle sous un mauvais numéro. is_episode inclus
-    dans ce même conflit: un fichier téléchargé qui s'avère être un épisode (et non le tome
-    suivi) ne doit pas non plus se voir attribuer le numéro de tome par-dessus."""
+    ""
     conflicting_type = parsed.get('is_integral') or parsed.get('is_hs') or parsed.get('is_episode')
     if conflicting_type and destination.get('volume_number') is not None:
         parsed['tracked_volume_conflict'] = destination['volume_number']
         return False
 
-    # "pourquoi je ne peux pas choisir intégrale, seulement le tome normal" - une
-    # correction manuelle (update_active_download_tracking) a pu marquer CE
-    # téléchargement suivi comme Intégrale/HS/Épisode plutôt qu'un tome classique
-    # (voir _build_active_download_destination) - si le fichier arrivé ne porte lui-même
-    # AUCUN type/numéro reconnu dans son propre nom, le type suivi fait autorité, même
-    # principe que tracked_volume ci-dessous pour un simple volume_number. Un type déjà
-    # détecté dans le fichier lui-même (conflicting_type ci-dessus) reste prioritaire et
-    # bloque déjà l'import automatique en cas de désaccord.
     if not conflicting_type and parsed.get('volume') is None:
         if destination.get('is_integral'):
             parsed['is_integral'] = True
@@ -7992,7 +7564,7 @@ def attempt_immediate_auto_import(filepath, import_root):
         filename = os.path.basename(filepath)
         ext = os.path.splitext(filename)[1].lower()
         supported_extensions = set(config.get(
-            'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.tar', '.pdf']
+            'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
         ))
         if ext not in supported_extensions:
             return
@@ -8066,11 +7638,6 @@ def execute_auto_import(files_to_import):
         'replaced_count': stats['replaced_count'],
         'skipped_count': stats['skipped_count'],
         'failed_count': stats['failed_count'],
-        # "l'import en cours ne s'arrête pas" - le détail par fichier (nom + erreur, voir
-        # _execute_import_batch) était calculé mais jamais renvoyé jusqu'ici à cet appelant
-        # précis (execute_import, la route HTTP manuelle, le renvoyait déjà) - nécessaire
-        # à library/scheduler.py pour compter les échecs consécutifs par fichier et
-        # arrêter de le retenter indéfiniment (voir MAX_AUTO_IMPORT_FAILURES).
         'failures': stats['failures']
     }
 
@@ -8093,10 +7660,10 @@ def import_config():
             config['auto_import_enabled'] = data['auto_import_enabled']
         if 'auto_assign_enabled' in data:
             config['auto_assign_enabled'] = data['auto_assign_enabled']
-        if 'import_mode' in data:
-            config['import_mode'] = data['import_mode'] if data['import_mode'] in ('move', 'hardlink') else 'move'
         if 'auto_convert_to_cbz' in data:
             config['auto_convert_to_cbz'] = data['auto_convert_to_cbz']
+        if 'create_series_folder_on_add' in data:
+            config['create_series_folder_on_add'] = bool(data['create_series_folder_on_add'])
         if 'monitored_extensions' in data:
             # Toujours au moins une extension - une liste vide couperait silencieusement
             # l'import ET le badge de fichiers en attente sans aucune extension surveillée
