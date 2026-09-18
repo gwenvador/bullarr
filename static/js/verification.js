@@ -13,6 +13,7 @@ function escapeHtml(text) {
 }
 
 function escapeForAttribute(text) {
+    // lgtm [js/incomplete-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
     return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 

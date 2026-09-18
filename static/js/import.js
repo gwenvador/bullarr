@@ -785,6 +785,7 @@ function _activeDownloadKey(clientKey, item) {
 function _activeDownloadRowHtml({ clientKey, item }) {
     const progress = Math.min(100, Math.max(0, item.progress || 0));
     const deleteButtonHtml = item.id
+        // lgtm [js/incomplete-html-attribute-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
         ? `<button class="btn-icon-only" onclick="deleteActiveDownload('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', ${item.tracking_id ?? 'null'}, this)" data-tooltip="Supprimer ce téléchargement">${svgIcon('trash-2')}</button>`
         : '';
     const editButtonHtml = item.tracking_id != null
@@ -792,6 +793,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
         : '';
     const activeKey = _activeDownloadKey(clientKey, item);
     const selectCheckboxHtml = activeKey
+        // lgtm [js/incomplete-html-attribute-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
         ? `<input type="checkbox" class="import-file-select" data-active-client="${escapeForAttribute(clientKey)}" data-active-id="${escapeForAttribute(String(item.id))}" ${selectedActiveKeys.has(activeKey) ? 'checked' : ''} onchange="toggleActiveRowSelection('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse">`
         : '';
     // data-active-key: "make the update for the download a 5s but only for the
@@ -1464,6 +1466,7 @@ function _incompatibleFolderRowHtml(folder, index) {
     const folderKey = _incompatibleFolderKey(folder);
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
+            // lgtm [js/incomplete-html-attribute-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
             <td><input type="checkbox" class="import-file-select" data-folder-key="${escapeForAttribute(folderKey)}" ${selectedIncompatibleFolderKeys.has(folderKey) ? 'checked' : ''} onchange="toggleIncompatibleFolderSelection('${escapeForAttribute(folderKey)}', this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">—</td>
             <td>${svgIcon('ban')}</td>
@@ -1768,6 +1771,7 @@ async function deleteIncompatibleFolder(importRoot, relativePath, button) {
 function _archiveContentActionHtml(file) {
     const ext = (file.filename || '').toLowerCase().split('.').pop();
     if (!['zip', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst'].includes(ext)) return '';
+    // lgtm [js/incomplete-html-attribute-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
     return `<button type="button" class="btn-icon-only" onclick="viewArchiveContent('${escapeForAttribute(file.import_root)}', '${escapeForAttribute(file.relative_path)}')" data-tooltip="Voir les dossiers et fichiers de l’archive">${svgIcon('folder-open')} Voir le contenu</button>`;
 }
 

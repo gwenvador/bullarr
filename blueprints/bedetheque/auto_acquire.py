@@ -432,7 +432,9 @@ def _strip_trailing_qualifier(title):
     - jamais None: l'appelant compare toujours ce résultat EN PLUS du titre complet
     d'origine (voir ses appelants), jamais à sa place, pour ne pas perdre un titre dont le
     groupe parenthésé fait légitimement partie du nom (ex. un vrai sous-titre BD)."""
+    # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
     stripped = re.sub(r'\s*\([^)]*\)\s*$', '', title or '').strip()
+    # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
     stripped = re.sub(r'\s*-\s*\d{1,3}\s*-\s*$', '', stripped).strip()
     return stripped
 

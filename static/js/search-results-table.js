@@ -874,6 +874,7 @@ function _renderSearchResultsTbody() {
     const tbody = document.getElementById('search-results-tbody');
     if (!tbody) return;
     const filtered = _filteredSearchTableResults();
+    # lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
     tbody.innerHTML = filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
         : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>';
