@@ -1159,7 +1159,7 @@ def rename_universe(universe_id):
                     old_universe_dir = resolve_within(os.path.join(library_path, old_name), library_path)
                     new_universe_dir = resolve_within(os.path.join(library_path, new_folder_name), library_path)
                 except UnsafePathError as e:
-                    move_errors.append(str(e))
+                    move_errors.append('Erreur interne')
                     continue
 
                 if not os.path.isdir(old_universe_dir) or os.path.exists(new_universe_dir):
@@ -1169,7 +1169,7 @@ def rename_universe(universe_id):
                 try:
                     os.rename(old_universe_dir, new_universe_dir)
                 except OSError as e:
-                    move_errors.append(str(e))
+                    move_errors.append('Erreur interne')
                     continue
 
                 for s in series_list:
@@ -1323,7 +1323,7 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
                     apply_volume_comicinfo(db_path, lv['id'], lv['filepath'], lv['format'], fields)
                     updated += 1
                 except UnsupportedFormatError as e:
-                    skipped.append({'filename': lv['filename'], 'reason': str(e)})
+                    skipped.append({'filename': lv['filename'], 'reason': 'Erreur interne'})
                 except Exception as e:
                     logger.error(f"Erreur écriture ComicInfo.xml pour {lv['filepath']}: {e}", exc_info=True)
                     errors.append({'filename': lv['filename'], 'error': 'Erreur interne'})

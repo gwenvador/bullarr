@@ -1575,7 +1575,7 @@ class MissingVolumeDownloader:
             return self.clients[client](torrent_link, title, volume_num, category, series_id, filename,
                                          source, source_link)
         except Exception as e:
-            return False, f"Erreur {client}: {str(e)}"
+            return False, f"Erreur {client}: {'Erreur interne'}"
     
     def _get_default_client(self) -> str:
         """Détermine le client par défaut (le premier actif)"""
@@ -1626,8 +1626,8 @@ class MissingVolumeDownloader:
                 return False, msg
 
         except Exception as e:
-            msg = f"Erreur connexion {client_label}: {str(e)}"
-            print(f"[{client_label} Download] ❌ Exception: {str(e)}", file=sys.stderr)
+            msg = f"Erreur connexion {client_label}: {'Erreur interne'}"
+            print(f"[{client_label} Download] ❌ Exception: {'Erreur interne'}", file=sys.stderr)
             return False, msg
 
     def _download_to_qbittorrent(self, torrent_link: str, title: str,

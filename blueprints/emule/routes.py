@@ -171,7 +171,7 @@ def add_to_emule():
 
     except Exception as e:
         from blueprints.missing_monitor.downloader import log_manual_download
-        log_manual_download(title, 'amule', False, str(e), source=source, source_link=source_link)
+        log_manual_download(title, 'amule', False, 'Erreur interne', source=source, source_link=source_link)
         return jsonify({'success': False, 'error': 'Erreur interne aMule'}), 500
 
 

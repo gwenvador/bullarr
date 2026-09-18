@@ -2169,7 +2169,7 @@ def delete_series(series_id):
             try:
                 safe_path = resolve_within(series_path, library_path)
             except UnsafePathError as e:
-                log_action('delete', series_id, series_title, series_path, success=False, error=str(e))
+                log_action('delete', series_id, series_title, series_path, success=False, error='Erreur interne')
                 return jsonify({'success': False, 'error': f'Chemin de série invalide: {e}'}), 400
             shutil.rmtree(safe_path)
 
@@ -3382,7 +3382,7 @@ def delete_volume(volume_id):
                 safe_path = resolve_within(vol['filepath'], vol['library_path'])
             except UnsafePathError as e:
                 log_action('delete_volume', series_id, series_title, vol['filename'] or f'#{volume_id}',
-                           success=False, error=str(e))
+                           success=False, error='Erreur interne')
                 return jsonify({'success': False, 'error': f'Chemin de fichier invalide: {e}'}), 400
             if os.path.isfile(safe_path):
                 os.remove(safe_path)
@@ -4999,7 +4999,7 @@ def _convert_single_import_file(import_root, relative_path):
     try:
         filepath = resolve_within(os.path.join(import_root, relative_path), import_root)
     except UnsafePathError as e:
-        return None, str(e), 403
+        return None, 'Erreur interne', 403
 
     if not os.path.isfile(filepath):
         return None, 'Fichier introuvable', 404
@@ -5018,7 +5018,7 @@ def _convert_single_import_file(import_root, relative_path):
             else:
                 new_path = convert_zip_to_cbz(filepath)
         except (PdfConversionError, ZipConversionError) as e:
-            return None, str(e), 500
+            return None, 'Erreur interne', 500
 
     scanner = LibraryScanner()
     new_filename = os.path.basename(new_path)
@@ -6179,7 +6179,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 })
 
                 from .scheduler import library_import_scheduler, MAX_AUTO_IMPORT_CORRUPTION_RETRIES
-                is_corruption = str(e).startswith('Fichier corrompu')
+                is_corruption = 'Erreur interne'.startswith('Fichier corrompu')
                 prior_failures = library_import_scheduler._failure_counts.get(file_data.get('filepath'), 0)
                 just_became_exhausted = is_corruption and prior_failures == MAX_AUTO_IMPORT_CORRUPTION_RETRIES
                 suppress_log = is_corruption and not just_became_exhausted
@@ -6213,7 +6213,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         'series_title': '',
                         'action': 'failed',
                         'status': 'error',
-                        'message': str(e)
+                        'message': 'Erreur interne'
                     })
                     import traceback
                     traceback.print_exc()
@@ -6417,7 +6417,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         traceback.print_exc()
         if operation_id:
             try:
-                update_import_operation(operation_id, 'failed', imported_count, replaced_count, skipped_count, failed_count, details=str(e)[:500])
+                update_import_operation(operation_id, 'failed', imported_count, replaced_count, skipped_count, failed_count, details='Erreur interne'[:500])
             except Exception as update_err:
                 print(f"Erreur lors du marquage de l'opération en échec: {update_err}")
         return True, operation_id, {

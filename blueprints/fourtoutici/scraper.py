@@ -270,7 +270,7 @@ def download_fourtoutici_file_background(file_id, filename, target_dir, base_url
                 except Exception as e:
                     print(f"Erreur import automatique immédiat après téléchargement fourtoutici: {e}")
         except Exception as e:
-            _log(filename, False, str(e), download_id)
+            _log(filename, False, 'Erreur interne', download_id)
             if app and download_id:
                 from blueprints.missing_monitor.downloader import mark_download_failed
                 with app.app_context():
