@@ -58,7 +58,7 @@ def _deluge_rpc(session, base_url, method, params=None):
     except requests.exceptions.Timeout:
         raise DelugeError('⏱️ Timeout - impossible de se connecter à Deluge')
     except requests.exceptions.ConnectionError as e:
-        raise DelugeError(f"🔌 Impossible de se connecter à Deluge: {str(e)[:120]}")
+        raise DelugeError(f"🔌 Impossible de se connecter à Deluge: {'Erreur interne'[:120]}")
 
     if response.status_code != 200:
         raise DelugeError(f"Erreur HTTP {response.status_code}")

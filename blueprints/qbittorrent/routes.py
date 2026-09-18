@@ -210,7 +210,7 @@ def get_categories_and_tags():
             # Best-effort: catégories laissées vides plutôt que de faire échouer toute
             # la route (les tags peuvent quand même être récupérés ci-dessous), aucune
             # autre trace de cet échec sinon.
-            print(f"[qBittorrent] Erreur récupération catégories: {str(e)}", file=sys.stderr)
+            print(f"[qBittorrent] Erreur récupération catégories: {'Erreur interne'}", file=sys.stderr)
 
         # Récupérer les tags
         try:
@@ -223,7 +223,7 @@ def get_categories_and_tags():
                     tags = []
         except Exception as e:
             # Best-effort, voir commentaire sur les catégories ci-dessus.
-            print(f"[qBittorrent] Erreur récupération tags: {str(e)}", file=sys.stderr)
+            print(f"[qBittorrent] Erreur récupération tags: {'Erreur interne'}", file=sys.stderr)
 
         return jsonify({
             'success': True,
@@ -319,7 +319,7 @@ def create_qbittorrent_session(config, for_test=False):
         return session, base_url, None
 
     except Exception as e:
-        return None, None, str(e)
+        return None, None, 'Erreur interne'
 
 
 def get_qbittorrent_torrent_names(hashes):
@@ -533,7 +533,7 @@ def add_torrent():
                 except Exception as e:
                     # Best-effort: le fichier temporaire resterait juste orphelin sinon,
                     # aucune autre trace de cet échec.
-                    print(f"[qBittorrent Add] Erreur suppression fichier temp: {str(e)}", file=sys.stderr)
+                    print(f"[qBittorrent Add] Erreur suppression fichier temp: {'Erreur interne'}", file=sys.stderr)
 
         if response.status_code == 200:
             # qBittorrent's /add répond "Ok." (HTTP 200) même quand rien n'a été ajouté -

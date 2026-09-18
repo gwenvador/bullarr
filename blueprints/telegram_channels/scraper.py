@@ -677,7 +677,7 @@ def download_channel_file_background(api_id, api_hash, session_string, channel, 
             # ("title") plutôt que le simple identifiant de canal - `filename` n'est pas
             # encore défini à ce stade (l'échec a eu lieu avant que le fichier ne soit
             # renommé/déplacé), donc le nom réel n'est pas encore connu.
-            _log(pending_title or channel_title or channel, False, str(e), tracking_id=download_id)
+            _log(pending_title or channel_title or channel, False, 'Erreur interne', tracking_id=download_id)
             if app and download_id:
                 with app.app_context():
                     mark_download_failed(download_id)

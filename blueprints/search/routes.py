@@ -412,7 +412,7 @@ def search_ed2k():
 
             conn.close()
         except Exception as e:
-            print(f"Erreur recherche ED2K: {str(e)}")
+            print(f"Erreur recherche ED2K: {'Erreur interne'}")
 
         return jsonify({'results': all_results})
 
@@ -446,7 +446,7 @@ def search_prowlarr_api():
         })
 
     except Exception as e:
-        print(f"Erreur recherche Prowlarr: {str(e)}")
+        print(f"Erreur recherche Prowlarr: {'Erreur interne'}")
         return jsonify({
             'success': False,
             'error': 'Erreur interne'

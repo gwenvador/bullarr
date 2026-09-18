@@ -1081,7 +1081,7 @@ class LibraryScanner:
         except PermissionError as e:
             raise Exception(f"Permission refusée pour accéder à: '{library_path}'")
         except (FileNotFoundError, NotADirectoryError, OSError) as e:
-            raise Exception(f"Impossible d'accéder au répertoire '{library_path}': {str(e)}")
+            raise Exception(f"Impossible d'accéder au répertoire '{library_path}': {'Erreur interne'}")
         
         for item in items:
             item_path = os.path.join(library_path, item)
@@ -1103,7 +1103,7 @@ class LibraryScanner:
                 try:
                     child_names = os.listdir(item_path)
                 except (PermissionError, OSError) as e:
-                    print(f"⚠️  Impossible d'accéder au dossier '{item}' ('{item_path}'): {str(e)}")
+                    print(f"⚠️  Impossible d'accéder au dossier '{item}' ('{item_path}'): {'Erreur interne'}")
                     continue
 
                 has_direct_file = any(
@@ -1136,7 +1136,7 @@ class LibraryScanner:
                                         'file_size': os.path.getsize(filepath)
                                     })
                         except (PermissionError, OSError) as e:
-                            print(f"⚠️  Impossible d'accéder à la série '{series_title}' ('{sub_path}'): {str(e)}")
+                            print(f"⚠️  Impossible d'accéder à la série '{series_title}' ('{sub_path}'): {'Erreur interne'}")
                             continue
                     continue
 
@@ -1164,7 +1164,7 @@ class LibraryScanner:
                                 'file_size': os.path.getsize(filepath)
                             })
                 except (PermissionError, OSError) as e:
-                    print(f"⚠️  Impossible d'accéder à la série '{series_title}' ('{item_path}'): {str(e)}")
+                    print(f"⚠️  Impossible d'accéder à la série '{series_title}' ('{item_path}'): {'Erreur interne'}")
                     continue
             
             # Si c'est un fichier directement dans la bibliothèque (pas dans un sous-dossier)

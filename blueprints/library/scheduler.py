@@ -96,7 +96,7 @@ class LibraryImportScheduler:
         self.stalled_telegram_job_id = 'retry_stalled_telegram'
         self._file_size_history = {}
         self._failure_counts = {}
-        # Dernier message d'erreur (str(e) côté _execute_import_batch) par fichier -
+        # Dernier message d'erreur ('Erreur interne' côté _execute_import_batch) par fichier -
         # "l'échec n'est pas expliqué": le compteur seul ne dit pas POURQUOI ça échoue,
         # affiché à côté du compteur dans _repeated_failure_skip_reason (routes.py).
         self._failure_last_error = {}
