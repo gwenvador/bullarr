@@ -6,9 +6,17 @@ function _replaceWithSanitizedDom(target, markup) {
     for (const element of parsed.querySelectorAll('*')) {
         for (const attribute of [...element.attributes]) {
             const name = attribute.name.toLowerCase();
-            const value = attribute.value.trim().toLowerCase();
-            if (name.startsWith('on') || name === 'srcdoc' || name === 'style' ||
-                ((name === 'href' || name === 'src' || name === 'action') && value.startsWith('javascript:'))) {
+            const value = attribute.value.trim();
+            let unsafeUrl = false;
+            if (name === 'href' || name === 'src' || name === 'action') {
+                try {
+                    const protocol = new URL(value, document.baseURI).protocol;
+                    unsafeUrl = !['http:', 'https:'].includes(protocol);
+                } catch (_) {
+                    unsafeUrl = true;
+                }
+            }
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'style' || unsafeUrl) {
                 element.removeAttribute(attribute.name);
             }
         }
