@@ -16,6 +16,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import unicodedata
 import re
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def _find_volume_bedetheque_web_hint(cursor, series_id):
         except (TypeError, ValueError):
             continue
         web = ci.get('web')
-        if web and 'bedetheque.com' in web:
+        if web and urlparse(web).hostname in {'bedetheque.com', 'www.bedetheque.com'}:
             return web
     return None
 
@@ -1711,7 +1712,7 @@ def get_volume_bedetheque_reviews(volume_id):
         except (TypeError, ValueError):
             ci = {}
         web = ci.get('web')
-        if web and 'bedetheque.com' in web and '/serie-' not in web:
+        if web and urlparse(web).hostname in {'bedetheque.com', 'www.bedetheque.com'} and '/serie-' not in web:
             album_url = web
 
         if not album_url:

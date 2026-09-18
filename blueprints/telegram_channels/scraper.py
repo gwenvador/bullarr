@@ -19,6 +19,7 @@ import sqlite3
 import threading
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -48,7 +49,7 @@ def _extract_bedetheque_url(msg):
         return match.group(0).rstrip(').,;')
     for entity in (msg.entities or []):
         url = getattr(entity, 'url', None)
-        if url and 'bedetheque.com' in url.lower():
+        if url and urlparse(url).hostname in {'bedetheque.com', 'www.bedetheque.com'}:
             return url
     return None
 
