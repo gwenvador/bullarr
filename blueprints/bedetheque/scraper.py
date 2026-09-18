@@ -1183,7 +1183,7 @@ class BedethequeScraper:
         ne comptant plus du tout dans la comparaison - le tri stable retombait alors sur
         le premier de la liste Bedetheque, pas nécessairement le bon."""
         import unicodedata
-        text = unicodedata.normalize('NFKD', text or '')
+        text = unicodedata.normalize('NFKD', str(text or '')[:255])
         text = ''.join(c for c in text if not unicodedata.combining(c))
         text = text.lower()
         text = re.sub(r"[/\-,.:!?…'’‘\"()\[\]]", ' ', text)

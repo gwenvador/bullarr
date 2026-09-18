@@ -459,7 +459,7 @@ class LibraryScanner:
         }
 
         # Retirer l'extension pour faciliter le parsing
-        name_without_ext = os.path.splitext(filename)[0]
+        name_without_ext = os.path.splitext(str(filename or '')[:255])[0]
 
         name_without_ext = re.sub(
             r'^\[?BD[.\s-]+(?:FR|EN|VF|VO|FRENCH|ENGLISH)\]?[.\s-]+',
@@ -578,7 +578,7 @@ class LibraryScanner:
         # AMÉLIORATION: Normaliser le nom en remplaçant les points, underscores et caractères spéciaux par des espaces
         # Sauf pour les points dans les nombres (comme 1.5)
         # On garde aussi les points dans les patterns spéciaux comme "Vol." ou "T.01"
-        normalized_name = name_without_ext
+        normalized_name = name_without_ext[:255]
 
         # Remplacer les points par des espaces, sauf si précédés/suivis d'un chiffre
         normalized_name = re.sub(r'\.(?!\d)', ' ', normalized_name)  # Point non suivi d'un chiffre
