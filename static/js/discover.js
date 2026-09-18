@@ -755,7 +755,7 @@ async function searchSources() {
         const allDone = () => ebdzDone && prowlarrDone && telegramDone && fourtouticiDone && annasArchiveDone;
         const render = () => {
             if (combined.length > 0) {
-                # lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
+                // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
                 document.getElementById('sources-results-list').innerHTML = buildSearchResultsTableHtml(combined, null, seriesId, null, renderedOnce);
                 // "je veux celui la partout" (loupe carrée sur les filtres texte, voir
                 // bedetheque-indispensables.js) - tableau injecté après coup, hors de
