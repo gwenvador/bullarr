@@ -161,7 +161,7 @@ def test_qbittorrent_connection():
     except requests.exceptions.ConnectionError as ce:
         return jsonify({
             'success': False,
-            'error': f"🔌 Impossible de se connecter à qBittorrent.\n\nVérifiez:\n- L'URL: {config.get('url')}\n- Le port: {config.get('port')}\n- qBittorrent est démarré\n- Le Web UI est activé\n- Pas de pare-feu bloquant\n\nErreur: {str(ce)[:80]}"
+            'error': '🔌 Impossible de se connecter à qBittorrent. Vérifiez la configuration et que le service est accessible.'
         }), 500
     except Exception as e:
         return jsonify({

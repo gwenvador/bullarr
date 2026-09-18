@@ -4967,7 +4967,7 @@ def convert_incompatible_folder_to_cbz():
         error='; '.join(errors) if errors else None,
     )
 
-    return jsonify({'success': len(errors) == 0, 'created': created, 'errors': errors})
+    return jsonify({'success': len(errors) == 0, 'created': created, 'errors': ['Erreur interne'] * len(errors)})
 
 
 @library_bp.route('/api/import/incompatible-folder', methods=['DELETE'])
@@ -5266,7 +5266,7 @@ def rescan_import_file_route():
     _import_file_size_history[filepath] = current_size
     _import_file_validity_cache[(filepath, current_size)] = error
 
-    return jsonify({'success': True, 'valid': error is None, 'error': error})
+    return jsonify({'success': True, 'valid': error is None, 'error': 'Erreur de validation' if error else None})
 
 
 # Sous-ensemble de file_data['parsed'] à persister dans import_history_files.
