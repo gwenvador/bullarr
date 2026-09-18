@@ -63,4 +63,4 @@ def shelfmark_test():
                 return jsonify({'success': False, 'error': f'Connexion refusée (HTTP {response.status_code})'}), 400
         return jsonify({'success': True})
     except requests.RequestException as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400

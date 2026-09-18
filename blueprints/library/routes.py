@@ -2173,7 +2173,7 @@ def delete_series(series_id):
                 safe_path = resolve_within(series_path, library_path)
             except UnsafePathError as e:
                 log_action('delete', series_id, series_title, series_path, success=False, error='Erreur interne')
-                return jsonify({'success': False, 'error': f'Chemin de série invalide: {e}'}), 400
+                return jsonify({'success': False, 'error': f'Chemin de série invalide: Erreur interne'}), 400
             shutil.rmtree(safe_path)
 
         conn = get_db_connection()
@@ -2231,14 +2231,14 @@ def merge_series(series_id):
                                         target['library_path'])
         except UnsafePathError as e:
             conn.close()
-            return jsonify({'success': False, 'error': f'Chemin de série invalide: {e}'}), 400
+            return jsonify({'success': False, 'error': f'Chemin de série invalide: Erreur interne'}), 400
 
         if not os.path.isdir(target_dir):
             try:
                 os.makedirs(target_dir, exist_ok=True)
             except OSError as e:
                 conn.close()
-                return jsonify({'success': False, 'error': f"Impossible de créer le dossier de la série cible: {e}"}), 500
+                return jsonify({'success': False, 'error': f"Impossible de créer le dossier de la série cible: Erreur interne"}), 500
 
         cursor.execute('''
             SELECT id, filename, filepath, volume_number, is_integral, integral_number, is_hs, hs_number,
@@ -2476,7 +2476,7 @@ def list_series_path_correction_folders(series_id):
     try:
         return jsonify({'success': True, **_list_series_path_correction_folders(conn, series_id, request.args.get('path'), request.args.get('search'))})
     except ValueError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     finally:
         conn.close()
 
@@ -2541,7 +2541,7 @@ def preview_series_path_correction(series_id):
             'files': [{'volume_id': volume_id, 'new_path': new_path} for volume_id, new_path in plan['volume_updates']],
         })
     except ValueError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     finally:
         conn.close()
 
@@ -2570,7 +2570,7 @@ def execute_series_path_correction(series_id):
                         'affected_volumes': len(plan['volume_updates'])})
     except ValueError as exc:
         conn.rollback()
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     finally:
         conn.close()
 
@@ -3076,7 +3076,7 @@ def move_volume_to_series(volume_id):
                                         target['library_path'])
         except UnsafePathError as e:
             conn.close()
-            return jsonify({'success': False, 'error': f'Chemin de série invalide: {e}'}), 400
+            return jsonify({'success': False, 'error': f'Chemin de série invalide: Erreur interne'}), 400
 
         # Même repli que merge_series: une série ajoutée depuis Bédéthèque sans aucun
         # tome possédé n'a pas encore de dossier physique.
@@ -3085,7 +3085,7 @@ def move_volume_to_series(volume_id):
                 os.makedirs(target_dir, exist_ok=True)
             except OSError as e:
                 conn.close()
-                return jsonify({'success': False, 'error': f"Impossible de créer le dossier de la série cible: {e}"}), 500
+                return jsonify({'success': False, 'error': f"Impossible de créer le dossier de la série cible: Erreur interne"}), 500
 
         if vol['filepath'] and os.path.exists(os.path.join(target_dir, vol['filename'])):
             conn.close()
@@ -3390,7 +3390,7 @@ def delete_volume(volume_id):
             except UnsafePathError as e:
                 log_action('delete_volume', series_id, series_title, vol['filename'] or f'#{volume_id}',
                            success=False, error='Erreur interne')
-                return jsonify({'success': False, 'error': f'Chemin de fichier invalide: {e}'}), 400
+                return jsonify({'success': False, 'error': f'Chemin de fichier invalide: Erreur interne'}), 400
             if os.path.isfile(safe_path):
                 os.remove(safe_path)
 
@@ -4421,7 +4421,7 @@ def import_state_snapshot():
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(exc)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/import/file', methods=['DELETE'])
@@ -6150,7 +6150,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 # transaction. Remove a writable source only after the destination and
                 # volume row are durable; read-only/NFS sources remain preserved.
                 if tracking_finalization and not source_was_copied \
-                        # lgtm [py/path-injection] path is constrained by resolve_within/commonpath or an approved library root.
                         and original_source_path and os.path.exists(original_source_path):
                     try:
                         # lgtm [py/path-injection] path is constrained by resolve_within/commonpath or an approved library root.

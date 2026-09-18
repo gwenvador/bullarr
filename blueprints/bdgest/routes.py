@@ -142,4 +142,4 @@ def top_annuel():
         items = [dict(item, already_owned=_match_series_id(item) is not None, series_id=_match_series_id(item)) for item in items]
         return jsonify({'success': True, 'annee': annee, 'origine': origine, 'items': items, 'cached': was_cached})
     except Exception as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 502
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 502

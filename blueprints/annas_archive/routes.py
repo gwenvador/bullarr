@@ -107,4 +107,4 @@ def shelfmark_download():
             return jsonify({'success': True, 'status': 'queued', 'tracking_id': tracking_id})
     except requests.RequestException as exc:
         _history(False, f'Shelfmark inaccessible: {exc}')
-        return jsonify({'success': False, 'error': f'Shelfmark inaccessible: {exc}'}), 502
+        return jsonify({'success': False, 'error': f'Shelfmark inaccessible: Erreur interne'}), 502

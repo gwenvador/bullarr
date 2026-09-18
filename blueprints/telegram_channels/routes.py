@@ -372,7 +372,7 @@ def add_channel():
     except RPCError as e:
         return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Canal introuvable ou inaccessible: {e}'}), 400
+        return jsonify({'success': False, 'error': f'Canal introuvable ou inaccessible: Erreur interne'}), 400
 
     channels.append({'username': channel, 'title': title})
     config['channels'] = channels
