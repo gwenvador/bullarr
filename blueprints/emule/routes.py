@@ -8,6 +8,23 @@ import subprocess
 from encryption import load_encrypted_json_config, save_encrypted_json_config
 
 
+
+
+_ED2K_LINK_RE = re.compile(
+    r'^ed2k://\|file\|[^|\x00-\x1f]+\|[0-9]+\|[0-9A-Fa-f]{32}\|/$',
+    re.IGNORECASE,
+)
+
+
+def _validate_ed2k_link(link):
+    """Accept only the canonical ED2K file-link grammar.
+
+    The aMule command parser receives the link inside its ``-c`` argument, so
+    shell-like separators and control characters must never reach it.
+    """
+    return isinstance(link, str) and bool(_ED2K_LINK_RE.fullmatch(link))
+
+
 def load_emule_config():
     """Charge la configuration eMule"""
     return load_encrypted_json_config(
@@ -57,7 +74,7 @@ def emule_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne aMule'}), 500
 
 
 def _title_from_ed2k_link(link, fallback):
@@ -103,8 +120,8 @@ def add_to_emule():
     data = request.get_json()
     link = data.get('link')
 
-    if not link:
-        return jsonify({'success': False, 'error': 'Lien manquant'}), 400
+    if not _validate_ed2k_link(link):
+        return jsonify({'success': False, 'error': 'Lien ED2K invalide'}), 400
 
     # Nom RÉEL embarqué dans le lien ed2k en priorité (voir _title_from_ed2k_link) -
     # repli sur le titre fourni par le frontend seulement si l'extraction échoue.
@@ -150,12 +167,12 @@ def add_to_emule():
             return jsonify({'success': True})
         else:
             log_manual_download(title, 'amule', False, result.stderr, source=source, source_link=source_link)
-            return jsonify({'success': False, 'error': result.stderr}), 500
+            return jsonify({'success': False, 'error': 'Échec de la commande aMule'}), 500
 
     except Exception as e:
         from blueprints.missing_monitor.downloader import log_manual_download
         log_manual_download(title, 'amule', False, str(e), source=source, source_link=source_link)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne aMule'}), 500
 
 
 @emule_bp.route('/remove', methods=['POST'])
@@ -191,7 +208,7 @@ def remove_download():
             return jsonify({'success': False, 'error': (result.stderr or 'Erreur amulecmd')[:200]}), 500
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne aMule'}), 500
 
 
 @emule_bp.route('/ed2k-availability', methods=['POST'])
