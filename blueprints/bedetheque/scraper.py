@@ -31,7 +31,11 @@ def _safe_bedetheque_url(value):
     parsed = urlparse(value or '')
     if parsed.scheme != 'https' or parsed.hostname not in _ALLOWED_HOSTS:
         raise ValueError('URL Bédéthèque non autorisée')
-    return value
+    if not parsed.path.startswith('/') or '..' in parsed.path:
+        raise ValueError('Chemin Bédéthèque non autorisé')
+    # Keep the destination host and path server-controlled; discard user-supplied
+    # authority, scheme, fragment, and query components.
+    return urlunparse(('https', 'www.bedetheque.com', parsed.path, '', '', ''))
 
 
 def _reformat_bedetheque_author_name(name):
