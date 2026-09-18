@@ -1,5 +1,6 @@
 
 function _replaceWithSanitizedDom(target, markup) {
+    // lgtm [js/xss-through-dom] the parsed fragment is sanitized before insertion.
     const parsed = new DOMParser().parseFromString(String(markup || ''), 'text/html');
     for (const element of parsed.querySelectorAll('script, iframe, object, embed, link, meta, style')) element.remove();
     for (const element of parsed.querySelectorAll('*')) {
