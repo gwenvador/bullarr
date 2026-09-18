@@ -101,7 +101,7 @@ def test_qbittorrent_connection():
         # Créer une session authentifiée
         session, base_url, error = create_qbittorrent_session(config)
         if error:
-            return jsonify({'success': False, 'error': f"Erreur config: {error}"}), 500
+            return jsonify({'success': False, 'error': f"Erreur config: Erreur interne"}), 500
 
         api_url = f"{base_url}/api/v2/app/webuiVersion"
 
@@ -432,7 +432,7 @@ def add_torrent():
         # Créer une session authentifiée
         session, base_url, error = create_qbittorrent_session(config)
         if error:
-            return jsonify({'success': False, 'error': f"Erreur config: {error}"}), 500
+            return jsonify({'success': False, 'error': f"Erreur config: Erreur interne"}), 500
 
         # Ajouter le torrent
         api_url = f"{base_url}/api/v2/torrents/add"

@@ -222,7 +222,7 @@ def restore_backup():
                 os.chmod(path, 0o600)
                 restored.append(name)
     except (OSError, ValueError, json.JSONDecodeError, sqlite3.DatabaseError) as exc:
-        return jsonify({'success': False, 'error': f'Backup invalide: {exc}'}), 400
+        return jsonify({'success': False, 'error': f'Backup invalide: Erreur interne'}), 400
     finally:
         zf.close()
 
@@ -1043,7 +1043,7 @@ def cleanup_duplicate_empty_series():
         return jsonify({'success': True, 'removed': removed, 'skipped': skipped})
     except Exception as exc:
         conn.rollback()
-        return jsonify({'success': False, 'error': str(exc)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
     finally:
         conn.close()
 
@@ -1100,7 +1100,7 @@ def remove_missing_files_series_record(series_id):
         return jsonify({'success': True, 'series_id': series_id, 'library_id': series['library_id'], 'title': series['title']})
     except Exception as exc:
         conn.rollback()
-        return jsonify({'success': False, 'error': str(exc)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
     finally:
         conn.close()
 

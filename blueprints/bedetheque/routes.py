@@ -256,7 +256,7 @@ def pantheon_authors():
         items = [dict(item, already_owned=item['url'].rstrip('/') in owned_author_urls) for item in items]
         return jsonify({'success': True, 'category': category, 'items': items, 'cached': was_cached})
     except Exception as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 502
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 
 _THEME_SLUG_RE = re.compile(r'^[A-Za-z0-9_-]{1,80}$')
@@ -302,7 +302,7 @@ def list_themes():
         save_scrape_cache('themes:list', groups)
         return jsonify({'success': True, 'groups': groups, 'cached': False})
     except Exception as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 502
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 
 @bedetheque_bp.route('/theme', methods=['GET'])
@@ -381,7 +381,7 @@ def theme_series():
         items = [dict(item, already_owned=_match_series_id(item) is not None, series_id=_match_series_id(item)) for item in items]
         return jsonify({'success': True, 'slug': slug, 'title': theme_title, 'items': items, 'cached': was_cached})
     except Exception as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 502
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 
 @bedetheque_bp.route('/indispensables', methods=['GET'])
@@ -450,7 +450,7 @@ def indispensable_series():
         items = [dict(item, already_in_library=_match_series_id(item) is not None, series_id=_match_series_id(item)) for item in items]
         return jsonify({'success': True, 'category': category, 'items': items, 'cached': was_cached})
     except Exception as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 502
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 @bedetheque_bp.route('/search', methods=['GET'])
 def search_bedetheque():
@@ -559,7 +559,7 @@ def list_database_authors():
         return jsonify({'success': True, 'authors': sorted(authors.values(), key=lambda a: a['name'].casefold())})
     except Exception as exc:
         logger.exception('Erreur lors du chargement des auteurs locaux')
-        return jsonify({'success': False, 'error': str(exc)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @bedetheque_bp.route('/authors/search', methods=['GET'])
@@ -2490,7 +2490,7 @@ def add_series_from_bedetheque():
             series_path = resolve_within(os.path.join(library['path'], *folder_segments), library['path'])
         except UnsafePathError as e:
             conn.close()
-            return jsonify({'success': False, 'error': f'Nom de série invalide: {e}'}), 400
+            return jsonify({'success': False, 'error': f'Nom de série invalide: Erreur interne'}), 400
 
         # Tous les albums numérotés de la fiche = tomes manquants (aucun fichier encore):
         # la fiche série affiche ainsi directement la liste des tomes à récupérer.
