@@ -11,7 +11,9 @@ from encryption import load_encrypted_json_config, save_encrypted_json_config
 
 
 _ED2K_LINK_RE = re.compile(
-    r'^ed2k://\|file\|[^|\x00-\x1f]+\|[0-9]+\|[0-9A-Fa-f]{32}\|/$',
+    # Canonical ED2K file links may carry an optional AICH hash extension
+    # (|h=<32 base32 chars>|) before the terminating |/.
+    r'^ed2k://\|file\|[^|\x00-\x1f]+\|[0-9]+\|[0-9A-Fa-f]{32}(?:\|h=[A-Z2-7]{32})?\|/$',
     re.IGNORECASE,
 )
 
