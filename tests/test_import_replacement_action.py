@@ -30,3 +30,13 @@ def test_replacement_check_endpoint_uses_database_volume_lookup():
     source = Path("blueprints/library/routes.py").read_text()
     assert "@library_bp.route('/api/import/replacement-required', methods=['POST'])" in source
     assert "_find_existing_volume_for_import(" in source
+
+
+def test_replacement_confirmation_requires_an_existing_library_file_not_only_a_db_placeholder():
+    source = Path("blueprints/library/routes.py").read_text()
+    start = source.index("def import_replacement_required_route")
+    end = source.index("def mark_import_file_manual_route", start)
+    endpoint = source[start:end]
+    assert "'has_file': bool(row and row[1] and os.path.isfile(row[1]))" in endpoint
+    for source_path in (Path("static/js/library.js"), Path("static/js/search.js")):
+        assert "!data.has_file" in source_path.read_text()

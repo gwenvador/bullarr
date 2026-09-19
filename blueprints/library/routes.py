@@ -5252,8 +5252,14 @@ def import_replacement_required_route():
                 cursor, series_id, parsed,
                 single_album=bool(single and single[0] == 1)
             )
-        return jsonify({'success': True, 'existing': bool(row),
-                        'volume_id': row[0] if row else None})
+        return jsonify({
+            'success': True,
+            # A Bédéthèque placeholder is a catalogue record, not a file to replace.
+            # Ask only when its recorded library path still resolves to a real file.
+            'existing': bool(row),
+            'has_file': bool(row and row[1] and os.path.isfile(row[1])),
+            'volume_id': row[0] if row else None,
+        })
     finally:
         conn.close()
 

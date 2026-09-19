@@ -77,7 +77,7 @@ async function confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber
             body: JSON.stringify({series_id: Number(seriesId), volume_id: volumeId, volume_number: volumeNumber, title})
         });
         const data = await response.json();
-        if (!data.success || !data.existing) return false;
+        if (!data.success || !data.existing || !data.has_file) return false;
         return window.confirm('Cet album existe déjà dans Bullarr. Voulez-vous remplacer son fichier existant ?') ? true : null;
     } catch (error) {
         console.warn('Impossible de vérifier le conflit de remplacement:', error);
