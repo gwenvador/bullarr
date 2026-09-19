@@ -6189,6 +6189,9 @@ function buildEbdzVolumeLabel(f) {
 // chaque fichier à eMule
 async function loadEbdzThreadFiles(threadId, missingVolumes) {
     const resultsEl = document.getElementById('ebdz-files-results');
+    // This modal is opened from a known series. Persist that identity when adding
+    // its EBDZ file, rather than relying on filename matching after download.
+    const seriesId = Number(document.getElementById('ebdz-files-modal')?.dataset.seriesId) || null;
     resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     const missingSet = new Set(missingVolumes || []);
 
@@ -6220,7 +6223,7 @@ async function loadEbdzThreadFiles(threadId, missingVolumes) {
                     <td style="padding: 8px; white-space: nowrap;">${f.format ? escapeHtml(f.format.toUpperCase()) : '-'}</td>
                     <td style="padding: 8px; white-space: nowrap;">${formatBytes(parseInt(f.filesize, 10) || 0)}</td>
                     <td style="padding: 8px; white-space: nowrap; text-align: center;">
-                        <button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}', this, '${escapeForAttribute(decodedFilename)}')">${svgIcon('plus')} Ajouter</button>
+                        <button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}', this, '${escapeForAttribute(decodedFilename)}', seriesId, null, volume ?? null)">${svgIcon('plus')} Ajouter</button>
                     </td>
                 </tr>
             `;

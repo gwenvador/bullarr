@@ -492,7 +492,6 @@ function _pendingDownloadRowHtml(pending) {
             <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension({ filename: pending.title }))}</td>
             <td style="text-align:center; min-width:110px;">
                 ${statusHtml}
-                ${pending.status === 'completed' ? `<button class="btn-icon-only" onclick="importPendingDownload(${pending.id}, this)" data-tooltip="Importer ce fichier maintenant">${svgIcon('check')}</button>` : ''}
                 ${pending.exhausted ? `<button class="btn-icon-only" onclick="retryTelegramDownload(${pending.id}, this)" data-tooltip="Relancer manuellement (budget de tentatives automatiques épuisé)">${svgIcon('refresh-cw')}</button>` : ''}
                 <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}', {is_integral: ${!!pending.is_integral}, integral_number: ${pending.integral_number ?? 'null'}, is_hs: ${!!pending.is_hs}, hs_number: ${pending.hs_number ?? 'null'}, is_episode: ${!!pending.is_episode}, episode_number: ${pending.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
                 <button class="btn-icon-only" onclick="removePendingDownload(${pending.id}, this)" data-tooltip="Retirer et annuler le téléchargement chez le client (si retrouvé)">${svgIcon('trash-2')}</button>
@@ -584,59 +583,6 @@ async function removePendingDownload(downloadId, button) {
         await loadActiveDownloads();
     } catch (error) {
         alert('❌ Erreur de connexion: ' + error.message);
-        if (button) button.disabled = false;
-    }
-}
-
-// "instead of waiting to import there should be a pret icon [...] and i cannot click
-// import in the bottom part to import it" - le bouton "Importer" du pied de tableau
-// n'opère que sur importFiles (voir executeImport), jamais sur pendingDownloads (juste
-// une ligne de suivi active_downloads, sans filepath/destination complets) : une ligne
-// 'completed' (voir pending.status, get_pending_downloads côté downloader.py) n'avait
-// donc aucun moyen d'être réellement importée depuis /import, malgré le "✓ Prêt" affiché.
-// Un seul scan CIBLÉ ici, déclenché par un clic explicite (pas un sondage automatique -
-// voir la suppression de knownTrackedDownloadIds) pour retrouver le fichier réel
-// correspondant (destination.tracking_id, voir scan_import_directory/
-// find_active_download_destination, posé exactement pour ce cas), puis import immédiat de
-// CE seul fichier via la même route que l'import normal (executeImport/POST
-// /api/import/execute).
-async function importPendingDownload(downloadId, button) {
-    if (button) button.disabled = true;
-    try {
-        const scanResponse = await fetch('/api/import/scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const scanData = await scanResponse.json();
-        if (!scanData.success) {
-            alert('❌ Erreur: ' + (scanData.error || 'Erreur inconnue'));
-            return;
-        }
-        const file = (scanData.files || []).find(f => f.destination && f.destination.tracking_id === downloadId);
-        if (!file || !file.destination) {
-            alert("⚠️ Fichier introuvable sur le disque pour ce téléchargement - il a peut-être déjà été importé, déplacé ou supprimé. Actualisez la page pour mettre à jour l'affichage.");
-            return;
-        }
-        if (!confirm(`Importer "${file.filename}" maintenant ?`)) return;
-
-        const importResponse = await fetch('/api/import/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: [file] })
-        });
-        const importData = await importResponse.json();
-        if (!importData.success || importData.failed_count > 0) {
-            const errorDetail = (importData.failures && importData.failures[0] && importData.failures[0].error) || importData.error || 'Erreur inconnue';
-            alert('❌ Erreur: ' + errorDetail);
-            return;
-        }
-
-        showToast('komga-scan', 'Import terminé - scan Komga demandé', { icon: 'radio', autoHideMs: 4000 });
-        await loadAllLibraries();
-        await loadActiveDownloads();
-    } catch (error) {
-        alert('❌ Erreur de connexion: ' + error.message);
-    } finally {
         if (button) button.disabled = false;
     }
 }
