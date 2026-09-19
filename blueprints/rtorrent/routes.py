@@ -110,7 +110,7 @@ def rtorrent_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @rtorrent_bp.route('/test', methods=['POST', 'GET'])
@@ -134,15 +134,15 @@ def test_rtorrent_connection():
         return jsonify({'success': True, 'message': f"✅ Connexion réussie à rTorrent (version {version})"})
 
     except RtorrentError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except xmlrpc.client.ProtocolError as e:
         if e.errcode in (401, 403):
             return jsonify({'success': False, 'error': "❌ Accès refusé - vérifiez les identifiants"}), e.errcode
         return jsonify({'success': False, 'error': f"Erreur HTTP {e.errcode}: {e.errmsg}"}), 500
     except (ConnectionRefusedError, OSError) as e:
-        return jsonify({'success': False, 'error': f"🔌 Impossible de se connecter à rTorrent: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"🔌 Impossible de se connecter à rTorrent: {'Erreur interne'}"}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
 
 
 @rtorrent_bp.route('/add', methods=['POST'])
@@ -185,15 +185,15 @@ def add_torrent():
         return jsonify({'success': True, 'message': 'Torrent ajouté à rTorrent'})
 
     except RtorrentError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except xmlrpc.client.ProtocolError as e:
         if e.errcode in (401, 403):
             return jsonify({'success': False, 'error': "Accès refusé - vérifiez les identifiants"}), e.errcode
         return jsonify({'success': False, 'error': f"Erreur HTTP {e.errcode}: {e.errmsg}"}), 500
     except (ConnectionRefusedError, OSError) as e:
-        return jsonify({'success': False, 'error': f"Impossible de se connecter à rTorrent: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Impossible de se connecter à rTorrent: {'Erreur interne'}"}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
 
 
 @rtorrent_bp.route('/remove', methods=['POST'])
@@ -219,8 +219,8 @@ def remove_torrent():
         return jsonify({'success': True})
 
     except RtorrentError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except (xmlrpc.client.Fault, xmlrpc.client.ProtocolError, OSError) as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500

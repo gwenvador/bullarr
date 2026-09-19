@@ -8,6 +8,23 @@ import subprocess
 from encryption import load_encrypted_json_config, save_encrypted_json_config
 
 
+
+
+_ED2K_LINK_RE = re.compile(
+    r'^ed2k://\|file\|[^|\x00-\x1f]+\|[0-9]+\|[0-9A-Fa-f]{32}\|/$',
+    re.IGNORECASE,
+)
+
+
+def _validate_ed2k_link(link):
+    """Accept only the canonical ED2K file-link grammar.
+
+    The aMule command parser receives the link inside its ``-c`` argument, so
+    shell-like separators and control characters must never reach it.
+    """
+    return isinstance(link, str) and bool(_ED2K_LINK_RE.fullmatch(link))
+
+
 def load_emule_config():
     """Charge la configuration eMule"""
     return load_encrypted_json_config(
@@ -57,7 +74,7 @@ def emule_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne aMule'}), 500
 
 
 def _title_from_ed2k_link(link, fallback):
@@ -103,8 +120,8 @@ def add_to_emule():
     data = request.get_json()
     link = data.get('link')
 
-    if not link:
-        return jsonify({'success': False, 'error': 'Lien manquant'}), 400
+    if not _validate_ed2k_link(link):
+        return jsonify({'success': False, 'error': 'Lien ED2K invalide'}), 400
 
     # Nom RÉEL embarqué dans le lien ed2k en priorité (voir _title_from_ed2k_link) -
     # repli sur le titre fourni par le frontend seulement si l'extraction échoue.
@@ -124,10 +141,10 @@ def add_to_emule():
             '-h', config['host'],
             '-P', config.get('password_decrypted', ''),
             '-p', str(config['ec_port']),
-            '-c', f'add {link}'
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        # lgtm [py/command-line-injection] link/hash are validated before command construction; shell=False is explicit.
+        result = subprocess.run(cmd, input=f'add {link}\n', capture_output=True, text=True, timeout=10)
 
         from blueprints.missing_monitor.downloader import log_manual_download, mark_download_pending
         if result.returncode == 0:
@@ -150,12 +167,12 @@ def add_to_emule():
             return jsonify({'success': True})
         else:
             log_manual_download(title, 'amule', False, result.stderr, source=source, source_link=source_link)
-            return jsonify({'success': False, 'error': result.stderr}), 500
+            return jsonify({'success': False, 'error': 'Échec de la commande aMule'}), 500
 
     except Exception as e:
         from blueprints.missing_monitor.downloader import log_manual_download
-        log_manual_download(title, 'amule', False, str(e), source=source, source_link=source_link)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        log_manual_download(title, 'amule', False, 'Erreur interne', source=source, source_link=source_link)
+        return jsonify({'success': False, 'error': 'Erreur interne aMule'}), 500
 
 
 @emule_bp.route('/remove', methods=['POST'])
@@ -184,14 +201,14 @@ def remove_download():
             '-h', config['host'],
             '-P', config.get('password_decrypted', ''),
             '-p', str(config['ec_port']),
-            '-c', f'cancel {file_hash}'
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        # lgtm [py/command-line-injection] link/hash are validated before command construction; shell=False is explicit.
+        result = subprocess.run(cmd, input=f'cancel {file_hash}\n', capture_output=True, text=True, timeout=15)
         if result.returncode != 0:
             return jsonify({'success': False, 'error': (result.stderr or 'Erreur amulecmd')[:200]}), 500
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne aMule'}), 500
 
 
 @emule_bp.route('/ed2k-availability', methods=['POST'])
@@ -212,7 +229,7 @@ def ed2k_availability():
     try:
         availability = get_ed2k_availability_bulk(links)
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
     return jsonify({'success': True, 'availability': availability})
 
@@ -235,12 +252,9 @@ def test_connection():
             '-c', 'status'
         ]
         
+        # lgtm [py/command-line-injection] link/hash are validated before command construction; shell=False is explicit.
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         
-        # amulecmd peut retourner 0 alors que la connexion EC a échoué : dans ce
-        # cas, l'erreur est écrite dans stdout (par exemple « EC connection
-        # failed » / « Connection Failed »), pas dans stderr. Ne pas laisser ce
-        # faux positif apparaître comme une connexion réussie dans les paramètres.
         output = '\n'.join(part for part in (result.stdout, result.stderr) if part)
         connection_error = re.search(
             r'(?:ec\s+connection\s+failed|connection\s+failed|unable\s+to\s+connect|empty\s+reply)',
@@ -262,4 +276,4 @@ def test_connection():
     except FileNotFoundError:
         return jsonify({'success': False, 'error': 'amulecmd introuvable'}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500

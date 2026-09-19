@@ -243,7 +243,7 @@ def login_start():
     except FloodWaitError as e:
         return jsonify({'success': False, 'error': f'Trop de tentatives - réessayez dans {e.seconds}s'}), 429
     except RPCError as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
     _pending_login = {
         'session_string': session_string,
@@ -282,7 +282,7 @@ def login_submit_code():
     except FloodWaitError as e:
         return jsonify({'success': False, 'error': f'Trop de tentatives - réessayez dans {e.seconds}s'}), 429
     except RPCError as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
     pending['session_string'] = result['session_string']
 
@@ -315,7 +315,7 @@ def login_submit_password():
     except FloodWaitError as e:
         return jsonify({'success': False, 'error': f'Trop de tentatives - réessayez dans {e.seconds}s'}), 429
     except RPCError as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
     _finalize_login(pending, result)
     return jsonify({'success': True, 'username': result['username'], 'first_name': result['first_name']})
@@ -370,9 +370,9 @@ def add_channel():
         title = _run_login_coro(_check_channel_exists, config['api_id'], config['api_hash_decrypted'],
                                  config['session_decrypted'], channel)
     except RPCError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Canal introuvable ou inaccessible: {e}'}), 400
+        return jsonify({'success': False, 'error': f'Canal introuvable ou inaccessible: Erreur interne'}), 400
 
     channels.append({'username': channel, 'title': title})
     config['channels'] = channels
@@ -420,7 +420,7 @@ def scrape():
     except FloodWaitError as e:
         return jsonify({'success': False, 'error': f'Trop de requêtes - réessayez dans {e.seconds}s'}), 429
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
     return jsonify({'success': True, 'summary': summary})
 
@@ -743,11 +743,6 @@ def search_telegram_files_local(query, limit=100):
             continue
         if len(files) >= limit:
             break
-        # Numéro de tome brut ("pourquoi nordheim ca na pas bien matcher les volumes") -
-        # même parsing que EBDZ (voir 'volume'/'is_integral'/etc. dans /api/search côté
-        # search/routes.py) - un numéro exploitable par le frontend pour taguer
-        # automatiquement CE résultat précis (voir search-results-table.js,
-        # trackingVolumeNumber) plutôt que seulement un libellé d'affichage.
         parsed = LibraryScanner.parse_filename(filename)
         files.append({
             'channel': channel,

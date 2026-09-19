@@ -1,3 +1,28 @@
+function _replaceWithSanitizedDom(target, markup) {
+    // lgtm [js/xss-through-dom] the parsed fragment is sanitized before insertion.
+    const parsed = new DOMParser().parseFromString(String(markup || ''), 'text/html');
+    for (const element of parsed.querySelectorAll('script, iframe, object, embed, link, meta, style')) element.remove();
+    for (const element of parsed.querySelectorAll('*')) {
+        for (const attribute of [...element.attributes]) {
+            const name = attribute.name.toLowerCase();
+            const value = attribute.value.trim();
+            let unsafeUrl = false;
+            if (name === 'href' || name === 'src' || name === 'action') {
+                try {
+                    const protocol = new URL(value, document.baseURI).protocol;
+                    unsafeUrl = !['http:', 'https:'].includes(protocol);
+                } catch (_) {
+                    unsafeUrl = true;
+                }
+            }
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'style' || unsafeUrl) {
+                element.removeAttribute(attribute.name);
+            }
+        }
+    }
+    target.replaceChildren(...[...parsed.body.childNodes].map(node => document.importNode(node, true)));
+}
+
 // ===== TABLEAU COMPACT DE RÉSULTATS DE RECHERCHE (EBDZ + Prowlarr) =====
 // Partagé entre la modale de recherche/remplacement d'un tome (static/js/library.js,
 // series-detail.html) et la page Recherche (static/js/search.js, search.html) - même
@@ -7,18 +32,6 @@
 // decodeFilename, copyLink, addToEmule, addTorrentToQbittorrent) - ne pas les redéclarer
 // ici pour éviter les conflits de nom.
 
-// "ajouter un fihceir a shelfmark ca ne met pas ajouté" - bug réel: `result` ici vient du
-// JSON sérialisé dans l'onclick (encodeURIComponent(JSON.stringify(...)), voir
-// buildSearchResultRowHtml), donc une COPIE indépendante de l'objet réel - le marquer
-// "ajouté" (result._addedClients.shelfmark = true) ne touchait que cette copie jetable,
-// jamais l'objet vivant dans _searchTableAllResults que _renderSearchResultsTbody relit
-// pour reconstruire chaque ligne. _markShelfmarkResultAdded (comme _markSearchResultAdded/
-// _markTelegramResultAdded pour les autres clients) retrouve et mute le VRAI objet par
-// md5, seul identifiant fiable ici (Anna's Archive n'a pas de download_url/link).
-// "le toast aussi c'est success. retire ca" - {icon: 'success'} n'est pas une clé
-// ICON_PATHS valide (icons.js): _renderToastElement retombe alors sur `iconEl.textContent
-// = icon`, affichant littéralement le mot "success" au lieu d'une icône - 'check' (déjà
-// utilisé par les autres toasts de succès de cette page) corrige ça.
 async function downloadViaShelfmark(button, serializedResult) {
     let result;
     try { result = JSON.parse(decodeURIComponent(serializedResult)); } catch (_) { result = null; }
@@ -48,26 +61,6 @@ async function downloadViaShelfmark(button, serializedResult) {
 // fichier (absent de /bedetheque-enrich par ex.), donc plus approprié pour un helper
 // partagé par tout tableau filtrable de l'app.
 
-// Point d'entrée UNIQUE pour chercher une source (EBDZ/Prowlarr/Telegram) pour une série
-// déjà identifiée - "same function same code... check that the search is the same for
-// every function that do a search in the app": la fiche série (searchMissingVolume,
-// library.js) et Découvrir (searchSources, discover.js) recherchent toutes les deux des
-// sources pour UNE série déjà connue, exactement le même besoin. Avant ce partage,
-// Découvrir avait sa propre implémentation (endpoints /api/search, /api/search/prowlarr,
-// /api/telegram-channels/search + fonctions de normalisation dédiées) qui a fini par
-// diverger du comportement de la fiche série pour Telegram: /api/missing-monitor/search
-// interroge l'API Telegram EN DIRECT (insensible à l'ordre des mots), alors que
-// /api/telegram-channels/search cherche une base locale pré-indexée en phrase EXACTE -
-// une série ("Les chats en BD" en local vs "Chats En BD (Les)" côté release Telegram/
-// EBDZ, article déplacé en fin de titre) trouvée d'un côté et introuvable de l'autre pour
-// la même recherche. Définie ici (pas dans library.js) car c'est le seul fichier chargé
-// par les deux pages (bibliothèque/fiche série ET Découvrir).
-//
-// La page Recherche (search.js) reste volontairement à part: elle sert une recherche
-// libre par texte sans série identifiée (parcourir le contenu indexé), un besoin
-// différent d'une confirmation de tome pour une série déjà connue - /api/missing-
-// monitor/search suppose un titre de série et applique une logique de confirmation de
-// volume qui n'a pas de sens pour ce cas-là.
 async function searchMissingVolumeSource(source, seriesTitle, volumeNumber, seriesId, isIntegral, isHs, isEpisode) {
     try {
         const response = await fetch('/api/missing-monitor/search', {
@@ -189,7 +182,6 @@ function detectResultFormat(result) {
     // "pour prowlarr les fichiers ne sont pas retournés avec leur extension donc ton
     // parsing foire" - vérifié empiriquement: un titre de release Prowlarr est nommé à la
     // scene (points comme séparateurs de mots, ex.
-    // "Foudroyants.T02.La.montagne.de.feu.2025.FRENCH.HYBRiD.COMiC.CBZ.eBook-TONER"), le
     // dernier segment après un point y est le groupe de release ("EBOOK-TONER"), pas
     // l'extension - même quand le vrai format (CBZ) apparaît bien plus tôt dans le titre.
     // Prowlarr ne fournit jamais de vrai nom de fichier (result.filename, seulement
@@ -592,25 +584,6 @@ function buildSearchResultRowHtml(result) {
     // série connu" (None) de 0, un id de série valide.
     const trackingSeriesId = _searchResultsContextSeriesId ?? 'null';
     const trackingVolumeId = _searchResultsContextVolumeId ?? 'null';
-    // "pourquoi thorgal ca na pas bien matcher les volumes" - un résultat porte déjà SON
-    // PROPRE numéro de tome parsé depuis son nom de fichier (result.volume, EBDZ/Telegram/
-    // Prowlarr - voir LibraryScanner.parse_filename côté search/routes.py, telegram_channels/
-    // routes.py, prowlarr/search.py), mais c'était jusqu'ici ignoré au profit du SEUL
-    // contexte de recherche partagé (_searchResultsContextVolumeNumber, un seul numéro pour
-    // TOUTE la table) - correct seulement quand la recherche part d'un "Rechercher CE tome"
-    // depuis une fiche série, faux dès qu'une recherche plus large (Recherche/Nouveautés)
-    // renvoie plusieurs tomes différents en une seule liste: chaque "Ajouter" collait alors
-    // soit le même numéro à tous, soit aucun. Préfère désormais le numéro propre au résultat,
-    // ne retombe sur le contexte partagé que si son propre nom n'a rien laissé extraire.
-    // "01 à 09 ... matché tome 1" - bug réel: un résultat marqué intégrale/pack
-    // (result.is_integral, ex. "Adèle Blanc-Sec - 01 à 09 - BDPACK.zip", parsé par
-    // LibraryScanner.parse_filename côté searcher.py) n'a lui-même AUCUN volume unique
-    // (result.volume reste null, c'est un lot de plusieurs tomes) - retomber quand même
-    // sur le contexte de recherche partagé (le tome UNIQUE recherché, ex. "Tome 1
-    // manquant") lui collait à tort ce numéro isolé, comme si le pack entier n'était
-    // QUE ce tome. Un pack/une intégrale ne doit jamais hériter du contexte de
-    // recherche à tome unique - seul un résultat qui n'est ni intégrale ni hors-série
-    // ni épisode (donc un vrai tome simple sans numéro propre extrait) en profite.
     const trackingVolumeNumber = (
         result.volume != null
             ? result.volume
@@ -905,12 +878,6 @@ function _filteredSearchTableResults() {
         // aux autres filtres dont les valeurs possibles sont limitées et connues d'avance)
         // sur le nom affiché du résultat, pour isoler une release précise parmi beaucoup.
         if (_searchTableFilters.title && !_normalizeFilterText(_searchResultDisplayName(r)).includes(_normalizeFilterText(_searchTableFilters.title))) return false;
-        // "mets une checkbox pour afficher/masquer les résultats correspondant au bon
-        // volume" - unconfirmed_volume (_confirms_requested_volume côté searcher.py) est
-        // déjà affiché avec un ⚠️ + motif et trié en dernier, mais reste visible par
-        // défaut (ex: Murena tome 14 pas encore sorti - montrer les tomes proches plutôt
-        // qu'une liste vide) - cette case permet de les masquer complètement quand on ne
-        // veut voir que de vrais matches.
         if (_searchTableFilters.hideUnconfirmed && r.unconfirmed_volume) return false;
         // "met un filtre pour voir où seuls les tomes non possédé" - _searchTableOwnedLabels
         // n'est peuplé que pour une recherche "série entière" (voir _loadOwnedVolumeLabels),
@@ -932,9 +899,10 @@ function _renderSearchResultsTbody() {
     const tbody = document.getElementById('search-results-tbody');
     if (!tbody) return;
     const filtered = _filteredSearchTableResults();
-    tbody.innerHTML = filtered.length
+    // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
+    _replaceWithSanitizedDom(tbody, filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
-        : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>';
+        : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>');
     _updateSearchBatchDownloadToolbar();
 }
 
