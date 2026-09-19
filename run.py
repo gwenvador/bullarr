@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
 Script d'entrée pour l'application Bullarr en mode production
-Usage: python run.py ou FLASK_ENV=production python app.py
+Usage: python run.py ou python app.py
 """
 import os
 import sys
 
 if __name__ == '__main__':
-    os.environ['FLASK_ENV'] = 'production'
     from app import create_app
     
     app = create_app('production')
