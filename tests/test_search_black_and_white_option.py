@@ -111,3 +111,15 @@ def test_single_volume_album_search_keeps_owned_column():
     source = JS.read_text()
     assert 'const ownedColumnHeaderHtml = seriesId' in source
     assert 'if (seriesId && !preserveState)' in source
+
+
+def test_metadata_toolbar_does_not_render_codeql_suppression_text():
+    library_js = (ROOT / 'static' / 'js' / 'library.js').read_text()
+    suppression = 'lgtm [js/bad-code-sanitization]'
+    toolbar_start = library_js.index('const toolbarHtml = `')
+    toolbar_end = library_js.index('cleanupDetachedDropdownMenus();', toolbar_start)
+    # The suppression belongs immediately before DOM sinks, never in markup that
+    # becomes visible metadata-toolbar text.
+    assert suppression not in library_js[toolbar_start:toolbar_end]
+    assert library_js.count(suppression) == 2
+    assert f'// {suppression} values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.\n        modalBody.innerHTML =' in library_js

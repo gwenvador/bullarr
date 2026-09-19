@@ -3946,7 +3946,6 @@ async function renderSeriesDetail(seriesId) {
                             <button class="toolbar-btn" onclick="openBedethequeMatchModal(${seriesId}, () => renderSeriesDetail(${seriesId}))" data-tooltip="Changer le match Bédéthèque de cette série">
                                 <img src="/static/img/bedetheque-logo.png" alt="" class="toolbar-btn-logo"><span class="toolbar-btn-label">Bédéthèque</span>
                             </button>
-                            // lgtm [js/bad-code-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
                             ${enabledIntegrations.ebdz ? `<div class="toolbar-group" id="ebdz-toolbar-group-${seriesId}">
                                 ${buildEbdzToolbarButtonHtml(seriesId, data.ebdz.thread_url)}
                                 <span id="ebdz-status-modal-${seriesId}" class="toolbar-status">${buildEbdzStatusHtml({
@@ -3955,7 +3954,6 @@ async function renderSeriesDetail(seriesId) {
                                     matchStatus: data.ebdz.match_status, matchedTitle: data.ebdz.matched_title, isOneshot: data.is_oneshot
                                 })}</span>
                             </div>` : ''}
-                            // lgtm [js/bad-code-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
                             ${enabledIntegrations.komga ? `<div class="toolbar-group" id="komga-toolbar-group-${seriesId}">
                                 ${buildKomgaToolbarButtonHtml(seriesId, data.komga.url)}
                                 <span id="komga-status-modal-${seriesId}" class="toolbar-status">${buildKomgaStatusHtml({
