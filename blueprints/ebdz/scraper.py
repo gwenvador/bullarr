@@ -252,6 +252,14 @@ class MyBBScraper:
         filename = parts[2] if len(parts) > 2 else None
         filesize = parts[3] if len(parts) > 3 else None
         return filename, filesize
+
+    @staticmethod
+    def ed2k_file_hash(link):
+        """Retourne le hash MD4 qui identifie le contenu d'un lien ED2K."""
+        parts = (link or '').split('|')
+        if len(parts) <= 4 or not re.fullmatch(r'[0-9a-fA-F]{32}', parts[4] or ''):
+            return None
+        return parts[4].lower()
     
     # Borne défensive uniquement (boucle infinie si un forum a une pagination cassée) -
     # plus un réglage normal côté utilisateur ("find the new thread that have been
@@ -526,8 +534,10 @@ class MyBBScraper:
         cursor.execute("SELECT COUNT(*) FROM ed2k_links")
         before = cursor.fetchone()[0]
 
-        # Identifier les liens absents avant l insertion afin de traiter uniquement
-        # les nouveautés de ce passage, sans relancer une recherche globale.
+        # Dédupliquer les variantes d'un même fichier dans un même fil à partir
+        # de son MD4 ED2K. Le lien brut peut varier (AICH optionnel, casse du hash)
+        # tout en désignant strictement le même contenu. Les fichiers publiés dans
+        # des fils différents restent volontairement distincts.
         candidate_links = list(dict.fromkeys(data["link"] for data in ed2k_data))
         existing_links = set()
         for offset in range(0, len(candidate_links), 900):
@@ -535,7 +545,28 @@ class MyBBScraper:
             placeholders = ",".join("?" for _ in chunk)
             cursor.execute(f"SELECT link FROM ed2k_links WHERE link IN ({placeholders})", chunk)
             existing_links.update(row[0] for row in cursor.fetchall())
-        self.new_links = [data for data in ed2k_data if data["link"] not in existing_links]
+
+        candidate_thread_ids = list({str(data.get('thread_id')) for data in ed2k_data if data.get('thread_id') is not None})
+        existing_identities = set()
+        for offset in range(0, len(candidate_thread_ids), 900):
+            chunk = candidate_thread_ids[offset:offset + 900]
+            placeholders = ",".join("?" for _ in chunk)
+            cursor.execute(f"SELECT thread_id, link FROM ed2k_links WHERE thread_id IN ({placeholders})", chunk)
+            for thread_id, link in cursor.fetchall():
+                file_hash = self.ed2k_file_hash(link)
+                if file_hash:
+                    existing_identities.add((str(thread_id), file_hash))
+
+        self.new_links = []
+        for data in ed2k_data:
+            file_hash = self.ed2k_file_hash(data['link'])
+            identity = (str(data.get('thread_id')), file_hash) if file_hash and data.get('thread_id') is not None else None
+            if data['link'] in existing_links or (identity and identity in existing_identities):
+                continue
+            self.new_links.append(data)
+            existing_links.add(data['link'])
+            if identity:
+                existing_identities.add(identity)
 
         rows = [
             (data['link'], data['filename'], data['filesize'], data['volume'],
@@ -545,7 +576,7 @@ class MyBBScraper:
              int(data.get('is_hs', False)), data.get('hs_number'),
              int(data.get('is_episode', False)), data.get('episode_number'),
              normalize_search_text(data['thread_title']), normalize_search_text(data['filename']))
-            for data in ed2k_data
+            for data in self.new_links
         ]
         cursor.executemany("""
             INSERT OR IGNORE INTO ed2k_links (
