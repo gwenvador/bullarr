@@ -21,6 +21,9 @@ def test_ebdz_add_flows_confirm_db_conflict_before_download():
         start = source.index("async function addToEmule(")
         end = source.index("async function checkEmuleStatus(", start)
         assert "await confirmReplacementBeforeDownload(" in source[start:end]
+        for function in ("addTorrentToQbittorrent", "addTorrentToClient", "downloadTelegramFile", "downloadFourtoutici"):
+            fn_start = source.index(f"async function {function}(")
+            assert "await confirmReplacementBeforeDownload(" in source[fn_start:fn_start + 500]
         assert "/api/import/replacement-required" in source
 
 def test_replacement_check_endpoint_uses_database_volume_lookup():

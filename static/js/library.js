@@ -6796,6 +6796,9 @@ function toggleTruncatedText(btn) {
 // ===== qBITTORRENT =====
 // Ajouter un torrent à qBittorrent avec la catégorie par défaut
 async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, title, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳ Envoi...';
     button.disabled = true;
@@ -6855,6 +6858,9 @@ async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = nul
 // logique de catégorie (pas de notion équivalente câblée côté rTorrent/Deluge pour
 // l'instant)
 async function addTorrentToClient(clientName, clientLabel, torrentUrl, button, title, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, title, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳ Envoi...';
     button.disabled = true;
@@ -6909,6 +6915,9 @@ function addTorrentToDeluge(torrentUrl, button, title, seriesId = null, volumeId
 // (bouton visuellement présent mais totalement inopérant). Même comportement que
 // search.js, plus seriesId/volumeId (voir addToEmule ci-dessus).
 async function downloadTelegramFile(channel, messageId, button, channelTitle, filename, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, filename, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳';
     button.disabled = true;
@@ -6948,6 +6957,9 @@ async function downloadTelegramFile(channel, messageId, button, channelTitle, fi
 // implémentation, dupliquée ici comme downloadTelegramFile juste au-dessus (search.js
 // n'est pas chargé sur la fiche série).
 async function downloadFourtoutici(fileId, button, filename, seriesId = null, volumeId = null, volumeNumber = null, downloadUrl = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, filename, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳';
     button.disabled = true;

@@ -129,6 +129,9 @@ async function addToEmule(link, button, title, seriesId = null, volumeId = null,
 }
 
 async function downloadTelegramFile(channel, messageId, button, channelTitle, filename, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, filename, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳';
     button.disabled = true;
@@ -176,6 +179,9 @@ async function downloadTelegramFile(channel, messageId, button, channelTitle, fi
 // "déjà ajouté" via _markSearchResultAdded (link-based) plutôt que _markTelegramResultAdded
 // (channel/message_id-based), puisque ce lien existe réellement ici.
 async function downloadFourtoutici(fileId, button, filename, seriesId = null, volumeId = null, volumeNumber = null, downloadUrl = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, filename, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     button.innerHTML = '⏳';
     button.disabled = true;
@@ -232,6 +238,9 @@ async function checkEmuleStatus() {
 // icône seule 32x32 de cette page (.add-button-qbit) et le bouton icône+texte de la page
 // Découvrir (.btn-download): le contenu affiché à chaque étape s'adapte en conséquence
 async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, title, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     const isIconOnly = button.classList.contains('add-button');
     button.innerHTML = isIconOnly ? '<span class="btn-icon">⏳</span>' : '⏳ Envoi...';
@@ -300,6 +309,9 @@ async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = nul
 // logique de catégorie (pas de notion équivalente câblée côté rTorrent/Deluge pour
 // l'instant)
 async function addTorrentToClient(clientName, clientLabel, torrentUrl, button, title, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, title, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     const isIconOnly = button.classList.contains('add-button');
     button.innerHTML = isIconOnly ? '<span class="btn-icon">⏳</span>' : '⏳ Envoi...';
