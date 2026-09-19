@@ -4,7 +4,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 JS = ROOT / 'static' / 'js' / 'search-results-table.js'
 CSS = ROOT / 'static' / 'css' / 'style-library-search.css'
-BASE_CSS = ROOT / 'static' / 'css' / 'style.css'
 
 
 def run_node(script):
@@ -34,7 +33,7 @@ if (context.compareSearchResults(color, bw) >= 0) process.exit(2);
 
 def test_search_table_keeps_columns_and_wraps_long_filenames():
     source = CSS.read_text()
-    assert 'min-width: 1100px' in BASE_CSS.read_text()
+    assert 'min-width: 1100px' in source
     assert '.replace-results-table .replace-results-filename' in source
     assert 'overflow-wrap: anywhere' in source
 
