@@ -1886,6 +1886,7 @@ function _isFileImportingNow(file) {
 function _importFileRowHtml(file, index) {
     const hasDestination = file.destination;
     const hasKnownVolume = _hasKnownVolume(file);
+    const hasDatabaseVolume = !!file.destination?.volume_id;
     // "en import en cours je ne devrais plus rien changer. c'est uniquement en mode
     // import manuel" - calculé une seule fois ici (avant albumHtml/_volumeCellHtml/
     // statusBadge, qui en ont tous besoin) plutôt que recalculé séparément à chaque
