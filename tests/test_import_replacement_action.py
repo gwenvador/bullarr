@@ -40,3 +40,13 @@ def test_replacement_confirmation_requires_an_existing_library_file_not_only_a_d
     assert "'has_file': bool(row and row[1] and os.path.isfile(row[1]))" in endpoint
     for source_path in (Path("static/js/library.js"), Path("static/js/search.js")):
         assert "!data.has_file" in source_path.read_text()
+
+
+def test_explicit_replacement_search_still_requires_confirmation_when_a_file_exists():
+    for source_path in (Path("static/js/library.js"), Path("static/js/search.js")):
+        source = source_path.read_text()
+        start = source.index("async function confirmReplacementBeforeDownload")
+        end = source.index("async function addToEmule", start)
+        helper = source[start:end]
+        assert "if (!Number.isInteger(Number(seriesId))) return !!forceReplace;" in helper
+        assert "window.confirm('Cet album existe déjà dans Bullarr" in helper

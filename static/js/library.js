@@ -6662,7 +6662,7 @@ async function copyLink(link, button) {
 }
 
 async function confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, title, forceReplace) {
-    if (forceReplace || !Number.isInteger(Number(seriesId))) return !!forceReplace;
+    if (!Number.isInteger(Number(seriesId))) return !!forceReplace;
     try {
         const response = await fetch('/api/import/replacement-required', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
