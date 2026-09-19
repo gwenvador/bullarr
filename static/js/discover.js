@@ -1,3 +1,28 @@
+function _replaceWithSanitizedDom(target, markup) {
+    // lgtm [js/xss-through-dom] the parsed fragment is sanitized before insertion.
+    const parsed = new DOMParser().parseFromString(String(markup || ''), 'text/html');
+    for (const element of parsed.querySelectorAll('script, iframe, object, embed, link, meta, style')) element.remove();
+    for (const element of parsed.querySelectorAll('*')) {
+        for (const attribute of [...element.attributes]) {
+            const name = attribute.name.toLowerCase();
+            const value = attribute.value.trim();
+            let unsafeUrl = false;
+            if (name === 'href' || name === 'src' || name === 'action') {
+                try {
+                    const protocol = new URL(value, document.baseURI).protocol;
+                    unsafeUrl = !['http:', 'https:'].includes(protocol);
+                } catch (_) {
+                    unsafeUrl = true;
+                }
+            }
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'style' || unsafeUrl) {
+                element.removeAttribute(attribute.name);
+            }
+        }
+    }
+    target.replaceChildren(...[...parsed.body.childNodes].map(node => document.importNode(node, true)));
+}
+
 /**
  * Script pour la page de découverte et d'ajout de séries
  */
@@ -358,21 +383,6 @@ async function selectSeries(url, title, cardEl) {
     // lieu de continuer à consommer le quota anti-bot Bédéthèque pour rien.
     searchGeneration++;
 
-    // "ça met toujours Chargement des infos... ça devrait juste rien mettre. on sait pas
-    // si ça charge encore" - la garde ci-dessus arrête bien les requêtes futures, mais un
-    // slot pas encore atteint par la boucle gardait son placeholder "⏳ Chargement des
-    // infos..." affiché indéfiniment (plus aucun code n'allait jamais le vider, puisque
-    // la boucle sort avant de l'atteindre). On sait déjà qu'aucun de ces slots ne
-    // chargera plus rien tout seul - remplacé par un bouton "Recharger" (voir
-    // _reloadCandidateDetailButtonHtml) plutôt qu'un vide définitif, pour pouvoir
-    // récupérer ces infos à la demande si l'utilisateur revient à l'étape 1.
-    //
-    // "ca stoppe le chargement mais il faudrait quand même charger la série que j'ai
-    // cliqué" - le candidat CLIQUÉ, lui, va justement être rechargé juste en dessous (voir
-    // le fetch de secours dans le try/catch) puisque c'est sa fiche qui nourrit l'étape 2 -
-    // son propre slot ne doit donc pas basculer sur "Recharger" comme les autres, sans quoi
-    // la carte encore visible derrière l'étape 2 semble abandonnée alors que ses infos sont
-    // en train d'arriver.
     const clickedIndex = discoverCandidates.findIndex(c => c.url === url);
     document.querySelectorAll('#results-list .result-detail-loading').forEach(span => {
         const detailsSlot = span.closest('.result-details');
@@ -770,7 +780,8 @@ async function searchSources() {
         const allDone = () => ebdzDone && prowlarrDone && telegramDone && fourtouticiDone && annasArchiveDone;
         const render = () => {
             if (combined.length > 0) {
-                document.getElementById('sources-results-list').innerHTML = buildSearchResultsTableHtml(combined, null, seriesId, null, renderedOnce);
+                // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
+                _replaceWithSanitizedDom(document.getElementById('sources-results-list'), buildSearchResultsTableHtml(combined, null, seriesId, null, renderedOnce));
                 // "je veux celui la partout" (loupe carrée sur les filtres texte, voir
                 // bedetheque-indispensables.js) - tableau injecté après coup, hors de
                 // portée du scan une-fois-au-chargement de nav.js.
@@ -892,7 +903,7 @@ function escapeHtml(text) {
 
 function escapeAttr(text) {
     if (!text) return '';
-    return text.replace(/'/g, "\\'").replace(/"/g, '\\"');
+    return String(text).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // Si la page est ouverte avec ?q=..., préremplir et lancer la recherche automatiquement

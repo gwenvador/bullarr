@@ -102,9 +102,6 @@ def top_annuel():
                 place_node = li.select_one('.place')
                 rank_match = re.search(r'(\d+)', place_node.get_text() if place_node else '')
                 rank = int(rank_match.group(1)) if rank_match else len(items) + 1
-                # Le libellé de tome ("8. La Longue Marche de Lucky Luke") vit dans le
-                # texte qui suit le <br/> À L'INTÉRIEUR du même <h3> - absent pour un
-                # one-shot (rien après le <br/>, voir "Cauchon..." dans le HTML observé).
                 h3 = li.select_one('.main h3')
                 volume_label = ''
                 if h3:
@@ -145,4 +142,4 @@ def top_annuel():
         items = [dict(item, already_owned=_match_series_id(item) is not None, series_id=_match_series_id(item)) for item in items]
         return jsonify({'success': True, 'annee': annee, 'origine': origine, 'items': items, 'cached': was_cached})
     except Exception as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 502
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 502

@@ -58,7 +58,7 @@ def test_fourtoutici():
             return jsonify({'success': True})
         return jsonify({'success': False, 'error': f'HTTP {response.status_code}'}), 400
     except (requests.exceptions.RequestException, ValueError) as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
 
 
 @fourtoutici_bp.route('/download', methods=['POST'])

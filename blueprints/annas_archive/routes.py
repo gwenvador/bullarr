@@ -33,7 +33,7 @@ def annas_archive_test():
         if response.status_code == 200: return jsonify({'success': True})
         return jsonify({'success': False, 'error': f'HTTP {response.status_code}'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
 
 
 @annas_archive_bp.route('/shelfmark-download', methods=['POST'])
@@ -107,4 +107,4 @@ def shelfmark_download():
             return jsonify({'success': True, 'status': 'queued', 'tracking_id': tracking_id})
     except requests.RequestException as exc:
         _history(False, f'Shelfmark inaccessible: {exc}')
-        return jsonify({'success': False, 'error': f'Shelfmark inaccessible: {exc}'}), 502
+        return jsonify({'success': False, 'error': f'Shelfmark inaccessible: Erreur interne'}), 502

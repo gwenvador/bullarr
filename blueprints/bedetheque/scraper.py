@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 import re
 import copy
 import sqlite3
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import time
 import random
 import json
@@ -24,6 +24,18 @@ from pathlib import Path
 import hashlib
 
 logger = logging.getLogger(__name__)
+_ALLOWED_HOSTS = {'www.bedetheque.com', 'bedetheque.com'}
+
+
+def _safe_bedetheque_url(value):
+    parsed = urlparse(value or '')
+    if parsed.scheme != 'https' or parsed.hostname not in _ALLOWED_HOSTS:
+        raise ValueError('URL Bédéthèque non autorisée')
+    if not parsed.path.startswith('/') or '..' in parsed.path:
+        raise ValueError('Chemin Bédéthèque non autorisé')
+    # Keep the destination host and path server-controlled; discard user-supplied
+    # authority, scheme, fragment, and query components.
+    return urlunparse(('https', 'www.bedetheque.com', parsed.path, '', '', ''))
 
 
 def _reformat_bedetheque_author_name(name):
@@ -302,17 +314,6 @@ def match_bedetheque_volume(bd_volumes, local_volume):
     if bd_volumes and len(bd_volumes) == 1:
         return bd_volumes[0]
 
-    # Repli par titre: certaines séries n'ont AUCUN album numéroté sur Bédéthèque - chaque
-    # tome y est un one-shot thématique avec son propre titre plutôt qu'un numéro de
-    # séquence (ex: "Les 40 commandements", où chaque album est "Les 40 commandements du
-    # Bricoleur"/"...du Célibataire"/... sans aucun 'number'). Le matching par numéro ne
-    # peut structurellement jamais s'appliquer ici, et len(bd_volumes) > 1 exclut le repli
-    # "un seul album" ci-dessus. On compare le nom de fichier local (nettoyé, voir
-    # _local_title_from_filename) au titre de chaque album via la même similarité Jaccard
-    # que search_and_get_best_match, et on ne retient le meilleur candidat que s'il
-    # dépasse un seuil de confiance minimal - un score faible veut dire qu'aucun album ne
-    # ressemble vraiment au fichier local, mieux vaut alors ne rien matcher que de coller
-    # la mauvaise description/le mauvais titre sur le mauvais tome.
     local_title = _local_title_from_filename(local_volume.get('filename'))
     if local_title and bd_volumes:
         best_match, best_score = None, 0.0
@@ -411,12 +412,6 @@ class BedethequeScraper:
         pratique sur une série restée non matchée après import malgré un titre local
         pourtant correct.
         """
-        # Normalisation Unicode NFC: un nom de fichier issu d'un système qui décompose
-        # les caractères accentués (HFS+/macOS, ex. "e" + accent combinant U+0301 au
-        # lieu de "é" U+00E9 précomposé) donne un titre visuellement identique mais dont
-        # les octets diffèrent - Bedetheque ne retourne alors AUCUN résultat pour une
-        # requête par ailleurs correcte (constaté sur "Et si l'amour c'était aimer",
-        # 0 résultat en NFD contre 1 résultat exact en NFC)
         query = unicodedata.normalize('NFC', query)
 
         candidates = [self._reorder_trailing_article(query), query.strip()]
@@ -429,9 +424,6 @@ class BedethequeScraper:
         if no_suffix and no_suffix.lower() != query.strip().lower():
             candidates.append(no_suffix)
 
-        # Repli: certains signes de ponctuation dans la requête renvoient
-        # systématiquement 0 résultat côté Bedetheque, même quand le titre existe bien
-        # tel quel sur le site (constaté sur "Incroyable !")
         no_punct = re.sub(r'[!?…]+', '', query)
         no_punct = re.sub(r'\s+', ' ', no_punct).strip()
         if no_punct and no_punct.lower() != query.strip().lower():
@@ -585,7 +577,7 @@ class BedethequeScraper:
         directement sur Bédéthèque."""
         try:
             self._ensure_session()
-            response = self.session.get(author_url, timeout=15)
+            response = self.session.get(_safe_bedetheque_url(author_url), timeout=15)
             response.encoding = 'utf-8'
             _anti_bot_delay()
 
@@ -747,12 +739,6 @@ class BedethequeScraper:
                 'editeurs': [],
                 'author_links': {},
                 'volumes': [],
-                # "parse les Séries liées [...] toutes ces series font parties du meme
-                # univers" - liste de {title, url} vers d'autres fiches série Bédéthèque
-                # partageant le même univers/personnages (widget "Séries liées" de la
-                # sidebar, ex: https://www.bedetheque.com/serie-12-BD-Nordheim.html liste
-                # ses spin-offs) - absent de la page pour la plupart des séries (pas de
-                # spin-off connu), jamais deviné.
                 'related_series': [],
                 # Recommandations éditoriales « A lire aussi » de la fiche, distinctes
                 # des « Séries liées » de l'univers.
@@ -1197,7 +1183,7 @@ class BedethequeScraper:
         ne comptant plus du tout dans la comparaison - le tri stable retombait alors sur
         le premier de la liste Bedetheque, pas nécessairement le bon."""
         import unicodedata
-        text = unicodedata.normalize('NFKD', text or '')
+        text = unicodedata.normalize('NFKD', str(text or '')[:255])
         text = ''.join(c for c in text if not unicodedata.combining(c))
         text = text.lower()
         text = re.sub(r"[/\-,.:!?…'’‘\"()\[\]]", ' ', text)
@@ -1205,8 +1191,12 @@ class BedethequeScraper:
 
     @staticmethod
     def _strip_trailing_annotation(title):
-        ""
-        return re.sub(r'\s*[(\[][^)\]]*[)\]]\s*$', '', title or '').strip()
+        value = (title or '').rstrip()
+        if not value or value[-1] not in ')]':
+            return value.strip()
+        opener = '(' if value[-1] == ')' else '['
+        start = value.rfind(opener)
+        return value[:start].rstrip() if start >= 0 else value.strip()
 
     @classmethod
     def _bedetheque_evidence_tokens(cls, info):
@@ -1375,6 +1365,7 @@ class BedethequeScraper:
             # essai réel de ce correctif a échoué exactement pour cette raison. "@canal" et
             # l'extension retirés pour la même raison (bruit qui ne peut jamais correspondre
             # à rien côté Bédéthèque).
+            # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
             hint_text = re.sub(r'\.[a-zA-Z0-9]{2,4}$', '', re.sub(r'@.*$', '', raw_hint or title)).replace('_', ' ')
             hint_tokens = set(self._normalize_for_match(hint_text).split())
             best_info, best_overlap, tie = None, 0, False

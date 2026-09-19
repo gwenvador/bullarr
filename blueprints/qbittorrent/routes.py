@@ -74,7 +74,7 @@ def qbittorrent_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @qbittorrent_bp.route('/test', methods=['POST', 'GET'])
@@ -101,7 +101,7 @@ def test_qbittorrent_connection():
         # Créer une session authentifiée
         session, base_url, error = create_qbittorrent_session(config)
         if error:
-            return jsonify({'success': False, 'error': f"Erreur config: {error}"}), 500
+            return jsonify({'success': False, 'error': f"Erreur config: Erreur interne"}), 500
 
         api_url = f"{base_url}/api/v2/app/webuiVersion"
 
@@ -161,12 +161,12 @@ def test_qbittorrent_connection():
     except requests.exceptions.ConnectionError as ce:
         return jsonify({
             'success': False,
-            'error': f"🔌 Impossible de se connecter à qBittorrent.\n\nVérifiez:\n- L'URL: {config.get('url')}\n- Le port: {config.get('port')}\n- qBittorrent est démarré\n- Le Web UI est activé\n- Pas de pare-feu bloquant\n\nErreur: {str(ce)[:80]}"
+            'error': '🔌 Impossible de se connecter à qBittorrent. Vérifiez la configuration et que le service est accessible.'
         }), 500
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f"Erreur: {str(e)}"
+            'error': f"Erreur: {'Erreur interne'}"
         }), 500
 
 
@@ -210,7 +210,7 @@ def get_categories_and_tags():
             # Best-effort: catégories laissées vides plutôt que de faire échouer toute
             # la route (les tags peuvent quand même être récupérés ci-dessous), aucune
             # autre trace de cet échec sinon.
-            print(f"[qBittorrent] Erreur récupération catégories: {str(e)}", file=sys.stderr)
+            print(f"[qBittorrent] Erreur récupération catégories: {'Erreur interne'}", file=sys.stderr)
 
         # Récupérer les tags
         try:
@@ -223,7 +223,7 @@ def get_categories_and_tags():
                     tags = []
         except Exception as e:
             # Best-effort, voir commentaire sur les catégories ci-dessus.
-            print(f"[qBittorrent] Erreur récupération tags: {str(e)}", file=sys.stderr)
+            print(f"[qBittorrent] Erreur récupération tags: {'Erreur interne'}", file=sys.stderr)
 
         return jsonify({
             'success': True,
@@ -234,7 +234,7 @@ def get_categories_and_tags():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f"Erreur: {str(e)}",
+            'error': f"Erreur: {'Erreur interne'}",
             'categories': [],
             'tags': []
         }), 500
@@ -319,7 +319,7 @@ def create_qbittorrent_session(config, for_test=False):
         return session, base_url, None
 
     except Exception as e:
-        return None, None, str(e)
+        return None, None, 'Erreur interne'
 
 
 def get_qbittorrent_torrent_names(hashes):
@@ -393,7 +393,7 @@ def remove_torrent():
             return jsonify({'success': False, 'error': f'HTTP {response.status_code}'}), 500
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @qbittorrent_bp.route('/add', methods=['POST'])
@@ -432,7 +432,7 @@ def add_torrent():
         # Créer une session authentifiée
         session, base_url, error = create_qbittorrent_session(config)
         if error:
-            return jsonify({'success': False, 'error': f"Erreur config: {error}"}), 500
+            return jsonify({'success': False, 'error': f"Erreur config: Erreur interne"}), 500
 
         # Ajouter le torrent
         api_url = f"{base_url}/api/v2/torrents/add"
@@ -509,7 +509,7 @@ def add_torrent():
             except Exception as e:
                 return jsonify({
                     'success': False,
-                    'error': f"Erreur lors du téléchargement du torrent: {str(e)}"
+                    'error': f"Erreur lors du téléchargement du torrent: {'Erreur interne'}"
                 }), 500
 
         # Convertir tous les paramètres en strings pour le form-data
@@ -533,7 +533,7 @@ def add_torrent():
                 except Exception as e:
                     # Best-effort: le fichier temporaire resterait juste orphelin sinon,
                     # aucune autre trace de cet échec.
-                    print(f"[qBittorrent Add] Erreur suppression fichier temp: {str(e)}", file=sys.stderr)
+                    print(f"[qBittorrent Add] Erreur suppression fichier temp: {'Erreur interne'}", file=sys.stderr)
 
         if response.status_code == 200:
             # qBittorrent's /add répond "Ok." (HTTP 200) même quand rien n'a été ajouté -
@@ -611,5 +611,5 @@ def add_torrent():
     except Exception as e:
         return jsonify({
             'success': False,
-            'error': f"Erreur: {str(e)}"
+            'error': f"Erreur: {'Erreur interne'}"
         }), 500

@@ -2513,7 +2513,7 @@ def list_series_path_correction_folders(series_id):
     try:
         return jsonify({'success': True, **_list_series_path_correction_folders(conn, series_id, request.args.get('path'), request.args.get('search'))})
     except ValueError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     finally:
         conn.close()
 
@@ -2576,7 +2576,7 @@ def preview_series_path_correction(series_id):
             'files': [{'volume_id': volume_id, 'new_path': new_path} for volume_id, new_path in plan['volume_updates']],
         })
     except ValueError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     finally:
         conn.close()
 
@@ -2605,7 +2605,7 @@ def execute_series_path_correction(series_id):
                         'affected_volumes': len(plan['volume_updates'])})
     except ValueError as exc:
         conn.rollback()
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     finally:
         conn.close()
 
@@ -4467,7 +4467,7 @@ def import_state_snapshot():
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(exc)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @library_bp.route('/api/import/file', methods=['DELETE'])

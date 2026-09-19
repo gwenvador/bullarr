@@ -19,6 +19,7 @@ import sqlite3
 import threading
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -48,7 +49,7 @@ def _extract_bedetheque_url(msg):
         return match.group(0).rstrip(').,;')
     for entity in (msg.entities or []):
         url = getattr(entity, 'url', None)
-        if url and 'bedetheque.com' in url.lower():
+        if url and urlparse(url).hostname in {'bedetheque.com', 'www.bedetheque.com'}:
             return url
     return None
 
@@ -214,7 +215,7 @@ async def _scrape_all(api_id, api_hash, session_string, channels, limit, loop, s
                 title, files = await _scrape_channel(client, channel, limit, search=search)
                 results[channel] = {'title': title, 'files': files, 'error': None}
             except Exception as e:
-                results[channel] = {'title': channel, 'files': [], 'error': str(e)}
+                results[channel] = {'title': channel, 'files': [], 'error': 'Erreur interne'}
         return results
     finally:
         await client.disconnect()
@@ -344,7 +345,7 @@ def run_backfill_background(api_id, api_hash, session_string, channels, stop_fla
             # dans les logs container pour diagnostic.
             print(f"✗ Erreur backfill {channel}: {e}")
             channel_state['done'] = True
-            channel_state['error'] = str(e)
+            channel_state['error'] = 'Erreur interne'
             state[channel] = channel_state
             _save_backfill_state(state)
             pending.pop(0)
@@ -540,8 +541,6 @@ async def _download_one(api_id, api_hash, session_string, channel, message_id, t
                 await asyncio.sleep(wait_seconds)
 
         # Un fichier tronqué silencieusement en cours de route (déjà constaté à deux
-        # reprises sur le même fichier lors de la récupération de la série "Le testament
-        # du Capitaine Crown", et une troisième fois ici sur "Foudroyants" T02: 43 Mo reçus
         # sur 228 Mo attendus) n'est jamais remonté comme une erreur par download_media
         # lui-même - il rend juste la main une fois le flux terminé, sans lever
         # d'exception ni comparer à la taille annoncée par le message.
@@ -679,7 +678,7 @@ def download_channel_file_background(api_id, api_hash, session_string, channel, 
             # ("title") plutôt que le simple identifiant de canal - `filename` n'est pas
             # encore défini à ce stade (l'échec a eu lieu avant que le fichier ne soit
             # renommé/déplacé), donc le nom réel n'est pas encore connu.
-            _log(pending_title or channel_title or channel, False, str(e), tracking_id=download_id)
+            _log(pending_title or channel_title or channel, False, 'Erreur interne', tracking_id=download_id)
             if app and download_id:
                 with app.app_context():
                     mark_download_failed(download_id)

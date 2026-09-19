@@ -90,7 +90,7 @@ function escapeHtmlHistory(text) {
     return div.innerHTML;
 }
 function escapeAttrHistory(text) {
-    return (text == null ? '' : String(text)).replace(/'/g, "\\'");
+    return (text == null ? '' : String(text)).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function importHistoryVolumeLabel(f) {
