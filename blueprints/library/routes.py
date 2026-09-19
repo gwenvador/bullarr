@@ -5225,6 +5225,39 @@ def _maybe_convert_import_file_to_cbz(file_data, source_path, import_config):
     return new_path, f'Converti {fmt.upper()} → CBZ'
 
 
+@library_bp.route('/api/import/replacement-required', methods=['POST'])
+def import_replacement_required_route():
+    """Report whether a known target album already exists in Bullarr's database."""
+    data = request.get_json(silent=True) or {}
+    series_id = data.get('series_id')
+    if not isinstance(series_id, int):
+        return jsonify({'success': True, 'existing': False})
+
+    volume_id = data.get('volume_id')
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if isinstance(volume_id, int):
+            row = cursor.execute(
+                'SELECT id, filepath FROM volumes WHERE id = ? AND series_id = ?',
+                (volume_id, series_id)
+            ).fetchone()
+        else:
+            scanner = LibraryScanner()
+            parsed = scanner.parse_filename(data.get('title') or '')
+            single = cursor.execute(
+                'SELECT bedetheque_total_volumes FROM series WHERE id = ?', (series_id,)
+            ).fetchone()
+            row = _find_existing_volume_for_import(
+                cursor, series_id, parsed,
+                single_album=bool(single and single[0] == 1)
+            )
+        return jsonify({'success': True, 'existing': bool(row),
+                        'volume_id': row[0] if row else None})
+    finally:
+        conn.close()
+
+
 @library_bp.route('/api/import/mark-manual', methods=['POST'])
 def mark_import_file_manual_route():
     """Marque un fichier de /import comme assigné/corrigé manuellement ("si jai a faire

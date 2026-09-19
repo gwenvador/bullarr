@@ -13,3 +13,17 @@ def test_database_volume_flag_is_scoped_to_the_import_row_renderer():
     end = source.index("function _pendingPackGroupRowHtml", start)
     renderer = source[start:end]
     assert "const hasDatabaseVolume = !!file.destination?.volume_id;" in renderer
+
+
+def test_ebdz_add_flows_confirm_db_conflict_before_download():
+    for source_path in (Path("static/js/library.js"), Path("static/js/search.js")):
+        source = source_path.read_text()
+        start = source.index("async function addToEmule(")
+        end = source.index("async function checkEmuleStatus(", start)
+        assert "await confirmReplacementBeforeDownload(" in source[start:end]
+        assert "/api/import/replacement-required" in source
+
+def test_replacement_check_endpoint_uses_database_volume_lookup():
+    source = Path("blueprints/library/routes.py").read_text()
+    assert "@library_bp.route('/api/import/replacement-required', methods=['POST'])" in source
+    assert "_find_existing_volume_for_import(" in source

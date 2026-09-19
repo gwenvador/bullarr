@@ -69,7 +69,26 @@ async function copyLink(link, button) {
     }
 }
 
+async function confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, title, forceReplace) {
+    if (forceReplace || !Number.isInteger(Number(seriesId))) return !!forceReplace;
+    try {
+        const response = await fetch('/api/import/replacement-required', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({series_id: Number(seriesId), volume_id: volumeId, volume_number: volumeNumber, title})
+        });
+        const data = await response.json();
+        if (!data.success || !data.existing) return false;
+        return window.confirm('Cet album existe déjà dans Bullarr. Voulez-vous remplacer son fichier existant ?') ? true : null;
+    } catch (error) {
+        console.warn('Impossible de vérifier le conflit de remplacement:', error);
+        return false;
+    }
+}
+
 async function addToEmule(link, button, title, seriesId = null, volumeId = null, volumeNumber = null, source = 'ebdz', sourceLink = null, forceReplace = false) {
+    forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, title, forceReplace);
+    if (forceReplace === null) return;
+
     const originalHtml = button.innerHTML;
     button.innerHTML = '<span class="btn-icon">⏳</span>';
     button.disabled = true;
