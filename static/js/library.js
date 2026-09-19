@@ -6610,6 +6610,7 @@ function displaySearchResults(seriesTitle, volumeNumber, results, displayLabel, 
         </div>
     `;
 
+    // lgtm [js/bad-code-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
     // This is application-generated markup: every external value is escaped while the
     // fixed markup deliberately contains inline controls (filter onchange, row downloads,
     // retry and close). The generic sanitizer removes every on* attribute, leaving the
