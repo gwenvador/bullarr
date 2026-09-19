@@ -195,6 +195,8 @@ class Config:
         'auto_assign_rules': [],  # Liste des règles d'auto-assignation
         'monitored_extensions': ['.cbz', '.cbr', '.zip', '.rar', '.pdf'],
         'blocked_search_extensions': ['epub'],
+        # Preference de classement des éditions Noir & Blanc dans Recherche.
+        'prioritize_black_and_white': False,
         # "met une option pour automatiquement convertir pour cbz dans l'import
         # automatique. si c'est desactivé l'utilisateur doit manuellement convertir" -
         # True par défaut pour rester identique au comportement précédent (la conversion

@@ -2568,7 +2568,15 @@ function setVolumesTableSort(column) {
     }
 }
 
+function _isBlackAndWhiteVolume(v) {
+    const name = String(v.filename || (v.comicinfo || {}).title || '');
+    const normalized = name.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    return /\bn\s*&\s*b\b/.test(normalized)
+        || /\bnoir\s*(?:&|et)\s*blanc\b/.test(normalized.replace(/[_-]+/g, ' '));
+}
+
 const VOLUME_TABLE_OPTIONAL_COLUMNS = [
+    { key: 'blackAndWhite', label: 'Noir & Blanc', icon: '◐', header: 'N&B', render: v => _isBlackAndWhiteVolume(v) ? 'Oui' : 'Non' },
     { key: 'author', label: 'Auteur', icon: '✍️', header: 'Auteur', render: v => (v.comicinfo || {}).writer || v.author || '—' },
     { key: 'publisher', label: 'Éditeur', icon: '🏢', header: 'Éditeur', render: v => (v.comicinfo || {}).publisher || '—' },
     { key: 'genre', label: 'Genre', icon: '🏷️', header: 'Genre', render: v => (v.comicinfo || {}).genre || '—' },

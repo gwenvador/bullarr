@@ -7773,6 +7773,8 @@ def import_config():
             # décocher revient juste à ne plus rien exclure de la recherche, aucun risque
             # de casser silencieusement autre chose.
             config['blocked_search_extensions'] = data['blocked_search_extensions'] or []
+        if 'prioritize_black_and_white' in data:
+            config['prioritize_black_and_white'] = bool(data['prioritize_black_and_white'])
         if 'auto_acquire_pack_search_enabled' in data:
             config['auto_acquire_pack_search_enabled'] = bool(data['auto_acquire_pack_search_enabled'])
         if 'auto_acquire_on_add_enabled' in data:

@@ -84,3 +84,30 @@ if (!context._isBlackAndWhiteSearchResult(ebdzFilename)) process.exit(3);
 def test_album_search_modal_preserves_inline_filter_handlers():
     library_js = (ROOT / 'static' / 'js' / 'library.js').read_text()
     assert 'searchModalBody.innerHTML = html;' in library_js
+
+
+
+def test_album_search_keeps_owned_column_for_single_volume_searches():
+    source = JS.read_text()
+    assert "const ownedColumnHeaderHtml = seriesId" in source
+    assert "if (seriesId && !preserveState)" in source
+
+
+def test_black_and_white_preference_is_persisted_and_series_column_is_hidden_by_default():
+    config = (ROOT / 'config.py').read_text()
+    routes = (ROOT / 'blueprints' / 'library' / 'routes.py').read_text()
+    settings_html = (ROOT / 'templates' / 'settings.html').read_text()
+    settings_js = (ROOT / 'static' / 'js' / 'settings.js').read_text()
+    library_js = (ROOT / 'static' / 'js' / 'library.js').read_text()
+    assert "'prioritize_black_and_white': False" in config
+    assert "config['prioritize_black_and_white'] = bool(data['prioritize_black_and_white'])" in routes
+    assert 'id="prioritizeBlackAndWhite"' in settings_html
+    assert 'saveBlackAndWhiteSearchPriority' in settings_js
+    assert "key: 'blackAndWhite'" in library_js
+    assert "let visibleVolumeTableColumns = new Set(JSON.parse(localStorage.getItem('volumeTableVisibleColumns') || '[]'));" in library_js
+
+
+def test_single_volume_album_search_keeps_owned_column():
+    source = JS.read_text()
+    assert 'const ownedColumnHeaderHtml = seriesId' in source
+    assert 'if (seriesId && !preserveState)' in source

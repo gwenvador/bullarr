@@ -1786,9 +1786,31 @@ function resetSearchSourcePriority() {
 
 let searchFormatPriorityDraft = [];
 
-function initSearchFormatPriority() {
+async function initSearchFormatPriority() {
     searchFormatPriorityDraft = getSearchFormatPriority().map(entry => ({ ...entry }));
+    const checkbox = document.getElementById('prioritizeBlackAndWhite');
+    if (checkbox) {
+        checkbox.checked = false;
+        try {
+            const config = await (await fetch('/api/import/config')).json();
+            checkbox.checked = !!config.prioritize_black_and_white;
+            localStorage.setItem('bullarr.prioritizeBlackAndWhite', String(checkbox.checked));
+        } catch (_) {
+            checkbox.checked = localStorage.getItem('bullarr.prioritizeBlackAndWhite') === 'true';
+        }
+    }
     renderSearchFormatPriorityList();
+}
+
+function saveBlackAndWhiteSearchPriority(enabled) {
+    localStorage.setItem('bullarr.prioritizeBlackAndWhite', String(!!enabled));
+    fetch('/api/import/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prioritize_black_and_white: !!enabled })
+    }).then(r => {
+        if (!r.ok) throw new Error('save failed');
+        showToast('bw-priority-saved', '✅ Préférence Noir & Blanc sauvegardée !', { icon: 'check', autoHideMs: 3000 });
+    }).catch(() => showToast('bw-priority-error', '✗ Impossible de sauvegarder la préférence Noir & Blanc', { icon: 'error', autoHideMs: 4000 }));
 }
 
 function renderSearchFormatPriorityList() {

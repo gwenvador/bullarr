@@ -1456,6 +1456,10 @@
                         </div>
 
                         <div class="settings-card">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:16px;">
+                                <input type="checkbox" id="prioritizeBlackAndWhite" onchange="saveBlackAndWhiteSearchPriority(this.checked)">
+                                <span><strong>Prioriser les formats Noir & Blanc</strong><br><small class="help-text">Les éditions N&amp;B restent toujours visibles ; cette préférence modifie uniquement leur position dans les résultats.</small></span>
+                            </label>
                             <ul class="format-priority-list" id="searchFormatPriorityList"></ul>
 
                             <div class="form-actions" style="margin-top: 20px;">

@@ -264,6 +264,10 @@ function getSearchSourcePriority() {
     fetch('/api/import/config')
         .then(r => r.json())
         .then(config => {
+            if (typeof config.prioritize_black_and_white === 'boolean') {
+                _searchAvoidBlackAndWhitePriority = !config.prioritize_black_and_white;
+                localStorage.setItem('bullarr.prioritizeBlackAndWhite', String(config.prioritize_black_and_white));
+            }
             if (Array.isArray(config.auto_acquire_sources) && config.auto_acquire_sources.length) {
                 localStorage.setItem('searchSourcePriority', JSON.stringify(config.auto_acquire_sources));
             }
@@ -314,13 +318,13 @@ function _isBlackAndWhiteSearchResult(result) {
 }
 
 let _searchAvoidBlackAndWhitePriority = (() => {
-    try { return localStorage.getItem('bullarr.searchAvoidBlackAndWhitePriority') === 'true'; }
+    try { return localStorage.getItem('bullarr.prioritizeBlackAndWhite') !== 'true'; }
     catch (_) { return false; }
 })();
 
 function _setSearchAvoidBlackAndWhitePriority(enabled) {
     _searchAvoidBlackAndWhitePriority = !!enabled;
-    try { localStorage.setItem('bullarr.searchAvoidBlackAndWhitePriority', String(_searchAvoidBlackAndWhitePriority)); }
+    try { localStorage.setItem('bullarr.prioritizeBlackAndWhite', String(!_searchAvoidBlackAndWhitePriority)); }
     catch (_) { /* private browsing/storage disabled: keep the current page state */ }
     _searchTableAllResults = [..._searchTableAllResults].sort(compareSearchResults);
     _renderSearchResultsTbody();
@@ -1051,11 +1055,13 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
     // tome précis n'a par définition rien à comparer (on sait déjà qu'il manque). Pas
     // rechargé sur un rappel préservé (preserveState, même seriesId/volumeNumber donc
     // même réponse) pour ne pas répéter la requête à chaque source qui répond.
-    if (seriesId && volumeNumber === null && !preserveState) {
+    if (seriesId && !preserveState) {
+        // Possession is useful for an individual-volume search too: a matching result
+        // may be an alternate/replacement release for a tome already on disk.
         _searchTableOwnedLabels = null;
         _searchTableOneshotOwned = false;
         _loadOwnedVolumeLabels(seriesId);
-    } else if (!seriesId || volumeNumber !== null) {
+    } else if (!seriesId) {
         _searchTableOwnedLabels = null;
         _searchTableOneshotOwned = false;
     }
@@ -1093,7 +1099,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
     // tableau. Seulement pour une recherche "série entière" avec une série connue, la
     // seule situation où _searchTableOwnedLabels est alimenté (voir isOwned,
     // buildSearchResultRowHtml) - sinon l'en-tête reste une colonne vide comme avant.
-    const ownedColumnHeaderHtml = (volumeNumber === null && seriesId)
+    const ownedColumnHeaderHtml = seriesId
         ? _searchResultsFilterHeaderHtml('owned', 'Possédé',
             `<select id="search-results-filter-owned" aria-label="Filtrer par possession" class="search-results-filter-select th-filterable-control${activeClass(f.owned)}" data-tooltip="Filtrer par possession" onchange="_syncFilterControlActive(this); _applySearchTableFilter('owned', this.value)">
                 <option value="">Tout</option>
