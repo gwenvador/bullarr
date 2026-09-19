@@ -3977,6 +3977,7 @@ async function renderSeriesDetail(seriesId) {
         `;
 
         cleanupDetachedDropdownMenus();
+        // lgtm [js/bad-code-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
         modalBody.innerHTML = `
             ${headerHtml}
             ${toolbarHtml}
