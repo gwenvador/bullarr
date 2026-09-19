@@ -1865,6 +1865,7 @@ function _isFileImportingNow(file) {
     if (persistedStatus) return persistedStatus === 'importing';
     const hasDestination = file.destination;
     const hasKnownVolume = _hasKnownVolume(file);
+    const hasDatabaseVolume = !!file.destination?.volume_id;
     const isManualOverride = !!(file.manual_override || (file.destination && file.destination.manual_override));
     const willAutoImportItself = hasDestination && hasKnownVolume && !isManualOverride && !file.auto_import_skip_reason;
     // "si l'import ne marche pas garde en import manuel. retire import en cours dans
@@ -1935,6 +1936,8 @@ function _importFileRowHtml(file, index) {
             ? `<span style="color:#6c757d; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Téléchargement...</span>`
         : file.destination?.download_status === 'importing'
         ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
+        : hasDatabaseVolume
+            ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Cet album existe déjà dans la base Bullarr. Choisissez explicitement si le nouveau fichier doit le remplacer.">${svgIcon('triangle-alert')} Fichier existant — choix manuel</span>`
         : file.destination?.download_status === 'completed'
             ? (file.auto_import_skip_reason
                 ? `<span style="color:#28a745; font-weight:600;" data-tooltip="L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement">${svgIcon('check')} Prêt — import manuel</span>`
@@ -1989,7 +1992,7 @@ function _importFileRowHtml(file, index) {
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
                 ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}</div>` : ''}
                 ${_convertActionHtml(file)}
-                ${file.existing_conflict ? `<div class="import-auto-skip-explanation">⚠️ Fichier existant : ${escapeHtml(file.existing_conflict.path)} — ${file.existing_conflict.will_replace ? 'sera remplacé selon les règles actuelles' : 'conservé selon les règles actuelles'}<button type="button" class="btn-neutral-sm" style="margin-left:6px;" onclick="openDestinationModal(${index})">Remplacer le fichier existant</button></div>` : ''}
+                ${hasDatabaseVolume ? `<div class="import-auto-skip-explanation">⚠️ Album déjà enregistré dans Bullarr.<button type="button" class="btn-neutral-sm" style="margin-left:6px;" onclick="openDestinationModal(${index})">Remplacer le fichier existant</button></div>` : ''}
                 ${_archiveContentActionHtml(file)}
             </td>
             <td><div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">${albumHtml}${bedethequeLinkHtml || ''}</div></td>
