@@ -78,3 +78,9 @@ if (!context._isBlackAndWhiteSearchResult(ebdzFilename)) process.exit(3);
 """
     result = run_node(script)
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+
+def test_album_search_modal_preserves_inline_filter_handlers():
+    library_js = (ROOT / 'static' / 'js' / 'library.js').read_text()
+    assert 'searchModalBody.innerHTML = html;' in library_js

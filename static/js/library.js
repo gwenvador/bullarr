@@ -6602,8 +6602,11 @@ function displaySearchResults(seriesTitle, volumeNumber, results, displayLabel, 
         </div>
     `;
 
-    // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
-    _replaceWithSanitizedDom(searchModalBody, html);
+    // This is application-generated markup: every external value is escaped while the
+    // fixed markup deliberately contains inline controls (filter onchange, row downloads,
+    // retry and close). The generic sanitizer removes every on* attribute, leaving the
+    // modal visually rendered but all controls inert.
+    searchModalBody.innerHTML = html;
     initClearableSearchInputs(searchModalBody);
 
     // Vérifier si aMule est activé pour afficher/cacher les boutons "Ajouter à eMule"
