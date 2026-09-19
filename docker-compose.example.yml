@@ -5,13 +5,19 @@ services:
     ports:
       - "4000:5000"
     volumes:
+      # Données persistantes de Bullarr : base SQLite, configurations et clés.
       - ./data:/app/data
+      # Bibliothèque de bandes dessinées.
       - ./BD:/BD
+      # Dossier entrant d'aMule, monté en lecture seule.
       - /path/to/amule/incoming:/downloads/amule:ro
+      # Dossier des téléchargements torrent.
       - /path/to/torrents:/downloads/torrents
+      # Dossier entrant des téléchargements Telegram.
       - /path/to/telegram/incoming:/downloads/telegram
+      # Dossier entrant Fourtoutici.
       - ./incoming:/downloads/fourtoutici
     environment:
-      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env before starting Bullarr}
-      - TZ=Europe/Paris
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Bullarr}
+      TZ: Europe/Paris
     restart: unless-stopped
