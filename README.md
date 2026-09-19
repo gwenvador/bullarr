@@ -35,7 +35,6 @@ tomes manquants.
 - 🕓 **Historique** : imports et actions (renommage/suppression/déplacement) journalisés
 - 🔐 **Sécurité** : secrets (mots de passe/clés API) chiffrés sur disque (Fernet), SSO/OIDC
   optionnel (désactivé par défaut)
-- 🌓 **Mode clair/sombre**
 - 🐳 **100 % Docker**, base SQLite (aucune base externe à gérer)
 
 ---
@@ -144,7 +143,6 @@ est optionnelle et désactivée tant qu'elle n'est pas explicitement activée.
 | 🔐 SSO / OIDC | Authentification externe (désactivée par défaut) |
 | 📊 Surveillance | Détection et acquisition automatique des tomes manquants |
 | 📥 Imports | Activation et règles de l'import automatique de fichiers |
-| 🌓 Thème | Clair / sombre |
 | 🗂️ Recherche | Priorité des formats dans les résultats de recherche |
 | ✏️ Format | Templates de renommage fichiers/dossiers |
 | 💾 Backup | Export/import d'une sauvegarde (bases + configs + clé de chiffrement) |
