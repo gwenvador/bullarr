@@ -6210,6 +6210,9 @@ async function loadEbdzThreadFiles(threadId, missingVolumes) {
         const rowsHtml = files.map(f => {
             const decodedFilename = decodeFilename(f.filename);
             const volume = f.volume || f.parsed_volume;
+            // Values injected into the inline handler must be literal primitives:
+            // an inline onclick runs in window scope, not this map callback's scope.
+            const volumeForAdd = Number.isFinite(Number(volume)) ? Number(volume) : null;
             const isMissing = volume && missingSet.has(volume);
             const rowStyle = isMissing
                 ? 'border-bottom: 1px solid var(--color-border);'
@@ -6223,7 +6226,7 @@ async function loadEbdzThreadFiles(threadId, missingVolumes) {
                     <td style="padding: 8px; white-space: nowrap;">${f.format ? escapeHtml(f.format.toUpperCase()) : '-'}</td>
                     <td style="padding: 8px; white-space: nowrap;">${formatBytes(parseInt(f.filesize, 10) || 0)}</td>
                     <td style="padding: 8px; white-space: nowrap; text-align: center;">
-                        <button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}', this, '${escapeForAttribute(decodedFilename)}', seriesId, null, volume ?? null)">${svgIcon('plus')} Ajouter</button>
+                        <button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}', this, '${escapeForAttribute(decodedFilename)}', ${seriesId ?? 'null'}, null, ${volumeForAdd ?? 'null'})">${svgIcon('plus')} Ajouter</button>
                     </td>
                 </tr>
             `;
