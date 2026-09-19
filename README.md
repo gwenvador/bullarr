@@ -86,7 +86,7 @@ pip install -r requirements.txt
 sudo apt install amule-utils unrar
 
 # 4. Démarrer l'application
-python app.py   # FLASK_ENV=development par défaut
+python app.py   # mode production
 
 # Application accessible à http://localhost:5000
 ```
@@ -113,7 +113,6 @@ python app.py   # FLASK_ENV=development par défaut
 
 ```bash
 SECRET_KEY=your-secure-secret-key-here   # clé secrète Flask - à changer en production
-FLASK_ENV=production
 BULLARR_AUTH_BYPASS_LOGIN=false  # dépannage uniquement : contourne temporairement le login
 ```
 

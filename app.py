@@ -177,13 +177,12 @@ def create_app(config_name='default'):
 
 
 if __name__ == '__main__':
-    # Déterminer le mode (développement ou production)
-    # FLASK_ENV peut être: development ou production (défaut: development)
-    config_name = os.getenv('FLASK_ENV', 'development')
+    # Bullarr fonctionne toujours avec la configuration de production.
+    config_name = 'production'
     
     app = create_app(config_name)
     
-    debug_mode = config_name == 'development'
+    debug_mode = False
     
     print("=" * 60)
     print("Gestionnaire Multi-Bibliothèques BD")
