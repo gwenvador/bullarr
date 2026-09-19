@@ -313,7 +313,7 @@ function _isBlackAndWhiteSearchResult(result) {
     // marker belongs to the latter. Other sources fall back to their release title.
     const text = String(result?.filename || result?.name || result?.title || result?.display_name || '');
     const normalized = text.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
-    return /\bn\s*&\s*b\b/.test(normalized)
+    return /\bn[\s._&+-]*b\b/.test(normalized)
         || /\bnoir\s*(?:&|et)\s*blanc\b/.test(normalized.replace(/[_-]+/g, ' '));
 }
 

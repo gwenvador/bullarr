@@ -19,7 +19,9 @@ const context = {{ console, fetch: () => Promise.resolve({{ ok: true, json: () =
 vm.createContext(context); vm.runInContext(source, context);
 const names = [
   'Chroniques diplomatiques - T01 (N&B) - Iran 1953 (Toner).cbz',
-  'Chroniques_diplomatiques_T01_Iran_1953_Noir_&_Blanc@BD_fr.cbz'
+  'Chroniques_diplomatiques_T01_Iran_1953_Noir_&_Blanc@BD_fr.cbz',
+  'Chroniques.Diplomatiques.NB.T01.2021.FRENCH.HYBRiD.COMiC.CBZ.eBook-TONER.cbz',
+  'Chroniques diplomatiques - T01 (N&B) - Iran 1953 (Roulot-Simon) (Toner) 3274.cbz'
 ];
 if (!names.every(name => context._isBlackAndWhiteSearchResult({{ title: name, name }}))) process.exit(1);
 if (context._isBlackAndWhiteSearchResult({{ title: 'Chroniques diplomatiques T01 (Toner).cbz' }})) process.exit(3);
@@ -123,3 +125,11 @@ def test_metadata_toolbar_does_not_render_codeql_suppression_text():
     assert suppression not in library_js[toolbar_start:toolbar_end]
     assert library_js.count(suppression) == 2
     assert f'// {suppression} values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.\n        modalBody.innerHTML =' in library_js
+
+
+def test_noir_blanc_column_option_is_last_in_the_table_settings_menu():
+    source = (ROOT / 'static' / 'js' / 'library.js').read_text()
+    start = source.index('const VOLUME_TABLE_OPTIONAL_COLUMNS = [')
+    end = source.index('];', start)
+    options = source[start:end]
+    assert options.rfind("key: 'blackAndWhite'") > options.rfind("key: 'releaser'")

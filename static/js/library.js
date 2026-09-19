@@ -2571,12 +2571,11 @@ function setVolumesTableSort(column) {
 function _isBlackAndWhiteVolume(v) {
     const name = String(v.filename || (v.comicinfo || {}).title || '');
     const normalized = name.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
-    return /\bn\s*&\s*b\b/.test(normalized)
+    return /\bn[\s._&+-]*b\b/.test(normalized)
         || /\bnoir\s*(?:&|et)\s*blanc\b/.test(normalized.replace(/[_-]+/g, ' '));
 }
 
 const VOLUME_TABLE_OPTIONAL_COLUMNS = [
-    { key: 'blackAndWhite', label: 'Noir & Blanc', icon: '◐', header: 'N&B', render: v => _isBlackAndWhiteVolume(v) ? 'Oui' : 'Non' },
     { key: 'author', label: 'Auteur', icon: '✍️', header: 'Auteur', render: v => (v.comicinfo || {}).writer || v.author || '—' },
     { key: 'publisher', label: 'Éditeur', icon: '🏢', header: 'Éditeur', render: v => (v.comicinfo || {}).publisher || '—' },
     { key: 'genre', label: 'Genre', icon: '🏷️', header: 'Genre', render: v => (v.comicinfo || {}).genre || '—' },
@@ -2598,6 +2597,7 @@ const VOLUME_TABLE_OPTIONAL_COLUMNS = [
     } },
     { key: 'quality', label: 'Qualité', icon: '🖼️', header: 'Qualité', filterType: 'text', render: v => v.resolution || '—' },
     { key: 'releaser', label: 'Releaser', icon: '📀', header: 'Releaser', filterType: 'text', render: v => v.release_group || '—' },
+    { key: 'blackAndWhite', label: 'Noir & Blanc', icon: '◐', header: 'N&B', render: v => _isBlackAndWhiteVolume(v) ? 'Oui' : 'Non' },
 ];
 
 // Valeur "Date" (année de publication) d'un tome - colonne par défaut de la vue tableau,
