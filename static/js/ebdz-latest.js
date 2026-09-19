@@ -35,15 +35,6 @@ async function _resolveSeriesForAutoAdd(title, rawHint) {
         const addResponse = await fetch('/api/bedetheque/add-series', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            // "tu telecharge le fichier, tu ajoutes la série, tu ne fait pas de recherche
-            // auto puisque le fichier a deja ete telecharge" - sans skip_auto_acquire,
-            // add-series lance en plus sa PROPRE recherche+téléchargement automatique pour
-            // toute la série (auto_acquire_on_add_enabled) - téléchargeant une SECONDE fois
-            // le même fichier déjà envoyé juste avant par autoAddNouveautesEbdzThread/
-            // autoAddNouveautesTelegramFile (voir _autoAddResultToast). Constaté en réel :
-            // "Le Marche-Lune" téléchargé deux fois, chaque tentative épuisant un peu plus
-            // le flood-wait Telegram de ce fichier. Même correctif que
-            // match_manual_review_series (auto_acquire.py) pour exactement la même raison.
             body: JSON.stringify({ url: infoData.info.url, library_id: libraryId, skip_auto_acquire: true })
         });
         const addData = await addResponse.json();

@@ -117,7 +117,7 @@ def send_telegram_notification(message, bot_token=None, chat_id=None, photo_path
     except requests.exceptions.ConnectionError:
         return False, 'Impossible de contacter api.telegram.org'
     except Exception as e:
-        return False, f'Erreur: {str(e)}'
+        return False, f'Erreur: {'Erreur interne'}'
 
 
 @telegram_bp.route('/config', methods=['GET', 'POST'])
@@ -163,7 +163,7 @@ def telegram_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @telegram_bp.route('/test', methods=['POST'])

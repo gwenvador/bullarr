@@ -402,7 +402,7 @@ def delete_import_file_row(file_id):
 def update_import_operation(operation_id, status, imported_count, replaced_count, skipped_count, failed_count, details=None):
     """Met à jour le statut d'une opération d'import.
 
-    details: message d'erreur (str(e), voir execute_import/execute_auto_import) quand
+    details: message d'erreur ('Erreur interne', voir execute_import/execute_auto_import) quand
     l'opération entière plante avant même d'avoir traité un seul fichier ("pourquoi
     l'échec" alors que tous les compteurs sont à 0 - jusqu'ici cette exception n'était
     imprimée que dans les logs du container, invisible depuis /import ou /history)."""
@@ -625,7 +625,7 @@ def undo_import_operation(operation_id):
                                     pass
             except Exception as e:
                 error_count += 1
-                errors.append(f"{file_record['filename']}: {str(e)}")
+                errors.append(f"{file_record['filename']}: {'Erreur interne'}")
         
         # Mettre à jour l'opération: 'undone' seulement si tous les fichiers ont pu être
         # déplacés - sinon 'undo_partial', pour ne pas afficher une annulation comme
@@ -655,7 +655,7 @@ def undo_import_operation(operation_id):
         
     except Exception as e:
         print(f"Erreur lors de l'annulation: {e}")
-        return False, str(e), []
+        return False, 'Erreur interne', []
 
 
 def init_import_manual_overrides_table():

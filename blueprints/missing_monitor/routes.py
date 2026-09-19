@@ -120,7 +120,7 @@ def get_libraries():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/libraries/<int:library_id>/monitor', methods=['POST'])
@@ -164,7 +164,7 @@ def configure_library_monitor(library_id):
         return jsonify({'success': True})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/libraries/<int:library_id>/series', methods=['GET'])
@@ -210,7 +210,7 @@ def get_library_series(library_id):
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/config', methods=['GET', 'POST'])
@@ -264,7 +264,7 @@ def monitor_config():
                 return jsonify({'success': False, 'error': 'Erreur sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/series', methods=['GET'])
@@ -284,7 +284,7 @@ def get_monitored_series():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/series/<int:series_id>/monitor', methods=['POST'])
@@ -339,7 +339,7 @@ def configure_series_monitor(series_id):
         return jsonify({'success': True, 'monitored': bool(enabled)})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/search', methods=['POST'])
@@ -356,15 +356,6 @@ def search_volume():
     try:
         data = request.get_json()
         title = data.get('title', '').strip()
-        # volume_num absent: aucun numéro connu pour ce tome (ex: intégrale/HS listée
-        # sans numéro sur Bédéthèque) - recherche par titre de série seul plutôt que de
-        # refuser la recherche (voir _search_ebdz/_search_prowlarr, param volume_num
-        # optionnel désormais).
-        # "check why it has not parse volume 0 in bedetheque for valerian" - bug réel:
-        # 0 servait ici de sentinelle pour "absent", indiscernable d'un VRAI tome 0
-        # (existe réellement sur Bédéthèque, ex. Valérian) - is not None/'' distingue les
-        # deux, None reste la seule vraie sentinelle "absent" partout en aval
-        # (_confirms_requested_volume, _search_ebdz, search_prowlarr_raw...).
         raw_volume_num = data.get('volume_num')
         volume_num = int(raw_volume_num) if raw_volume_num not in (None, '') else None
         sources = data.get('sources')  # None = tous
@@ -413,7 +404,7 @@ def search_volume():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/download', methods=['POST'])
@@ -443,7 +434,7 @@ def trigger_download():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 
@@ -467,7 +458,7 @@ def get_monitor_stats():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/performance', methods=['GET'])
@@ -501,7 +492,7 @@ def get_performance_stats():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/history', methods=['GET'])
@@ -522,7 +513,7 @@ def get_download_history():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @missing_monitor_bp.route('/attach-pending-series', methods=['POST'])

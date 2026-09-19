@@ -146,7 +146,7 @@ def ebdz_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
         
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @ebdz_bp.route('/scrape', methods=['POST'])
@@ -236,7 +236,7 @@ def scrape():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @ebdz_bp.route('/scrape/status', methods=['GET'])
@@ -293,7 +293,25 @@ def auto_scrape_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
         
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
+
+
+def _build_nouveautes_title_match_index(series_rows, title_match_key):
+    """Indexe les séries locales par clé de titre, sans jamais choisir entre deux
+    candidates. Les nouveautés peuvent alors ouvrir une fiche et son lien Bédéthèque
+    lorsque le titre correspond de façon certaine, même si le sujet EBDZ précis n'a pas
+    encore été attaché à la série. Aucun champ de la base n'est modifié ici.
+    """
+    candidates = {}
+    for series_id, _thread_id, bedetheque_url, series_title in series_rows:
+        if not series_title:
+            continue
+        key = title_match_key(series_title)
+        candidates.setdefault(key, []).append((series_id, bedetheque_url, series_title))
+    return {
+        key: matches[0] if len({match[0] for match in matches}) == 1 else None
+        for key, matches in candidates.items()
+    }
 
 
 def _build_nouveautes_title_match_index(series_rows, title_match_key):
@@ -367,16 +385,6 @@ def latest_scrape():
         # utilisés ici pour already_owned mais jamais renvoyés au frontend).
         from blueprints.missing_monitor.searcher import MissingVolumeSearcher
 
-        # Une seule fonction pour calculer la clé de comparaison "already_in_library",
-        # appliquée IDENTIQUEMENT au titre local et au thread_title EBDZ (voir son usage
-        # plus bas) - ebdz_core_title retire un éventuel suffixe entre parenthèses/
-        # crochets (désambiguateur d'auteur, ex: "(Murawiec)"/"[Murawiec]") avant
-        # unscramble_trailing_article (article "Le/La/Les/L'" ramené en tête, ex: "Grand
-        # vide, Le" -> "Le Grand vide"). Traiter les deux titres avec la MÊME fonction
-        # plutôt que d'appliquer ces étapes séparément de chaque côté (ce qui a été
-        # tenté puis restait faux pour "Le grand vide (Murawiec)": le suffixe local
-        # "(Murawiec)" n'était jamais retiré alors que le suffixe EBDZ "[Murawiec]"
-        # l'était) est ce qui garantit que les deux titres finissent bien comparables.
         def _title_match_key(title):
             return normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title)))
 
@@ -570,7 +578,7 @@ def latest_scrape():
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @ebdz_bp.route('/nouveautes/new-count', methods=['GET'])
@@ -615,7 +623,7 @@ def nouveautes_new_count():
 
         return jsonify({'success': True, 'count': ebdz_count + telegram_count})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @ebdz_bp.route('/auto-scrape/status', methods=['GET'])
@@ -639,4 +647,4 @@ def auto_scrape_status():
             'next_run': next_run
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 500

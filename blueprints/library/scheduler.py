@@ -96,7 +96,7 @@ class LibraryImportScheduler:
         self.stalled_telegram_job_id = 'retry_stalled_telegram'
         self._file_size_history = {}
         self._failure_counts = {}
-        # Dernier message d'erreur (str(e) côté _execute_import_batch) par fichier -
+        # Dernier message d'erreur ('Erreur interne' côté _execute_import_batch) par fichier -
         # "l'échec n'est pas expliqué": le compteur seul ne dit pas POURQUOI ça échoue,
         # affiché à côté du compteur dans _repeated_failure_skip_reason (routes.py).
         self._failure_last_error = {}
@@ -356,12 +356,6 @@ class LibraryImportScheduler:
                                     continue
 
                                 parsed = scanner.parse_filename(filename)
-                                # Nom du dossier contenant directement le fichier (voir même
-                                # calcul côté scan_import_directory) - repli de
-                                # find_auto_assign_destination quand un pack multi-tomes
-                                # nommé d'après la série ("Jack Palmer (CBZ)/15 Palmer en
-                                # Bretagne.cbz") a des noms de fichiers individuels qui ne
-                                # portent pas le titre de la série.
                                 relative_path = os.path.relpath(filepath, import_path)
                                 parent_dir = os.path.dirname(relative_path)
                                 folder_name = os.path.basename(parent_dir) if parent_dir else None

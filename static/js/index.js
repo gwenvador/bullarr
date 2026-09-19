@@ -18,9 +18,6 @@ async function loadLibraries() {
             return;
         }
 
-        // Une seule bibliothèque: on l'ouvre directement, pas la peine de faire cliquer sur
-        // sa carte à chaque fois. ?all=1 (lien "Gérer les bibliothèques" dans Configuration)
-        // permet de revenir à cette liste, par exemple pour en créer une deuxième
         const params = new URLSearchParams(window.location.search);
         if (libraries.length === 1 && !params.has('all')) {
             window.location.href = `/library/${libraries[0].id}`;

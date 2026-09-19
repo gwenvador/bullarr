@@ -65,7 +65,7 @@ def _run_library_onboarding(app, library_id):
             _run_comicinfo_phase(library_id, progress)
         progress['phase'] = 'done'
     except Exception as e:
-        progress['error'] = str(e)
+        progress['error'] = 'Erreur interne'
         progress['phase'] = 'error'
     finally:
         progress['running'] = False
@@ -124,7 +124,7 @@ def _run_match_phase(library_id, progress):
             # matching automatique/non confirmé n'écrase jamais le ComicInfo déjà présent.
             success, info, error = _perform_series_match(series_id, title, 'title', title, write_volumes=False)
         except Exception as e:
-            success, info, error = False, None, str(e)
+            success, info, error = False, None, 'Erreur interne'
         if success:
             progress['matched'].append({
                 'series_id': series_id, 'title': title,

@@ -246,7 +246,7 @@ def oidc_config():
                 return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
 @auth_bp.route('/api/auth/test', methods=['POST'])
@@ -278,4 +278,4 @@ def test_oidc_discovery():
     except requests.exceptions.ConnectionError:
         return jsonify({'success': False, 'error': "Impossible de se connecter à l'issuer. Vérifiez l'URL."}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': f"Erreur: {str(e)}"}), 500
+        return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
