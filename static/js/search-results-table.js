@@ -323,7 +323,8 @@ function _isBlackAndWhiteSearchResult(result) {
     const text = String(result?.name || result?.title || result?.filename || result?.display_name || '');
     const normalized = text.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
     return /\bn\s*&\s*b\b/.test(normalized)
-        || /\bnoir\s*(?:&|et)\s*blanc\b/.test(normalized.replace(/[_-]+/g, ' '));
+        || /\bnoir\s*(?:&|et)\s*blanc\b/.test(normalized.replace(/[_-]+/g, ' '))
+        || /\btoner\b/.test(normalized);
 }
 
 let _searchAvoidBlackAndWhitePriority = (() => {
