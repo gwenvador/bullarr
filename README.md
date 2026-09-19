@@ -111,10 +111,22 @@ python app.py   # mode production
 
 ### Variables d'environnement (.env)
 
+Générez une clé aléatoire avant le premier démarrage :
+
 ```bash
-SECRET_KEY=your-secure-secret-key-here   # clé secrète Flask - à changer en production
-BULLARR_AUTH_BYPASS_LOGIN=false  # dépannage uniquement : contourne temporairement le login
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
+
+Copiez le résultat dans `.env` et ne le publiez jamais :
+
+```bash
+SECRET_KEY=<clé-aléatoire-générée>  # obligatoire, conserver la même valeur
+BULLARR_AUTH_BYPASS_LOGIN=false     # dépannage uniquement, ne pas laisser activé
+```
+
+`SECRET_KEY` sert à signer les sessions Flask et certaines données protégées. Une nouvelle
+valeur invalide les sessions existantes ; ne la changez donc pas après le démarrage sauf
+si vous acceptez de forcer les utilisateurs à se reconnecter.
 
 `BULLARR_AUTH_BYPASS_LOGIN=true` désactive temporairement la garde d'authentification pour récupérer l'accès après une mauvaise configuration OIDC. Redémarrez Bullarr, corrigez le réglage depuis **Configuration → Login**, remettez la variable à `false`, puis redémarrez à nouveau. Ne laissez pas cette variable activée en fonctionnement normal.
 
