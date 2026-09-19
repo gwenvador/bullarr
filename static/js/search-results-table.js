@@ -316,30 +316,6 @@ function detectResultResolution(result) {
 // avant ce correctif - "la recherche met en avant les torrents en premier malgré le choix
 // dans les settings. si c'est telegram ou ebdz en premier alors c'est mis en premier meme
 // s'il y a des torrents disponibles".
-// Detect black-and-white releases from the displayed filename/title.  Keep this
-// deliberately conservative: it is a ranking/filter hint, never a reason to remove a
-// result.  The separators in "Noir_&_Blanc" are normalized before matching.
-function _isBlackAndWhiteSearchResult(result) {
-    const text = String(result?.name || result?.title || result?.filename || result?.display_name || '');
-    const normalized = text.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
-    return /\bn\s*&\s*b\b/.test(normalized)
-        || /\bnoir\s*(?:&|et)\s*blanc\b/.test(normalized.replace(/[_-]+/g, ' '))
-        || /\btoner\b/.test(normalized);
-}
-
-let _searchAvoidBlackAndWhitePriority = (() => {
-    try { return localStorage.getItem('bullarr.searchAvoidBlackAndWhitePriority') === 'true'; }
-    catch (_) { return false; }
-})();
-
-function _setSearchAvoidBlackAndWhitePriority(enabled) {
-    _searchAvoidBlackAndWhitePriority = !!enabled;
-    try { localStorage.setItem('bullarr.searchAvoidBlackAndWhitePriority', String(_searchAvoidBlackAndWhitePriority)); }
-    catch (_) { /* private browsing/storage disabled: keep the current page state */ }
-    _searchTableAllResults = [..._searchTableAllResults].sort(compareSearchResults);
-    _renderSearchResultsTbody();
-}
-
 function _searchResultTier(result) {
     if (detectResultFormat(result) === 'PDF') return 100;
     if (result.source === 'prowlarr' && !(result.seeders && result.seeders > 0)) return 100;
@@ -366,7 +342,6 @@ function scoreSearchResult(result) {
         tier: _searchResultTier(result),
         formatRank,
         sourceRank,
-        blackAndWhiteRank: _searchAvoidBlackAndWhitePriority ? (_isBlackAndWhiteSearchResult(result) ? 0 : 1) : 0,
         resolution: detectResultResolution(result) || 0,
         size: result.size || 0,
         seeders: result.source === 'prowlarr' ? (result.seeders || 0) : 0,
@@ -396,7 +371,6 @@ function compareSearchResults(a, b) {
 
     const sa = scoreSearchResult(a), sb = scoreSearchResult(b);
     if (sa.tier !== sb.tier) return sa.tier - sb.tier;
-    if (sa.blackAndWhiteRank !== sb.blackAndWhiteRank) return sb.blackAndWhiteRank - sa.blackAndWhiteRank;
 
     if (a.source === 'prowlarr' && b.source === 'prowlarr') {
         return (sb.seeders - sa.seeders)
@@ -578,7 +552,6 @@ function buildSearchResultRowHtml(result) {
     const isAnnasArchive = result.source === 'annas_archive';
     const displayName = _searchResultDisplayName(result);
     const format = detectResultFormat(result);
-    const isBlackAndWhite = _isBlackAndWhiteSearchResult(result);
     const resolution = detectResultResolution(result);
     // Sources ed2k réelles pour EBDZ une fois connues (voir _loadEd2kAvailability, requête
     // groupée déclenchée après le rendu initial - "…" le temps qu'elle réponde), toujours
@@ -720,7 +693,6 @@ function buildSearchResultRowHtml(result) {
             <td style="white-space:nowrap;">${result.parsed_volume ? escapeHtml(result.parsed_volume) : '—'}</td>
             <td style="white-space:nowrap; text-align:center;"${_searchResultSourceLinkUrl(result) ? '' : ` data-tooltip="${escapeHtml(sourceLabel)}"`}>${_searchResultSourceIconHtml(result, sourceLabel)}</td>
             <td>${format}</td>
-            <td class="search-result-black-and-white" style="white-space:nowrap; text-align:center;" data-tooltip="${isBlackAndWhite ? 'Format Noir & Blanc détecté' : 'Format couleur/non identifié'}">${isBlackAndWhite ? 'Oui' : 'Non'}</td>
             <td>${resolution ? `${resolution}px` : '—'}</td>
             <td style="white-space:nowrap;">${formatBytes(result.size)}</td>
             <td style="white-space:nowrap;">${seedsPeers}</td>
@@ -738,7 +710,7 @@ function buildSearchResultRowHtml(result) {
 // le tableau, y compris les <select> - remise à zéro naturelle, cohérente avec le filtre
 // texte existant au-dessus de la page qui reconstruit lui aussi tout le tableau).
 let _searchTableAllResults = [];
-let _searchTableFilters = { source: '', format: '', blackAndWhite: '', size: '', volume: '', title: '', hideUnconfirmed: true, owned: '' };
+let _searchTableFilters = { source: '', format: '', size: '', volume: '', title: '', hideUnconfirmed: true, owned: '' };
 // Identité RÉELLE de la série/du tome déjà connus quand la recherche part d'une fiche
 // série - "le volume/album doit être matché si le clic vient d'une fiche série": transmis
 // jusqu'à mark_download_pending (active_downloads) via les boutons d'action ci-dessous,
@@ -897,8 +869,6 @@ function _filteredSearchTableResults() {
     const filtered = _searchTableAllResults.filter(r => {
         if (_searchTableFilters.source && r.source !== _searchTableFilters.source) return false;
         if (_searchTableFilters.format && detectResultFormat(r) !== _searchTableFilters.format) return false;
-        if (_searchTableFilters.blackAndWhite === 'yes' && !_isBlackAndWhiteSearchResult(r)) return false;
-        if (_searchTableFilters.blackAndWhite === 'no' && _isBlackAndWhiteSearchResult(r)) return false;
         if (!_searchResultMatchesSizeBucket(r, _searchTableFilters.size)) return false;
         // "c'est quand tu fais une recherche globale de la série... met un filtre pour
         // choisir le volume" - utile pour isoler un tome précis parmi les résultats
@@ -932,7 +902,7 @@ function _renderSearchResultsTbody() {
     // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
     _replaceWithSanitizedDom(tbody, filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
-        : '<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>');
+        : '<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>');
     _updateSearchBatchDownloadToolbar();
 }
 
@@ -954,7 +924,6 @@ function _searchResultSortValue(result, column) {
         case 'volume': return (result.parsed_volume || '').toLowerCase();
         case 'source': return _searchResultSourceLabel(result.source).toLowerCase();
         case 'format': return detectResultFormat(result);
-        case 'blackAndWhite': return _isBlackAndWhiteSearchResult(result) ? 1 : 0;
         case 'resolution': return detectResultResolution(result) || 0;
         case 'size': return result.size || 0;
         // Seeds/peers: nombre de seeds pour Prowlarr, nombre de sources ed2k réelles pour
@@ -1047,7 +1016,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
     _searchTableAllResults = [...results].sort(compareSearchResults);
     if (!preserveState) {
         _searchTableSelectedKeys.clear();
-        _searchTableFilters = { source: '', format: '', blackAndWhite: '', size: '', volume: '', title: '', hideUnconfirmed: true, owned: '' };
+        _searchTableFilters = { source: '', format: '', size: '', volume: '', title: '', hideUnconfirmed: true, owned: '' };
         _searchTableSort = { column: null, direction: 'asc' };
     }
     _searchResultsContextSeriesId = seriesId;
@@ -1120,10 +1089,6 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
         ${hideUnconfirmedCheckboxHtml}
         <div style="display:flex; align-items:center; gap:10px; margin:8px 0;">
             <button id="search-results-batch-download" class="btn" type="button" onclick="downloadSelectedSearchResults()" disabled>Télécharger la sélection</button>
-            <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.9em; cursor:pointer;" data-tooltip="Les résultats Noir & Blanc restent visibles mais ne sont plus favorisés dans le classement">
-                <input type="checkbox" id="search-results-avoid-bw-priority" ${_searchAvoidBlackAndWhitePriority ? 'checked' : ''} onchange="_setSearchAvoidBlackAndWhitePriority(this.checked)">
-                Ne pas prioriser les formats Noir & Blanc
-            </label>
             <span id="search-results-batch-download-label" aria-live="polite">0 sélectionné</span>
         </div>
         <div style="overflow-x:auto;">
@@ -1155,14 +1120,6 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
                                 `<select id="search-results-filter-format" aria-label="Filtrer par format" class="search-results-filter-select th-filterable-control${activeClass(f.format)}" data-tooltip="Filtrer par format" onchange="_syncFilterControlActive(this); _applySearchTableFilter('format', this.value)">
                                     <option value="">Tout</option>
                                     ${formatOptions.map(fmt => `<option value="${escapeHtml(fmt)}"${f.format === fmt ? ' selected' : ''}>${escapeHtml(fmt)}</option>`).join('')}
-                                </select>`)}
-                        </th>
-                        <th>
-                            ${_searchResultsFilterHeaderHtml('blackAndWhite', 'N&B',
-                                `<select id="search-results-filter-black-and-white" aria-label="Filtrer les formats Noir et Blanc" class="search-results-filter-select th-filterable-control${activeClass(f.blackAndWhite)}" data-tooltip="Filtrer les fichiers Noir & Blanc" onchange="_syncFilterControlActive(this); _applySearchTableFilter('blackAndWhite', this.value)">
-                                    <option value="">Tout</option>
-                                    <option value="yes"${f.blackAndWhite === 'yes' ? ' selected' : ''}>Oui</option>
-                                    <option value="no"${f.blackAndWhite === 'no' ? ' selected' : ''}>Non</option>
                                 </select>`)}
                         </th>
                         <th>${_searchResultsSortableLabelHtml('resolution', 'Résolution')}</th>
