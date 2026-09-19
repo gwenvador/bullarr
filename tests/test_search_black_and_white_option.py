@@ -45,3 +45,11 @@ def test_search_table_keeps_columns_and_wraps_long_filenames():
     assert 'Ne pas prioriser les formats Noir & Blanc' in source
     assert 'search-results-filter-black-and-white' in source
     assert "'blackAndWhite'" in source
+
+
+
+
+def test_search_result_tbody_keeps_rows_when_asynchronous_refresh_rerenders():
+    source = JS.read_text()
+    assert "range.createContextualFragment(String(markup || ''))" in source
+    assert '_replaceSearchResultsTbody(tbody' in source

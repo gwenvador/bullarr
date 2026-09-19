@@ -1,26 +1,11 @@
-function _replaceWithSanitizedDom(target, markup) {
-    // lgtm [js/xss-through-dom] the parsed fragment is sanitized before insertion.
-    const parsed = new DOMParser().parseFromString(String(markup || ''), 'text/html');
-    for (const element of parsed.querySelectorAll('script, iframe, object, embed, link, meta, style')) element.remove();
-    for (const element of parsed.querySelectorAll('*')) {
-        for (const attribute of [...element.attributes]) {
-            const name = attribute.name.toLowerCase();
-            const value = attribute.value.trim();
-            let unsafeUrl = false;
-            if (name === 'href' || name === 'src' || name === 'action') {
-                try {
-                    const protocol = new URL(value, document.baseURI).protocol;
-                    unsafeUrl = !['http:', 'https:'].includes(protocol);
-                } catch (_) {
-                    unsafeUrl = true;
-                }
-            }
-            if (name.startsWith('on') || name === 'srcdoc' || name === 'style' || unsafeUrl) {
-                element.removeAttribute(attribute.name);
-            }
-        }
-    }
-    target.replaceChildren(...[...parsed.body.childNodes].map(node => document.importNode(node, true)));
+function _replaceSearchResultsTbody(target, markup) {
+    // buildSearchResultRowHtml generates this markup locally and escapes every external
+    // value. Parsing in a tbody context is essential: DOMParser parses bare <tr>/<td>
+    // in document.body as text, which collapses the album-search results into one column
+    // after an asynchronous refresh (for example EBDZ availability).
+    const range = document.createRange();
+    range.selectNodeContents(target);
+    target.replaceChildren(range.createContextualFragment(String(markup || '')));
 }
 
 // ===== TABLEAU COMPACT DE RÉSULTATS DE RECHERCHE (EBDZ + Prowlarr) =====
@@ -929,7 +914,7 @@ function _renderSearchResultsTbody() {
     if (!tbody) return;
     const filtered = _filteredSearchTableResults();
     // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
-    _replaceWithSanitizedDom(tbody, filtered.length
+    _replaceSearchResultsTbody(tbody, filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
         : '<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>');
     _updateSearchBatchDownloadToolbar();
