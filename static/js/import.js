@@ -1989,7 +1989,7 @@ function _importFileRowHtml(file, index) {
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
                 ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}</div>` : ''}
                 ${_convertActionHtml(file)}
-                ${file.existing_conflict ? `<div class="import-auto-skip-explanation">⚠️ Fichier existant : ${escapeHtml(file.existing_conflict.path)} — ${file.existing_conflict.will_replace ? 'sera remplacé selon les règles actuelles' : 'conservé selon les règles actuelles'}${file.existing_conflict.will_replace ? '' : ' (cochez « Forcer le remplacement » dans Modifier pour outrepasser la règle)'}</div>` : ''}
+                ${file.existing_conflict ? `<div class="import-auto-skip-explanation">⚠️ Fichier existant : ${escapeHtml(file.existing_conflict.path)} — ${file.existing_conflict.will_replace ? 'sera remplacé selon les règles actuelles' : 'conservé selon les règles actuelles'}<button type="button" class="btn-neutral-sm" style="margin-left:6px;" onclick="openDestinationModal(${index})">Remplacer le fichier existant</button></div>` : ''}
                 ${_archiveContentActionHtml(file)}
             </td>
             <td><div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">${albumHtml}${bedethequeLinkHtml || ''}</div></td>
