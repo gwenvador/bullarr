@@ -2709,6 +2709,17 @@ a.result-title:hover {
     word-break: break-word;
 }
 
+/* style.css rend les tableaux display:block sur petit écran. Ce tableau possède déjà
+   un wrapper de défilement horizontal: conserver sa mise en page tabulaire évite que les
+   cellules de recherche se compressent en colonnes minuscules. */
+@media (max-width: 768px) {
+    .replace-results-table {
+        display: table;
+        width: 1100px;
+        overflow: visible;
+    }
+}
+
 /* En-tête crème/cuivre, même traitement que .import-files-table (voir style.css,
    "copie le style de historique") - couleurs de thème plutôt que du gris en dur, pour
    rester cohérent (et lisible en thème sombre) avec les autres tableaux de l'app plutôt
