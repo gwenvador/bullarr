@@ -38,6 +38,8 @@ def test_search_table_keeps_columns_and_wraps_long_filenames():
     assert '.replace-results-table .replace-results-filename' in source
     assert 'overflow-wrap: anywhere' in source
     assert 'display: table' in source
+    assert 'display: table-row-group' in source
+    assert 'display: table-cell' in source
 
     source = JS.read_text()
     assert 'Ne pas prioriser les formats Noir & Blanc' in source
