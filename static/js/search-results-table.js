@@ -305,7 +305,9 @@ function detectResultResolution(result) {
 // deliberately conservative: it is a ranking/filter hint, never a reason to remove a
 // result.  The separators in "Noir_&_Blanc" are normalized before matching.
 function _isBlackAndWhiteSearchResult(result) {
-    const text = String(result?.name || result?.title || result?.filename || result?.display_name || '');
+    // EBDZ carries both a generic title and the actual filename; the Noir & Blanc
+    // marker belongs to the latter. Other sources fall back to their release title.
+    const text = String(result?.filename || result?.name || result?.title || result?.display_name || '');
     const normalized = text.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
     return /\bn\s*&\s*b\b/.test(normalized)
         || /\bnoir\s*(?:&|et)\s*blanc\b/.test(normalized.replace(/[_-]+/g, ' '));

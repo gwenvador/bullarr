@@ -53,3 +53,28 @@ def test_search_result_tbody_keeps_rows_when_asynchronous_refresh_rerenders():
     source = JS.read_text()
     assert "range.createContextualFragment(String(markup || ''))" in source
     assert '_replaceSearchResultsTbody(tbody' in source
+
+
+
+def test_black_and_white_filter_selects_only_matching_results():
+    script = f"""
+const fs = require('fs'), vm = require('vm');
+let source = fs.readFileSync({str(Path('/tmp/bullarr-rewrite/static/js/search-results-table.js'))!r}, 'utf8');
+source = source.replace('let _searchTableAllResults = [];', 'var _searchTableAllResults = [];')
+               .replace('let _searchTableFilters', 'var _searchTableFilters');
+const context = {{ console, fetch: () => Promise.resolve({{ ok: true, json: () => Promise.resolve({{}}) }}), document: {{ getElementById: () => null }}, window: {{}}, localStorage: {{ getItem: () => null, setItem: () => {{}} }} }};
+vm.createContext(context); vm.runInContext(source, context);
+context._searchTableAllResults = [
+  {{ source: 'ebdz', title: 'Album couleur.cbz' }},
+  {{ source: 'ebdz', title: 'Album (N&B).cbz' }},
+  {{ source: 'ebdz', title: 'Album Noir_&_Blanc.cbz' }}
+];
+context._applySearchTableFilter('blackAndWhite', 'yes');
+if (context._filteredSearchTableResults().length !== 2) process.exit(1);
+context._applySearchTableFilter('blackAndWhite', 'no');
+if (context._filteredSearchTableResults().length !== 1) process.exit(2);
+const ebdzFilename = {{ source: 'ebdz', title: 'Chroniques diplomatiques', filename: 'Chroniques_diplomatiques_T01_Noir_&_Blanc.cbz' }};
+if (!context._isBlackAndWhiteSearchResult(ebdzFilename)) process.exit(3);
+"""
+    result = run_node(script)
+    assert result.returncode == 0, result.stderr or result.stdout
