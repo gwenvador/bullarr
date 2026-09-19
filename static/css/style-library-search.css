@@ -2695,8 +2695,18 @@ a.result-title:hover {
        displaySearchResults) n'avait jamais rien à faire défiler - le contenu se faisait
        juste tronquer/écraser à la place */
     max-width: none;
+    min-width: 1100px;
     border-collapse: collapse;
     font-size: 0.85em;
+}
+
+/* Les noms de fichiers sont des valeurs non bornées: ils doivent rester dans leur
+   cellule au lieu d'élargir progressivement le tableau et de décaler les colonnes. */
+.replace-results-table .replace-results-filename {
+    max-width: 520px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 /* En-tête crème/cuivre, même traitement que .import-files-table (voir style.css,
