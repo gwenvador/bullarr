@@ -748,10 +748,6 @@ def reconcile_stale_active_downloads() -> int:
         cursor.execute('''
             SELECT ad.id FROM active_downloads ad
             LEFT JOIN series s ON s.id = ad.series_id
-            # Only a row already claimed by an import attempt can be reconciled
-            # from the destination volume. A pending/completed download may instead be
-            # a newly arrived candidate for an already-owned album and must remain
-            # available for an explicit replacement decision in Import.
             WHERE ad.status IN ('importing')
               AND EXISTS (
                 SELECT 1 FROM volumes v

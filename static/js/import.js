@@ -1855,7 +1855,7 @@ function _convertActionHtml(file) {
     if (!file.convertible) return '';
     const label = file.convertible === 'pdf'
         ? 'PDF - convertis en CBZ pour permettre l\'écriture des métadonnées Bédéthèque'
-        : 'ZIP nu - convertis en CBZ (format préféré de la bibliothèque)';
+        : "Ce fichier n'est pas un CBZ : il sera converti en CBZ pendant l'import";
     return `
         <div class="import-auto-skip-explanation">
             ${svgIcon('refresh-cw')} ${escapeHtml(label)}

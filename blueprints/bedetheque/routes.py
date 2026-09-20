@@ -7,8 +7,6 @@ from .scraper import BedethequeScraper, BedethequeDatabase, match_bedetheque_vol
 from .comicinfo_writer import build_comicinfo_fields, apply_volume_comicinfo, UnsupportedFormatError
 from .cbr_converter import convert_cbr_to_cbz, CbrConversionError
 from network_safety import safe_external_get
-from blueprints.library.routes import _conversion_lock
-from blueprints.library.archive_converter import classify_archive, convert_mislabeled_archive_to_cbz
 import sqlite3
 import json
 import logging
@@ -1261,6 +1259,8 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
     (RuntimeError "Working outside of application context", avalée par le except général)
     puisque ce thread n'a par défaut aucun contexte Flask actif."""
     from blueprints.library.scanner import LibraryScanner
+    from blueprints.library.routes import _conversion_lock
+    from blueprints.library.archive_converter import classify_archive, convert_mislabeled_archive_to_cbz
 
     try:
         with app.app_context():
