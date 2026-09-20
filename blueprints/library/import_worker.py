@@ -161,6 +161,9 @@ def _convert_if_requested(path, fmt, enabled, lock_path):
     elif fmt == "zip":
         from blueprints.library.zip_converter import convert_zip_to_cbz
         converters[fmt] = convert_zip_to_cbz
+    elif fmt == "tar":
+        from blueprints.library.archive_converter import convert_mislabeled_archive_in_place
+        converters[fmt] = convert_mislabeled_archive_in_place
     converter = converters.get(fmt)
     if not converter:
         return path, "", fmt
@@ -189,7 +192,7 @@ def _prepare_child(payload):
     message = ""
     format_mismatch = None
     detected_fmt = detect_actual_format(str(staged), fmt)
-    if fmt in {"cbz", "zip", "cbr", "rar"} and detected_fmt in {"cbz", "zip", "cbr", "rar"} and detected_fmt != fmt:
+    if fmt in {"cbz", "zip", "cbr", "rar", "tar"} and detected_fmt in {"cbz", "zip", "cbr", "rar", "tar"} and detected_fmt != fmt:
         format_mismatch = (
             f"Extension/format déclaré {fmt.upper()} mais contenu réel "
             f"{detected_fmt.upper()}"

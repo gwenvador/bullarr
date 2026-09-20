@@ -30,6 +30,8 @@ def detect_actual_format(filepath, declared_format):
         return 'cbz'
     if fmt in ('cbz', 'zip') and rarfile.is_rarfile(filepath):
         return 'cbr'
+    if fmt in ('cbz', 'zip') and tarfile.is_tarfile(filepath):
+        return 'tar'
     return fmt
 
 
