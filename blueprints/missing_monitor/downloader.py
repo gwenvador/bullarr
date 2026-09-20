@@ -1610,7 +1610,13 @@ class MissingVolumeDownloader:
         print(f"[{client_label} Download] Envoi à {client_label}: {display_label}", file=sys.stderr)
         try:
             path = urlparse(endpoint).path
-            response = current_app.test_client().post(path, json=payload)
+            # Scheduler calls this route internally without a browser session.
+            # With Bullarr auth enabled, the auth middleware otherwise returns
+            # HTTP 302 to /auth/login before the client route is reached.
+            client = current_app.test_client()
+            with client.session_transaction() as internal_session:
+                internal_session['user'] = {'name': 'bullarr-internal', 'auth_method': 'internal'}
+            response = client.post(path, json=payload)
             print(f"[{client_label} Download] Réponse HTTP: {response.status_code}", file=sys.stderr)
 
             if response.status_code == 200:
