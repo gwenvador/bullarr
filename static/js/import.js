@@ -3450,7 +3450,7 @@ async function assignDestination() {
         fetch('/api/import/mark-manual', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filepath: importFiles[idx].filepath })
+            body: JSON.stringify({ filepath: importFiles[idx].filepath, destination })
         }).catch(() => {});
         fetch('/api/import/check-conflict', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },

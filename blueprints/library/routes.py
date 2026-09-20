@@ -4077,10 +4077,12 @@ def _pack_file_matches_destination(parsed, destination):
 
 def _append_scanned_file(filepath, import_root, filename, destination, scanner, telegram_filenames,
                           manual_override_filepaths, import_config, files_found, pack_download_id=None,
-                          validate_file=True):
+                          validate_file=True, manual_destinations=None):
     """Construit et ajoute une entrée files_found - factorisé entre le fichier isolé (à
     la racine d'un répertoire surveillé) et chaque fichier trouvé dans le dossier d'un
     téléchargement (voir _collect_download_folder_files)."""
+    manual_destinations = manual_destinations or {}
+    destination = manual_destinations.get(filepath, destination)
     relative_path = os.path.relpath(filepath, import_root)
     parsed = scanner.parse_filename(filename)
     parent_dir = os.path.dirname(relative_path)
@@ -4170,7 +4172,7 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
 def _collect_download_folder_files(folder_path, import_root, download, destination, scanner,
                                     supported_extensions, telegram_filenames, manual_override_filepaths,
                                     import_config, files_found, incompatible_folders,
-                                    validate_files=True):
+                                    validate_files=True, manual_destinations=None):
     """Ajoute à files_found/incompatible_folders tout ce qui se trouve DANS folder_path
     (récursivement - un sous-dossier "Bonus/" niché dedans reste légitime, voir
     order.md/CLAUDE.md) en le rattachant tel quel à `download`/`destination` - "you take
@@ -4206,7 +4208,8 @@ def _collect_download_folder_files(folder_path, import_root, download, destinati
             _append_scanned_file(
                 filepath, import_root, filename, destination, scanner, telegram_filenames,
                 manual_override_filepaths, import_config, files_found,
-                pack_download_id=download['id'], validate_file=validate_files
+                pack_download_id=download['id'], validate_file=validate_files,
+                manual_destinations=manual_destinations
             )
 
         if not folder_has_supported and len(unsupported_in_folder) >= 5:
@@ -4264,8 +4267,9 @@ def _scan_tracked_import_files(validate_files=True):
         for identity in _download_folder_identities(d, torrent_names_by_hash):
             downloads_by_folder_name.setdefault(identity, d)
 
-    from .import_history import get_manual_override_filepaths
+    from .import_history import get_manual_override_filepaths, get_manual_override_destinations
     manual_override_filepaths = get_manual_override_filepaths()
+    manual_destinations = get_manual_override_destinations()
 
     files_found = []
     incompatible_folders = []
@@ -4300,7 +4304,7 @@ def _scan_tracked_import_files(validate_files=True):
                     entry.path, import_path, download, destination, scanner,
                     supported_extensions, telegram_filenames, manual_override_filepaths,
                     import_config, files_found, incompatible_folders,
-                    validate_files=validate_files
+                    validate_files=validate_files, manual_destinations=manual_destinations
                 )
             elif entry.is_file():
                 ext = os.path.splitext(entry.name)[1].lower()
@@ -4319,7 +4323,7 @@ def _scan_tracked_import_files(validate_files=True):
                     entry.path, import_path, entry.name, match, scanner, telegram_filenames,
                     manual_override_filepaths, import_config, files_found,
                     pack_download_id=match.get('tracking_id'),
-                    validate_file=validate_files
+                    validate_file=validate_files, manual_destinations=manual_destinations
                 )
 
     return files_found, incompatible_folders
@@ -5321,7 +5325,7 @@ def mark_import_file_manual_route():
         return jsonify({'success': False, 'error': 'Chemin hors des répertoires d\'import autorisés'}), 400
 
     from .import_history import mark_import_file_manual
-    if mark_import_file_manual(filepath):
+    if mark_import_file_manual(filepath, data.get('destination')):
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Erreur lors de l\'enregistrement'}), 500
 

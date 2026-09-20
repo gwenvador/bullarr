@@ -674,9 +674,13 @@ def init_import_manual_overrides_table():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS import_manual_overrides (
                 filepath TEXT PRIMARY KEY,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                destination_json TEXT
             )
         ''')
+        columns = {row[1] for row in cursor.execute('PRAGMA table_info(import_manual_overrides)').fetchall()}
+        if 'destination_json' not in columns:
+            cursor.execute('ALTER TABLE import_manual_overrides ADD COLUMN destination_json TEXT')
         conn.commit()
         conn.close()
         return True
@@ -685,14 +689,18 @@ def init_import_manual_overrides_table():
         return False
 
 
-def mark_import_file_manual(filepath):
+def mark_import_file_manual(filepath, destination=None):
     """Marque un fichier comme assigné/corrigé manuellement - voir
     init_import_manual_overrides_table. Idempotent (INSERT OR IGNORE)."""
     conn = None
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
         cursor = conn.cursor()
-        cursor.execute('INSERT OR IGNORE INTO import_manual_overrides (filepath) VALUES (?)', (filepath,))
+        import json
+        encoded = json.dumps(destination, ensure_ascii=False) if destination is not None else None
+        cursor.execute('INSERT OR IGNORE INTO import_manual_overrides (filepath, destination_json) VALUES (?, ?)', (filepath, encoded))
+        if encoded is not None:
+            cursor.execute('UPDATE import_manual_overrides SET destination_json = ? WHERE filepath = ?', (encoded, filepath))
         conn.commit()
         return True
     except Exception as e:
@@ -788,6 +796,33 @@ def get_finalized_import_source_paths():
         return set()
     finally:
         if conn: conn.close()
+
+def get_manual_override_destinations():
+    """Return persisted manual destinations keyed by source filepath."""
+    import json
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        cursor = conn.cursor()
+        columns = {row[1] for row in cursor.execute('PRAGMA table_info(import_manual_overrides)').fetchall()}
+        if 'destination_json' not in columns:
+            cursor.execute('ALTER TABLE import_manual_overrides ADD COLUMN destination_json TEXT')
+            conn.commit()
+        result = {}
+        for filepath, encoded in cursor.execute('SELECT filepath, destination_json FROM import_manual_overrides WHERE destination_json IS NOT NULL'):
+            if os.path.exists(filepath):
+                try:
+                    result[filepath] = json.loads(encoded)
+                except (TypeError, ValueError):
+                    pass
+        return result
+    except Exception as e:
+        print(f"Erreur lecture destinations manuelles: {e}")
+        return {}
+    finally:
+        if conn:
+            conn.close()
+
 
 def get_manual_override_filepaths():
     """Ensemble des chemins actuellement marqués "assignation manuelle" - nettoie au
