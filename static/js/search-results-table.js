@@ -498,7 +498,8 @@ function _clientAddButtonHtml(added, clientLabel, iconHtml, onclickJs, actionVer
     if (added) {
         return `<button class="btn-icon-only search-result-download-action add-button-added${extraClass}" data-tooltip="Ajouté à ${clientLabel}" disabled><span class="btn-icon">✓</span></button>`;
     }
-    return `<button class="btn-icon-only search-result-download-action${extraClass}" data-tooltip="${actionVerb} à ${clientLabel}" onclick="${onclickJs}">${iconHtml}</button>`;
+    const action = String(onclickJs).match(/^([A-Za-z0-9_]+)/)?.[1] || '';
+    return `<button class="btn-icon-only search-result-download-action${extraClass}" data-result-action="${action}" data-tooltip="${actionVerb} à ${clientLabel}" onclick="${onclickJs}">${iconHtml}</button>`;
 }
 
 // Construit une ligne du tableau de résultats - une seule structure compacte pour
@@ -629,7 +630,7 @@ function buildSearchResultRowHtml(result) {
     let actionsHtml;
     if (isEbdz) {
         actionsHtml = `
-            <button class="btn-icon-only" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.link)}', this)">${svgIcon('copy')}</button>
+            <button class="btn-icon-only" data-result-action="copyLink" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.link)}', this)">${svgIcon('copy')}</button>
             ${enabledDownloadClients.amule ? _clientAddButtonHtml(added.amule, 'eMule', `<img src="/static/img/emule-logo.svg" alt="" class="torrent-client-logo">`, `addToEmule('${escapeForAttribute(result.link)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.source)}', '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})`, 'Ajouter', ' result-action-emule') : ''}
         `;
     } else if (isTelegram) {
@@ -641,21 +642,21 @@ function buildSearchResultRowHtml(result) {
         // - même état déjà-ajouté persistant que les autres clients, juste un rendu différent.
         actionsHtml = added.telegram
             ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
-            : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger vers l'import" onclick="downloadTelegramFile('${escapeForAttribute(result.channel)}', ${result.message_id}, this, '${escapeForAttribute(result.channel_title || '')}', '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})">${svgIcon('download')}</button>`;
+            : `<button class="btn-icon-only search-result-download-action" data-result-action="downloadTelegramFile" data-tooltip="Télécharger vers l'import" onclick="downloadTelegramFile('${escapeForAttribute(result.channel)}', ${result.message_id}, this, '${escapeForAttribute(result.channel_title || '')}', '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})">${svgIcon('download')}</button>`;
     } else if (isFourtoutici) {
         // Comme Telegram (téléchargement interne droit vers l'import, pas de client
         // externe à piloter) mais avec un vrai lien à copier - fourtoutici sert ses
         // fichiers en HTTP direct, pas depuis un compte applicatif privé.
         actionsHtml = `
-            <button class="btn-icon-only" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.download_url || result.link)}', this)">${svgIcon('copy')}</button>
+            <button class="btn-icon-only" data-result-action="copyLink" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.download_url || result.link)}', this)">${svgIcon('copy')}</button>
             ${added.fourtoutici
                 ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
-                : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger vers l'import" onclick="downloadFourtoutici('${escapeForAttribute(result.file_id)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.download_url || result.link || '')}', ${trackingForceReplace})">${svgIcon('download')}</button>`}
+                : `<button class="btn-icon-only search-result-download-action" data-result-action="downloadFourtoutici" data-tooltip="Télécharger vers l'import" onclick="downloadFourtoutici('${escapeForAttribute(result.file_id)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.download_url || result.link || '')}', ${trackingForceReplace})">${svgIcon('download')}</button>`}
         `;
     } else if (isAnnasArchive) {
         const shelfmarkAdded = added.shelfmark;
         actionsHtml = `
-            <a class="btn-icon-only" href="${escapeHtml(result.info_url || result.link || '#')}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir le fichier sur Anna's Archive"><img src="/static/img/web-logo.svg" alt="Web" class="torrent-client-logo"></a>
+            <a class="btn-icon-only" data-result-action="openLink" href="${escapeHtml(result.info_url || result.link || '#')}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir le fichier sur Anna's Archive"><img src="/static/img/web-logo.svg" alt="Web" class="torrent-client-logo"></a>
             ${shelfmarkAdded
                     ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Envoyé à Shelfmark" disabled><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`
                 // "Tome null" - trackingSeriesId/trackingVolumeId/trackingVolumeNumber (voir
@@ -667,10 +668,10 @@ function buildSearchResultRowHtml(result) {
                 // comme la CHAÎNE "null", pas le null JSON attendu, et ressortait telle quelle
                 // jusqu'à l'affichage ("Tome null" sur /import, seul client affecté puisque
                 // seul celui-ci sérialise ces valeurs plutôt que de les injecter en code brut).
-                : `<button class="btn-icon-only search-result-download-action" data-tooltip="Télécharger via Shelfmark" onclick="downloadViaShelfmark(this, '${encodeURIComponent(JSON.stringify({...result, series_id: trackingSeriesId === 'null' ? null : trackingSeriesId, volume_id: trackingVolumeId === 'null' ? null : trackingVolumeId, volume_number: trackingVolumeNumber === 'null' ? null : trackingVolumeNumber, force_replace: trackingForceReplace}))}')"><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`}`;
+                : `<button class="btn-icon-only search-result-download-action" data-result-action="downloadViaShelfmark" data-tooltip="Télécharger via Shelfmark" onclick="downloadViaShelfmark(this, '${encodeURIComponent(JSON.stringify({...result, series_id: trackingSeriesId === 'null' ? null : trackingSeriesId, volume_id: trackingVolumeId === 'null' ? null : trackingVolumeId, volume_number: trackingVolumeNumber === 'null' ? null : trackingVolumeNumber, force_replace: trackingForceReplace}))}')"><img src="/static/img/shelfmark.svg" alt="Shelfmark" class="torrent-client-logo"></button>`}`;
     } else {
         actionsHtml = `
-            <button class="btn-icon-only" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.download_url || result.link)}', this)">${svgIcon('copy')}</button>
+            <button class="btn-icon-only" data-result-action="copyLink" data-tooltip="Copier le lien" onclick="copyLink('${escapeForAttribute(result.download_url || result.link)}', this)">${svgIcon('copy')}</button>
             ${(result.download_url || result.link) ? `
                 ${enabledDownloadClients.qbittorrent ? _clientAddButtonHtml(added.qbittorrent, 'qBittorrent', `<img src="/static/img/qbittorrent-logo.svg" alt="" class="torrent-client-logo">`, `addTorrentToQbittorrent('${escapeForAttribute(result.download_url || result.link)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})`) : ''}
                 ${enabledDownloadClients.rtorrent ? _clientAddButtonHtml(added.rtorrent, 'rTorrent', `<img src="/static/img/rtorrent-logo.svg" alt="" class="torrent-client-logo">`, `addTorrentToRtorrent('${escapeForAttribute(result.download_url || result.link)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(sourceLinkUrl)}', ${trackingForceReplace})`) : ''}
@@ -701,7 +702,7 @@ function buildSearchResultRowHtml(result) {
 
     return `
         <tr class="replace-results-row${isOwned ? ' replace-results-row-owned' : ''}">
-            <td class="replace-results-select"><input type="checkbox" class="search-result-select" data-selection-key="${escapeHtml(_searchResultSelectionKey(result))}" onchange="_toggleSearchResultSelection(this)" aria-label="Sélectionner ce résultat" ${isSelected ? 'checked=""' : ''}></td>
+            <td class="replace-results-select"><input type="checkbox" class="search-result-select" data-result-action="toggleSelection" data-selection-key="${escapeHtml(_searchResultSelectionKey(result))}" aria-label="Sélectionner ce résultat" ${isSelected ? 'checked=""' : ''}></td>
             <td class="replace-results-best-marker">${isOwned ? `<span class="icon-owned" data-tooltip="En bibliothèque">${svgIcon('check')}</span>` : ''}</td>
             <td class="replace-results-filename" title="${escapeHtml(displayName)}">
                 ${unconfirmedVolumeHtml} ${escapeHtml(displayName)}
@@ -933,8 +934,70 @@ function _applySearchTableFilter(field, value) {
 
 // discover.js removes inline event attributes during sanitization. Rebind the safe
 // interactions with real listeners so source-result sorting and filters remain usable.
+function _searchResultTrackingArgs(result) {
+    const trackingTitle = _searchResultDisplayName(result);
+    const trackingSeriesId = _searchResultsContextSeriesId;
+    const trackingVolumeId = _searchResultsContextVolumeId;
+    const trackingVolumeNumber = result.volume != null
+        ? result.volume
+        : (result.is_integral || result.is_hs || result.is_episode ? null : _searchResultsContextVolumeNumber);
+    return {
+        trackingTitle,
+        trackingSeriesId,
+        trackingVolumeId,
+        trackingVolumeNumber,
+        trackingForceReplace: !!_searchResultsContextIsReplacement,
+        sourceLinkUrl: _searchResultSourceLinkUrl(result),
+    };
+}
+
+function _runSearchResultAction(action, control, result) {
+    if (action === 'toggleSelection') return _toggleSearchResultSelection(control);
+    if (action === 'downloadSelectedSearchResults') return downloadSelectedSearchResults();
+    if (action === 'avoidBlackAndWhite') return _setSearchAvoidBlackAndWhitePriority(control.checked);
+    const args = _searchResultTrackingArgs(result);
+    const link = result.link || result.download_url || '';
+    switch (action) {
+        case 'toggleSelection': return _toggleSearchResultSelection(control);
+        case 'copyLink': return copyLink(link, control);
+        case 'addToEmule': return addToEmule(result.link, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, result.source, args.sourceLinkUrl, args.trackingForceReplace);
+        case 'addTorrentToQbittorrent': return addTorrentToQbittorrent(link, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, args.sourceLinkUrl, args.trackingForceReplace);
+        case 'addTorrentToRtorrent': return addTorrentToRtorrent(link, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, args.sourceLinkUrl, args.trackingForceReplace);
+        case 'addTorrentToDeluge': return addTorrentToDeluge(link, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, args.sourceLinkUrl, args.trackingForceReplace);
+        case 'downloadTelegramFile': return downloadTelegramFile(result.channel, result.message_id, control, result.channel_title || '', args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, args.sourceLinkUrl, args.trackingForceReplace);
+        case 'downloadFourtoutici': return downloadFourtoutici(result.file_id, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, result.download_url || result.link || '', args.trackingForceReplace);
+        case 'downloadViaShelfmark': return downloadViaShelfmark(control, encodeURIComponent(JSON.stringify({...result, series_id: args.trackingSeriesId, volume_id: args.trackingVolumeId, volume_number: args.trackingVolumeNumber, force_replace: args.trackingForceReplace})));
+        case 'downloadSelectedSearchResults': return downloadSelectedSearchResults();
+        case 'avoidBlackAndWhite': return _setSearchAvoidBlackAndWhitePriority(control.checked);
+        default: return undefined;
+    }
+}
+
+function bindSearchResultsTableActions(root = document) {
+    const scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll('[data-result-action]').forEach(control => {
+        if (control.dataset.actionBound === '1') return;
+        control.dataset.actionBound = '1';
+        control.addEventListener('click', event => {
+            const action = control.dataset.resultAction;
+            if (action === 'toggleSelection' || action === 'avoidBlackAndWhite') return;
+            const row = control.closest('tr');
+            const key = row?.querySelector('.search-result-select')?.dataset.selectionKey;
+            const result = (_searchTableAllResults || []).find(item => _searchResultSelectionKey(item) === key);
+            if (row && !result) return;
+            _runSearchResultAction(action, control, result);
+        });
+        if (control.dataset.resultAction === 'toggleSelection') {
+            control.addEventListener('change', () => _runSearchResultAction('toggleSelection', control, null));
+        } else if (control.dataset.resultAction === 'avoidBlackAndWhite') {
+            control.addEventListener('change', () => _runSearchResultAction('avoidBlackAndWhite', control, null));
+        }
+    });
+}
+
 function bindSearchResultsTableControls(root = document) {
     const scope = root && root.querySelectorAll ? root : document;
+    bindSearchResultsTableActions(scope);
     scope.querySelectorAll('.search-results-sort-label[data-sort-column]').forEach(label => {
         if (label.dataset.bound === '1') return;
         label.dataset.bound = '1';
@@ -1137,9 +1200,9 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
     return `
         ${hideUnconfirmedCheckboxHtml}
         <div style="display:flex; align-items:center; gap:10px; margin:8px 0;">
-            <button id="search-results-batch-download" class="btn" type="button" onclick="downloadSelectedSearchResults()" disabled>Télécharger la sélection</button>
+            <button id="search-results-batch-download" class="btn" type="button" data-result-action="downloadSelectedSearchResults" disabled>Télécharger la sélection</button>
             <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.9em; cursor:pointer;" data-tooltip="Les résultats Noir & Blanc restent visibles mais ne sont plus favorisés dans le classement">
-                <input type="checkbox" id="search-results-avoid-bw-priority" ${_searchAvoidBlackAndWhitePriority ? 'checked' : ''} onchange="_setSearchAvoidBlackAndWhitePriority(this.checked)">
+                <input type="checkbox" id="search-results-avoid-bw-priority" data-result-action="avoidBlackAndWhite" ${_searchAvoidBlackAndWhitePriority ? 'checked' : ''}>
                 Ne pas prioriser les formats Noir & Blanc
             </label>
             <span id="search-results-batch-download-label" aria-live="polite">0 sélectionné</span>
