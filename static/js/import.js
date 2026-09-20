@@ -335,13 +335,25 @@ function togglePackSubfolder(key) {
     displayImportFiles();
 }
 
+function _packFolderSelectableFiles(group) {
+    return group.files.filter(({ file }) => !file.validation_error || file.forceImport);
+}
+
+function _packFolderAllSelected(group) {
+    const files = _packFolderSelectableFiles(group);
+    return files.length > 0 && files.every(({ file }) => file.destination ? !!file.selected : !!file._bulkSelected);
+}
+
 function toggleSubfolderSelection(pendingId, subfolder, checked) {
     const group = _pendingPackGroups().find(g => g.pending.id === pendingId);
     if (!group) return;
     const bySubfolder = _groupPackMembersBySubfolder(group.fileMatches, group.folderMatches);
     const target = bySubfolder.find(([sf]) => sf === subfolder);
     if (!target) return;
-    target[1].files.forEach(({ file }) => { if (file.destination) file.selected = checked; });
+    _packFolderSelectableFiles({ files: target[1].files }).forEach(({ file }) => {
+        if (file.destination) file.selected = checked;
+        else file._bulkSelected = checked;
+    });
     displayImportFiles();
 }
 
@@ -2142,22 +2154,17 @@ function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
                 <table style="width:100%; border-collapse:collapse;">
                     <tbody>
                         ${_groupPackMembersBySubfolder(fileMatches, folderMatches).map(([subfolder, group]) => {
-                            if (!subfolder) {
-                                return `
-                                    ${group.files.map(({ file, index }) => _importFileRowHtml(file, index)).join('')}
-                                    ${group.folders.map(({ folder, index }) => _incompatibleFolderRowHtml(folder, index)).join('')}
-                                `;
-                            }
-                            const subfolderKey = `${pending.id}::${subfolder}`;
-                            const isCollapsed = !expandedPackSubfolders.has(subfolderKey);
-                            const subfolderSelectableFiles = group.files.filter(({ file }) => file.destination);
-                            const subfolderAllSelected = subfolderSelectableFiles.length > 0
-                                && subfolderSelectableFiles.every(({ file }) => _isFileSelected(file));
+                            const subfolderKey = `${pending.id}::${subfolder || '__root__'}`;
+                            const isRootFolder = !subfolder;
+                            const isCollapsed = !isRootFolder && !expandedPackSubfolders.has(subfolderKey);
+                            const selectableFiles = _packFolderSelectableFiles(group);
+                            const allSelected = _packFolderAllSelected(group);
+                            const folderLabel = isRootFolder ? (pending.title || 'Dossier racine') : subfolder;
                             return `
-                                <tr style="cursor:pointer;" onclick="togglePackSubfolder('${escapeForAttribute(subfolderKey)}')">
+                                <tr style="cursor:pointer;" onclick="${isRootFolder ? '' : `togglePackSubfolder('${escapeForAttribute(subfolderKey)}')`}">
                                     <td colspan="8" style="padding:6px 4px; font-weight:600; font-size:0.85em; color:var(--color-text-muted);">
-                                        ${subfolderSelectableFiles.length ? `<input type="checkbox" class="import-file-select" style="vertical-align:middle; margin-right:6px;" ${subfolderAllSelected ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSubfolderSelection(${pending.id}, '${escapeForAttribute(subfolder)}', this.checked)" data-tooltip="Inclure/exclure tous les fichiers de ce sous-dossier">` : ''}
-                                        <span style="display:inline-block; vertical-align:middle; transition:transform 0.15s ease;${isCollapsed ? ' transform:rotate(-90deg);' : ''}">${svgIcon('chevron-down')}</span> ${svgIcon('folder')} ${escapeHtml(subfolder)}
+                                        ${selectableFiles.length ? `<input type="checkbox" class="import-file-select" style="vertical-align:middle; margin-right:6px;" ${allSelected ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSubfolderSelection(${pending.id}, '${escapeForAttribute(subfolder)}', this.checked)" data-tooltip="Sélectionner tous les fichiers de ce dossier">` : ''}
+                                        ${isRootFolder ? '' : `<span style="display:inline-block; vertical-align:middle; transition:transform 0.15s ease;${isCollapsed ? ' transform:rotate(-90deg);' : ''}">${svgIcon('chevron-down')}</span>`} ${svgIcon('folder')} ${escapeHtml(folderLabel)}
                                     </td>
                                 </tr>
                                 ${isCollapsed ? '' : `
