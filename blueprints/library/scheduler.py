@@ -371,7 +371,17 @@ class LibraryImportScheduler:
                                 # validation, including files directly at the pack root.
                                 if root_folder_name:
                                     root_folder_path = os.path.join(import_path, root_folder_name)
-                                    tracked_pack = root_folder_name.strip().lower() in tracked_download_folder_names
+                                    normalized_root_name = root_folder_name.strip().lower()
+                                    # qBittorrent appends `.2`, `.3`, ... when a previous
+                                    # download left the original directory behind. Strip
+                                    # that collision suffix before deciding whether this is
+                                    # a tracked torrent pack; otherwise the nested-folder
+                                    # safety gate is bypassed for the duplicate directory.
+                                    normalized_root_base = re.sub(r'\.\d+$', '', normalized_root_name)
+                                    tracked_pack = (
+                                        normalized_root_name in tracked_download_folder_names
+                                        or normalized_root_base in tracked_download_folder_names
+                                    )
                                     if tracked_pack and routes._folder_has_subdirectories(root_folder_path):
                                         from .import_history import mark_import_file_manual
                                         mark_import_file_manual(filepath)

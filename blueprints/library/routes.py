@@ -4038,6 +4038,14 @@ def _download_folder_identities(download, torrent_names_by_hash):
     stem, ext = os.path.splitext(identity)
     if ext.lower() in ('.rar', '.zip', '.cbz', '.cbr', '.pdf') and stem:
         identities.add(stem.strip().lower())
+    # qBittorrent appends `.2`, `.3`, ... when the original download directory
+    # already exists. Treat that filesystem suffix as the same tracked torrent so
+    # the nested-folder safety check still applies to the duplicate directory.
+    duplicate_suffix = re.match(r'^(.*)\.(\d+)$', identity.strip().lower())
+    if duplicate_suffix and int(duplicate_suffix.group(2)) >= 2:
+        identities.add(duplicate_suffix.group(1).strip())
+    else:
+        identities.add(f"{identity.strip().lower()}.2")
     return list(identities)
 
 
