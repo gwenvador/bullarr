@@ -7,6 +7,8 @@ from .scraper import BedethequeScraper, BedethequeDatabase, match_bedetheque_vol
 from .comicinfo_writer import build_comicinfo_fields, apply_volume_comicinfo, UnsupportedFormatError
 from .cbr_converter import convert_cbr_to_cbz, CbrConversionError
 from network_safety import safe_external_get
+from blueprints.library.routes import _conversion_lock
+from blueprints.library.archive_converter import classify_archive, convert_mislabeled_archive_to_cbz
 import sqlite3
 import json
 import logging
@@ -2745,9 +2747,18 @@ def _convert_volume_to_cbz(volume_id, source_format, convert_fn, error_cls):
         if (vol['format'] or '').lower() != source_format:
             return jsonify({'success': False, 'error': f"Ce tome n'est pas au format {source_format}"}), 400
 
-        from blueprints.library.routes import _conversion_lock
         with _conversion_lock:
-            new_filepath = convert_fn(vol['filepath'])
+            # Certains anciens imports ont une extension .cbz mais un contenu RAR.
+            # Le convertisseur CBR classique refuse alors car sa cible porte déjà le
+            # même nom. Le résultat est validé dans un fichier temporaire/adjacent,
+            # puis remplace atomiquement le fichier original: aucune copie ne reste
+            # dans le dossier de série et aucun doublon n'est créé.
+            if source_format == 'cbr' and str(vol['filepath']).lower().endswith('.cbz') and classify_archive(vol['filepath']) == 'rar':
+                converted_path = convert_mislabeled_archive_to_cbz(vol['filepath'])
+                os.replace(converted_path, vol['filepath'])
+                new_filepath = vol['filepath']
+            else:
+                new_filepath = convert_fn(vol['filepath'])
         _update_volume_filepath_format(volume_id, new_filepath, 'cbz')
 
         # DB-first (voir apply_volume_comicinfo/CLAUDE.md): projette ce qui est DÉJÀ en

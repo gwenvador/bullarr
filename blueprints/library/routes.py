@@ -7,6 +7,7 @@ from .scanner import LibraryScanner, SeriesDirectoryMissingError, COMICINFO_FIEL
 from blueprints.bedetheque.cbr_converter import convert_cbr_to_cbz, CbrConversionError
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
 from .zip_converter import convert_zip_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
+from .archive_converter import classify_archive, convert_mislabeled_archive_to_cbz
 from blueprints.bedetheque.comicinfo_writer import write_comicinfo_cbz, build_comicinfo_fields, WRITABLE_FORMATS, derive_author_year_from_comicinfo
 from blueprints.bedetheque.scraper import match_bedetheque_volume
 import sqlite3
@@ -4151,10 +4152,14 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
             or ("désactivé dans les paramètres" if not import_config.get('auto_import_enabled', False) else None)
             or (None if gate_passed else _no_volume_skip_reason(parsed, file_destination))
         ),
-        # 'pdf'/'zip' si ce fichier peut être proposé à la conversion cbz (voir POST
-        # /api/import/convert, jamais automatique - bouton "Convertir en CBZ" côté
-        # /import) - None sinon.
-        'convertible': 'pdf' if ext == '.pdf' else ('zip' if ext == '.zip' else None),
+        # Format réel de l'archive, indépendant de l'extension annoncée. Un .cbz
+        # contenant du RAR/TAR est convertible sur demande explicite.
+        'archive_format': (classify_archive(filepath) if ext in ('.cbz', '.cbr', '.rar', '.zip', '.tar') else None),
+        'convertible': (
+            'mislabeled-' + classify_archive(filepath)
+            if ext == '.cbz' and classify_archive(filepath) in ('rar', 'tar')
+            else ('pdf' if ext == '.pdf' else ('zip' if ext == '.zip' else None))
+        ),
         # Connue avec certitude dès l'ajout au client (voir find_active_download_destination
         # - "get the volume number and album name not from a matching but from when the
         # file was added") - jamais devinée depuis le nom de fichier.
@@ -4163,7 +4168,9 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
         # message d'erreur explicite sinon ("Fichier corrompu, import refusé"). import.js
         # exclut un fichier avec cette valeur des fichiers "prêts" et empêche sa sélection.
         'validation_error': (
-            _check_import_file_validity_cached(filepath, parsed.get('format'))
+            (f"Extension .cbz, mais contenu réel {classify_archive(filepath).upper()} : conversion en CBZ proposée"
+             if validate_file and ext == '.cbz' and classify_archive(filepath) in ('rar', 'tar')
+             else _check_import_file_validity_cached(filepath, parsed.get('format')))
             if validate_file else None
         )
     })
@@ -5091,7 +5098,7 @@ def delete_incompatible_folder():
         return jsonify({'error': str(e)}), 500
 
 
-def _convert_single_import_file(import_root, relative_path):
+def _convert_single_import_file(import_root, relative_path, force_mislabeled=False):
     """Coeur de la conversion d'un .pdf/.zip nu en .cbz, partagé par convert_import_file
     (une conversion, synchrone) et convert_import_files_batch (un lot, en arrière-plan -
     voir sa docstring). Retourne (file_dict, error_message, status_code) - file_dict est
@@ -5113,6 +5120,22 @@ def _convert_single_import_file(import_root, relative_path):
         return None, 'Fichier introuvable', 404
 
     ext = os.path.splitext(filepath)[1].lower()
+    actual = classify_archive(filepath) if ext == '.cbz' else None
+    mislabeled = bool(force_mislabeled)
+    if ext == '.cbz' and mislabeled:
+        if actual not in ('rar', 'tar'):
+            return None, 'Le fichier .cbz ne contient pas un RAR/TAR convertible', 400
+        with _conversion_lock:
+            try:
+                new_path = convert_mislabeled_archive_to_cbz(filepath)
+            except Exception as e:
+                return None, str(e), 500
+        return {
+            'filename': os.path.basename(new_path), 'filepath': new_path,
+            'relative_path': os.path.relpath(new_path, import_root),
+            'file_size': os.path.getsize(new_path), 'mtime': os.path.getmtime(new_path),
+            'parsed': LibraryScanner().parse_filename(os.path.basename(new_path)),
+        }, None, 200
     if ext not in ('.pdf', '.zip'):
         return None, f"Conversion non supportée pour l'extension {ext}", 400
 
@@ -5157,7 +5180,7 @@ def convert_import_file():
     de ce qu'affirme l'appelant. Conservée pour une conversion unique synchrone - voir
     convert_import_files_batch pour plusieurs fichiers d'un coup, en arrière-plan."""
     data = request.get_json() or {}
-    file_dict, error, status = _convert_single_import_file(data.get('import_root', ''), data.get('relative_path', ''))
+    file_dict, error, status = _convert_single_import_file(data.get('import_root', ''), data.get('relative_path', ''), data.get('force_mislabeled') is True)
     if error:
         return jsonify({'error': error}), status
     return jsonify({'success': True, 'file': file_dict})
@@ -5190,7 +5213,7 @@ def convert_import_files_batch():
     def _run_batch():
         with app.app_context():
             for f in files:
-                _, error, _ = _convert_single_import_file(f.get('import_root', ''), f.get('relative_path', ''))
+                _, error, _ = _convert_single_import_file(f.get('import_root', ''), f.get('relative_path', ''), f.get('force_mislabeled') is True)
                 if error:
                     print(f"✗ Erreur conversion en arrière-plan ({f.get('relative_path', '?')}): {error}")
 

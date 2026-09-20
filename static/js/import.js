@@ -1413,7 +1413,7 @@ async function bulkConvertSelectedImportFiles() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                files: filesToConvert.map(f => ({ import_root: f.import_root, relative_path: f.relative_path }))
+                files: filesToConvert.map(f => ({ import_root: f.import_root, relative_path: f.relative_path, force_mislabeled: String(f.convertible || '').startsWith('mislabeled-') }))
             })
         });
         const data = await response.json();
@@ -1942,7 +1942,7 @@ function _importFileRowHtml(file, index) {
     const statusBadge = file.validation_error
         ? (file.forceImport
             ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="${escapeHtml(file.validation_error)} — import forcé malgré la corruption">${svgIcon('triangle-alert')} Corrompu (forcé)</span>`
-            : `<span style="color:#dc3545; font-weight:600;" data-tooltip="${escapeHtml(file.validation_error)}">${svgIcon('circle-x')} Corrompu</span><br><button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" ${file._rescanning ? 'disabled' : ''} onclick="rescanCorruptedFile(${index})" data-tooltip="Refait le test d'intégrité maintenant, sans attendre le prochain essai automatique">${file._rescanning ? 'Vérification…' : 'Revérifier'}</button> <button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" onclick="forceImportCorruptedFile(${index})">Importer quand même</button>`)
+            : `<span style="color:#dc3545; font-weight:600;" data-tooltip="${escapeHtml(file.validation_error)}">${svgIcon('circle-x')} Corrompu</span><br><button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" ${file._rescanning ? 'disabled' : ''} onclick="rescanCorruptedFile(${index})" data-tooltip="Refait le test d'intégrité maintenant, sans attendre le prochain essai automatique">${file._rescanning ? 'Vérification…' : 'Revérifier'}</button> ${file.convertible && String(file.convertible).startsWith('mislabeled-') ? `<button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" onclick="convertMislabeledImportFile(${index})">Convertir en CBZ</button>` : ''} <button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" onclick="forceImportCorruptedFile(${index})">Importer quand même</button>`)
         : trackedConflictVolume != null
         ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Le tome ${escapeHtml(String(trackedConflictVolume))} était attendu (recherché), mais ce fichier est en réalité ${file.parsed.is_integral ? 'une intégrale' : file.parsed.is_hs ? 'un hors-série' : file.parsed.is_episode ? 'un épisode' : 'un one-shot'} - à vérifier avant de valider">${svgIcon('triangle-alert')} Tome inattendu</span>`
         : file.destination?.download_status === 'pending'
@@ -2519,6 +2519,21 @@ function toggleFileSelection(fileIndex, checked) {
     importFiles[fileIndex].selected = checked;
     updateImportStats();
     _updateImportBulkAssignBar();
+}
+
+
+async function convertMislabeledImportFile(fileIndex) {
+    const file = importFiles[fileIndex];
+    if (!file || !String(file.convertible || '').startsWith('mislabeled-')) return;
+    const kind = String(file.convertible).replace('mislabeled-', '').toUpperCase();
+    if (!confirm(`« ${file.filename} » porte .cbz mais contient une archive ${kind}. La convertir en CBZ ? L'original sera conservé.`)) return;
+    try {
+        const response = await fetch('/api/import/convert', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({import_root: file.import_root, relative_path: file.relative_path, force_mislabeled: true}) });
+        const result = await response.json();
+        if (!response.ok || !result.success) { alert(`Conversion impossible : ${result.error || 'erreur inconnue'}`); return; }
+        alert(`Conversion terminée : ${result.file.filename}. L'original a été conservé.`);
+        await loadActiveDownloads();
+    } catch (error) { alert(`Erreur de conversion : ${error.message}`); }
 }
 
 function forceImportCorruptedFile(fileIndex) {
