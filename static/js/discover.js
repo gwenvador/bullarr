@@ -781,7 +781,9 @@ async function searchSources() {
         const render = () => {
             if (combined.length > 0) {
                 // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
-                _replaceWithSanitizedDom(document.getElementById('sources-results-list'), buildSearchResultsTableHtml(combined, null, seriesId, null, renderedOnce));
+                const sourcesResultsList = document.getElementById('sources-results-list');
+                _replaceWithSanitizedDom(sourcesResultsList, buildSearchResultsTableHtml(combined, null, seriesId, null, renderedOnce));
+                bindSearchResultsTableControls(sourcesResultsList);
                 // "je veux celui la partout" (loupe carrée sur les filtres texte, voir
                 // bedetheque-indispensables.js) - tableau injecté après coup, hors de
                 // portée du scan une-fois-au-chargement de nav.js.

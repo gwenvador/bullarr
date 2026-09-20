@@ -931,6 +931,32 @@ function _applySearchTableFilter(field, value) {
     _renderSearchResultsTbody();
 }
 
+// discover.js removes inline event attributes during sanitization. Rebind the safe
+// interactions with real listeners so source-result sorting and filters remain usable.
+function bindSearchResultsTableControls(root = document) {
+    const scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll('.search-results-sort-label[data-sort-column]').forEach(label => {
+        if (label.dataset.bound === '1') return;
+        label.dataset.bound = '1';
+        label.addEventListener('click', () => _setSearchTableSort(label.dataset.sortColumn));
+    });
+    scope.querySelectorAll('[data-filter-field]').forEach(control => {
+        if (control.dataset.bound === '1') return;
+        control.dataset.bound = '1';
+        const eventName = control.matches('input[type="text"]') ? 'input' : 'change';
+        control.addEventListener(eventName, () => {
+            if (typeof _syncFilterControlActive === 'function') _syncFilterControlActive(control);
+            _applySearchTableFilter(control.dataset.filterField,
+                control.type === 'checkbox' ? control.checked : control.value);
+        });
+    });
+    const selectAll = scope.querySelector('#search-results-select-all');
+    if (selectAll && selectAll.dataset.bound !== '1') {
+        selectAll.dataset.bound = '1';
+        selectAll.addEventListener('change', () => toggleAllSearchResults(selectAll));
+    }
+}
+
 // Tri par en-tête cliquable ("pouvoir ordonner en cliquant sur le header"), même principe
 // que seriesTableSort côté library.js: colonne active + sens, reclique la même colonne
 // pour inverser. column === null revient au tri par pertinence par défaut
@@ -1089,7 +1115,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
     // résultat à filtrer dans ce cas.
     const hideUnconfirmedCheckboxHtml = volumeNumber !== null ? `
         <label style="display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; font-size:0.9em; cursor:pointer;" data-tooltip="Masquer les résultats dont le titre ne confirme pas le tome/l'album recherché">
-            <input type="checkbox" ${f.hideUnconfirmed ? 'checked' : ''} onchange="_applySearchTableFilter('hideUnconfirmed', this.checked)">
+            <input type="checkbox" data-filter-field="hideUnconfirmed" ${f.hideUnconfirmed ? 'checked' : ''} onchange="_applySearchTableFilter('hideUnconfirmed', this.checked)">
             Bon volume uniquement
         </label>
     ` : '';
@@ -1101,7 +1127,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
     // buildSearchResultRowHtml) - sinon l'en-tête reste une colonne vide comme avant.
     const ownedColumnHeaderHtml = seriesId
         ? _searchResultsFilterHeaderHtml('owned', 'Possédé',
-            `<select id="search-results-filter-owned" aria-label="Filtrer par possession" class="search-results-filter-select th-filterable-control${activeClass(f.owned)}" data-tooltip="Filtrer par possession" onchange="_syncFilterControlActive(this); _applySearchTableFilter('owned', this.value)">
+            `<select id="search-results-filter-owned" data-filter-field="owned" aria-label="Filtrer par possession" class="search-results-filter-select th-filterable-control${activeClass(f.owned)}" data-tooltip="Filtrer par possession" onchange="_syncFilterControlActive(this); _applySearchTableFilter('owned', this.value)">
                 <option value="">Tout</option>
                 <option value="missing"${f.owned === 'missing' ? ' selected' : ''}>✗</option>
                 <option value="owned"${f.owned === 'owned' ? ' selected' : ''}>✓</option>
@@ -1122,36 +1148,36 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
             <table class="replace-results-table" id="search-results-table">
                 <thead>
                     <tr>
-                        <th class="replace-results-select-header" aria-label="Sélection"><input type="checkbox" id="search-results-select-all" onchange="toggleAllSearchResults(this)" aria-label="Tout sélectionner"></th>
+                        <th class="replace-results-select-header" aria-label="Sélection"><input type="checkbox" id="search-results-select-all" aria-label="Tout sélectionner"></th>
                         <th>${ownedColumnHeaderHtml}</th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('filename', 'Fichier',
-                                `<input type="text" id="search-results-filter-filename" aria-label="Filtrer par titre" class="search-results-filter-input th-filterable-control${activeClass(f.title)}" value="${escapeHtml(f.title)}" data-tooltip="Filtrer par titre" placeholder="Filtrer..." oninput="_syncFilterControlActive(this); _applySearchTableFilter('title', this.value)">`)}
+                                `<input type="text" id="search-results-filter-filename" data-filter-field="title" aria-label="Filtrer par titre" class="search-results-filter-input th-filterable-control${activeClass(f.title)}" value="${escapeHtml(f.title)}" data-tooltip="Filtrer par titre" placeholder="Filtrer..." oninput="_syncFilterControlActive(this); _applySearchTableFilter('title', this.value)">`)}
                         </th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('volume', 'Volume',
-                                `<select id="search-results-filter-volume" aria-label="Filtrer par volume" class="search-results-filter-select th-filterable-control${activeClass(f.volume)}" data-tooltip="Filtrer par volume" onchange="_syncFilterControlActive(this); _applySearchTableFilter('volume', this.value)">
+                                `<select id="search-results-filter-volume" data-filter-field="volume" aria-label="Filtrer par volume" class="search-results-filter-select th-filterable-control${activeClass(f.volume)}" data-tooltip="Filtrer par volume" onchange="_syncFilterControlActive(this); _applySearchTableFilter('volume', this.value)">
                                     <option value="">Tout</option>
                                     ${volumeOptions.map(v => `<option value="${escapeHtml(v)}"${f.volume === v ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('')}
                                 </select>`)}
                         </th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('source', 'Source',
-                                `<select id="search-results-filter-source" aria-label="Filtrer par source" class="search-results-filter-select th-filterable-control${activeClass(f.source)}" data-tooltip="Filtrer par source" onchange="_syncFilterControlActive(this); _applySearchTableFilter('source', this.value)">
+                                `<select id="search-results-filter-source" data-filter-field="source" aria-label="Filtrer par source" class="search-results-filter-select th-filterable-control${activeClass(f.source)}" data-tooltip="Filtrer par source" onchange="_syncFilterControlActive(this); _applySearchTableFilter('source', this.value)">
                                     <option value="">Tout</option>
                                     ${sourceOptions.map(s => `<option value="${escapeHtml(s)}"${f.source === s ? ' selected' : ''}>${escapeHtml(_searchResultSourceLabel(s))}</option>`).join('')}
                                 </select>`)}
                         </th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('format', 'Format',
-                                `<select id="search-results-filter-format" aria-label="Filtrer par format" class="search-results-filter-select th-filterable-control${activeClass(f.format)}" data-tooltip="Filtrer par format" onchange="_syncFilterControlActive(this); _applySearchTableFilter('format', this.value)">
+                                `<select id="search-results-filter-format" data-filter-field="format" aria-label="Filtrer par format" class="search-results-filter-select th-filterable-control${activeClass(f.format)}" data-tooltip="Filtrer par format" onchange="_syncFilterControlActive(this); _applySearchTableFilter('format', this.value)">
                                     <option value="">Tout</option>
                                     ${formatOptions.map(fmt => `<option value="${escapeHtml(fmt)}"${f.format === fmt ? ' selected' : ''}>${escapeHtml(fmt)}</option>`).join('')}
                                 </select>`)}
                         </th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('blackAndWhite', 'N&B',
-                                `<select id="search-results-filter-black-and-white" aria-label="Filtrer les formats Noir et Blanc" class="search-results-filter-select th-filterable-control${activeClass(f.blackAndWhite)}" data-tooltip="Filtrer les fichiers Noir & Blanc" onchange="_syncFilterControlActive(this); _applySearchTableFilter('blackAndWhite', this.value)">
+                                `<select id="search-results-filter-black-and-white" data-filter-field="blackAndWhite" aria-label="Filtrer les formats Noir et Blanc" class="search-results-filter-select th-filterable-control${activeClass(f.blackAndWhite)}" data-tooltip="Filtrer les fichiers Noir & Blanc" onchange="_syncFilterControlActive(this); _applySearchTableFilter('blackAndWhite', this.value)">
                                     <option value="">Tout</option>
                                     <option value="yes"${f.blackAndWhite === 'yes' ? ' selected' : ''}>Oui</option>
                                     <option value="no"${f.blackAndWhite === 'no' ? ' selected' : ''}>Non</option>
@@ -1160,7 +1186,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
                         <th>${_searchResultsSortableLabelHtml('resolution', 'Résolution')}</th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('size', 'Taille',
-                                `<select id="search-results-filter-size" aria-label="Filtrer par taille" class="search-results-filter-select th-filterable-control${activeClass(f.size)}" data-tooltip="Filtrer par taille" onchange="_syncFilterControlActive(this); _applySearchTableFilter('size', this.value)">
+                                `<select id="search-results-filter-size" data-filter-field="size" aria-label="Filtrer par taille" class="search-results-filter-select th-filterable-control${activeClass(f.size)}" data-tooltip="Filtrer par taille" onchange="_syncFilterControlActive(this); _applySearchTableFilter('size', this.value)">
                                     ${SEARCH_SIZE_BUCKETS.map(b => `<option value="${b.value}"${f.size === b.value ? ' selected' : ''}>${b.label}</option>`).join('')}
                                 </select>`)}
                         </th>
