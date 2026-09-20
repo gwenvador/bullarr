@@ -287,6 +287,11 @@ class LibraryImportScheduler:
                     if d.get('client') == 'qbittorrent' and d.get('client_item_id')
                 }
                 torrent_names_by_hash = get_qbittorrent_torrent_names(qbittorrent_hashes)
+                tracked_download_folder_names = set()
+                for download in trackable_downloads:
+                    tracked_download_folder_names.update(
+                        routes._download_folder_identities(download, torrent_names_by_hash)
+                    )
 
                 # Même correctif, jamais appliqué ici jusqu'à présent: find_auto_assign_
                 # destination rouvrait sa PROPRE connexion et refetchait TOUTES les séries
@@ -360,6 +365,17 @@ class LibraryImportScheduler:
                                 parent_dir = os.path.dirname(relative_path)
                                 folder_name = os.path.basename(parent_dir) if parent_dir else None
                                 root_folder_name = relative_path.split(os.sep)[0] if os.sep in relative_path else None
+
+                                # Any tracked torrent folder containing subdirectories is
+                                # ambiguous by construction. Hold every child for manual
+                                # validation, including files directly at the pack root.
+                                if root_folder_name:
+                                    root_folder_path = os.path.join(import_path, root_folder_name)
+                                    tracked_pack = root_folder_name.strip().lower() in tracked_download_folder_names
+                                    if tracked_pack and routes._folder_has_subdirectories(root_folder_path):
+                                        from .import_history import mark_import_file_manual
+                                        mark_import_file_manual(filepath)
+                                        continue
 
                                 # Priorité à la série connue au moment du téléchargement
                                 # (voir find_active_download_destination - "get the volume

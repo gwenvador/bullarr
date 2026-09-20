@@ -4041,6 +4041,23 @@ def _download_folder_identities(download, torrent_names_by_hash):
     return list(identities)
 
 
+def _folder_has_subdirectories(folder_path):
+    """Return True when a tracked download folder contains any subdirectory.
+
+    A nested layout is ambiguous: the parent torrent name can describe a universe or
+    franchise while child folders contain different series. Such packs must remain in
+    manual Import review; this helper deliberately ignores hidden/upload staging dirs.
+    """
+    try:
+        for _root, dirs, _files in os.walk(folder_path):
+            dirs[:] = [d for d in dirs if d != '_uploads' and not d.startswith('.')]
+            if dirs:
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def _pack_file_matches_destination(parsed, destination):
     """Only auto-import a pack member when its parsed series is exact."""
     parsed_title = (parsed or {}).get('title')
@@ -4153,6 +4170,7 @@ def _collect_download_folder_files(folder_path, import_root, download, destinati
     this is matching the name of the placeholder. files inside the folder easy peasy":
     aucun matching de série/titre nécessaire, la seule appartenance au dossier du
     téléchargement suffit."""
+    nested_pack = _folder_has_subdirectories(folder_path)
     for root, dirs, files in os.walk(folder_path):
         dirs[:] = [d for d in dirs if d not in ('_uploads',) and not d.startswith('.')]
 
@@ -4171,6 +4189,12 @@ def _collect_download_folder_files(folder_path, import_root, download, destinati
                 continue
             folder_has_supported = True
             filepath = os.path.join(root, filename)
+            if nested_pack:
+                # A pack with child folders is never auto-imported: its parent title
+                # is not reliable evidence that every child belongs to this series.
+                from .import_history import mark_import_file_manual
+                mark_import_file_manual(filepath)
+                manual_override_filepaths.add(filepath)
             _append_scanned_file(
                 filepath, import_root, filename, destination, scanner, telegram_filenames,
                 manual_override_filepaths, import_config, files_found,
@@ -7731,6 +7755,13 @@ def attempt_immediate_auto_import(filepath, import_root):
         parsed = scanner.parse_filename(filename)
 
         relative_path = os.path.relpath(filepath, import_root)
+        relative_parts = Path(relative_path).parts
+        if len(relative_parts) >= 3:
+            pack_root = os.path.join(import_root, relative_parts[0])
+            if _folder_has_subdirectories(pack_root):
+                from .import_history import mark_import_file_manual
+                mark_import_file_manual(filepath)
+                return
         parent_dir = os.path.dirname(relative_path)
         folder_name = os.path.basename(parent_dir) if parent_dir else None
 
