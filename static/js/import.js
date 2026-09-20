@@ -2890,6 +2890,17 @@ function openDestinationModal(fileIndexOrIndices) {
     );
 }
 
+function updateForceReplaceVisibility(seriesValue) {
+    const group = document.getElementById('force-replace-group');
+    const forceCheckbox = document.getElementById('force-replace-existing');
+    if (!group || !forceCheckbox) return;
+    const show = !!seriesValue
+        && seriesValue !== '__new__'
+        && !seriesValue.startsWith(PENDING_SERIES_PREFIX);
+    group.style.display = show ? 'block' : 'none';
+    if (!show) forceCheckbox.checked = false;
+}
+
 function _populateDestinationModal() {
     const isBulk = currentFileIndices.length > 1;
     const file = importFiles[currentFileIndices[0]];
@@ -2919,6 +2930,7 @@ function _populateDestinationModal() {
                 document.getElementById('new-series-name').value = file.destination.series_title;
             }
             updateVolumeOverrideVisibility(seriesValue, file.destination.volume_override);
+            updateForceReplaceVisibility(seriesValue);
         }, 100);
     } else if (allLibraries.length === 1) {
         // Une seule bibliothèque : pas besoin de faire choisir l'utilisateur
@@ -2976,6 +2988,7 @@ function loadLibrarySeries() {
 
     if (!libraryId) {
         seriesSelect.innerHTML = '<option value="">-- Sélectionner une série --</option>';
+        updateForceReplaceVisibility('');
         return;
     }
 
@@ -3012,6 +3025,7 @@ function loadLibrarySeries() {
             newSeriesGroup.style.display = 'none';
         }
         updateVolumeOverrideVisibility(this.value);
+        updateForceReplaceVisibility(this.value);
     };
 
     // seriesSelect.innerHTML vient d'être reconstruit (donc remis à '' - "Sélectionner
