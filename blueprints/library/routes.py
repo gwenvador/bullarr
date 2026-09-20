@@ -7,7 +7,7 @@ from .scanner import LibraryScanner, SeriesDirectoryMissingError, COMICINFO_FIEL
 from blueprints.bedetheque.cbr_converter import convert_cbr_to_cbz, CbrConversionError
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
 from .zip_converter import convert_zip_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
-from .archive_converter import classify_archive, convert_mislabeled_archive_to_cbz
+from .archive_converter import classify_archive, convert_mislabeled_archive_in_place
 from blueprints.bedetheque.comicinfo_writer import write_comicinfo_cbz, build_comicinfo_fields, WRITABLE_FORMATS, derive_author_year_from_comicinfo
 from blueprints.bedetheque.scraper import match_bedetheque_volume
 import sqlite3
@@ -5127,7 +5127,7 @@ def _convert_single_import_file(import_root, relative_path, force_mislabeled=Fal
             return None, 'Le fichier .cbz ne contient pas un RAR/TAR convertible', 400
         with _conversion_lock:
             try:
-                new_path = convert_mislabeled_archive_to_cbz(filepath)
+                new_path = convert_mislabeled_archive_in_place(filepath)
             except Exception as e:
                 return None, str(e), 500
         return {

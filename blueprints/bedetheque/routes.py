@@ -1260,7 +1260,7 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
     puisque ce thread n'a par défaut aucun contexte Flask actif."""
     from blueprints.library.scanner import LibraryScanner
     from blueprints.library.routes import _conversion_lock
-    from blueprints.library.archive_converter import classify_archive, convert_mislabeled_archive_to_cbz
+    from blueprints.library.archive_converter import classify_archive, convert_mislabeled_archive_in_place
 
     try:
         with app.app_context():
@@ -2754,9 +2754,7 @@ def _convert_volume_to_cbz(volume_id, source_format, convert_fn, error_cls):
             # puis remplace atomiquement le fichier original: aucune copie ne reste
             # dans le dossier de série et aucun doublon n'est créé.
             if source_format == 'cbr' and str(vol['filepath']).lower().endswith('.cbz') and classify_archive(vol['filepath']) == 'rar':
-                converted_path = convert_mislabeled_archive_to_cbz(vol['filepath'])
-                os.replace(converted_path, vol['filepath'])
-                new_filepath = vol['filepath']
+                new_filepath = convert_mislabeled_archive_in_place(vol['filepath'])
             else:
                 new_filepath = convert_fn(vol['filepath'])
         _update_volume_filepath_format(volume_id, new_filepath, 'cbz')
