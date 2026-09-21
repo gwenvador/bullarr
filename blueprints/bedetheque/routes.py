@@ -1369,6 +1369,38 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
             # systématiquement sur "titre mais pas de résumé".
             BedethequeDatabase(db_path).update_series_bedetheque_info(series_id, info)
 
+            # Les noms de fichiers font partie de l'alignement Bédéthèque : une mise à
+            # jour des métadonnées doit aussi rattraper les anciens noms d'import bruts.
+            # On réutilise le même FileRenamer que l'import, mais sur tous les volumes
+            # réels de la série, sans toucher aux placeholders sans fichier.
+            try:
+                from blueprints.library.routes import _fetch_series_for_rename, _fetch_volumes_for_rename
+                from blueprints.settings.rename_config_store import load_rename_config
+                from rename_handler import FileRenamer
+                rename_conn = sqlite3.connect(db_path, timeout=120.0)
+                rename_conn.row_factory = sqlite3.Row
+                rename_cursor = rename_conn.cursor()
+                rename_series = _fetch_series_for_rename(rename_cursor, series_id)
+                rename_volumes = _fetch_volumes_for_rename(rename_cursor, series_id, None) if rename_series else []
+                if rename_series and rename_volumes:
+                    rename_cfg = load_rename_config()
+                    rename_plan = FileRenamer.build_rename_plan(
+                        rename_series['title'], rename_volumes, bool(rename_series['is_oneshot']),
+                        rename_cfg['volume_template'], rename_series['universe_name'],
+                        rename_cfg['oneshot_template']
+                    )
+                    rename_results = FileRenamer.execute_rename_plan(rename_series['path'], rename_plan)
+                    for result in rename_results:
+                        if result.get('success') and not result.get('skipped'):
+                            rename_cursor.execute(
+                                'UPDATE volumes SET filename = ?, filepath = ? WHERE id = ?',
+                                (result['new_name'], os.path.join(rename_series['path'], result['new_name']), result['volume_id'])
+                            )
+                    rename_conn.commit()
+                rename_conn.close()
+            except Exception as e:
+                logger.warning(f"Renommage après mise à jour Bédéthèque échoué pour la série #{series_id}: {e}")
+
             # Les résumé/genre/auteur locaux de la série sont dérivés des ComicInfo.xml des
             # volumes (voir update_series_stats): à recalculer maintenant qu'ils ont changé
             scanner.update_series_stats(series_id)

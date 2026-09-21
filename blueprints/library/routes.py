@@ -2001,6 +2001,14 @@ def trigger_new_series_bedetheque_fetch(series_id, series_title, bedetheque_url)
                 from blueprints.bedetheque.routes import _align_title_and_start_metadata_write
                 info = BedethequeScraper().get_series_info(bd_url)
                 if info:
+                    # Persist the match before starting the slow ComicInfo pass. This
+                    # synchronizes universe_id and reconciles a folder created at the
+                    # library root during import; previously this only happened at the
+                    # end of the background writer, so the import returned with no
+                    # universe and a later manual refresh appeared to be required.
+                    from blueprints.bedetheque.scraper import BedethequeDatabase
+                    db_manager = BedethequeDatabase(app.config['DATABASE'])
+                    db_manager.update_series_bedetheque_info(series_id, info)
                     _align_title_and_start_metadata_write(series_id, series_title, info, write_volumes=True)
         except Exception as e:
             print(f"Erreur récupération métadonnées Bedetheque pour la nouvelle série #{series_id}: {e}")
@@ -6106,6 +6114,9 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         placeholder_dict = json.loads(placeholder_comicinfo) if placeholder_comicinfo else {}
                         resolved_dict = dict(volume_comicinfo or {})
                         resolved_dict.update({k: v for k, v in placeholder_dict.items() if v not in (None, '')})
+                        resolved_dict = _merge_cached_bedetheque_comicinfo(
+                            cursor, series_id, series_title, parsed.get('volume'), resolved_dict
+                        )
                         resolved_comicinfo = json.dumps(resolved_dict) if resolved_dict else None
                         # "all the data from an album is taken from bedetheque not
                         # from the file itself. unless it is releaser and quality" -
@@ -6904,6 +6915,24 @@ def _apply_custom_volume_name(file_plan, custom_name):
     return file_plan
 
 
+def _move_series_folder_for_universe(conn, series_id):
+    """Reconcile a series folder after its universe assignment changes.
+
+    This is deliberately the same filesystem-safe folder operation used by the
+    explicit rename endpoint; it updates the stored series/volume paths only after
+    the directory move succeeds and leaves the files untouched.
+    """
+    series = _fetch_series_for_rename(conn.cursor(), series_id)
+    if not series:
+        return {'success': False, 'error': 'Série introuvable'}
+    from blueprints.settings.rename_config_store import load_rename_config
+    rename_cfg = load_rename_config()
+    return _rename_series_folder(
+        conn, series_id, series['path'], series['title'], series['library_path'], {},
+        rename_cfg['series_template'], universe_name=series['universe_name']
+    )
+
+
 def _rename_series_folder(conn, series_id, series_path, series_title, library_path, final_name_by_volume, series_template=None, custom_name=None, universe_name=None):
     """Renomme le dossier de la série vers son titre assaini, puis met à jour
     series.path et volumes.filepath en conséquence dans la même connexion/commit - pour
@@ -7213,6 +7242,46 @@ def _log_rename_action(series_id, series_title, file_results, folder_result, uni
         log_action('rename', series_id, series_title, ' · '.join(parts) or 'Rien à renommer', success=success, error=error, files_json=files_json)
     except Exception as e:
         print(f"Erreur lors de la journalisation du renommage (série #{series_id}): {e}")
+
+
+def _merge_cached_bedetheque_comicinfo(cursor, series_id, series_title, volume_number, existing):
+    """Complete an imported placeholder from the cached Bédéthèque album record.
+
+    Placeholders historically stored only a display subset (title/authors/year).
+    Import must rebuild the full ComicInfo from the cached album so Number, Series,
+    date, rating and colorist are not lost when the placeholder becomes owned.
+    """
+    resolved = dict(existing or {})
+    cursor.execute("""
+        SELECT bedetheque_url, bedetheque_albums, bedetheque_description,
+               bedetheque_genre, bedetheque_scenaristes, bedetheque_dessinateurs,
+               bedetheque_editeurs
+        FROM series WHERE id = ?
+    """, (series_id,))
+    row = cursor.fetchone()
+    if not row or not row[0] or not row[1]:
+        return resolved
+    try:
+        albums = json.loads(row[1])
+    except (TypeError, ValueError):
+        return resolved
+    bd_volume = match_bedetheque_volume(albums, {
+        'volume_number': volume_number,
+        'is_integral': False, 'integral_number': None,
+        'is_hs': False, 'hs_number': None,
+        'is_episode': False, 'episode_number': None,
+    })
+    if not bd_volume:
+        return resolved
+    series_info = {
+        'url': row[0], 'description': row[2], 'genre': row[3],
+        'scenaristes': (row[4] or '').split(', ') if row[4] else [],
+        'dessinateurs': (row[5] or '').split(', ') if row[5] else [],
+        'editeurs': (row[6] or '').split(', ') if row[6] else [],
+    }
+    fields = build_comicinfo_fields(volume_number, series_title, series_info, bd_volume)
+    resolved.update({tag.lower(): value for tag, value in fields.items() if value not in (None, '')})
+    return resolved
 
 
 # ========== FONCTIONS D'IMPORT AUTOMATIQUE ==========
