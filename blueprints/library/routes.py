@@ -1998,18 +1998,23 @@ def trigger_new_series_bedetheque_fetch(series_id, series_title, bedetheque_url)
         try:
             with app.app_context():
                 from blueprints.bedetheque.scraper import BedethequeScraper
-                from blueprints.bedetheque.routes import _align_title_and_start_metadata_write
+                from blueprints.bedetheque.routes import _align_title_and_start_metadata_write, _write_series_volumes_metadata_async
                 info = BedethequeScraper().get_series_info(bd_url)
                 if info:
-                    # Persist the match before starting the slow ComicInfo pass. This
-                    # synchronizes universe_id and reconciles a folder created at the
-                    # library root during import; previously this only happened at the
-                    # end of the background writer, so the import returned with no
-                    # universe and a later manual refresh appeared to be required.
+                    # Persist the match before writing volumes. This synchronizes
+                    # universe_id and reconciles a folder created at the library root
+                    # during import.
                     from blueprints.bedetheque.scraper import BedethequeDatabase
                     db_manager = BedethequeDatabase(app.config['DATABASE'])
                     db_manager.update_series_bedetheque_info(series_id, info)
-                    _align_title_and_start_metadata_write(series_id, series_title, info, write_volumes=True)
+                    _align_title_and_start_metadata_write(series_id, series_title, info, write_volumes=False)
+                    # Import must not return a series whose ComicInfo is still absent
+                    # in a daemon thread that can be killed by a worker recycle. The
+                    # import path performs the metadata projection synchronously; the
+                    # explicit refresh endpoint remains asynchronous for large series.
+                    _write_series_volumes_metadata_async(
+                        app, app.config['DATABASE'], series_id, series_title, info
+                    )
         except Exception as e:
             print(f"Erreur récupération métadonnées Bedetheque pour la nouvelle série #{series_id}: {e}")
 
