@@ -261,12 +261,18 @@ async function _verifRequestFolderReconciliation(seriesId) {
 
 async function verifReconcileFolder(seriesId, buttonEl) {
     buttonEl.disabled = true;
+    buttonEl.classList.add('verif-folder-move-active');
+    buttonEl.setAttribute('aria-busy', 'true');
+    buttonEl.dataset.tooltip = 'Déplacement en cours…';
     try {
         await _verifRequestFolderReconciliation(seriesId);
-        showToast('Dossier déplacé vers son emplacement attendu.', 'success');
+        showToast('folder-reconcile', 'Dossier déplacé vers son emplacement attendu.', { icon: 'check', autoHideMs: 5000 });
     } catch (error) {
-        showToast(error.message, 'error');
+        showToast('folder-reconcile', `Échec du déplacement : ${error.message}`, { icon: 'x', autoHideMs: 8000 });
     } finally {
+        buttonEl.classList.remove('verif-folder-move-active');
+        buttonEl.removeAttribute('aria-busy');
+        buttonEl.dataset.tooltip = 'Déplacer vers l’emplacement attendu';
         await runVerificationCategory('misplaced_folders');
     }
 }
@@ -299,7 +305,10 @@ async function verifBulkReconcileFolders() {
     for (const seriesId of ids) {
         try { await _verifRequestFolderReconciliation(seriesId); } catch (error) { failed += 1; }
     }
-    showToast(failed ? `${ids.length - failed} déplacé(s), ${failed} échec(s).` : `${ids.length} dossier(s) déplacé(s).`, failed ? 'error' : 'success');
+    const message = failed
+        ? `${ids.length - failed} dossier(s) déplacé(s), ${failed} échec(s).`
+        : `${ids.length} dossier(s) déplacé(s) vers leur emplacement attendu.`;
+    showToast('folder-reconcile-bulk', message, { icon: failed ? 'x' : 'check', autoHideMs: failed ? 8000 : 5000 });
     await runVerificationCategory('misplaced_folders');
 }
 

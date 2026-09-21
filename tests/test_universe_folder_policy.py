@@ -38,6 +38,9 @@ class UniverseFolderPolicyTest(unittest.TestCase):
         with open(self.rename_config_path, 'w') as handle:
             json.dump({'series_template': '{<univers>/}<series>'}, handle)
         self.app.config.update(DATABASE=self.db_path, RENAME_CONFIG_FILE=self.rename_config_path, TESTING=True)
+        with self.app.app_context():
+            from blueprints.library.action_history import init_action_history_table
+            init_action_history_table()
         self.client = self.app.test_client()
 
     def tearDown(self):
@@ -56,6 +59,10 @@ class UniverseFolderPolicyTest(unittest.TestCase):
         conn.close()
         self.assertEqual(path, self.expected_path())
         self.assertTrue(os.path.exists(os.path.join(path, 'tome1.cbz')))
+        detail = sqlite3.connect(self.db_path).execute(
+            "SELECT detail FROM action_history WHERE action_type = 'rename' ORDER BY id DESC LIMIT 1"
+        ).fetchone()[0]
+        self.assertIn('univers: Thorgal', detail)
 
     def test_bedetheque_universe_removal_moves_existing_series_folder_back_to_root(self):
         nested = self.expected_path()

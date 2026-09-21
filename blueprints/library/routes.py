@@ -2893,7 +2893,7 @@ def update_series_manual_metadata(series_id):
                         universe_name=series_for_rename['universe_name']
                     )
                     if folder_result and folder_result.get('success') and folder_result.get('changed'):
-                        _log_rename_action(series_id, series_for_rename['title'], [], folder_result)
+                        _log_rename_action(series_id, series_for_rename['title'], [], folder_result, series_for_rename['universe_name'])
                     elif not (folder_result and folder_result.get('success')):
                         current_app.logger.warning(
                             f"Renommage automatique du dossier échoué pour la série #{series_id} "
@@ -7161,7 +7161,7 @@ def execute_rename(series_id):
         from blueprints.komga.client import trigger_scan_async
         trigger_scan_async()
 
-        _log_rename_action(series_id, series_title, file_results, folder_result)
+        _log_rename_action(series_id, series_title, file_results, folder_result, series['universe_name'])
 
         return jsonify({
             'success': True,
@@ -7175,7 +7175,7 @@ def execute_rename(series_id):
         return jsonify({'error': str(e)}), 500
 
 
-def _log_rename_action(series_id, series_title, file_results, folder_result):
+def _log_rename_action(series_id, series_title, file_results, folder_result, universe_name=None):
     """Journalise un renommage dans l'historique (voir action_history.py) - best-effort,
     ne doit jamais faire échouer le renommage lui-même. Un seul événement par appel à
     execute_rename, qu'il ait renommé un tome, tous les tomes, ou le dossier."""
@@ -7192,7 +7192,10 @@ def _log_rename_action(series_id, series_title, file_results, folder_result):
                 parts.append(f"{len(failed_files)} échec(s)")
         if folder_result:
             if folder_result.get('success') and folder_result.get('changed'):
-                parts.append(f"dossier: {os.path.basename(folder_result['old_path'])} → {os.path.basename(folder_result['new_path'])}")
+                folder_detail = f"dossier: {os.path.basename(folder_result['old_path'])} → {os.path.basename(folder_result['new_path'])}"
+                if universe_name:
+                    folder_detail += f" · univers: {universe_name}"
+                parts.append(folder_detail)
             elif not folder_result.get('success'):
                 parts.append(f"dossier: échec ({folder_result.get('error', '?')})")
 

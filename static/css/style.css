@@ -3928,3 +3928,15 @@ table thead th {
 table thead th[draggable="true"] { cursor: grab; }
 table thead th.column-dragging { opacity: .45; }
 table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
+
+
+/* Feedback visuel pendant le déplacement d'un dossier depuis Vérification. */
+.verif-folder-move-active .icon {
+    animation: verif-folder-move 0.8s ease-in-out infinite;
+    transform-origin: center;
+}
+@keyframes verif-folder-move {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    25% { transform: translateX(-2px) rotate(-8deg); }
+    75% { transform: translateX(2px) rotate(8deg); }
+}
