@@ -20,6 +20,7 @@ import shutil
 import unicodedata
 import zipfile
 import rarfile
+from pathlib import Path
 from collections import Counter
 from .import_worker import (
     ImportWorkerError, ImportWorkerTimeout, prepare_import_file,

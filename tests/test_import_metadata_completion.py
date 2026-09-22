@@ -1,7 +1,17 @@
 import json
 import sqlite3
+import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
 
+from flask import Flask
+
+from blueprints.library import routes
+from blueprints.library import import_history
+from blueprints.missing_monitor import downloader
 from blueprints.library.routes import _merge_cached_bedetheque_comicinfo
 
 
@@ -26,6 +36,25 @@ class ImportMetadataCompletionTest(unittest.TestCase):
         self.assertEqual(result['month'], '9')
         self.assertEqual(result['communityrating'], '4.8')
         conn.close()
+
+    def test_immediate_auto_import_path_can_compute_relative_parts(self):
+        app = Flask(__name__)
+        app.config['DATABASE'] = ':memory:'
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            filepath = root / 'Mi-Mouche - T03.cbz'
+            filepath.write_bytes(b'placeholder')
+            with app.app_context(), patch.object(routes, 'load_library_import_config', return_value={
+                'auto_import_enabled': True,
+                'monitored_extensions': ['.cbz'],
+            }), patch.object(import_history, 'get_manual_override_filepaths', return_value=set()), \
+                 patch.object(import_history, 'get_in_progress_filepaths', return_value=set()), \
+                 patch.object(downloader, 'get_trackable_active_downloads', return_value=[]), \
+                 patch.object(routes, 'find_active_download_destination', return_value=None):
+                output = StringIO()
+                with redirect_stdout(output):
+                    routes.attempt_immediate_auto_import(str(filepath), str(root))
+                self.assertNotIn('Erreur import automatique immédiat', output.getvalue())
 
 
 if __name__ == '__main__':
