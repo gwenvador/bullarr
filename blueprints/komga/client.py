@@ -22,7 +22,7 @@ class KomgaSeriesNotFoundError(KomgaError):
     pass
 
 
-def trigger_scan_async():
+def trigger_scan_async(after_scan=None):
     """Demande un scan de toutes les bibliothèques Komga en arrière-plan, sans bloquer
     l'appelant (chaque scan peut prendre jusqu'à ~90s côté Komga - voir scan_library) et
     sans lever d'erreur si Komga n'est pas configuré/activé ou injoignable: à appeler en
@@ -41,6 +41,8 @@ def trigger_scan_async():
                 client = KomgaClient()
                 for library in client.list_libraries():
                     client.scan_library(library['id'])
+                if after_scan is not None:
+                    after_scan()
                 logger.info("Scan Komga déclenché après modification locale")
         except KomgaError as e:
             logger.debug(f"Scan Komga non déclenché: {e}")

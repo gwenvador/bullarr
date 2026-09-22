@@ -1410,7 +1410,27 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
 
             if updated:
                 from blueprints.komga.client import trigger_scan_async
-                trigger_scan_async()
+
+                def _resync_komga_books_after_scan():
+                    try:
+                        from blueprints.library.routes import _sync_komga_books
+                        from blueprints.komga.client import KomgaClient
+                        conn3 = sqlite3.connect(db_path, timeout=120.0)
+                        conn3.row_factory = sqlite3.Row
+                        komga_row = conn3.execute(
+                            'SELECT komga_series_id FROM series WHERE id = ?', (series_id,)
+                        ).fetchone()
+                        conn3.close()
+                        if komga_row and komga_row['komga_series_id']:
+                            _sync_komga_books(
+                                series_id, komga_row['komga_series_id'], KomgaClient()
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"Resynchronisation des livres Komga échouée pour la série #{series_id}: {e}"
+                        )
+
+                trigger_scan_async(after_scan=_resync_komga_books_after_scan)
     except Exception as e:
         logger.error(f"Erreur MAJ métadonnées en arrière-plan pour la série #{series_id}: {e}", exc_info=True)
     finally:
