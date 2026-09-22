@@ -5566,6 +5566,36 @@ def _maybe_complete_tracking_after_move(source_path, destination, outcome='impor
         print(f"Erreur nettoyage du téléchargement suivi #{tracking_id} après import: {e}")
 
 
+def _bedetheque_cache_contains_volume(cached_albums, parsed):
+    return match_bedetheque_volume(cached_albums or [], parsed) is not None
+
+
+def _refresh_bedetheque_cache_for_import_if_missing(series_id, parsed):
+    """Refresh the cached catalogue once when this imported volume is not cached."""
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT bedetheque_url, bedetheque_albums FROM series WHERE id = ?",
+            (series_id,),
+        ).fetchone()
+        conn.close()
+        if not row or not row['bedetheque_url']:
+            return False
+        cached = json.loads(row['bedetheque_albums'] or '[]')
+        if _bedetheque_cache_contains_volume(cached, parsed):
+            return False
+        from blueprints.bedetheque.scraper import BedethequeDatabase, BedethequeScraper
+        info = BedethequeScraper().get_series_info(row['bedetheque_url'])
+        if not info or not _bedetheque_cache_contains_volume(info.get('volumes'), parsed):
+            return False
+        BedethequeDatabase(current_app.config['DATABASE']).update_series_bedetheque_info(series_id, info)
+        return True
+    except Exception as e:
+        print(f"⚠️ Rafraichissement Bédéthèque impossible avant import #{series_id}: {e}")
+        return False
+
+
 def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, strict_missing_file, notify_source):
     """Cœur partagé de l'exécution d'un import - déplace/convertit/insère chaque fichier
     de `files_to_import` vers sa destination, met à jour Historique/stats/renommage/
@@ -5656,6 +5686,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         # d'import terminée (voir plus bas), au lieu de laisser la série sans aucune
         # métadonnée tant que l'utilisateur ne clique pas "MAJ métadonnées" à la main.
         new_series_with_bedetheque = {}
+        refreshed_bedetheque_series_ids = set()
 
         # Traiter chaque fichier
         for file_data in files_to_import:
@@ -5691,6 +5722,13 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         'error': 'Pas de destination définie'
                     })
                     continue
+
+                series_id_for_refresh = destination.get('series_id')
+                if series_id_for_refresh and series_id_for_refresh not in refreshed_bedetheque_series_ids:
+                    _refresh_bedetheque_cache_for_import_if_missing(
+                        series_id_for_refresh, file_data.get('parsed') or {}
+                    )
+                    refreshed_bedetheque_series_ids.add(series_id_for_refresh)
 
                 tracking_id = destination.get('tracking_id')
                 if tracking_id:

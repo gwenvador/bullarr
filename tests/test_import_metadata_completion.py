@@ -37,6 +37,43 @@ class ImportMetadataCompletionTest(unittest.TestCase):
         self.assertEqual(result['communityrating'], '4.8')
         conn.close()
 
+    def test_missing_cached_volume_is_detected(self):
+        self.assertFalse(routes._bedetheque_cache_contains_volume(
+            [{'number': 1, 'title': 'Premier'}],
+            {'volume_number': 3},
+        ))
+        self.assertTrue(routes._bedetheque_cache_contains_volume(
+            [{'number': 3, 'title': 'Troisième'}],
+            {'volume_number': 3},
+        ))
+
+    def test_missing_cached_volume_refreshes_catalogue_before_import(self):
+        app = Flask(__name__)
+        with tempfile.NamedTemporaryFile() as db_file:
+            conn = sqlite3.connect(db_file.name)
+            conn.execute('CREATE TABLE series (id INTEGER PRIMARY KEY, bedetheque_url TEXT, bedetheque_albums TEXT)')
+            conn.execute('INSERT INTO series VALUES (1, ?, ?)', (
+                'https://example.invalid/series',
+                json.dumps([{'number': 1}]),
+            ))
+            conn.commit()
+            conn.close()
+            app.config['DATABASE'] = db_file.name
+            refreshed_info = {'volumes': [{'number': 3, 'title': 'Troisième'}]}
+            with app.app_context(), \
+                 patch('blueprints.bedetheque.scraper.BedethequeScraper') as scraper_cls, \
+                 patch('blueprints.bedetheque.scraper.BedethequeDatabase') as database_cls:
+                scraper_cls.return_value.get_series_info.return_value = refreshed_info
+                self.assertTrue(routes._refresh_bedetheque_cache_for_import_if_missing(
+                    1, {'volume_number': 3}
+                ))
+                scraper_cls.return_value.get_series_info.assert_called_once_with(
+                    'https://example.invalid/series'
+                )
+                database_cls.return_value.update_series_bedetheque_info.assert_called_once_with(
+                    1, refreshed_info
+                )
+
     def test_immediate_auto_import_path_can_compute_relative_parts(self):
         app = Flask(__name__)
         app.config['DATABASE'] = ':memory:'
