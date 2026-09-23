@@ -67,7 +67,8 @@ def _ensure_manual_review_table(conn):
             reason TEXT,
             status TEXT NOT NULL DEFAULT 'pending',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            resolved_at TEXT
+            resolved_at TEXT,
+            matched_bedetheque_url TEXT
         )
     """)
     # Older installations created series_id as NOT NULL.  Unresolved matches
@@ -89,7 +90,8 @@ def _ensure_manual_review_table(conn):
                 reason TEXT,
                 status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                resolved_at TEXT
+                resolved_at TEXT,
+                matched_bedetheque_url TEXT
             )
         """)
         conn.execute("""
@@ -101,6 +103,9 @@ def _ensure_manual_review_table(conn):
             FROM auto_acquire_reviews_legacy
         """)
         conn.execute('DROP TABLE auto_acquire_reviews_legacy')
+    existing_columns = {row[1] for row in conn.execute('PRAGMA table_info(auto_acquire_reviews)').fetchall()}
+    if 'matched_bedetheque_url' not in existing_columns:
+        conn.execute('ALTER TABLE auto_acquire_reviews ADD COLUMN matched_bedetheque_url TEXT')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_auto_acquire_reviews_status ON auto_acquire_reviews(status, created_at)')
 
 
@@ -186,7 +191,7 @@ def get_manual_reviews():
         rows = conn.execute("""
             SELECT r.id, r.series_id, r.series_title, r.volume_number, r.volume_label,
                    r.candidates_json, r.reason, r.status, r.created_at, r.resolved_at,
-                   s.bedetheque_scenaristes, s.bedetheque_dessinateurs
+                   r.matched_bedetheque_url, s.bedetheque_scenaristes, s.bedetheque_dessinateurs
             FROM auto_acquire_reviews r
             LEFT JOIN series s ON s.id = r.series_id
             WHERE r.status = 'pending'
@@ -252,22 +257,74 @@ def resolve_manual_review(review_id):
         conn.close()
 
 
+def _manual_match_target_from_info(info, selected_url):
+    """Return the exact album selected by a manual Bédéthèque match.
+
+    A search result may be an album URL while the scraper returns its parent series.
+    Keep the selected album URL and its number instead of letting the later generic
+    series matcher choose another entry from the bibliography.
+    """
+    selected_url = str(selected_url or '').strip()
+    for volume in info.get('volumes') or []:
+        if str(volume.get('url') or '').strip() == selected_url:
+            return {
+                'url': selected_url,
+                'number': volume.get('number'),
+                'title': volume.get('title'),
+            }
+    return {'url': selected_url, 'number': None, 'title': None}
+
+
 def match_manual_review_series(review_id, bedetheque_url, library_id=None):
-    """Confirm the Bédéthèque identity and resolve this manual review only."""
+    """Persist the selected series/album and keep the review downloadable.
+
+    The former implementation discarded ``bedetheque_url`` and resolved the row.
+    That lost both the human choice and the requested volume, so a later import could
+    fall back to another album in a bibliography.
+    """
     from flask import current_app
-    if not str(bedetheque_url or '').strip():
+    from blueprints.bedetheque.scraper import BedethequeScraper, BedethequeDatabase
+
+    selected_url = str(bedetheque_url or '').strip()
+    if not selected_url:
         return False, 'URL Bédéthèque requise', None
     conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    conn.row_factory = sqlite3.Row
     try:
         _ensure_manual_review_table(conn)
-        cursor = conn.execute(
-            "UPDATE auto_acquire_reviews SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP "
-            "WHERE id = ? AND status = 'pending'", (review_id,)
+        review = conn.execute(
+            "SELECT * FROM auto_acquire_reviews WHERE id = ? AND status = 'pending'",
+            (review_id,),
+        ).fetchone()
+        if not review:
+            return False, 'Validation introuvable ou déjà traitée', None
+
+        info = BedethequeScraper().get_series_info(selected_url)
+        if not info:
+            return False, 'Impossible de trouver la série sur Bedetheque', None
+        target = _manual_match_target_from_info(info, selected_url)
+
+        series = conn.execute(
+            'SELECT id FROM series WHERE bedetheque_url = ? OR title = ? ORDER BY id LIMIT 1',
+            (info.get('url'), info.get('title')),
+        ).fetchone()
+        if not series:
+            return False, 'Série locale introuvable : choisissez d’abord une bibliothèque/série', None
+        series_id = series['id']
+
+        # Persist the selected catalogue cache, but do not rewrite every local volume.
+        BedethequeDatabase(current_app.config['DATABASE']).update_series_bedetheque_info(series_id, info)
+        conn.execute(
+            """UPDATE auto_acquire_reviews
+               SET series_id = ?, series_title = ?, volume_number = ?, volume_label = ?,
+                   matched_bedetheque_url = ?
+               WHERE id = ? AND status = 'pending'""",
+            (series_id, info.get('title') or review['series_title'], target['number'],
+             (f"Tome {target['number']}" if target['number'] is not None else 'Album'),
+             target['url'], review_id),
         )
         conn.commit()
-        if not cursor.rowcount:
-            return False, 'Validation introuvable ou déjà traitée', None
-        return True, None, None
+        return True, None, series_id
     finally:
         conn.close()
 
