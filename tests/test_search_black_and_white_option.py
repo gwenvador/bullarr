@@ -44,7 +44,8 @@ def test_search_table_keeps_columns_and_wraps_long_filenames():
     assert 'display: table-cell' in source
 
     source = JS.read_text()
-    assert 'Ne pas prioriser les formats Noir & Blanc' in source
+    assert 'Ne pas prioriser les formats Noir & Blanc' not in source
+    assert 'search-results-avoid-bw-priority' not in source
     assert 'search-results-filter-black-and-white' in source
     assert "'blackAndWhite'" in source
 

@@ -1201,10 +1201,6 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
         ${hideUnconfirmedCheckboxHtml}
         <div style="display:flex; align-items:center; gap:10px; margin:8px 0;">
             <button id="search-results-batch-download" class="btn" type="button" data-result-action="downloadSelectedSearchResults" disabled>Télécharger la sélection</button>
-            <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.9em; cursor:pointer;" data-tooltip="Les résultats Noir & Blanc restent visibles mais ne sont plus favorisés dans le classement">
-                <input type="checkbox" id="search-results-avoid-bw-priority" data-result-action="avoidBlackAndWhite" ${_searchAvoidBlackAndWhitePriority ? 'checked' : ''}>
-                Ne pas prioriser les formats Noir & Blanc
-            </label>
             <span id="search-results-batch-download-label" aria-live="polite">0 sélectionné</span>
         </div>
         <div style="overflow-x:auto;">
