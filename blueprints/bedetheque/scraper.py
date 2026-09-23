@@ -696,6 +696,15 @@ class BedethequeScraper:
                 series_url = results[0]['url']
             else:
                 series_url = url_or_title
+                # Les utilisateurs copient souvent une fiche album (ex. /BD-AUT-...)
+                # au lieu de la fiche série (/serie-...). Résoudre l'album vers sa
+                # série avant d'appliquer les sélecteurs propres aux fiches série.
+                if '/serie-' not in urlparse(series_url).path:
+                    resolved_series_url = self.get_series_url_from_album_url(series_url)
+                    if not resolved_series_url:
+                        logger.warning(f"Impossible de retrouver la série depuis l'album {series_url}")
+                        return None
+                    series_url = resolved_series_url
 
             if series_url in self.cache:
                 return self.cache[series_url]
