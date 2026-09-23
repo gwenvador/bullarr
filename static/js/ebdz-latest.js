@@ -653,6 +653,12 @@ function _nouveautesEbdzRowHtml(event, index) {
 function _nouveautesTelegramRowHtml(event) {
     const safeFilename = escapeHtml(event.filename);
     const ownedRowClass = event.already_owned === true ? ' volume-table-row-owned' : '';
+    const telegramPostUrl = event.channel && event.message_id != null
+        ? `https://t.me/${encodeURIComponent(String(event.channel).replace(/^@/, ''))}/${event.message_id}`
+        : null;
+    const telegramIconHtml = telegramPostUrl
+        ? `<a href="${escapeHtml(telegramPostUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir le post Telegram" onclick="event.stopPropagation()"><img src="/static/img/telegram-logo.svg" alt="Telegram" style="width:16px; height:16px; vertical-align:-3px;"></a>`
+        : `<span data-tooltip="Telegram"><img src="/static/img/telegram-logo.svg" alt="Telegram" style="width:16px; height:16px; vertical-align:-3px;"></span>`;
     const newRowClass = _nouveautesIsNew(event) ? ' nouveautes-row-new' : '';
     const addToLibraryQuery = event.parsed_title || event.filename;
     const addToLibraryHtml = (_nouveautesMatched(event) || !!event.already_in_library || event._autoAddTriggered) ? '' : `
@@ -662,7 +668,7 @@ function _nouveautesTelegramRowHtml(event) {
     return `
         <tr class="nouveautes-event-row ${(ownedRowClass + newRowClass).trim()}" style="border-bottom:1px solid var(--color-border);">
             <td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td>
-            <td style="padding:10px; white-space:nowrap; text-align:center;" data-tooltip="Telegram"><img src="/static/img/telegram-logo.svg" alt="Telegram" style="width:16px; height:16px; vertical-align:-3px;"></td>
+            <td style="padding:10px; white-space:nowrap; text-align:center;">${telegramIconHtml}</td>
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
                 <div style="font-weight:600;">${safeFilename}</div>
