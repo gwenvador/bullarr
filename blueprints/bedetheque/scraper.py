@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 import re
 import copy
 import sqlite3
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 import time
 import random
 import json
