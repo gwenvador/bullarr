@@ -1,5 +1,7 @@
 """Configurable RSS feeds used by the Nouveautés page."""
 import email.utils
+import html
+import re
 import ipaddress
 import json
 import socket
@@ -68,6 +70,26 @@ def _text(parent, names):
     return ''
 
 
+def _download_links(description, source_url):
+    text = html.unescape(description or '')
+    found = []
+    seen = set()
+    anchor_re = re.compile(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a\s*>', re.I | re.S)
+    for url, label_html in anchor_re.findall(text):
+        label = re.sub(r'<[^>]+>', ' ', label_html)
+        probe = f'{url} {label}'.lower()
+        if any(token in probe for token in ('torrent', 'ebdz', '.torrent', 'magnet:', 'ed2k://', '/download')):
+            if url not in seen:
+                seen.add(url)
+                found.append({'url': url, 'label': re.sub(r'\s+', ' ', label).strip() or 'Télécharger'})
+    for url in re.findall(r'(?:(?:https?|magnet|ed2k)://[^\s<>"\']+)', text, re.I):
+        probe = url.lower()
+        if any(token in probe for token in ('torrent', 'ebdz', '.torrent', 'magnet:', 'ed2k://', '/download')) and url not in seen:
+            seen.add(url)
+            found.append({'url': url, 'label': 'Télécharger'})
+    return found[:10]
+
+
 def parse_feed(payload, source_url):
     _validate_url(source_url)
     root = ET.fromstring(payload)
@@ -94,7 +116,8 @@ def parse_feed(payload, source_url):
                 parsed_date = None
         if parsed_date and parsed_date.tzinfo is None:
             parsed_date = parsed_date.replace(tzinfo=timezone.utc)
-        results.append({'title': title or 'Sans titre', 'link': link or source_url, 'description': _text(entry, ['description', 'summary', 'content']), 'date': parsed_date.astimezone(timezone.utc).isoformat() if parsed_date else '', 'feed_title': feed_title})
+        description = _text(entry, ['description', 'summary', 'content'])
+        results.append({'title': title or 'Sans titre', 'link': link or source_url, 'description': description, 'download_links': _download_links(description, source_url), 'date': parsed_date.astimezone(timezone.utc).isoformat() if parsed_date else '', 'feed_title': feed_title})
     return results
 
 
