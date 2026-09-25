@@ -152,6 +152,11 @@
                                 <div class="integration-card-name">Komga</div>
                                 <span class="integration-card-status" id="card-status-komga">…</span>
                             </div>
+                            <div class="integration-card" onclick="openIntegrationModal('rss')">
+                                <img src="{{ url_for('static', filename='img/rss-logo.svg') }}" alt="Flux RSS" class="integration-card-logo">
+                                <div class="integration-card-name">Flux RSS</div>
+                                <span class="integration-card-status integration-card-status-on">Configuré</span>
+                            </div>
                             <div class="integration-card" onclick="openIntegrationModal('web')">
                                 <img src="{{ url_for('static', filename='img/web-logo.svg') }}" alt="Web Archive" class="integration-card-logo">
                                 <div class="integration-card-name">Web Archive</div>
@@ -161,7 +166,6 @@
                     </div>
                 </div>
 
-                        <div class="settings-card" style="margin-top:20px;"><div class="section-header"><h3>📰 Flux RSS des Nouveautés</h3><p class="section-description">Flux RSS affichés dans la page Nouveautés.</p></div><div id="rssFeedsList"></div><div style="display:flex; gap:8px; margin-top:12px;"><input id="rssFeedName" class="form-input" placeholder="Nom du flux"><input id="rssFeedUrl" class="form-input" placeholder="https://exemple/flux.xml" style="flex:2;"><button class="btn" type="button" onclick="addRssFeed()">+ Ajouter</button></div><div class="form-actions" style="margin-top:20px;"><button class="btn" onclick="saveRssFeeds()">Sauvegarder</button></div><div id="rssMessage" class="message"></div></div>
                 <!-- Onglet Clients : aMule et qBittorrent fusionnés, même principe que
                      l'onglet Indexeurs ci-dessus ("fait la meme chose pour les clients
                      avec qbittorent, amule"). -->
@@ -324,6 +328,17 @@
                             </details>
                         </div>
                     </div>
+                    </div>
+                </div>
+
+                <!-- Modale de configuration des flux RSS -->
+                <div class="modal" id="tab-rss">
+                    <div class="modal-content settings-modal-content">
+                        <span class="close-modal" onclick="closeIntegrationModal('rss')">×</span>
+                        <div class="settings-section">
+                            <div class="section-header"><h2><img src="{{ url_for('static', filename='img/rss-logo.svg') }}" alt="" class="section-header-logo"> Flux RSS des Nouveautés</h2><p class="section-description">Configurez les flux RSS affichés dans la page Nouveautés.</p></div>
+                            <div class="settings-card"><div id="rssFeedsList"></div><div style="display:flex; gap:8px; margin-top:12px;"><input id="rssFeedName" class="form-input" placeholder="Nom du flux"><input id="rssFeedUrl" class="form-input" placeholder="https://exemple/flux.xml" style="flex:2;"><button class="btn" type="button" onclick="addRssFeed()">+ Ajouter</button></div><div class="form-actions" style="margin-top:20px;"><button class="btn" onclick="saveRssFeeds()">Sauvegarder</button></div><div id="rssMessage" class="message"></div></div>
+                        </div>
                     </div>
                 </div>
 

@@ -1484,7 +1484,8 @@ const INTEGRATION_MODAL_LOADERS = {
     shelfmark: () => loadShelfmarkSettings(),
     komga: () => loadKomgaSettings(),
     web: () => { loadFourtouticiSettings(); loadAnnasArchiveSettings(); loadShelfmarkSettings(); },
-    'telegram-channels': () => { loadTelegramChannelsConfig(); loadTelegramAutoScrapeConfig(); telegramChannelsBackfillPoll(); }
+    'telegram-channels': () => { loadTelegramChannelsConfig(); loadTelegramAutoScrapeConfig(); telegramChannelsBackfillPoll(); },
+    rss: () => loadRssFeeds()
 };
 
 function openIntegrationModal(name) {
@@ -1520,6 +1521,7 @@ function closeDelugeModal() { closeIntegrationModal('deluge'); }
 function closeKomgaConfigModal() { closeIntegrationModal('komga'); }
 function closeWebSourcesModal() { closeIntegrationModal('web'); }
 function closeTelegramChannelsModal() { closeIntegrationModal('telegram-channels'); }
+function closeRssModal() { closeIntegrationModal('rss'); }
 
 async function updateIntegrationCardStatus(name, endpoint, isEnabled) {
     const badge = document.getElementById('card-status-' + name);
