@@ -7,7 +7,9 @@ import json
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 from encryption import encrypt, decrypt, ensure_encryption_key
+from blueprints.settings.rss import fetch_feed, load_feeds
 
 # Durée max entre deux liens pour qu'ils soient considérés comme faisant
 # partie du même scrape (un scrape isolé ne dure jamais aussi longtemps,
@@ -648,3 +650,19 @@ def auto_scrape_status():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': 'Erreur interne'}), 500
+
+@ebdz_bp.route('/rss/latest', methods=['GET'])
+def rss_latest():
+    feeds = [feed for feed in load_feeds(current_app.config['RSS_CONFIG_FILE']) if feed.get('enabled', True)]
+    events = []
+    errors = []
+    def read(feed):
+        try: return feed, fetch_feed(feed), None
+        except Exception as exc: return feed, [], str(exc)
+    with ThreadPoolExecutor(max_workers=min(5, max(1, len(feeds)))) as executor:
+        for feed, entries, error in executor.map(read, feeds):
+            if error: errors.append({'name': feed.get('name', feed['url']), 'error': error})
+            events.extend({**entry, 'type': 'rss', 'feed_name': feed.get('name', entry.get('feed_title') or feed['url'])} for entry in entries)
+    events.sort(key=lambda event: event.get('date', ''), reverse=True)
+    limit = min(max(request.args.get('limit', default=100, type=int), 1), 500)
+    return jsonify({'success': True, 'entries': events[:limit], 'errors': errors})

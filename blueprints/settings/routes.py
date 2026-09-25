@@ -16,6 +16,7 @@ from datetime import datetime
 from flask import render_template, request, jsonify, current_app, send_file
 from . import settings_bp
 from .rename_config_store import load_rename_config, save_rename_config, DEFAULT_RENAME_CONFIG
+from .rss import load_feeds, save_feeds
 
 
 @settings_bp.route('/settings')
@@ -40,6 +41,19 @@ def verification_page():
     chargement des données et GET /api/settings/verification pour l'analyse."""
     from blueprints.komga.config_store import is_komga_configured
     return render_template('verification.html', komga_configured=is_komga_configured())
+
+
+@settings_bp.route('/api/settings/rss', methods=['GET', 'POST'])
+def rss_config():
+    if request.method == 'GET':
+        return jsonify({'feeds': load_feeds(current_app.config['RSS_CONFIG_FILE'])})
+    try:
+        feeds = save_feeds(current_app.config['RSS_CONFIG_FILE'], (request.get_json(silent=True) or {}).get('feeds', []))
+        return jsonify({'success': True, 'feeds': feeds})
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except OSError:
+        return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
 
 @settings_bp.route('/api/settings/rename', methods=['GET', 'POST'])
@@ -96,6 +110,7 @@ def _backup_file_specs():
         ('missing_monitor_config.json', cfg['MISSING_MONITOR_CONFIG_FILE'], False),
         ('library_import_config.json', cfg['LIBRARY_IMPORT_CONFIG_FILE'], False),
         ('rename_config.json', cfg['RENAME_CONFIG_FILE'], False),
+        ('rss_feeds.json', cfg['RSS_CONFIG_FILE'], False),
         ('qbittorrent_config.json', cfg['QBITTORRENT_CONFIG_FILE'], False),
     ]
 

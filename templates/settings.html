@@ -40,6 +40,7 @@
                 <a href="#monitoring" class="nav-sublink" data-tab="monitoring" onclick="switchTab('monitoring'); return false;">📊 Surveillance</a>
                 <a href="#import-auto" class="nav-sublink" data-tab="import-auto" onclick="switchTab('import-auto'); return false;">📥 Imports</a>
                 <a href="#search-formats" class="nav-sublink" data-tab="search-formats" onclick="switchTab('search-formats'); return false;">🗂️ Recherche</a>
+                <a href="#rss" class="nav-sublink" data-tab="rss" onclick="switchTab('rss'); return false;">📰 RSS Nouveautés</a>
                 <a href="#libraries" class="nav-sublink" data-tab="libraries" onclick="switchTab('libraries'); return false;">✏️ Format</a>
                 <a href="#backup" class="nav-sublink" data-tab="backup" onclick="switchTab('backup'); return false;">💾 Backup</a>
             </div>
@@ -1910,6 +1911,8 @@
                     </div>
                 </div>
 
+
+                <div class="tab-content" id="tab-rss"><div class="settings-section"><div class="section-header"><h2>📰 Flux RSS des Nouveautés</h2><p class="section-description">Ajoutez les flux RSS à afficher dans la page Nouveautés.</p></div><div class="settings-card"><div id="rssFeedsList"></div><div style="display:flex; gap:8px; margin-top:12px;"><input id="rssFeedName" class="form-input" placeholder="Nom du flux"><input id="rssFeedUrl" class="form-input" placeholder="https://exemple/flux.xml" style="flex:2;"><button class="btn" type="button" onclick="addRssFeed()">+ Ajouter</button></div><div class="form-actions" style="margin-top:20px;"><button class="btn" onclick="saveRssFeeds()">Sauvegarder</button></div><div id="rssMessage" class="message"></div></div></div></div>
 
                 </div>
             </div>

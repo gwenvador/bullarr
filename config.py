@@ -26,6 +26,7 @@ class Config:
     # Fichiers de configuration
     CONFIG_FILE = os.path.join(DATA_DIR, 'emule_config.json')
     EBDZ_CONFIG_FILE = os.path.join(DATA_DIR, 'ebdz_config.json')
+    RSS_CONFIG_FILE = os.path.join(DATA_DIR, 'rss_feeds.json')
     PROWLARR_CONFIG_FILE = os.path.join(DATA_DIR, 'prowlarr_config.json')
     KOMGA_CONFIG_FILE = os.path.join(DATA_DIR, 'komga_config.json')
     OIDC_CONFIG_FILE = os.path.join(DATA_DIR, 'oidc_config.json')

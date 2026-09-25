@@ -188,7 +188,7 @@ async function autoAddNouveautesTelegramFile(index, button) {
 }
 
 let allNouveautesEvents = [];
-let currentNouveautesFilter = 'all'; // 'all' | 'ebdz' | 'telegram'
+let currentNouveautesFilter = 'all'; // 'all' | 'ebdz' | 'telegram' | 'rss'
 // Instantané du dernier passage sur la page, avant qu'il soit avancé à la fin du
 // chargement. Il permet de colorer les mêmes éléments que le badge de la sidebar, sans
 // conserver un état supplémentaire côté serveur.
@@ -200,7 +200,7 @@ let nouveautesSort = { column: null, direction: 'asc' };
 let nouveautesOriginFilters = new Set();
 
 function _nouveautesOrigin(e) {
-    return e.type === 'ebdz' ? (e.category || '—') : (e.channel_title || e.channel || '—');
+    return e.type === 'ebdz' ? (e.category || '—') : e.type === 'rss' ? (e.feed_name || 'RSS') : (e.channel_title || e.channel || '—');
 }
 
 function _nouveautesMatched(e) {
@@ -226,9 +226,9 @@ function _nouveautesIsNew(event) {
 function _nouveautesSortValue(e, column) {
     switch (column) {
         case 'date': return e.date ? (parseDbUtcDate(e.date)?.getTime() ?? 0) : 0;
-        case 'type': return e.type === 'ebdz' ? 'EBDZ' : 'Telegram';
+        case 'type': return e.type === 'ebdz' ? 'EBDZ' : e.type === 'rss' ? 'RSS' : 'Telegram';
         case 'origin': return _nouveautesOrigin(e).toLowerCase();
-        case 'title': return (e.type === 'ebdz' ? e.title : e.filename || '').toLowerCase();
+        case 'title': return (e.type === 'ebdz' ? e.title : e.type === 'rss' ? e.title : e.filename || '').toLowerCase();
         case 'matched': return _nouveautesMatched(e) ? 1 : 0;
         // "Actions" n'a plus de notion de possédée/non possédée (déjà dans la colonne
         // Série, voir _nouveautesMatched) depuis que ce doublon a été retiré d'ici - trie
@@ -558,7 +558,7 @@ function formatSessionDateShort(scrapedAt) {
 
 function filterNouveautesEvents(type) {
     currentNouveautesFilter = type;
-    document.querySelectorAll('#nouveautes-filter-all, #nouveautes-filter-ebdz, #nouveautes-filter-telegram')
+    document.querySelectorAll('#nouveautes-filter-all, #nouveautes-filter-ebdz, #nouveautes-filter-telegram, #nouveautes-filter-rss')
         .forEach(btn => btn.classList.remove('history-filter-active'));
     document.getElementById('nouveautes-filter-' + type).classList.add('history-filter-active');
     renderNouveautesEvents();
@@ -648,6 +648,13 @@ function _nouveautesEbdzRowHtml(event, index) {
         </tr>
         <tr id="${rowId}-files" class="nouveautes-files-row" style="display:none;"><td colspan="6" style="padding:0 10px 10px 30px; background:var(--color-surface-alt);"></td></tr>
     `;
+}
+
+function _nouveautesRssRowHtml(event) {
+    const title = escapeHtml(event.title || 'Sans titre');
+    const link = event.link ? `<a href="${escapeHtml(event.link)}" target="_blank" rel="noopener noreferrer" data-tooltip="Ouvrir l’article RSS" onclick="event.stopPropagation()">${svgIcon('external-link')}</a>` : '';
+    const description = event.description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(event.description).slice(0, 240)}</div>` : '';
+    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;">📰</td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title} ${link}</div>${description}</td><td style="padding:10px; text-align:center;">—</td><td class="nouveautes-actions-cell" style="padding:10px;"></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
@@ -792,7 +799,7 @@ function renderNouveautesEvents(resetPage = true) {
         if (matchedOnly && !_nouveautesMatched(e)) return false;
         if (nouveautesOriginFilters.size && !nouveautesOriginFilters.has(_nouveautesOrigin(e))) return false;
         if (!query) return true;
-        const haystack = navNormalizeSearch(e.type === 'ebdz' ? e.title : e.filename);
+        const haystack = navNormalizeSearch(e.type === 'ebdz' || e.type === 'rss' ? e.title : e.filename);
         return haystack.includes(query);
     });
     // e._index (position dans allNouveautesEvents, utilisé par toggleNouveautesFiles) reste
@@ -818,7 +825,7 @@ function renderNouveautesEvents(resetPage = true) {
     empty.style.display = 'none';
 
     const visible = filtered.slice(0, nouveautesDisplayedCount);
-    body.innerHTML = visible.map(e => e.type === 'ebdz' ? _nouveautesEbdzRowHtml(e, e._index) : _nouveautesTelegramRowHtml(e)).join('');
+    body.innerHTML = visible.map(e => e.type === 'ebdz' ? _nouveautesEbdzRowHtml(e, e._index) : e.type === 'rss' ? _nouveautesRssRowHtml(e) : _nouveautesTelegramRowHtml(e)).join('');
     checkEmuleStatus();
 
     _renderNouveautesLoadMoreButton(loadMoreDiv, filtered.length - nouveautesDisplayedCount);
@@ -921,6 +928,7 @@ async function _loadNouveautesBatch(limit, generation, resetPage) {
 
     let ebdzEvents = [];
     let telegramEvents = [];
+    let rssEvents = [];
 
     const ebdzPromise = fetch(`/api/ebdz/latest?days=${nouveautesDaysWindow}${limitParam}`).then(r => r.json()).catch(() => ({ success: false })).then(ebdzData => {
         if (generation !== nouveautesLoadGeneration) return;
@@ -969,10 +977,12 @@ async function _loadNouveautesBatch(limit, generation, resetPage) {
         }));
     });
 
-    await Promise.all([ebdzPromise, telegramPromise]);
+    const rssPromise = fetch(`/api/ebdz/rss/latest?limit=${limit || 100}`).then(r => r.json()).catch(() => ({ success: false })).then(rssData => { if (generation !== nouveautesLoadGeneration) return; rssEvents = (rssData.success ? (rssData.entries || []) : []).map(entry => ({ type: 'rss', ...entry })); });
+
+    await Promise.all([ebdzPromise, telegramPromise, rssPromise]);
     if (generation !== nouveautesLoadGeneration) return;
 
-    allNouveautesEvents = [...ebdzEvents, ...telegramEvents].sort((a, b) => new Date(b.date) - new Date(a.date));
+    allNouveautesEvents = [...ebdzEvents, ...telegramEvents, ...rssEvents].sort((a, b) => new Date(b.date) - new Date(a.date));
     renderNouveautesEvents(resetPage);
 
     try {
