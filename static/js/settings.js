@@ -2739,7 +2739,11 @@ function showSettingsMessage(elementId, message, type) {
 
 let rssFeeds = [];
 async function loadRssFeeds() { try { const data = await (await fetch('/api/settings/rss')).json(); rssFeeds = data.feeds || []; renderRssFeeds(); } catch (e) { showSettingsMessage('rssMessage', '❌ Erreur de chargement', 'error'); } }
-function renderRssFeeds() { const el = document.getElementById('rssFeedsList'); if (!el) return; el.innerHTML = rssFeeds.length ? rssFeeds.map((feed, i) => `<div style="display:flex; gap:8px; align-items:center; margin:6px 0;"><input class="form-input" value="${escapeHtml(feed.name)}" onchange="rssFeeds[${i}].name=this.value"><input class="form-input" style="flex:2;" value="${escapeHtml(feed.url)}" onchange="rssFeeds[${i}].url=this.value"><button class="btn-icon-only" type="button" onclick="rssFeeds.splice(${i},1); renderRssFeeds()" aria-label="Supprimer">${svgIcon('trash-2')}</button></div>`).join('') : '<p class="help-text">Aucun flux configuré.</p>'; }
+function renderRssFeeds() {
+    const el = document.getElementById('rssFeedsList');
+    if (!el) return;
+    el.innerHTML = rssFeeds.length ? rssFeeds.map((feed, i) => `<div class="rss-feed-row"><div class="rss-feed-row-copy"><strong>${escapeHtml(feed.name)}</strong><small>${escapeHtml(feed.url)}</small></div><button class="btn-icon-only" type="button" onclick="rssFeeds.splice(${i},1); renderRssFeeds()" aria-label="Supprimer le flux RSS" data-tooltip="Supprimer le flux RSS">${svgIcon('trash-2')}</button></div>`).join('') : '<p class="help-text">Aucun flux configuré.</p>';
+}
 function addRssFeed() { const name = document.getElementById('rssFeedName').value.trim(); const url = document.getElementById('rssFeedUrl').value.trim(); if (!url) return; rssFeeds.push({name: name || url, url, enabled: true}); document.getElementById('rssFeedName').value=''; document.getElementById('rssFeedUrl').value=''; renderRssFeeds(); }
 async function saveRssFeeds() { try { const response = await fetch('/api/settings/rss', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({feeds:rssFeeds})}); const data=await response.json(); if (!response.ok || !data.success) throw new Error(data.error || 'Erreur'); rssFeeds=data.feeds || []; renderRssFeeds(); showSettingsMessage('rssMessage','✅ Flux RSS enregistré','success'); } catch(e) { showSettingsMessage('rssMessage','❌ '+e.message,'error'); } }
 

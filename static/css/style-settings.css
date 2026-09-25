@@ -1014,3 +1014,12 @@
 .missing-files-bulk-actions .btn-icon-only {
     flex: 0 0 auto;
 }
+
+
+.rss-feed-list { display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
+.rss-feed-row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 14px; background:var(--color-surface-alt); border:1px solid var(--color-border); border-radius:10px; }
+.rss-feed-row-copy { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.rss-feed-row-copy strong { color:var(--color-text); }
+.rss-feed-row-copy small { color:var(--color-text-muted); overflow-wrap:anywhere; }
+.rss-feed-form-row { margin-top:4px; }
+@media (max-width: 650px) { .rss-feed-form-row { flex-direction:column; gap:0; } }
