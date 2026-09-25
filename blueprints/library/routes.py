@@ -4249,6 +4249,14 @@ def _collect_download_folder_files(folder_path, import_root, download, destinati
             })
 
 
+def _exclude_finalized_import_files(files_found, finalized_source_paths):
+    'Hide files already recorded as successfully imported or skipped.'
+    return [
+        item for item in files_found
+        if item.get('filepath') not in finalized_source_paths
+    ]
+
+
 def _scan_tracked_import_files(validate_files=True):
     """Cœur de scan_import_directory (voir sa docstring pour le principe: uniquement les
     téléchargements SUIVIS EN BASE, jamais de matching flou par titre/dossier) - factorisé
@@ -4288,9 +4296,14 @@ def _scan_tracked_import_files(validate_files=True):
         for identity in _download_folder_identities(d, torrent_names_by_hash):
             downloads_by_folder_name.setdefault(identity, d)
 
-    from .import_history import get_manual_override_filepaths, get_manual_override_destinations
+    from .import_history import (
+        get_finalized_import_source_paths,
+        get_manual_override_filepaths,
+        get_manual_override_destinations,
+    )
     manual_override_filepaths = get_manual_override_filepaths()
     manual_destinations = get_manual_override_destinations()
+    finalized_source_paths = get_finalized_import_source_paths()
 
     files_found = []
     incompatible_folders = []
@@ -4347,7 +4360,7 @@ def _scan_tracked_import_files(validate_files=True):
                     validate_file=validate_files, manual_destinations=manual_destinations
                 )
 
-    return files_found, incompatible_folders
+    return _exclude_finalized_import_files(files_found, finalized_source_paths), incompatible_folders
 
 
 @library_bp.route('/api/import/scan', methods=['POST'])

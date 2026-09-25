@@ -105,5 +105,16 @@ class ImportMetadataCompletionTest(unittest.TestCase):
         ))
 
 
+    def test_finalized_import_files_are_hidden_from_import_scan(self):
+        files = [
+            {'filepath': '/downloads/amule/already-skipped.cbz'},
+            {'filepath': '/downloads/amule/new.cbz'},
+        ]
+        visible = routes._exclude_finalized_import_files(
+            files, {'/downloads/amule/already-skipped.cbz'}
+        )
+        self.assertEqual([item['filepath'] for item in visible], ['/downloads/amule/new.cbz'])
+
+
 if __name__ == '__main__':
     unittest.main()
