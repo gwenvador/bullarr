@@ -4291,7 +4291,7 @@ def _scan_tracked_import_files(validate_files=True):
     telegram_filenames = get_downloaded_filenames()
 
     from blueprints.missing_monitor.downloader import get_trackable_active_downloads
-    trackable_downloads = get_trackable_active_downloads()
+    trackable_downloads = get_trackable_active_downloads(include_terminal=True)
 
     from blueprints.qbittorrent.routes import get_qbittorrent_torrent_names
     qbittorrent_hashes = {

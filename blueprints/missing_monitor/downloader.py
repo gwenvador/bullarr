@@ -335,7 +335,7 @@ def attach_series_to_pending_download(client: str, series_id: int, link: Optiona
         return False
 
 
-def get_trackable_active_downloads(include_failed=False) -> List[Dict]:
+def get_trackable_active_downloads(include_failed=False, include_terminal=False) -> List[Dict]:
     """Les active_downloads récents porteurs d'un series_id réel (donc posés depuis une
     fiche série ou le monitoring automatique - voir mark_download_pending), sous forme de
     liste brute plutôt que déjà comparés à un nom de fichier précis - voir
@@ -365,7 +365,14 @@ def get_trackable_active_downloads(include_failed=False) -> List[Dict]:
 
         conn = sqlite3.connect(db_path, timeout=30.0)
         cursor = conn.cursor()
-        statuses = "('pending', 'completed', 'importing', 'failed')" if include_failed else "('pending', 'completed', 'importing')"
+        if include_terminal:
+            statuses = (
+                "('pending', 'completed', 'importing', 'failed', 'imported', 'skipped')"
+                if include_failed
+                else "('pending', 'completed', 'importing', 'imported', 'skipped')"
+            )
+        else:
+            statuses = "('pending', 'completed', 'importing', 'failed')" if include_failed else "('pending', 'completed', 'importing')"
         cursor.execute(f'''
             SELECT id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count,
                    client, client_item_id, force_replace,
