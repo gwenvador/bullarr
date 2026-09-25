@@ -11,6 +11,7 @@ from flask import Flask
 
 from blueprints.library import routes
 from blueprints.library import import_history
+from blueprints.library import scheduler
 from blueprints.missing_monitor import downloader
 from blueprints.library.routes import _merge_cached_bedetheque_comicinfo
 
@@ -92,6 +93,16 @@ class ImportMetadataCompletionTest(unittest.TestCase):
                 with redirect_stdout(output):
                     routes.attempt_immediate_auto_import(str(filepath), str(root))
                 self.assertNotIn('Erreur import automatique immédiat', output.getvalue())
+
+
+    def test_finalized_source_is_excluded_from_automatic_import(self):
+        filepath = "/downloads/amule/already-skipped.cbz"
+        self.assertTrue(scheduler._should_skip_auto_import_path(
+            filepath, set(), set(), {filepath}
+        ))
+        self.assertFalse(scheduler._should_skip_auto_import_path(
+            "/downloads/amule/new.cbz", set(), set(), {filepath}
+        ))
 
 
 if __name__ == '__main__':

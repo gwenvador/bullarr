@@ -43,6 +43,15 @@ AUTO_IMPORT_CORRUPTION_COOLDOWN_SECONDS = 30 * 60
 STALE_PART_FILE_MINUTES = 10
 
 
+def _should_skip_auto_import_path(filepath, manual_override_filepaths, in_progress_filepaths, finalized_import_filepaths):
+    'Return whether a scanner path must not be auto-imported again.'
+    return filepath in (
+        manual_override_filepaths
+        | in_progress_filepaths
+        | finalized_import_filepaths
+    )
+
+
 def _cleanup_stale_part_files(import_directories):
     """Supprime tout fichier .part dont la dernière écriture remonte à plus de
     STALE_PART_FILE_MINUTES - voir la constante ci-dessus pour le raisonnement complet.
@@ -307,9 +316,14 @@ class LibraryImportScheduler:
                 # ce vokume. import manuel seulement") - ne doivent plus jamais être
                 # repris par CE scheduler automatique, seul un clic explicite sur
                 # "Importer" doit les finaliser avec la correction humaine.
-                from .import_history import get_manual_override_filepaths, get_in_progress_filepaths
+                from .import_history import (
+                    get_finalized_import_source_paths,
+                    get_manual_override_filepaths,
+                    get_in_progress_filepaths,
+                )
                 manual_override_filepaths = get_manual_override_filepaths()
                 in_progress_filepaths = get_in_progress_filepaths()
+                finalized_import_filepaths = get_finalized_import_source_paths()
 
                 for import_path in import_directories:
                     if not os.path.exists(import_path):
@@ -343,7 +357,10 @@ class LibraryImportScheduler:
                                 # haut). La notification "nouveau fichier disponible" reste
                                 # inchangée (all_relpaths déjà mis à jour ci-dessus), seule
                                 # l'éligibilité à l'import AUTOMATIQUE est court-circuitée ici.
-                                if filepath in manual_override_filepaths:
+                                if _should_skip_auto_import_path(
+                                    filepath, manual_override_filepaths,
+                                    in_progress_filepaths, finalized_import_filepaths
+                                ):
                                     continue
 
                                 # Déjà réclamé par un batch d'import en cours (voir
