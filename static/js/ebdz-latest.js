@@ -653,7 +653,7 @@ function _nouveautesEbdzRowHtml(event, index) {
 function _nouveautesRssTorrentClientButtons(event, item) {
     const url = item?.url || '';
     const probe = url.toLowerCase();
-    const isTorrent = probe.startsWith('magnet:') || probe.startsWith('ed2k://') || /\.torrent(?:$|[?#])/.test(probe) || probe.includes('torrent');
+    const isTorrent = probe.startsWith('magnet:') || probe.startsWith('ed2k://') || /\.torrent(?:$|[?#])/.test(probe) || probe.includes('torrent') || probe.includes('/download');
     if (!isTorrent || typeof enabledDownloadClients === 'undefined') return '';
     const title = escapeForAttribute(event.title || 'RSS torrent');
     const sourceLink = escapeForAttribute(event.link || '');

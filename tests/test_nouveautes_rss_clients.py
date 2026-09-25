@@ -19,6 +19,7 @@ class NouveautesRssClientsTest(unittest.TestCase):
         self.assertIn('addTorrentToQbittorrent', self.helper)
         self.assertIn('addTorrentToRtorrent', self.helper)
         self.assertIn('addTorrentToDeluge', self.helper)
+        self.assertIn("probe.includes('/download')", self.helper)
 
     def test_rss_row_renders_client_buttons_separately_from_open_link(self):
         self.assertIn('_nouveautesRssTorrentClientButtons(event, item)', self.row)
