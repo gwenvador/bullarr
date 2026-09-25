@@ -4257,6 +4257,18 @@ def _exclude_finalized_import_files(files_found, finalized_source_paths):
     ]
 
 
+def _exclude_finalized_pending_downloads(pending_downloads, finalized_source_paths):
+    'Hide pending rows whose source filename has a terminal import-history result.'
+    finalized_names = {
+        os.path.basename(path) for path in finalized_source_paths
+        if path
+    }
+    return [
+        item for item in pending_downloads
+        if os.path.basename(str(item.get('title') or '')) not in finalized_names
+    ]
+
+
 def _scan_tracked_import_files(validate_files=True):
     """Cœur de scan_import_directory (voir sa docstring pour le principe: uniquement les
     téléchargements SUIVIS EN BASE, jamais de matching flou par titre/dossier) - factorisé
@@ -4533,12 +4545,23 @@ def import_state_snapshot():
         from .import_history import get_currently_processing_file
         currently_processing = get_currently_processing_file()
 
+        from .import_history import get_finalized_import_source_paths
+        finalized_source_paths = get_finalized_import_source_paths()
+        pending = _exclude_finalized_pending_downloads(
+            activity_data.get('pending', []), finalized_source_paths
+        )
+        pending_ids = {item.get('id') for item in pending}
+        completed_pending_ids = [
+            item_id for item_id in activity_data.get('completed_pending_ids', [])
+            if item_id in pending_ids
+        ]
+
         return jsonify({
             'success': True,
             'snapshot_at': time.time(),
             'clients': activity_data.get('clients', []),
-            'pending': activity_data.get('pending', []),
-            'completed_pending_ids': activity_data.get('completed_pending_ids', []),
+            'pending': pending,
+            'completed_pending_ids': completed_pending_ids,
             'files': files,
             'incompatible_folders': incompatible_folders,
             'currently_processing': currently_processing,

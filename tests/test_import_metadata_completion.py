@@ -115,6 +115,17 @@ class ImportMetadataCompletionTest(unittest.TestCase):
         )
         self.assertEqual([item['filepath'] for item in visible], ['/downloads/amule/new.cbz'])
 
+    def test_finalized_pending_downloads_are_hidden_from_import_state(self):
+        pending = [
+            {'id': 4554, 'title': 'already-skipped.cbz'},
+            {'id': 4555, 'title': 'new.cbz'},
+        ]
+        visible = routes._exclude_finalized_pending_downloads(
+            pending, {'/downloads/amule/already-skipped.cbz'}
+        )
+        self.assertEqual([item['id'] for item in visible], [4555])
+
+
 
 if __name__ == '__main__':
     unittest.main()
