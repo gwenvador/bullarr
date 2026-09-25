@@ -2465,6 +2465,11 @@ h2 {
     min-width: 640px;
     border-collapse: collapse;
     color: var(--color-text);
+    /* Le media query mobile global rend tous les tableaux block-scrollables.
+       Ici le défilement appartient au wrapper .import-files-scroll, sinon le tableau
+       crée une seconde scrollbar et son scrollport coupe la largeur utile. */
+    display: table;
+    overflow: visible;
     table-layout: fixed;
 }
 /* Checkbox(1)/Date(2)/Type(3)/Nom(4)/Album(5)/Volume(6)/Extension(7)/Statut(8), même ordre
