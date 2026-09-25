@@ -3944,6 +3944,14 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
 
 /* Lien RSS : même traitement que les liens secondaires Bullarr, sans le bleu souligné
    natif du navigateur ; l'accent apparaît seulement au survol. */
+.nouveautes-source-icon {
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    vertical-align: middle;
+    border-radius: 4px;
+}
+
 .nouveautes-rss-link {
     display: inline-flex;
     align-items: center;
