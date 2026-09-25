@@ -653,7 +653,7 @@ function _nouveautesEbdzRowHtml(event, index) {
 function _nouveautesRssRowHtml(event) {
     const escapedTitle = escapeHtml(event.title || 'Sans titre');
     const title = event.link
-        ? `<a class="nouveautes-rss-link" href="${escapeHtml(event.link)}" target="_blank" rel="noopener noreferrer" data-tooltip="Ouvrir le NFO DupeFR" onclick="event.stopPropagation()">${escapedTitle} ${svgIcon('external-link')}</a>`
+        ? `<a class="nouveautes-rss-link" href="${escapeHtml(event.link)}" target="_blank" rel="noopener noreferrer" data-tooltip="Ouvrir la page liée" onclick="event.stopPropagation()">${escapedTitle} ${svgIcon('external-link')}</a>`
         : escapedTitle;
     // DupeFR fournit une vignette HTML dans description ; ne pas l’afficher comme du texte brut.
     const description = event.description
