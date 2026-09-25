@@ -651,10 +651,15 @@ function _nouveautesEbdzRowHtml(event, index) {
 }
 
 function _nouveautesRssRowHtml(event) {
-    const title = escapeHtml(event.title || 'Sans titre');
-    const link = event.link ? `<a href="${escapeHtml(event.link)}" target="_blank" rel="noopener noreferrer" data-tooltip="Ouvrir l’article RSS" onclick="event.stopPropagation()">${svgIcon('external-link')}</a>` : '';
-    const description = event.description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(event.description).slice(0, 240)}</div>` : '';
-    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;">📰</td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title} ${link}</div>${description}</td><td style="padding:10px; text-align:center;">—</td><td class="nouveautes-actions-cell" style="padding:10px;"></td></tr>`;
+    const escapedTitle = escapeHtml(event.title || 'Sans titre');
+    const title = event.link
+        ? `<a href="${escapeHtml(event.link)}" target="_blank" rel="noopener noreferrer" data-tooltip="Ouvrir le NFO DupeFR" onclick="event.stopPropagation()">${escapedTitle} ${svgIcon('external-link')}</a>`
+        : escapedTitle;
+    // DupeFR fournit une vignette HTML dans description ; ne pas l’afficher comme du texte brut.
+    const description = event.description
+        ? escapeHtml(event.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 240)
+        : '';
+    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;">📰</td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td><td style="padding:10px; text-align:center;">—</td><td class="nouveautes-actions-cell" style="padding:10px;"></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
