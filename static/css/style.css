@@ -2407,7 +2407,8 @@ h2 {
 
 #import-files-container {
     margin-top: 20px;
-    overflow-x: auto;
+    overflow-x: hidden;
+    max-width: 100%;
 }
 
 .import-bedetheque-link {
