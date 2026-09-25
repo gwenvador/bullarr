@@ -665,4 +665,6 @@ def rss_latest():
             events.extend({**entry, 'type': 'rss', 'feed_name': feed.get('name', entry.get('feed_title') or feed['url'])} for entry in entries)
     events.sort(key=lambda event: event.get('date', ''), reverse=True)
     limit = min(max(request.args.get('limit', default=100, type=int), 1), 500)
-    return jsonify({'success': True, 'entries': events[:limit], 'errors': errors})
+    # Le plafond s'applique à chaque flux, pas à l'ensemble agrégé: un flux récent
+    # très prolifique ne doit pas masquer un second flux plus ancien dans Nouveautés.
+    return jsonify({'success': True, 'entries': events[:limit * max(1, len(feeds))], 'errors': errors})
