@@ -1027,4 +1027,8 @@ async function _loadNouveautesBatch(limit, generation, resetPage) {
     } catch (e) { /* localStorage indisponible (navigation privée...) - pas bloquant */ }
 }
 
+window.addEventListener('download-clients-ready', () => {
+    if (allNouveautesEvents.length) renderNouveautesEvents(false);
+});
+
 loadNouveautesEvents();

@@ -920,7 +920,9 @@ document.addEventListener('DOMContentLoaded', function() {
     initUserBadge();
     initManualReviewBadge();
     initConfigSubgroupToggle(navLinks);
-    refreshEnabledDownloadClients();
+    refreshEnabledDownloadClients().then(() => {
+        window.dispatchEvent(new CustomEvent('download-clients-ready'));
+    });
     refreshEnabledIntegrations();
     } finally {
         const sidebar = document.querySelector('.sidebar-nav');
