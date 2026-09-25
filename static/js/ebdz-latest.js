@@ -916,12 +916,20 @@ async function loadNouveautesEvents(forceScrape, resetPage = true) {
             pendingScanData.success ? (pendingScanData.files || []).map(f => f.filename) : []
         );
 
-        await _loadNouveautesBatch(NOUVEAUTES_INITIAL_LIMIT, generation, resetPage);
-        loading.style.display = 'none';
+        if (resetPage) {
+            await _loadNouveautesBatch(NOUVEAUTES_INITIAL_LIMIT, generation, true);
+            loading.style.display = 'none';
 
-        // Charge le reste de la fenêtre sans bloquer l'affichage déjà visible - volontairement
-        // sans await, la fonction appelante n'a pas besoin d'attendre ce second lot.
-        _loadNouveautesBatch(null, generation, false).catch(() => {});
+            // Charge le reste de la fenêtre sans bloquer l'affichage déjà visible.
+            _loadNouveautesBatch(null, generation, false).catch(() => {});
+        } else {
+            // Pour une période plus ancienne, le lot limité aux 100 éléments les plus
+            // récents ne contient pas les nouveaux éléments demandés. Charger directement
+            // la fenêtre complète évite que le bouton semble ne rien faire avant le rendu
+            // du second appel en arrière-plan.
+            await _loadNouveautesBatch(null, generation, false);
+            loading.style.display = 'none';
+        }
     } catch (error) {
         loading.style.display = 'none';
         document.getElementById('nouveautes-events-body').innerHTML =
