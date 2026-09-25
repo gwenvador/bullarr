@@ -6,7 +6,7 @@ import ipaddress
 import json
 import socket
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
@@ -70,24 +70,75 @@ def _text(parent, names):
     return ''
 
 
+def _is_download_link(url, label=''):
+    probe = f'{url} {label}'.lower()
+    return any(token in probe for token in ('torrent', 'ebdz', '.torrent', 'magnet:', 'ed2k://', '/download'))
+
+
+def _clean_link(url, source_url):
+    url = html.unescape((url or '').strip()).rstrip(chr(34) + chr(39))
+    if not url:
+        return ''
+    if url.startswith(('http://', 'https://', 'magnet:', 'ed2k://')):
+        return url
+    return urljoin(source_url, url)
+
+
 def _download_links(description, source_url):
     text = html.unescape(description or '')
     found = []
     seen = set()
-    anchor_re = re.compile(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a\s*>', re.I | re.S)
+    anchor_re = re.compile(r"<a\b[^>]*\bhref=['\"]([^'\"]+)['\"][^>]*>(.*?)</a\s*>", re.I | re.S)
     for url, label_html in anchor_re.findall(text):
         label = re.sub(r'<[^>]+>', ' ', label_html)
-        probe = f'{url} {label}'.lower()
-        if any(token in probe for token in ('torrent', 'ebdz', '.torrent', 'magnet:', 'ed2k://', '/download')):
-            if url not in seen:
-                seen.add(url)
-                found.append({'url': url, 'label': re.sub(r'\s+', ' ', label).strip() or 'Télécharger'})
-    for url in re.findall(r'(?:(?:https?|magnet|ed2k)://[^\s<>"\']+)', text, re.I):
-        probe = url.lower()
-        if any(token in probe for token in ('torrent', 'ebdz', '.torrent', 'magnet:', 'ed2k://', '/download')) and url not in seen:
+        url = _clean_link(url, source_url)
+        if _is_download_link(url, label) and url not in seen:
+            seen.add(url)
+            found.append({'url': url, 'label': re.sub(r'\s+', ' ', label).strip() or 'Télécharger'})
+    for url in re.findall(r'(?:(?:https?|magnet|ed2k)://[^\s<>]+)', text, re.I):
+        url = _clean_link(url, source_url)
+        if _is_download_link(url) and url not in seen:
             seen.add(url)
             found.append({'url': url, 'label': 'Télécharger'})
     return found[:10]
+
+
+def _entry_links(entry, description, source_url):
+    page_candidates = []
+    downloads = _download_links(description, source_url)
+    seen_downloads = {item['url'] for item in downloads}
+    comments_link = ''
+    guid_link = ''
+    for node in entry.iter():
+        name = node.tag.rsplit('}', 1)[-1].lower()
+        if name == 'comments' and (node.text or '').strip():
+            comments_link = _clean_link(node.text, source_url)
+            continue
+        if name == 'guid' and (node.text or '').strip():
+            candidate = _clean_link(node.text, source_url)
+            if node.attrib.get('isPermaLink', 'true').lower() != 'false' and not _is_download_link(candidate):
+                guid_link = candidate
+            continue
+        if name == 'link':
+            candidate = _clean_link(node.attrib.get('href') or node.text, source_url)
+            rel = (node.attrib.get('rel') or '').lower()
+            label = node.attrib.get('type') or rel
+            if not candidate:
+                continue
+            if rel in {'enclosure', 'download'} or _is_download_link(candidate, label):
+                if candidate not in seen_downloads:
+                    seen_downloads.add(candidate)
+                    downloads.append({'url': candidate, 'label': 'Télécharger'})
+            else:
+                page_candidates.append(candidate)
+            continue
+        if name in {'enclosure', 'content', 'download', 'downloadurl', 'torrent', 'torrenturl', 'magneturi', 'ed2k'}:
+            candidate = _clean_link(node.attrib.get('url') or node.attrib.get('href') or node.text, source_url)
+            if candidate and candidate not in seen_downloads:
+                seen_downloads.add(candidate)
+                downloads.append({'url': candidate, 'label': 'Télécharger'})
+    page_link = comments_link or (page_candidates[0] if page_candidates else '') or guid_link or source_url
+    return page_link, comments_link, downloads[:10]
 
 
 def parse_feed(payload, source_url):
@@ -101,12 +152,8 @@ def parse_feed(payload, source_url):
     feed_title = _text(channel, ['title']) if channel is not None else ''
     for entry in entries:
         title = _text(entry, ['title'])
-        link = _text(entry, ['link'])
-        if not link:
-            for candidate in entry.findall('{*}link'):
-                link = candidate.attrib.get('href', '')
-                if link:
-                    break
+        raw_description = _text(entry, ['description', 'summary', 'content'])
+        page_link, comments_link, download_links = _entry_links(entry, raw_description, source_url)
         date = _text(entry, ['pubDate', 'published', 'updated'])
         parsed_date = email.utils.parsedate_to_datetime(date) if date else None
         if parsed_date is None:
@@ -116,8 +163,7 @@ def parse_feed(payload, source_url):
                 parsed_date = None
         if parsed_date and parsed_date.tzinfo is None:
             parsed_date = parsed_date.replace(tzinfo=timezone.utc)
-        description = _text(entry, ['description', 'summary', 'content'])
-        results.append({'title': title or 'Sans titre', 'link': link or source_url, 'description': description, 'download_links': _download_links(description, source_url), 'date': parsed_date.astimezone(timezone.utc).isoformat() if parsed_date else '', 'feed_title': feed_title})
+        results.append({'title': title or 'Sans titre', 'link': page_link, 'page_link': page_link, 'comments_link': comments_link, 'description': raw_description, 'download_links': download_links, 'date': parsed_date.astimezone(timezone.utc).isoformat() if parsed_date else '', 'feed_title': feed_title})
     return results
 
 
