@@ -182,7 +182,7 @@ def fetch_feed(feed):
     last_error = None
     for attempt in range(3):
         try:
-            with urlopen(request, timeout=45) as response:
+            with urlopen(request, timeout=10) as response:
                 payload = response.read(MAX_FEED_BYTES + 1)
             if len(payload) > MAX_FEED_BYTES:
                 raise ValueError('Flux RSS trop volumineux')
