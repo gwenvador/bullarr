@@ -1926,9 +1926,9 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
 (function initTopTableScrollbars() {
     const selectors = [
         '.series-list.series-table-wrapper', '.volumes-table-wrapper',
-        '.monitor-series-table-wrapper', '.import-files-scroll',
+        '.monitor-series-table-wrapper',
         '#history-events-wrapper', '#import-history-section > div[style*="overflow-x:auto"]',
-        'div[style*="overflow-x:auto"]'
+        'div[style*="overflow-x:auto"]:not(.import-files-scroll)'
     ];
 
     function attach(wrapper) {

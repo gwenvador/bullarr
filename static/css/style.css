@@ -3350,7 +3350,6 @@ table thead th {
 .series-list.series-table-wrapper,
 .volumes-table-wrapper,
 .monitor-series-table-wrapper,
-.import-files-scroll,
 #history-events-wrapper {
     scrollbar-width: none;
 }
@@ -3358,7 +3357,6 @@ table thead th {
 .series-list.series-table-wrapper::-webkit-scrollbar,
 .volumes-table-wrapper::-webkit-scrollbar,
 .monitor-series-table-wrapper::-webkit-scrollbar,
-.import-files-scroll::-webkit-scrollbar,
 #history-events-wrapper::-webkit-scrollbar {
     display: none;
 }
