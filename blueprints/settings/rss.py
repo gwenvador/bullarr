@@ -8,11 +8,14 @@ import socket
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 import xml.etree.ElementTree as ET
 
 DEFAULT_FEEDS = [{'name': 'DupeFR EBOOKS', 'url': 'https://dupefr.com/flux_rss/section/EBOOKS', 'enabled': True}]
 MAX_FEEDS = 20
 MAX_FEED_BYTES = 2 * 1024 * 1024
+RSS_CACHE_TTL_SECONDS = 300
+_rss_cache = {}
 
 
 def _validate_url(url):
@@ -169,9 +172,35 @@ def parse_feed(payload, source_url):
 
 def fetch_feed(feed):
     url = _validate_url(feed['url'])
-    request = Request(url, headers={'User-Agent': 'Bullarr RSS reader/1.0', 'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml'})
-    with urlopen(request, timeout=15) as response:
-        payload = response.read(MAX_FEED_BYTES + 1)
-    if len(payload) > MAX_FEED_BYTES:
-        raise ValueError('Flux RSS trop volumineux')
-    return parse_feed(payload, url)
+    cached = _rss_cache.get(url)
+    now = time.monotonic()
+    if cached and now - cached[0] < RSS_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    request = Request(url, headers={'User-Agent': 'Bullarr RSS reader/1.0', 'Accept': 'application/rss+xml, application/xml, text/xml'})
+    last_error = None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=15) as response:
+                payload = response.read(MAX_FEED_BYTES + 1)
+            if len(payload) > MAX_FEED_BYTES:
+                raise ValueError('Flux RSS trop volumineux')
+            entries = parse_feed(payload, url)
+            _rss_cache[url] = (time.monotonic(), entries)
+            return entries
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
+                break
+            retry_after = exc.headers.get('Retry-After') if exc.headers else None
+            try:
+                delay = min(5, max(1, int(retry_after))) if retry_after else 2 ** attempt
+            except (TypeError, ValueError):
+                delay = 2 ** attempt
+            time.sleep(delay)
+
+    if cached:
+        return cached[1]
+    if last_error:
+        raise last_error
+    raise RuntimeError('Échec de lecture du flux RSS')
