@@ -152,7 +152,7 @@ def _fetch_prowlarr_newznab(feed):
     categories = set()
     for values in (config.get('selected_categories') or {}).values():
         categories.update(str(value) for value in (values if isinstance(values, list) else []))
-    params = [('apikey', api_key), ('t', 'book')]
+    params = [('apikey', api_key), ('t', 'search')]
     params.extend(('cat', category) for category in sorted(categories))
     response = requests.get(f"{base_url}/api/v1/indexer/{indexer['id']}/newznab", params=params, timeout=20)
     response.raise_for_status()
