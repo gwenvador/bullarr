@@ -3940,3 +3940,24 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
     25% { transform: translateX(-2px) rotate(-8deg); }
     75% { transform: translateX(2px) rotate(8deg); }
 }
+
+
+/* Lien RSS : même traitement que les liens secondaires Bullarr, sans le bleu souligné
+   natif du navigateur ; l'accent apparaît seulement au survol. */
+.nouveautes-rss-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--color-text);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+.nouveautes-rss-link:hover {
+    color: var(--color-accent);
+    text-decoration: underline;
+}
+.nouveautes-rss-link .icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+}
