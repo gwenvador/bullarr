@@ -650,6 +650,27 @@ function _nouveautesEbdzRowHtml(event, index) {
     `;
 }
 
+function _nouveautesRssTorrentClientButtons(event, item) {
+    const url = item?.url || '';
+    const probe = url.toLowerCase();
+    const isTorrent = probe.startsWith('magnet:') || probe.startsWith('ed2k://') || /\.torrent(?:$|[?#])/.test(probe) || probe.includes('torrent');
+    if (!isTorrent || typeof enabledDownloadClients === 'undefined') return '';
+    const title = escapeForAttribute(event.title || 'RSS torrent');
+    const sourceLink = escapeForAttribute(event.link || '');
+    const encodedUrl = escapeForAttribute(url);
+    const buttons = [];
+    if (enabledDownloadClients.qbittorrent && typeof addTorrentToQbittorrent === 'function') {
+        buttons.push(`<button class="btn-icon-only" type="button" onclick="addTorrentToQbittorrent('${encodedUrl}', this, '${title}', null, null, null, '${sourceLink}')" data-tooltip="Envoyer à qBittorrent" aria-label="Envoyer à qBittorrent"><img src="/static/img/qbittorrent-logo.svg" alt="qBittorrent" class="torrent-client-logo"></button>`);
+    }
+    if (enabledDownloadClients.rtorrent && typeof addTorrentToRtorrent === 'function') {
+        buttons.push(`<button class="btn-icon-only" type="button" onclick="addTorrentToRtorrent('${encodedUrl}', this, '${title}', null, null, null, '${sourceLink}')" data-tooltip="Envoyer à rTorrent" aria-label="Envoyer à rTorrent"><img src="/static/img/rtorrent-logo.svg" alt="rTorrent" class="torrent-client-logo"></button>`);
+    }
+    if (enabledDownloadClients.deluge && typeof addTorrentToDeluge === 'function') {
+        buttons.push(`<button class="btn-icon-only" type="button" onclick="addTorrentToDeluge('${encodedUrl}', this, '${title}', null, null, null, '${sourceLink}')" data-tooltip="Envoyer à Deluge" aria-label="Envoyer à Deluge"><img src="/static/img/deluge-logo.svg" alt="Deluge" class="torrent-client-logo"></button>`);
+    }
+    return buttons.join('');
+}
+
 function _nouveautesRssRowHtml(event) {
     const escapedTitle = escapeHtml(event.title || 'Sans titre');
     const title = event.link
@@ -661,7 +682,8 @@ function _nouveautesRssRowHtml(event) {
         : '';
     const addButton = event.title ? `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter à Bullarr" aria-label="Ajouter à Bullarr">${svgIcon('plus')}</button>` : '';
     const downloadButtons = (event.download_links || []).map(item => `<a class="btn-icon-only" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" data-tooltip="${escapeHtml(item.label || 'Télécharger')}" aria-label="${escapeHtml(item.label || 'Télécharger')}" onclick="event.stopPropagation()">${svgIcon('download')}</a>`).join('');
-    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td><td style="padding:10px; text-align:center;">—</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${downloadButtons}${addButton}</div></td></tr>`;
+    const torrentClientButtons = (event.download_links || []).map(item => _nouveautesRssTorrentClientButtons(event, item)).join('');
+    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td><td style="padding:10px; text-align:center;">—</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
