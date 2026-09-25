@@ -375,7 +375,7 @@ def get_trackable_active_downloads(include_failed=False, include_terminal=False)
             statuses = "('pending', 'completed', 'importing', 'failed')" if include_failed else "('pending', 'completed', 'importing')"
         cursor.execute(f'''
             SELECT id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count,
-                   client, client_item_id, force_replace,
+                   client, client_item_id, force_replace, status,
                    is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
             FROM active_downloads
             WHERE series_id IS NOT NULL
@@ -391,11 +391,11 @@ def get_trackable_active_downloads(include_failed=False, include_terminal=False)
         rows = [
             {'id': row_id, 'title': title, 'series_id': series_id, 'volume_id': volume_id, 'volume_number': volume_number,
              'is_pack': bool(is_pack), 'expected_volume_count': expected_volume_count,
-             'client': client, 'client_item_id': client_item_id, 'force_replace': bool(force_replace),
+             'client': client, 'client_item_id': client_item_id, 'force_replace': bool(force_replace), 'download_status': status,
              'is_integral': bool(is_integral), 'integral_number': integral_number,
              'is_hs': bool(is_hs), 'hs_number': hs_number,
              'is_episode': bool(is_episode), 'episode_number': episode_number}
-            for row_id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count, client, client_item_id, force_replace,
+            for row_id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count, client, client_item_id, force_replace, status,
                 is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
             in cursor.fetchall()
         ]

@@ -4269,6 +4269,12 @@ def _exclude_finalized_pending_downloads(pending_downloads, finalized_source_pat
     ]
 
 
+def _terminal_download_has_finalized_sibling(path, finalized_source_paths):
+    folder = os.path.realpath(path if os.path.isdir(path) else os.path.dirname(path))
+    prefix = folder.rstrip(os.sep) + os.sep
+    return any(os.path.realpath(source).startswith(prefix) for source in finalized_source_paths if source)
+
+
 def _scan_tracked_import_files(validate_files=True):
     """Cœur de scan_import_directory (voir sa docstring pour le principe: uniquement les
     téléchargements SUIVIS EN BASE, jamais de matching flou par titre/dossier) - factorisé
@@ -4343,6 +4349,9 @@ def _scan_tracked_import_files(validate_files=True):
                 download = downloads_by_folder_name.get(entry.name.strip().lower())
                 if not download:
                     continue
+                if (download.get('download_status') in ('imported', 'skipped')
+                        and not _terminal_download_has_finalized_sibling(entry.path, finalized_source_paths)):
+                    continue
                 destination = _build_active_download_destination(
                     download['series_id'], download.get('volume_number'), download['id']
                 )
@@ -4364,6 +4373,14 @@ def _scan_tracked_import_files(validate_files=True):
                             torrent_download['series_id'], torrent_download.get('volume_number'), torrent_download['id']
                         )
                 if not match:
+                    continue
+                terminal_download = next(
+                    (d for d in trackable_downloads
+                     if d.get('id') == match.get('tracking_id')
+                     and d.get('download_status') in ('imported', 'skipped')),
+                    None
+                )
+                if terminal_download and not _terminal_download_has_finalized_sibling(entry.path, finalized_source_paths):
                     continue
                 _append_scanned_file(
                     entry.path, import_path, entry.name, match, scanner, telegram_filenames,
