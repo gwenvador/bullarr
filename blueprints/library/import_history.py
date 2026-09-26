@@ -62,6 +62,19 @@ def init_import_history_table():
         if 'parsed_volume_json' not in existing_columns:
             cursor.execute("ALTER TABLE import_history_files ADD COLUMN parsed_volume_json TEXT")
 
+        cursor.execute("""CREATE TABLE IF NOT EXISTS import_items (
+            item_key TEXT PRIMARY KEY, tracking_id INTEGER, source_path TEXT NOT NULL,
+            filename TEXT NOT NULL, source_available INTEGER NOT NULL DEFAULT 1,
+            state TEXT NOT NULL DEFAULT 'waiting', is_auxiliary INTEGER NOT NULL DEFAULT 0,
+            is_directory INTEGER NOT NULL DEFAULT 0, is_pack_parent INTEGER NOT NULL DEFAULT 0,
+            force_replace INTEGER NOT NULL DEFAULT 0,
+            discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_import_items_waiting ON import_items(source_available, state, is_auxiliary, is_directory)")
+        cursor.execute("PRAGMA table_info(import_items)")
+        if "force_replace" not in {row[1] for row in cursor.fetchall()}:
+            cursor.execute("ALTER TABLE import_items ADD COLUMN force_replace INTEGER NOT NULL DEFAULT 0")
         conn.commit()
         conn.close()
         return True
@@ -69,6 +82,107 @@ def init_import_history_table():
         print(f"Erreur lors de la création de la table d'historique: {e}")
         return False
 
+
+def persist_discovered_import_items(files):
+    """Persist the file-level discovery result used by both Import and its badge."""
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute("""CREATE TABLE IF NOT EXISTS import_items (
+            item_key TEXT PRIMARY KEY, tracking_id INTEGER, source_path TEXT NOT NULL,
+            filename TEXT NOT NULL, source_available INTEGER NOT NULL DEFAULT 1,
+            state TEXT NOT NULL DEFAULT 'waiting', is_auxiliary INTEGER NOT NULL DEFAULT 0,
+            is_directory INTEGER NOT NULL DEFAULT 0, is_pack_parent INTEGER NOT NULL DEFAULT 0,
+            force_replace INTEGER NOT NULL DEFAULT 0,
+            discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(import_items)").fetchall()}
+        if "force_replace" not in columns:
+            conn.execute("ALTER TABLE import_items ADD COLUMN force_replace INTEGER NOT NULL DEFAULT 0")
+        conn.execute("UPDATE import_items SET source_available=0, updated_at=CURRENT_TIMESTAMP")
+        for item in files or []:
+            source_path = item.get('filepath')
+            destination = item.get('destination') or {}
+            tracking_id = destination.get('tracking_id') or item.get('tracking_id')
+            if not source_path or tracking_id is None:
+                continue
+            source_path = os.path.realpath(source_path)
+            force_replace = int(bool(destination.get('force_replace') or item.get('force_replace')))
+            item_key = f"{tracking_id}:{source_path}"
+            filename = item.get('filename') or os.path.basename(source_path)
+            is_auxiliary = int(bool(item.get('is_auxiliary') or item.get('is_image_page')))
+            conn.execute("""INSERT INTO import_items
+                (item_key, tracking_id, source_path, filename, source_available,
+                 state, is_auxiliary, is_directory, is_pack_parent, force_replace, updated_at)
+                VALUES (?, ?, ?, ?, 1, 'waiting', ?, 0, 0, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(item_key) DO UPDATE SET
+                    tracking_id=excluded.tracking_id, filename=excluded.filename,
+                    source_available=1, is_auxiliary=excluded.is_auxiliary,
+                    is_directory=0, is_pack_parent=0, force_replace=excluded.force_replace, updated_at=CURRENT_TIMESTAMP
+            """, (item_key, tracking_id, source_path, filename, is_auxiliary, force_replace))
+        conn.commit()
+    except Exception as exc:
+        print(f"Erreur persistance items Import: {exc}")
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_waiting_import_snapshot():
+    """Read-only persisted file predicate shared by Import state and the global badge."""
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT i.item_key, i.tracking_id, i.source_path, i.filename
+            FROM import_items i
+            WHERE i.source_available = 1 AND i.state = 'waiting'
+              AND i.is_auxiliary = 0 AND i.is_directory = 0 AND i.is_pack_parent = 0
+              AND (i.force_replace = 1 OR NOT EXISTS (
+                  SELECT 1 FROM import_history_files h
+                  WHERE h.source_path = i.source_path
+                    AND h.status IN ('success', 'imported', 'skipped', 'completed')
+              ))
+              AND NOT EXISTS (
+                  SELECT 1 FROM import_history_files h
+                  WHERE h.source_path = i.source_path AND h.status = 'processing'
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM active_downloads d
+                  WHERE d.id = i.tracking_id AND d.status = 'importing'
+              )
+            ORDER BY i.updated_at, i.item_key
+        """).fetchall()
+        unknown_packs = conn.execute("""
+            SELECT COUNT(*) FROM active_downloads d
+            WHERE d.is_pack = 1 AND d.status IN ('pending', 'completed')
+              AND NOT EXISTS (
+                  SELECT 1 FROM import_items i WHERE i.tracking_id = d.id
+              )
+        """).fetchone()[0]
+        return {'items': [dict(row) for row in rows],
+                'waiting_file_count': len(rows),
+                'awaiting_discovery_count': int(unknown_packs or 0)}
+    except Exception as exc:
+        print(f"Erreur lecture snapshot items Import: {exc}")
+        return {'items': [], 'waiting_file_count': 0, 'awaiting_discovery_count': 0}
+    finally:
+        if conn:
+            conn.close()
+
+
+def mark_import_item_unavailable(source_path):
+    if not source_path:
+        return
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        conn.execute("UPDATE import_items SET source_available=0, updated_at=CURRENT_TIMESTAMP WHERE source_path = ?", (os.path.realpath(source_path),))
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        print(f"Erreur mise à jour disponibilité item Import: {exc}")
 
 def cleanup_stale_operations():
     """Technical rationale and compatibility constraints for this code path."""

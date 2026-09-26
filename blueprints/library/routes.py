@@ -3864,8 +3864,8 @@ def import_pending_count():
     structurelle que badge et page affichent TOUJOURS le même nombre ("oui mais ce
     n'est pas ce que import affiche. il faut que ce soit la meme chose" - déjà la
     raison d'être de cette route avant même ce correctif)."""
-    from blueprints.missing_monitor.downloader import get_pending_downloads
-    return jsonify({'count': len(get_pending_downloads())})
+    from .import_history import get_waiting_import_snapshot
+    return jsonify({'success': True, **get_waiting_import_snapshot()})
 
 
 def _extract_one_archive(archive_path, ext, target_dir):
@@ -4316,7 +4316,10 @@ def _scan_tracked_import_files(validate_files=True):
                 )
 
     files_found = _exclude_terminal_without_manual_override(files_found)
-    return _exclude_finalized_import_files(files_found, finalized_source_paths), incompatible_folders
+    files_found = _exclude_finalized_import_files(files_found, finalized_source_paths)
+    from .import_history import persist_discovered_import_items
+    persist_discovered_import_items(files_found)
+    return files_found, incompatible_folders
 
 
 @library_bp.route('/api/import/scan', methods=['POST'])
@@ -4486,8 +4489,9 @@ def import_state_snapshot():
         # distinct du badge générique "Import en cours" déjà affiché sur tous les
         # fichiers d'un batch en vol (voir statusBadge, import.js) - celui-ci ne dit
         # jamais LEQUEL est le fichier actif ni depuis combien de temps.
-        from .import_history import get_currently_processing_file
+        from .import_history import get_currently_processing_file, get_waiting_import_snapshot
         currently_processing = get_currently_processing_file()
+        waiting_snapshot = get_waiting_import_snapshot()
 
         from .import_history import get_finalized_import_source_paths
         finalized_source_paths = get_finalized_import_source_paths()
@@ -4509,6 +4513,8 @@ def import_state_snapshot():
             'files': files,
             'incompatible_folders': incompatible_folders,
             'currently_processing': currently_processing,
+            'waiting_file_count': waiting_snapshot['waiting_file_count'],
+            'awaiting_discovery_count': waiting_snapshot['awaiting_discovery_count'],
         })
     except Exception as exc:
         import traceback
@@ -4568,6 +4574,8 @@ def delete_import_file():
     try:
         os.remove(filepath)
         cleanup_empty_directories(import_root)
+        from .import_history import mark_import_item_unavailable
+        mark_import_item_unavailable(filepath)
         return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client})
     except OSError as e:
         return jsonify({'error': str(e)}), 500

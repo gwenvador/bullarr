@@ -1013,40 +1013,43 @@ async function initUserBadge() {
 // Interrogé périodiquement plutôt qu'une seule fois au chargement, pour refléter les
 // nouveaux téléchargements arrivés pendant que l'utilisateur navigue ailleurs =====
 function initImportBadge(navLinks) {
-    // initNavGroup donne à l'en-tête du groupe le même href que son premier enfant
-    // (`parent.href = hrefs[0]`, voir plus haut) pour rester navigable même replié -
-    // navLinks contient donc DEUX éléments avec href="/import" (l'en-tête "Suivi" ET le
-    // vrai sous-lien "Téléchargement"), et .find() tombait sur le premier du DOM: l'en-tête
-    // "Suivi" (inséré avant le sous-groupe), pas Téléchargement. D'où le badge de fichiers
-    // en attente affiché sur "Suivi" au lieu de "Téléchargement" ("déplace le numéro de
-    // notification de Suivi vers Téléchargement"). Préfère explicitement le vrai sous-lien.
     const importLink = Array.from(navLinks).find(link => link.getAttribute('href') === '/import' && link.classList.contains('nav-sublink'))
         || Array.from(navLinks).find(link => link.getAttribute('href') === '/import');
     if (!importLink) return;
+    let lastConfirmedCount = null;
+    let requestSequence = 0;
 
-    async function refreshImportBadge() {
-        try {
-            const response = await fetch('/api/import/pending-count');
-            const data = await response.json();
-            const count = data.count || 0;
-
-            let badge = importLink.querySelector('.nav-badge');
-            if (count > 0) {
-                if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'nav-badge';
-                    importLink.appendChild(badge);
-                }
-                badge.textContent = count > 99 ? '99+' : String(count);
-            } else if (badge) {
-                badge.remove();
+    function renderImportBadge(count) {
+        let badge = importLink.querySelector('.nav-badge');
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'nav-badge';
+                importLink.appendChild(badge);
             }
-        } catch (error) {
-            // Ignorer silencieusement (page hors-ligne, requête interrompue par une
-            // navigation...): pas de notification d'erreur pour un simple badge
+            badge.textContent = String(count);
+            badge.setAttribute('aria-label', String(count));
+        } else if (badge) {
+            badge.remove();
         }
     }
 
+    async function refreshImportBadge() {
+        const sequence = ++requestSequence;
+        try {
+            const response = await fetch('/api/import/pending-count');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            if (sequence !== requestSequence || typeof data.waiting_file_count !== 'number') return;
+            lastConfirmedCount = data.waiting_file_count;
+            renderImportBadge(lastConfirmedCount);
+        } catch (error) {
+            if (lastConfirmedCount !== null) renderImportBadge(lastConfirmedCount);
+        }
+    }
+
+    window.refreshImportBadge = refreshImportBadge;
+    document.addEventListener('import-state-confirmed', refreshImportBadge);
     refreshImportBadge();
     setInterval(refreshImportBadge, 60000);
 }

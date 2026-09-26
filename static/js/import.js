@@ -403,16 +403,15 @@ async function loadActiveDownloads() {
             });
             incompatibleFolders = data.incompatible_folders || [];
             currentlyProcessingFile = data.currently_processing || null;
+            window.importWaitingFileCount = data.waiting_file_count;
+            window.importAwaitingDiscoveryCount = data.awaiting_discovery_count || 0;
+            document.dispatchEvent(new CustomEvent('import-state-confirmed', { detail: { waitingFileCount: data.waiting_file_count } }));
             await _ensureVolumesLoadedForFiles(importFiles);
             hasScannedOnce = true;
         }
     } catch (error) {
         if (error.name === 'AbortError') {
             showToast('activity-status-timeout', "Statut des téléchargements lent à répondre - dernières données connues affichées", { icon: 'triangle-alert', autoHideMs: 6000 });
-        } else {
-            activeDownloads = [];
-            pendingDownloads = [];
-            currentlyProcessingFile = null;
         }
     }
     hasCheckedActiveDownloadsOnce = true;
