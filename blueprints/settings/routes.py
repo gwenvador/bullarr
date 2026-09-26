@@ -142,9 +142,7 @@ def _validate_staged_backup_file(path, name):
 
 @settings_bp.route('/api/settings/backup', methods=['GET'])
 def download_backup():
-    """Télécharge un .zip avec les bases de données + tous les fichiers de config (voir
-    _backup_file_specs) - de quoi restaurer l'installation ailleurs ou après un incident.
-    Construit en mémoire (BytesIO), rien n'est écrit sur disque côté serveur."""
+    """Technical rationale and compatibility constraints for this code path."""
     buf = io.BytesIO()
     included = []
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:

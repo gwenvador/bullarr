@@ -71,40 +71,7 @@ def init_import_history_table():
 
 
 def cleanup_stale_operations():
-    """Marque comme 'failed' les opérations restées bloquées à 'started'
-
-    Les imports s'exécutent de façon synchrone dans une requête HTTP (ou un tick du
-    scheduler): une opération encore à 'started' au démarrage de l'application signifie
-    forcément qu'elle a été interrompue (crash, redémarrage du conteneur...) et ne se
-    terminera jamais toute seule.
-
-    "pourquoi Aucun fichier : Le loup.BD [Jean-... et échec de l'import. pourtant le
-    fichier est bien la" - une opération interrompue APRÈS avoir déjà déplacé/committé un
-    fichier avec succès (le per-file loop d'execute_import/execute_auto_import écrit sa
-    propre ligne import_history_files et commit AVANT le travail de fin d'opération -
-    stats, renommage, sync Komga/EBDZ - qui, lui, peut être interrompu par un redémarrage)
-    gardait ses compteurs files_imported/replaced/skipped/failed figés à leur valeur
-    d'INSERT initiale (tous à 0, voir log_import_operation) au lieu de refléter les
-    fichiers réellement traités avant l'interruption - la ligne Historique affichait alors
-    "✗ Échec" + "0 importé(s)... 0 échec(s)" à CÔTÉ du nom du fichier réellement importé
-    (file_names, sous-requête indépendante du statut de l'opération, voir
-    get_import_history), une combinaison contradictoire qui donnait l'impression à tort
-    que le fichier affiché avait lui-même échoué. Recalculés ici depuis les VRAIES lignes
-    import_history_files de chaque opération bloquée avant de la marquer 'failed' - le
-    statut 'failed' reste correct au niveau de l'OPÉRATION (son travail de fin, potentiel-
-    lement incomplet pour d'autres fichiers encore en cours au moment du kill, n'a jamais
-    pu se terminer), mais les compteurs et le détail par fichier redeviennent honnêtes.
-
-    Délai de grâce de 5 minutes sur created_at avant de considérer une opération 'started'
-    comme bloquée: cette fonction tourne à CHAQUE create_app() (voir app.py), pas
-    seulement au vrai démarrage du conteneur - un appel ad hoc (script de diagnostic via
-    docker exec, par ex.) qui partage la même base que le process réel peut tomber pile
-    pendant qu'un import est encore légitimement en cours (jusqu'à ~30s entre son
-    log_import_operation('started') et son update_import_operation('completed') final,
-    voir execute_import/execute_auto_import) - sans ce délai, il stompait à tort le statut
-    d'un import qui allait très bien se terminer tout seul quelques secondes plus tard
-    (constaté en pratique: un /api/import/scan de diagnostic a marqué 'failed' un import
-    "Le pouvoir des Innocents" réussi 2 secondes après son démarrage)."""
+    """Technical rationale and compatibility constraints for this code path."""
     conn = None
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
@@ -269,31 +236,7 @@ def log_import_file_started(operation_id, filename):
 
 
 def get_currently_processing_file():
-    """Retourne la ligne 'processing' la plus récente encore ouverte (si une existe),
-    avec le nombre de secondes écoulées depuis son log_import_file_started - "even if the
-    process is stuck I should still be able to see the current download" / "Import en
-    cours" existe déjà par fichier (voir statusBadge, import.js) mais ne distingue jamais
-    LEQUEL des fichiers affichant ce même badge est réellement en train d'être traité
-    MAINTENANT par _execute_import_batch, ni depuis combien de temps - impossible de
-    repérer un blocage réel (incident 'série #924'/'un import est déjà en cours' du
-    2026-08-28: le fichier fautif n'était identifiable qu'en fouillant les logs
-    conteneur). Utilisée par /api/import/state (routes.py) pour exposer ce fichier
-    explicitement au badge "🔄 En cours de traitement (Ns)" côté import.js, distinct du
-    badge générique existant.
-
-    "pourquoi bullar est frozen pour l'import" - faux positif réel constaté le
-    2026-08-28: plusieurs lignes import_history_files restent bloquées à 'processing'
-    depuis le 1er août alors que leur OPÉRATION PARENTE (import_history.status) est déjà
-    'completed' - bug préexistant où update_import_file n'a pas été appelé pour ces
-    fichiers précis avant la fin de leur batch (execute_auto_import a continué malgré
-    une exception isolée sur eux). Sans le JOIN ci-dessous, la ligne 'processing' la plus
-    récente pouvait être un de ces fantômes vieux de 27 jours plutôt que le vrai fichier
-    actif - "toujours frozen" alors que rien n'était réellement bloqué. Ne retenir QUE
-    les lignes dont l'opération parente est ENCORE 'started': c'est la seule garantie
-    qu'un batch la traite réellement à l'instant T (voir cleanup_stale_operations, qui
-    bascule déjà 'started' -> 'failed' après 5 minutes pour l'opération elle-même, mais
-    ne touchait pas ses lignes fichier 'processing' individuelles - cause racine du même
-    bug, corrigée séparément plus bas)."""
+    """Technical rationale and compatibility constraints for this code path."""
     conn = None
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0, check_same_thread=False)
@@ -861,25 +804,7 @@ def get_manual_override_filepaths():
 
 
 def init_import_in_progress_table():
-    """"it should be in database in import so only one can try importing" - le scheduler
-    périodique (interval 5s, library/scheduler.py) et le déclenchement immédiat Telegram
-    construisent chacun leur PROPRE liste de fichiers à importer en scannant le disque
-    AVANT d'acquérir _import_execution_lock (routes.py) - ce verrou sérialise bien le
-    traitement réel, mais pas la phase de scan qui le précède. Deux passages assez
-    rapprochés (ex: deux tours du scheduler à 5s d'intervalle si le premier prend plus de
-    5s) peuvent donc chacun retenir le même fichier avant que l'un des deux ne l'ait
-    déplacé - le second échoue alors avec "Fichier introuvable sur le disque" au moment de
-    la conversion/vérification d'intégrité, sur un fichier déjà importé avec succès par
-    l'autre (incident réel: BD.FR.-.Nordheim.-.14.-.Aaricia..., deux opérations à 2s
-    d'intervalle, la seconde en échec sur un fichier déjà déplacé par la première).
-    Cette table comble l'angle mort: un fichier est réclamé ICI dès qu'il entre dans
-    files_to_import d'une opération (_execute_import_batch, une fois le verrou acquis,
-    donc jamais deux réclamations concurrentes pour le même chemin), et toute construction
-    ultérieure d'une liste de fichiers à importer (scan périodique, déclenchement immédiat)
-    exclut simplement tout chemin déjà réclamé - le même principe que
-    import_manual_overrides ci-dessus, appliqué à "en cours de traitement" plutôt qu'à
-    "corrigé à la main". claimed_at permet de purger une réclamation orpheline (crash en
-    cours d'import) sans jamais bloquer un chemin indéfiniment."""
+    """Technical rationale and compatibility constraints for this code path."""
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
         cursor = conn.cursor()

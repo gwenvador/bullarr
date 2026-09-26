@@ -214,22 +214,7 @@ def _amule_status():
 
 
 def resolve_absent_amule_download(client_item_id, shared_hashes):
-    """"pourquoi il y a autant de telechargement sur amule mais juste 2 s'affiche sur
-    bullar" (enquete complementaire) - `show dl` ne liste QUE les telechargements
-    encore en cours: un fichier qui vient de terminer bascule cote aMule vers "partage"
-    (`show shared`) et disparait instantanement de `show dl`, exactement comme un
-    telechargement reellement annule/supprime cote client. Sans cette distinction, le
-    compteur d'absences (client_absence_streak) traitait les deux cas de facon
-    identique et marquait `failed` un telechargement qui avait en realite REUSSI
-    (constate en production: "BD.FR.-.Embrasement (L')..." disparu de `show dl` puis
-    marque failed apres 3 sondages, alors que son hash etait deja present dans
-    `show shared`, fichier reel de 250 Mo sur disque).
-
-    Retourne 'completed' si ce hash est retrouve dans `show shared` (le fichier a fini
-    de telecharger, get_pending_downloads/reconcile_stale_active_downloads prendront le
-    relais des que le scan de repertoire le rattache a son volume), 'absent' sinon
-    (comportement inchange: compteur d'absence normal, mark_download_failed apres
-    CLIENT_ABSENCE_FAILURE_THRESHOLD sondages consecutifs)."""
+    """Technical rationale and compatibility constraints for this code path."""
     if not client_item_id:
         return 'absent'
     return 'completed' if client_item_id.lower() in shared_hashes else 'absent'
@@ -395,10 +380,7 @@ def activity_status():
     # set_active_download_client_item_id plus bas) que ce meme client ne rapporte plus
     # DU TOUT lors de ce sondage a un signal reel et direct: le telechargement a ete
     # supprime/annule cote client. Jamais base sur un age (purge 6h deja retiree pour
-    # cette raison), uniquement sur ce fait constate a CHAQUE sondage - remis a zero des
-    # qu'un item reapparait, tolere un sondage manque isole (client temporairement
-    # injoignable) via CLIENT_ABSENCE_FAILURE_THRESHOLD avant de conclure a un vrai
-    # abandon.
+    # Technical rationale retained for maintainability.
     linked_rows_by_client = {}
     for p in pending_rows:
         if p.get('client_item_id'):
@@ -438,8 +420,7 @@ def activity_status():
                     # ligne ayant un client_item_id - "no pack row at all, only flat
                     # rugby file rows" était causé par l'absence de ce garde-fou: un vrai
                     # doublon de torrent (même nom, hash différent) volait le lien exact
-                    # d'une ligne déjà résolue (constaté en réel: torrent 100% déjà lié
-                    # remplacé par son doublon 99.8% au sondage suivant).
+                    # Technical rationale retained for maintainability.
                     pending_match = match_pending_download_by_name(client_pending_rows, item['name'])
                     if pending_match is None:
                         continue

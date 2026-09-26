@@ -156,7 +156,7 @@ async function runSeriesAutoAcquire(seriesId, { volumeNumber = null, oneshot = f
 // Nom complet à analyser pour un résultat: EBDZ a souvent un titre de thread qui ne porte
 // pas l'extension/résolution (contrairement à son filename), et un torrent Prowlarr a
 // parfois l'inverse - vérifier les DEUX champs concaténés plutôt qu'un seul en priorité
-// (bug constaté: un .cbz clairement visible dans le filename ressortait quand même "?"
+// Technical rationale retained for maintainability.
 // côté format parce que seul result.title était regardé en premier, et il n'avait pas
 // l'extension pour ces entrées EBDZ).
 function _searchResultSearchableText(result) {

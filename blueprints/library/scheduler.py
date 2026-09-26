@@ -19,12 +19,7 @@ AUTO_IMPORT_CORRUPTION_RETRY_DELAYS = (5, 10, 30)
 # Nombre de nouvelles tentatives après le premier échec. Après ce budget (~20 minutes
 # cumulées) épuisé, un fichier n'est plus retenté qu'au rythme, bien plus espacé, de
 # AUTO_IMPORT_CORRUPTION_COOLDOWN_SECONDS ci-dessous plutôt que jamais - voir sa
-# docstring pour l'incident ayant motivé ce changement (pack qBittorrent Yojimbot: 3
-# volumes tombés en "Fichier corrompu" à répétition, budget d'origine ~105s épuisé bien
-# avant la fin de la copie réseau réelle du pack, plus aucune tentative automatique
-# ensuite - fichiers redevenus parfaitement valides quelques minutes plus tard mais
-# jamais réimportés seuls, un redémarrage de l'app étant jusqu'ici le seul moyen de
-# vider self._failure_counts et leur redonner une chance).
+# Technical rationale retained for maintainability.
 MAX_AUTO_IMPORT_CORRUPTION_RETRIES = len(AUTO_IMPORT_CORRUPTION_RETRY_DELAYS)
 # "add a manual rescan. why the import automatic was triggered if the file was not
 # good. a lot of error in the logs" - une fois le budget de tentatives rapprochées
@@ -158,20 +153,7 @@ class LibraryImportScheduler:
             print("✓ Tâche d'import automatique supprimée")
 
     def _retry_stalled_telegram_tick(self):
-        """"looks like [...] is stucked. should i restart automatically?" - relance des
-        téléchargements Telegram bloqués (retry_stalled_telegram_downloads, downloader.py),
-        TOUJOURS active - contrairement à _auto_import (voir add_job), indépendante de
-        auto_import_enabled/notify_available: un téléchargement Telegram bloqué doit être
-        relancé que l'utilisateur veuille ou non l'import automatique/la notification
-        "import disponible" activés, ce sont deux préoccupations différentes. Avant ce
-        job dédié, cette relance ne tournait QUE piggybackée sur le planning de
-        _auto_import ("même planning que l'import automatique lui-même plutôt qu'un
-        scheduler dédié") - un téléchargement Telegram resté bloqué à retry_count=0
-        indéfiniment (confirmé en réel) quand ces deux réglages étaient désactivés était
-        la conséquence directe de ce piggyback. Contrairement à _auto_import, ne fait
-        AUCUN os.walk du répertoire surveillé - uniquement des requêtes SQLite sur
-        active_downloads, donc sans le coût qui justifiait de garder l'import automatique
-        optionnel."""
+        """Technical rationale and compatibility constraints for this code path."""
         if not self.app:
             return
         with self.app.app_context():

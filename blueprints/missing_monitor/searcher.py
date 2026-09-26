@@ -141,19 +141,7 @@ class MissingVolumeSearcher:
             normalized_title = normalize_search_text(title)
 
             def _run(title_filter):
-                """title_filter: chaîne à exiger (en plus du thread_id, quand il est
-                connu) via LIKE, ou None pour thread_id seul.
-
-                Un titre est requis en priorité pour un thread EBDZ qui regroupe
-                PLUSIEURS séries locales sous un seul fil (constaté: le thread "Kenya"
-                mélange les tomes de "Kenya"/"Namibia"/"Amazonie"/"Scotland", 4 séries
-                locales distinctes toutes matchées au même thread_id - sans filtre de
-                titre en plus, chercher un tome de "Namibia" renvoyait aussi des tomes de
-                "Kenya"/"Amazonie"). thread_id seul (title_filter=None) reste un dernier
-                repli pour le cas inverse (thread correctement dédié à une seule série,
-                mais dont AUCUNE variante de titre - voir ebdz_title_variants, qui gère
-                déjà l'article en tête/fin de titre - ne matche le thread_title/nom de
-                fichier réel, ex: sous-titre complètement différent)."""
+                """Technical rationale and compatibility constraints for this code path."""
                 sql = '''
                     SELECT DISTINCT thread_id, thread_title, thread_url, forum_category,
                            link, filename, filesize, volume
@@ -169,12 +157,7 @@ class MissingVolumeSearcher:
                     if thread_id:
                         # thread_id déjà connu -> thread_title est IDENTIQUE pour toutes
                         # les lignes du thread et ne distingue donc rien entre elles
-                        # (constaté: le thread "Kenya" a pour thread_title unique "Kenya
-                        # (Quatre cycles : Kenya + Namibia + Amazonie + Scotland)" -
-                        # matcher dessus revient à matcher TOUTES les lignes, quel que
-                        # soit le titre recherché parmi les 4). Seul le nom de FICHIER
-                        # (propre à chaque ligne) peut distinguer un cycle/une série de
-                        # l'autre dans un thread partagé.
+                        # Technical rationale retained for maintainability.
                         sql += ' AND (search_normalize(filename) LIKE ? OR search_normalize(filename) LIKE ?)'
                         params.extend([f'%{t}%', f'%{normalized_title}%'])
                     else:
@@ -191,10 +174,7 @@ class MissingVolumeSearcher:
                     params.append(volume_num)
                 if label:
                     # Un thread EBDZ peut mélanger tomes normaux et intégrale/HS sous le même
-                    # numéro de fichier (constaté: thread unique contenant à la fois "01 -
-                    # Jukurpa" et "Intégrale 01" pour une même série) - le filtre thread_id
-                    # seul ne suffit alors pas à écarter le tome normal. On exige en plus un
-                    # mot-clé du label ("intégrale"/"hs") dans le nom de fichier ou du thread.
+                    # Technical rationale retained for maintainability.
                     keyword = 'int' if label.lower().startswith('int') else 'hs'
                     sql += ' AND (LOWER(filename) LIKE ? OR LOWER(thread_title) LIKE ?)'
                     params.extend([f'%{keyword}%', f'%{keyword}%'])
@@ -215,8 +195,7 @@ class MissingVolumeSearcher:
                 # appartiennent tous les 4 au même thread_id déjà résolu à cette série
                 # précise). Si ce thread n'est mappé qu'à CETTE série (cas normal), aucune
                 # désambiguïsation n'est nécessaire: thread_id seul suffit, retourne tout.
-                # Le filtre par variante de titre ne s'applique plus qu'au cas réellement
-                # partagé (plusieurs series.ebdz_thread_id pointant vers le même thread).
+                # Technical rationale retained for maintainability.
                 main_conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
                 try:
                     sharing_series_count = main_conn.execute(
@@ -422,12 +401,7 @@ class MissingVolumeSearcher:
 
         # None est LA seule sentinelle "aucun numéro connu" dans tout ce module (recherche
         # "série entière"/one-shot, voir search_volume côté routes.py) - PAS 0, qui est un
-        # vrai numéro de tome existant sur Bédéthèque pour certaines séries (constaté:
-        # Valérian a un vrai "Tome 0"). "check why it has not parse volume 0 in bedetheque
-        # for valerian" - `if not volume_num` (vérité) traitait ce 0 réel exactement comme
-        # None, empêchant toute confirmation fiable pour ce tome précis (tout candidat
-        # était accepté sans vérifier qu'il s'agit bien du tome 0, comme pour une recherche
-        # série entière). is None distingue enfin les deux.
+        # Technical rationale retained for maintainability.
         if volume_num is None:
             return True, None
 
@@ -642,11 +616,7 @@ class MissingVolumeSearcher:
         # jamais 'link', laissant 'link' vide pour CHAQUE résultat de cet indexeur. Le
         # `if link and ...` ci-dessous ne se contentait pas de rater la dédup dans ce cas:
         # un lien vide (faux) faisait carrément tout perdre le résultat, silencieusement -
-        # 29 résultats Prowlarr bien réels réduits à 0 après ce passage. download_url en
-        # repli (même logique déjà utilisée côté frontend, voir _markSearchResultAdded,
-        # search-results-table.js: "r.download_url || r.link") comme clé de dédup, et un
-        # résultat sans AUCUN des deux est quand même conservé (juste jamais déduplicable)
-        # plutôt que perdu.
+        # Technical rationale retained for maintainability.
         seen_links = set()
         unique_results = []
 

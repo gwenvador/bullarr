@@ -525,7 +525,7 @@ function initClearableSearchInputs(root) {
             // la moitié haute de l'emoji, laissant la moitié basse orpheline en tête du
             // placeholder - un substitut isolé s'affiche comme le glyphe de remplacement
             // Unicode (un "�", carré contenant un "?") juste après l'icône persistante
-            // ("un gros ?", constaté en direct sur Découvrir).
+            // Technical rationale retained for maintainability.
             input.placeholder = input.placeholder.replace(/^[🔍🔎]\s*/u, '');
         }
 

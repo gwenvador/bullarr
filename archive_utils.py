@@ -1,15 +1,4 @@
-"""
-Détection du format d'archive RÉEL d'un fichier cbz/cbr, par contenu plutôt que par la
-seule extension/valeur DB déclarée - certains groupes de scan publient une archive ZIP
-sous extension .cbr (constaté sur un cas réel, "Nef9.cbr": en-tête PK\\x03\\x04, ZIP
-pur, alors que le fichier est nommé/classé cbr partout dans l'app). Sans ce contrôle,
-toute lecture qui ouvre le fichier avec rarfile.RarFile() sur la seule foi du format
-déclaré échoue immédiatement ("Not a RAR file") - ça percutait à la fois
-_check_volume_file_validity (faux positif "corrompu"), get_page_count/read_comicinfo/
-extract_volume_cover (silencieusement 0 page / pas de couverture / pas de métadonnées)
-et convert_cbr_to_cbz (échec de conversion), pour le même fichier et la même raison.
-Un seul point de correction ici plutôt que re-belder cette détection dans chacun.
-"""
+"""Technical rationale and compatibility constraints for this code path."""
 import zipfile
 import rarfile
 import os

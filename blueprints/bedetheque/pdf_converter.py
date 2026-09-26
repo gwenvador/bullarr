@@ -43,20 +43,7 @@ FULL_PAGE_IMAGE_MIN_COVERAGE = 0.9
 
 
 def _extract_full_page_image(doc, page):
-    """"if the pdf is 50mb i expect the cbz to be the same" - une page de BD scannée est
-    presque toujours UNE SEULE image occupant toute la page, jamais du texte/vectoriel
-    réel. Re-rendre cette page en pixmap PUIS la ré-encoder en JPEG (l'ancien
-    comportement, seul chemin avant ce correctif) transcode une deuxième fois une image
-    déjà compressée - mesuré en pratique: même sur un cas déjà propre, le rendu+ré-
-    encodage produit ~14% de plus que l'image d'origine, et un PDF dont le MediaBox
-    déclaré est plus grand que le contenu réel amplifie encore l'écart (constaté: un pdf
-    de 70 Mo devenu 600 Mo). Extrait directement les octets de l'image telle
-    qu'embarquée dans le PDF quand la page n'en contient qu'UNE SEULE couvrant au moins
-    FULL_PAGE_IMAGE_MIN_COVERAGE de la page - taille et qualité IDENTIQUES à la source,
-    aucun transcodage. Retourne (bytes, extension) ou (None, None) si cette page n'est
-    pas ce cas simple (plusieurs images, aucune, ou une image qui ne couvre qu'une partie
-    de la page - texte/mise en page réels, illustration décorative...), auquel cas
-    l'appelant retombe sur le rendu pixmap classique."""
+    """Technical rationale and compatibility constraints for this code path."""
     try:
         images = page.get_images(full=True)
         if len(images) != 1:
@@ -144,9 +131,7 @@ def convert_pdf_to_cbz(filepath):
             # tempfile.mkstemp crée le fichier en 0600 (propriétaire seul) par défaut -
             # os.replace plus bas conserve ce mode sur le .cbz final, jamais remis à un
             # mode plus ouvert ensuite. Repassé ici en 0644 (mêmes droits que n'importe
-            # quel autre fichier de la bibliothèque) - constaté en réel: un outil tiers
-            # qui surveille aussi ce répertoire (Syncthing) ne pouvait ni lire le fichier
-            # temporaire en cours d'écriture ni le .cbz produit ("permission denied").
+            # Technical rationale retained for maintainability.
             try:
                 # lgtm [py/path-injection] path is constrained by resolve_within/commonpath or an approved library root.
                 os.chmod(tmp_path, 0o644)
@@ -200,9 +185,7 @@ def convert_pdf_to_cbz(filepath):
                     "Archive cbz produite incomplète (le nombre de pages ne correspond pas au pdf source)"
                 )
 
-        # Cas rare mais réel: un .cbz du même nom existe déjà à côté du .pdf -> on
-        # n'écrase jamais un fichier existant, même si la conversion a réussi
-        # lgtm [py/path-injection] path is constrained by resolve_within/commonpath or an approved library root.
+        # Technical rationale retained for maintainability.
         if os.path.exists(new_cbz_path):
             raise PdfConversionError(f"Le fichier cible {new_cbz_path} existe déjà, conversion annulée")
 

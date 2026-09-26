@@ -194,7 +194,7 @@ async function renameCurrentLibrary() {
 
 // Cache local de la bibliothèque: la dernière liste connue est affichée immédiatement,
 // puis revalidée en arrière-plan. Les imports/scans restent détectés par le marqueur
-// /last-updated et remplacent le cache dès qu'une modification est constatée.
+// Technical rationale retained for maintainability.
 const LIBRARY_CACHE_TTL_MS = 10 * 60 * 1000;
 
 function _libraryCacheKey() {
@@ -1275,7 +1275,7 @@ function sortSeriesList(list) {
 // tomes...). Sans ce nettoyage, un menu déjà ouvert au moins une fois se retrouve
 // dupliqué en id après le re-rendu (l'ancien exemplaire, orphelin, traîne encore dans
 // <body> avec son dernier état - ex: le bouton "MAJ de ce tome" resté bloqué sur son ✅ de
-// succès au lieu du texte normal) - constaté: "je reclique sur la molette, MAJ metadata
+// Technical rationale retained for maintainability.
 // devient icone validation alors que ca devrait rester MAJ metadata".
 function cleanupDetachedDropdownMenus() {
     document.querySelectorAll('body > .toolbar-dropdown-menu').forEach(el => el.remove());
@@ -3766,7 +3766,7 @@ async function renderSeriesDetail(seriesId) {
         // - Bédéthèque est la source de référence pour le texte descriptif (voir
         // CLAUDE.md), alors que local_summary vient du tag <Summary> du ComicInfo.xml
         // des tomes, souvent renseigné par un uploader avec des notes d'édition plutôt
-        // qu'un vrai synopsis (constaté: "Info édition: Noté 'Première édition'...' au
+        // Technical rationale retained for maintainability.
         // lieu du résumé Bédéthèque pourtant disponible pour cette série). manual_summary
         // (édition manuelle, voir openManualEditModal) reste prioritaire sur tout le reste
         // s'il a été explicitement saisi.

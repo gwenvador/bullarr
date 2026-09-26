@@ -2059,7 +2059,7 @@ function _pendingPackGroups() {
         // annoncé comme pack). Compte les fichiers RÉELS, pas le nombre d'ENTRÉES: un
         // dossier incompatible (voir incompatible_folders côté scan_import_directory)
         // compte pour un seul élément dans folderMatches mais peut contenir des centaines
-        // de fichiers (constaté: 1327 pages .jpg brutes dans un seul dossier "BDPACK") -
+        // Technical rationale retained for maintainability.
         // sans folder.file_count ici, ce cas ne dépassait jamais le seuil de 1.
         .filter(({ fileMatches, folderMatches }) => {
             const totalFiles = fileMatches.length

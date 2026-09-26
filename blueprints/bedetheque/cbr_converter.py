@@ -106,8 +106,7 @@ def convert_cbr_to_cbz(filepath):
                     "Archive cbz produite incomplète (la liste des membres ne correspond pas au cbr source)"
                 )
 
-        # Cas rare mais réel: un .cbz du même nom existe déjà à côté du .cbr -> on
-        # n'écrase jamais un fichier existant, même si la conversion a réussi
+        # Technical rationale retained for maintainability.
         if os.path.exists(new_cbz_path):
             raise CbrConversionError(f"Le fichier cible {new_cbz_path} existe déjà, conversion annulée")
 

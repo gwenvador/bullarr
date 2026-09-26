@@ -528,18 +528,7 @@ def build_catalog_index():
 
 @bedetheque_bp.route('/authors/list', methods=['GET'])
 def list_database_authors():
-    """Retourne les auteurs connus localement pour le combobox Par auteur.
-
-    "dans auteur il y a des entrées bizarres. c'est vraiment les auteurs? ... simplifié
-    juste auteur" - ne retient QUE series.bedetheque_author_links (nom + URL confirmés par
-    Bédéthèque lui-même), plus jamais local_author/manual_author/volumes.author: ces
-    derniers viennent du ComicInfo.xml de chaque fichier (Writer/Penciller...), pas
-    toujours fiable - constaté en pratique des plages d'années ("1978-1984"), des tags de
-    scan/édition ("2015 - Couleur format normal", "Dargaud 10.2008"), et même des
-    fragments de titre de série mal étiquetés "auteur" par une release ("Kenya - Saison
-    2", "Livre 1"). Cette page sert justement à parcourir la bibliographie BÉDÉTHÈQUE d'un
-    auteur (voir GET /authors/albums) - un nom sans URL Bédéthèque confirmée n'a de toute
-    façon rien de fiable à proposer ici."""
+    """Technical rationale and compatibility constraints for this code path."""
     try:
         conn = get_db_connection()
         rows = conn.execute('SELECT bedetheque_author_links FROM series').fetchall()
@@ -1184,10 +1173,7 @@ def rename_universe(universe_id):
                         # incohérente AVANT ce renommage) le laissait supposer - le
                         # contenu a quand même suivi le déplacement du dossier d'univers
                         # (os.rename déplace tout ce qu'il contient), il est juste nesté
-                        # différemment que prévu (vu en réel: une série retrouvée nichée
-                        # dans le dossier d'une AUTRE série du même univers). On le
-                        # recherche plutôt que d'écrire un chemin en base qui n'existe
-                        # pas sur le disque.
+                        # Technical rationale retained for maintainability.
                         candidates = [os.path.join(dirpath, series_basename)
                                       # lgtm [py/path-injection] path is constrained by resolve_within/commonpath or an approved library root.
                                       for dirpath, dirnames, _ in os.walk(new_universe_dir)
@@ -2192,8 +2178,7 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
     # cette unique situation - jamais pour comparer deux albums Bédéthèque entre eux.
     # unclaimed_unclassified_real_volumes (compteur, pas un numéro): "un seul album sur
     # la page" pour un one-shot sans numéro du tout ("pourquoi les metadata... c'est pas
-    # chargé" - un tome placeholder EN DOUBLE de ce fichier bien réel se créait sinon à la
-    # toute première MAJ métadonnées d'une série neuve).
+    # Technical rationale retained for maintainability.
     def _row_web_url(row):
         try:
             ci = json.loads(row['comicinfo']) if row['comicinfo'] else {}
@@ -2449,33 +2434,7 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
 
 @bedetheque_bp.route('/add-series', methods=['POST'])
 def add_series_from_bedetheque():
-    """Ajoute une série à une bibliothèque directement depuis sa fiche Bedetheque, SANS
-    créer son dossier physique (créé plus tard, au premier téléchargement/import réel -
-    scan_library ne supprime plus les séries sans dossier, voir son commentaire) -
-    seulement sa ligne en base avec toutes les métadonnées du site
-    (couverture, résumé, auteurs, statut, nombre de tomes...), et renseigne
-    missing_volumes avec tous les numéros d'albums de la fiche - la page de la série
-    liste ainsi immédiatement les tomes à récupérer (recherche EBDZ/Prowlarr).
-    Corps JSON: {url: fiche série bedetheque.com, library_id, from_discover, skip_auto_acquire}.
-    Si une série du même nom existe déjà dans la bibliothèque, renvoie son id
-    (already_exists: true) sans rien créer.
-
-    from_discover (optionnel, bool): "auto search and download is not active only in
-    the découvrir as there is a recherche et recherche auto option. auto download button
-    should be there and if active auto search when adding from everything except
-    découvrir" - Découvrir a déjà sa propre étape dédiée "Chercher les sources"
-    (discover.js -> POST /auto-acquire/run), qui ne doit jamais se déclencher deux fois
-    (une fois ici, une fois via ce bouton dédié) - seul discover.js envoie ce flag.
-    Tout autre appelant (fiche série, Nouveautés EBDZ/Telegram, thèmes/indispensables/
-    top auteurs...) respecte au contraire le réglage global "Téléchargement automatique
-    à l'ajout" (auto_acquire_on_add_enabled, Configuration > Recherche) - voir plus bas.
-
-    skip_auto_acquire (optionnel, bool): "tu telecharge le fichier, tu ajoutes la série,
-    tu ne fait pas de recherche auto puisque le fichier a deja ete telecharge" -
-    ebdz-latest.js télécharge déjà le fichier concerné AVANT d'appeler cette route,
-    passe ce flag pour ne pas relancer une recherche+téléchargement redondante pour
-    toute la série (constaté: "Le Marche-Lune" téléchargé deux fois, chaque tentative
-    épuisant un peu plus le flood-wait Telegram de ce fichier)."""
+    """Technical rationale and compatibility constraints for this code path."""
     from blueprints.library.routes import resolve_within, UnsafePathError, _import_execution_lock, sanitize_path_component
 
     data = request.get_json() or {}
@@ -2629,13 +2588,7 @@ def add_series_from_bedetheque():
         # jamais se déclencher EN PLUS d'ici - deux recherches simultanées pour la même
         # série tout juste créée. ebdz-latest.js (skip_auto_acquire) a déjà téléchargé
         # LE fichier concerné avant d'appeler cette route, une recherche ici retélécharge-
-        # rait le même à l'identique (voir sa docstring plus haut, incident réel "Le
-        # Marche-Lune" téléchargé deux fois). Tout autre appelant (fiche série,
-        # thèmes/indispensables/top auteurs, Nouveautés sans passer par le flux
-        # ebdz-latest.js dédié...) respecte le réglage global "Téléchargement
-        # automatique à l'ajout" (gate_on_global_setting=True côté
-        # run_auto_acquire_for_series, relu à chaque tome - pas de recherche lancée du
-        # tout si le réglage est déjà désactivé à cet instant précis).
+        # Technical rationale retained for maintainability.
         auto_acquire_started = False
         if not from_discover and not skip_auto_acquire:
             from blueprints.bedetheque.auto_acquire import run_auto_acquire_for_series
@@ -2667,46 +2620,7 @@ def auto_acquire_status(series_id):
 
 @bedetheque_bp.route('/auto-acquire/run', methods=['POST'])
 def run_auto_acquire_now():
-    """Lance l'acquisition automatique (voir auto_acquire.py) pour une série DÉJÀ créée,
-    à la demande explicite de l'utilisateur - "dans découvrir met une option pour
-    recherche automatique dans étape 2 et donc ne pas faire de recherche manuelle" (étape
-    "Chercher les sources" de /discover, voir static/js/discover.js). Indépendant du
-    réglage global "Téléchargement automatique à l'ajout" (Configuration > Recherche) :
-    un choix ponctuel pour CETTE série, que le réglage global soit activé ou non - si le
-    réglage global l'avait déjà déclenché à la création de la série, ce nouvel appel ne
-    fait qu'une recherche redondante (jamais un doublon réel: _find_existing_volume_for_import
-    empêche déjà tout tome en double, voir library/routes.py).
-
-    volume_number (optionnel): cible UN seul tome (molette d'un volume précis, manquant
-    ou pour un remplacement - voir runAutoAcquireNowForVolume, static/js/library.js) au
-    lieu de tous les tomes manquants de la série (bouton de la fiche série / étape
-    Découvrir, sans ce paramètre).
-
-    is_integral/is_hs/is_episode (optionnels, avec volume_number): "Recherche
-    automatique" est explicitement désactivé pour ces types dans l'UI - le bouton n'était
-    affiché QUE pour un tome numéroté classique (voir buildVolumeMissingActionsGearHtml/
-    buildVolumeActionsGearHtml, library.js), car sans ces flags run_auto_acquire_for_series
-    n'avait aucun moyen de dire à _confirms_requested_volume (searcher.py) qu'un numéro
-    donné désigne une intégrale/HS/épisode plutôt qu'un tome plain - un résultat pourtant
-    correct ("INT2 - ...") se faisait rejeter en amont ("Tome 2 demandé, mais ce titre est
-    une intégrale") avant même la comparaison de titre. Construit ici le label
-    ("Intégrale N"/"HS N"/"Épisode N") que _confirms_requested_volume sait déjà
-    interpréter (voir son paramètre `label`), pour que ce chemin fonctionne enfin.
-
-    oneshot (optionnel, bool): recherche SANS numéro pour un one-shot qui n'en a aucun
-    (pas d'intégrale/HS/tome identifiable) - voir runAutoAcquireNowForOneshot,
-    static/js/library.js. Distinct de "pas de volume_number fourni" (qui, lui, veut dire
-    "tous les tomes manquants de la série"): un one-shot n'a pas de missing_volumes à
-    proprement parler, cette recherche vise l'unique édition de la série elle-même.
-    _best_confident_result (auto_acquire.py) applique alors une vérification par
-    similarité de titre plutôt que par numéro, "tu vérifies si le nom correspond. si tu
-    n'es pas sûr tu demandes la validation". Ce flag est un raccourci explicite, pas la
-    seule façon d'y arriver: si l'appelant ne le passe pas et que missing_volumes est
-    vide, on retombe automatiquement sur ce même mode dès que series.is_oneshot est vrai
-    (voir plus bas) - un one-shot fraîchement ajouté a par construction missing_volumes=[]
-    (add_series_from_bedetheque n'y met que les albums numérotés), un appelant qui l'ignore
-    (ex: runAutoAcquireNow, static/js/discover.js, juste après l'ajout) ne doit pas se
-    retrouver à tort sur "Aucun tome manquant"."""
+    """Technical rationale and compatibility constraints for this code path."""
     data = request.get_json() or {}
     series_id = data.get('series_id')
     if not series_id:

@@ -50,14 +50,7 @@ def _filenames_match(a, b):
 
 
 def match_pending_download_by_name(client_pending_rows, item_name):
-    """Retrouve, parmi les lignes 'pending' d'un client, celle dont le titre correspond à
-    item_name (_filenames_match) - UNIQUEMENT une ligne jamais encore reliée par id exact
-    (`not row.get('client_item_id')`). Une ligne déjà liée à un id exact n'est plus jamais
-    candidate à une correspondance par nom, sans quoi un vrai doublon de torrent (même nom,
-    hash différent) peut voler le lien d'une ligne déjà résolue - bug réel constaté en
-    production (deux torrents "Rugbymen (Les) [HD]", le 99.8% doublon écrasait le
-    client_item_id du 100% déjà lié) et corrigé en centralisant ce garde-fou ici plutôt que
-    de le laisser vivre seulement inline dans activity_status."""
+    """Technical rationale and compatibility constraints for this code path."""
     return next(
         (p for p in client_pending_rows if not p.get('client_item_id') and _filenames_match(item_name, p['title'])),
         None
@@ -336,28 +329,7 @@ def attach_series_to_pending_download(client: str, series_id: int, link: Optiona
 
 
 def get_trackable_active_downloads(include_failed=False, include_terminal=False) -> List[Dict]:
-    """Les active_downloads récents porteurs d'un series_id réel (donc posés depuis une
-    fiche série ou le monitoring automatique - voir mark_download_pending), sous forme de
-    liste brute plutôt que déjà comparés à un nom de fichier précis - voir
-    find_active_download_match, qui faisait ce SELECT à chaque appel. scan_import_directory
-    (routes.py) et le scan automatique (library/scheduler.py) l'appellent une fois par
-    FICHIER scanné: avec des dizaines de fichiers en attente, ça multipliait les
-    allers-retours SQLite pour rien ("pourquoi ca met scanner en loading" - un scan qui
-    ouvre 2 connexions SQLite par fichier juste pour ce matching se voit). Un seul appel en
-    tête de boucle, le matching lui-même reste en Python ensuite (voir
-    match_filename_against_trackable_downloads).
-
-    "why is this still looping... 16 ignorés" - bug réel: une ligne déjà terminale
-    ('imported'/'skipped'/'failed' - "once Doublon ignoré -> state will be imported.
-    so nothing should go after that") restait quand même candidate au matching ici,
-    sans filtre sur status. Un fichier venant d'une source non-inscriptible (aMule) ne
-    disparaît jamais du répertoire surveillé - chaque passage du scheduler (5s) le
-    retrouvait, le rematchait à sa ligne déjà résolue, et relançait tout le pipeline
-    d'import pour reconfirmer un résultat déjà connu, journalisant une nouvelle
-    opération Historique à chaque fois. Filtré sur les statuts encore OUVERTS plutôt
-    que d'énumérer chaque statut terminal (liste qui n'aurait fait que s'allonger) -
-    strictement une requête base de données, aucune vérification de fichier sur
-    disque: une ligne terminale n'a simplement plus rien à matcher."""
+    """Technical rationale and compatibility constraints for this code path."""
     try:
         db_path = current_app.config.get('DATABASE')
         if not db_path:
@@ -670,15 +642,7 @@ def mark_download_importing(download_id: Optional[int]) -> None:
 
 
 def mark_download_imported(download_id: Optional[int]) -> None:
-    """Dernière étape du cycle (voir mark_download_importing) - remplace l'ancienne
-    suppression immédiate de la ligne (remove_pending_download) une fois un téléchargement
-    suivi réellement importé (_maybe_complete_tracking_after_move, routes.py). Garde une
-    trace durable et interrogeable de ce qui est arrivé à CE téléchargement précis (même
-    philosophie "pas d'expiration automatique" que 'completed'/'failed', voir
-    get_pending_downloads) plutôt que de le faire disparaître silencieusement de la base
-    - c'est exactement ce qui manquait pour retracer un incident comme celui du 12/08/2026
-    (Nordheim T14 Aaricia, deux imports concurrents pour le même fichier) sans devoir
-    recouper plusieurs tables à la main."""
+    """Technical rationale and compatibility constraints for this code path."""
     _set_pending_download_status(download_id, 'imported')
 
 
@@ -700,45 +664,7 @@ def mark_download_cancelled(download_id: Optional[int]) -> None:
 
 
 def reconcile_stale_active_downloads() -> int:
-    """"a reconciliation job should detect: a successful volume row whose tracking
-    state is still completed/importing" - filet de sécurité DB-vers-DB (aucun accès
-    disque) pour toute ligne active_downloads dont le contenu suivi est en réalité
-    déjà possédé dans `volumes` (volumes.filepath populated - même critère que le NOT
-    EXISTS de get_pending_downloads, ici inversé) mais dont le status n'a jamais
-    avancé jusqu'à 'imported'. Causes réelles distinctes identifiées: (1) tout import
-    réussi avant le 12/08/2026 (mark_download_imported n'existait pas encore - voir son
-    commentaire), pur passif historique; (2) des relances auto-acquire créant plusieurs
-    lignes active_downloads pour le même contenu, dont une seule finit par être
-    effectivement rattachée à l'import réel - les autres restent orphelines même après
-    le 12/08; (3) active_downloads.volume_number jamais renseigné à la création (constaté
-    sur "Sorceline - T08...", "Le Grimoire d'Elfie - T05..." - le titre porte pourtant un
-    numéro sans ambiguïté) - une comparaison SQL directe volumes.volume_number =
-    active_downloads.volume_number ne peut alors jamais matcher (NULL = 8 est toujours
-    faux), même une fois le tome réellement possédé.
-
-    Le repli (3) est fait en Python, pas en SQL: "there is exactly ONE volume-number
-    parser in this repo" (CLAUDE.md) - LibraryScanner.parse_filename(ad.title), jamais
-    une seconde extraction ad hoc ici. Un titre qui échoue à parser ("Gil Jourdan 08 Les
-    trois taches.cbz" - pas de séparateur "T"/tome reconnu par le parseur canonique)
-    reste non réconcilié: pas de doublon possible ici (rien ne dit à tort "possédé" sur
-    un simple échec de parsing), juste un candidat qui restera visible comme "en
-    attente" jusqu'à résolution manuelle - cohérent avec le comportement déjà volontaire
-    de get_pending_downloads pour ce genre de cas.
-
-    "je ne veux pas qu'il y ait plus de pending que ceux qui sont vraiment en pending" -
-    inclut désormais AUSSI 'pending' (pas seulement 'completed'/'importing'): un
-    téléchargement dont le volume suivi est arrivé en bibliothèque par un AUTRE biais
-    (import manuel séparé, remplacement, autre client) que celui suivi par CETTE ligne
-    n'a jamais eu l'occasion de passer par 'completed' - il restait donc invisible du
-    premier SELECT ci-dessus AUSSI silencieusement exclu, pour toujours, du résultat de
-    get_pending_downloads (son NOT EXISTS) sans jamais être marqué résolu en base. Même
-    critère de vérité (volumes.filepath réellement peuplé), pas une exclusion
-    différente - transitionne la ligne vers son état terminal réel dès que ce fait est
-    constaté, plutôt que la laisser en 'pending' indéfiniment tout en étant filtrée de
-    l'affichage.
-
-    Ne touche jamais les statuts déjà terminaux ('imported'/'failed'/'skipped').
-    Retourne le nombre de lignes corrigées."""
+    """Technical rationale and compatibility constraints for this code path."""
     try:
         from blueprints.library.scanner import LibraryScanner
 
@@ -781,11 +707,7 @@ def reconcile_stale_active_downloads() -> int:
             if row['id'] in matched_ids:
                 continue
             parsed = LibraryScanner.parse_filename(row['title'] or '')
-            # Tome classique d'abord, puis intégrale/HS/épisode (constaté en réel:
-            # "Compagnons du crépuscule - INT" déjà possédée en intégrale, jamais
-            # réconciliée tant que seul volume_number était comparé) - une série de
-            # colonnes DIFFÉRENTE selon le type, jamais volume_number pour ces trois-là
-            # (voir _classify_bedetheque_number/CLAUDE.md, même règle qu'à l'écriture).
+            # Technical rationale retained for maintainability.
             if parsed.get('volume') is not None:
                 owned = cursor.execute(
                     "SELECT 1 FROM volumes WHERE series_id = ? AND volume_number = ? "
@@ -861,19 +783,7 @@ def update_download_progress(download_id: Optional[int], bytes_downloaded: int, 
 
 
 def refresh_download_heartbeat(download_id: Optional[int]) -> None:
-    """Rafraîchit last_progress_at SANS toucher bytes_downloaded/bytes_total - contrairement
-    à update_download_progress ci-dessus, appelée quand un téléchargement Telegram est
-    encore réellement actif mais SANS nouvel octet reçu à annoncer (voir
-    TELEGRAM_DOWNLOAD_FLOOD_RETRIES/_telegram_flood_wait_seconds, scraper.py): un
-    FLOOD_PREMIUM_WAIT force à reprendre le fichier depuis zéro (l'archive temporaire
-    partielle est supprimée), donc bytes_downloaded resterait figé sur son ancienne valeur
-    pendant toute une séquence de plusieurs tentatives+attentes qui peut légitimement durer
-    plus d'une minute (jusqu'à TELEGRAM_DOWNLOAD_MAX_WAIT_SECONDS par tentative). Sans ce
-    battement de cœur, retry_stalled_telegram_downloads (dont le seuil "bloqué" est
-    justement 1 minute sans progression) pouvait relancer une DEUXIÈME tentative
-    concurrente pour LE MÊME message pendant que la première travaillait encore
-    - constaté en réel: "Cartagena" tenté deux fois à 24s puis 12s d'écart, chaque
-    paire échouant séparément avec son propre FLOOD_PREMIUM_WAIT_N distinct."""
+    """Technical rationale and compatibility constraints for this code path."""
     if download_id is None:
         return
     try:
@@ -1043,23 +953,7 @@ def increment_client_absence_streak(download_id: Optional[int]) -> int:
 
 
 def retry_stalled_telegram_downloads() -> None:
-    """"yes relaunch and delete the stalled download from telegram" - un téléchargement
-    Telegram qui ne progresse plus (thread mort - crash, rebuild du conteneur en plein
-    lot, blocage réseau Telethon) restait sinon "pending" avec des données périmées
-    indéfiniment (active_downloads n'expire plus jamais automatiquement, voir
-    get_pending_downloads), sans qu'aucun mécanisme ne le relance jamais tout seul -
-    confirmé en pratique le 2026-07-24: un lot de plusieurs tomes tué par un rebuild
-    abandonnait pour de bon tout ce qui restait dans la file.
-
-    Appelée par le même scheduler périodique que l'import automatique (voir
-    library/scheduler.py, AUTO_IMPORT_FALLBACK_INTERVAL_MINUTES) plutôt qu'un planning
-    dédié - c'est exactement le même genre de filet de sécurité "aMule/qBittorrent/etc.
-    ne préviennent jamais l'appli", sauf que pour Telegram on a justement de quoi agir
-    (channel/message_id, voir mark_download_pending) au lieu de seulement constater.
-
-    Ne concerne que les lignes qui ONT channel/message_id enregistrés - une ligne plus
-    ancienne (créée avant l'ajout de ces colonnes) n'a aucun moyen d'être relancée
-    automatiquement, laissée telle quelle indéfiniment."""
+    """Technical rationale and compatibility constraints for this code path."""
     try:
         db_path = current_app.config.get('DATABASE')
         if not db_path:
@@ -1273,38 +1167,7 @@ def _revert_stale_importing_downloads() -> None:
 
 
 def _reconcile_stuck_completed_download(download_status, is_pack, series_id, series_path, title, db_path):
-    """"why prêt si le fichier n'existe pas... can you do active_downloads.status=
-    'completed' and a live disk check" - un import interrompu par un redémarrage de
-    l'app (voir import_history.py, "Interrompu par un redémarrage...") peut avoir déjà
-    déplacé/converti le fichier avec succès AVANT d'être coupé, sans jamais mettre à jour
-    volumes.filepath ni relancer clear_pending_downloads_*: la ligne reste 'completed'
-    pour toujours (voir docstring de get_pending_downloads, aucune expiration
-    automatique) et affiche "✓ Prêt" indéfiniment alors qu'aucun fichier n'est réellement
-    lié - constaté en réel sur "Orbital" T8. Vérif peu coûteuse (un seul os.listdir du
-    dossier de LA série, pas un scan complet): si un fichier du dossier correspond déjà
-    au titre suivi (_filenames_match, même comparaison que _title_already_imported), un
-    rescan de cette seule série (scan_single_series, rapide - réutilise page_count/
-    ComicInfo déjà en cache pour tout fichier inchangé, ne retraite que le nouveau) répare
-    l'incohérence immédiatement plutôt que d'attendre qu'un humain vienne demander
-    pourquoi.
-
-    "1 mais pourtant import il y a rien" - bug réel: cette vérif suppose UN fichier par
-    téléchargement (un match suffit -> tout est résolu). Pour un PACK (plusieurs tomes/
-    fichiers sous UN SEUL active_downloads), UN SEUL tome déjà importé et présent dans le
-    dossier série (ex: "Joe Bar Team - #HS01 - ...cbz") fait fuzzy-matcher le titre du
-    pack et fait disparaître TOUTE la ligne 'pending' - alors qu'il restait un autre
-    fichier du même pack ("HS1a - ...pdf") jamais importé. Une fois la ligne 'pending'
-    disparue, _pendingPackGroups (import.js) n'a plus rien sous quoi regrouper ce fichier
-    restant, qui reste renvoyé par /api/import/scan (son pack_download_id pointe toujours
-    vers ce téléchargement) mais n'apparaît alors plus nulle part sur /import - le badge
-    de la sidebar (qui compte, lui, directement ce que /api/import/scan renvoie) et la
-    page affichée divergent. Exclu des packs: leur résolution fiable passe déjà par
-    clear_pending_downloads_by_tracking_ids (scan_import_directory, par fichier réellement
-    importé), pas par cette heuristique "un seul fichier suffit".
-
-    Retourne True si la ligne a été résolue (le fichier est désormais lié en base, cette
-    ligne n'a plus lieu d'apparaître comme "en attente"/"Prêt") - l'appelant doit alors
-    `continue` sans plus rien faire pour cette ligne."""
+    """Technical rationale and compatibility constraints for this code path."""
     if not (download_status == 'completed' and not is_pack and series_id is not None
             and series_path and os.path.isdir(series_path)):
         return False
@@ -1327,46 +1190,7 @@ def _reconcile_stuck_completed_download(download_status, is_pack, series_id, ser
 
 
 def get_pending_downloads() -> List[Dict]:
-    """Téléchargements 'en attente' à afficher sur /import en plus des fichiers déjà sur
-    disque et des téléchargements actifs sondés en direct chez chaque client (voir
-    /api/activity/status) - couvre le délai entre "l'utilisateur a cliqué Ajouter/
-    Télécharger" et "le fichier existe quelque part de consultable" (scan de répertoire ou
-    sondage client), quelle que soit la source.
-
-    Exclut les lignes dont le titre correspond déjà à un import réussi récent (voir
-    _title_already_imported) - le fichier est arrivé, la ligne "en attente" n'a plus lieu
-    d'être.
-
-    "no the database is the truth. don't bring file from the folder into the equation.
-    this will mess up things" - une ligne active_downloads n'expire plus jamais
-    automatiquement (l'ancienne purge PENDING_DOWNLOAD_STALE_HOURS de 6h supprimait aussi
-    une ligne 'completed'/'pack' encore utile, ex. un pack groupant plusieurs fichiers dont
-    l'import prend plus de 6h - la base est la référence, pas une fenêtre de temps
-    arbitraire). Une ligne 'pending' réellement abandonnée (téléchargement mort côté
-    client, titre qui ne matchera jamais le fichier final) reste donc affichée
-    indéfiniment jusqu'à suppression manuelle (voir remove_pending_download) - c'est
-    volontaire, pas un oubli.
-
-    Ne supprime PAS une ligne 'completed'/'failed' simplement parce que son statut n'est
-    plus 'pending' (bug réel constaté: "why is it gone" - un tome tout juste passé
-    'completed' par clear_pending_downloads_by_filenames disparaissait ENTIÈREMENT de la
-    base à l'appel suivant de cette fonction, avant même que scan_import_directory n'ait pu
-    la relire via find_active_download_match/find_active_download_destination pour
-    rattacher le fichier fraîchement arrivé à sa série/son tome - deux sondages périodiques
-    indépendants (/api/activity/status et /api/import/scan) se marchaient dessus selon
-    l'ordre d'arrivée).
-
-    "i don't understand as long it is not imported [...] no need to do a scan" - le filtre
-    ci-dessous inclut donc AUSSI 'completed' (pas seulement 'pending'): un téléchargement
-    fini côté client (fichier réellement sur disque, voir clear_pending_downloads_by_filenames/
-    mark_download_completed) mais pas encore importé reste visible ici dès le prochain appel
-    de /api/activity/status (chargement de page ou clic explicite "Actualiser", plus de
-    sondage automatique périodique côté frontend - voir import.js) - jamais besoin d'un
-    scan de répertoire explicite (/api/import/scan) pour le faire réapparaître. La ligne ne
-    disparaît que sur un fait réel: import confirmé (voir _title_already_imported plus
-    bas) ou suppression manuelle (remove_pending_download) - jamais sur la seule
-    présence d'un fichier dans le répertoire d'import, ni sur un âge quelconque.
-    """
+    """Technical rationale and compatibility constraints for this code path."""
     from blueprints.library.scanner import LibraryScanner
 
     _revert_stale_importing_downloads()
@@ -1474,8 +1298,7 @@ def get_pending_downloads() -> List[Dict]:
 
             # Auto-résolution d'une ligne 'completed' orpheline (import interrompu par un
             # redémarrage avant la mise à jour de volumes.filepath) - voir
-            # _reconcile_stuck_completed_download pour le détail complet (incident réel
-            # "Orbital" T8) et le garde-fou pack ("1 mais pourtant import il y a rien").
+            # Technical rationale retained for maintainability.
             if _reconcile_stuck_completed_download(download_status, is_pack, series_id, series_path, title, db_path):
                 # Le fichier est maintenant lié (volumes.filepath) - cette ligne n'a plus
                 # lieu d'apparaître comme "en attente"/"Prêt".
@@ -1513,13 +1336,7 @@ def get_pending_downloads() -> List[Dict]:
             # jamais besoin d'un numéro de tome simple pour être importable (voir
             # is_pack/is_oneshot/parsed_type ci-dessus, mêmes exclusions que
             # resolved_volume_number déjà appliquées plus haut) - needs_volume_correction
-            # n'est vrai que pour le cas résiduel réel: un titre non ambigu QUANT à sa
-            # série mais dont le numéro n'a pu être ni stocké ni reparsé (ex: "Gil
-            # Jourdan 08 Les trois taches.cbz" - pas de séparateur "T"/tome reconnu par
-            # LibraryScanner.parse_filename, le seul parseur de ce dépôt). Le frontend
-            # s'en sert pour ne plus afficher "✓ Prêt" à tort sur ce genre de ligne -
-            # openTrackingEditModal (import.js, déjà existant) reste le point de
-            # correction manuelle.
+            # Technical rationale retained for maintainability.
             needs_volume_correction = (
                 not is_pack and not is_oneshot and resolved_volume_number is None
                 and not parsed_type.get('is_integral') and not parsed_type.get('is_hs')

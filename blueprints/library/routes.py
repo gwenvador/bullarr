@@ -59,10 +59,7 @@ def _import_staging_directory():
 # réellement possédés d'une série depuis un instantané os.listdir(), ce qui perd
 # silencieusement une ligne fraîchement écrite par un import concurrent pour cette même
 # série si un fichier est renommé pile entre l'instantané et sa lecture (voir le
-# commentaire de scan_import_lock pour l'incident réel qui a révélé ce bug - "Les
-# verron" tome 4). Réutiliser le même verrou ici plutôt qu'en créer un second garantit
-# qu'aucun scan de série ne peut jamais s'intercaler au milieu d'un import, sans risque
-# d'oublier de synchroniser les deux séparément.
+# Technical rationale retained for maintainability.
 _import_execution_lock = scan_import_lock
 
 # "faire un check rapide de vérification d'intégrité du fichier avant de pouvoir
@@ -245,12 +242,7 @@ def sanitize_path_component(name, label='nom'):
 FORMAT_PRIORITY = {'cbz': 0, 'zip': 0, 'cbr': 1, 'rar': 1, 'pdf': 2}
 
 # "why were [file] replaced? the file was not much bigger so no need to replace" (cas
-# réel: conversion pdf->cbz dont le .cbz obtenu ne dépassait que de peu le fichier déjà
-# possédé) - is_better_volume comparait juste new_size > existing_size, sans marge : le
-# moindre octet supplémentaire suffisait à déclencher un remplacement (suppression de
-# l'ancien fichier) pour un gain invisible. 5% choisi pour rester cohérent avec l'esprit
-# du correctif ci-dessous (comparer par taille, pas par format) sans pour autant relâcher
-# la comparaison au point de rater un vrai meilleur scan.
+# Technical rationale retained for maintainability.
 MIN_REPLACE_SIZE_MARGIN = 0.05
 
 
@@ -260,43 +252,12 @@ def get_format_priority(fmt):
 
 
 def is_better_volume(new_size, existing_size):
-    """Détermine si un nouveau fichier doit remplacer un fichier existant du même volume -
-    uniquement par taille, plus par format ("HS1a etait plus gros que le HS1. tu devrais
-    donc l'importer? [...] especially the HS was a pdf before. so the format priority
-    does not add value here"): un .cbz déjà possédé est très souvent lui-même issu d'une
-    conversion depuis un .pdf/.cbr (voir convert_pdf_to_cbz/convert_cbr_to_cbz) - le
-    CONTENEUR ne dit donc rien de la qualité du scan d'origine, contrairement à ce que
-    l'ancienne priorité de format (cbz > cbr/zip/rar > pdf) laissait supposer. Cas réel:
-    un HS1a en .pdf (143 Mo, scan visiblement bien meilleur) supprimé à tort au profit du
-    HS1 déjà possédé, lui-même simplement CONVERTI depuis un pdf en .cbz (14 Mo) - les deux
-    étaient à l'origine des scans pdf, comparer leur conteneur n'avait jamais de sens.
-
-    "yes marginal size difference would make sense" - un nouveau fichier ne serait alors
-    que quelques octets plus gros (ex: réencodage pdf->cbz proche de la taille d'origine)
-    déclenchait quand même un remplacement (ancien fichier supprimé) pour un gain nul en
-    pratique. Exige désormais une marge minimale (MIN_REPLACE_SIZE_MARGIN) plutôt qu'une
-    stricte inégalité."""
+    """Technical rationale and compatibility constraints for this code path."""
     return new_size > existing_size * (1 + MIN_REPLACE_SIZE_MARGIN)
 
 
 def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=False):
-    """Cherche un tome déjà en base (fichier réel OU placeholder Bédéthèque sans fichier,
-    filepath NULL - voir add_series_from_bedetheque) correspondant au même tome que
-    `parsed`, pour que l'import METTE À JOUR cette ligne au lieu d'en insérer une nouvelle
-    en double. Partagé par execute_import (manuel, y compris avec une correction manuelle
-    du type de tome - voir volume_override) et execute_auto_import.
-
-    Numérotation propre à chaque type de tome (volume_number / integral_number /
-    hs_number ne se substituent jamais l'un à l'autre) - et pour chacun, un numéro NULL
-    doit être cherché avec "IS NULL", pas "= ?": une égalité SQL contre NULL est toujours
-    fausse, donc "WHERE integral_number = ?" avec un paramètre None ne retrouve JAMAIS un
-    placeholder à integral_number NULL, le laissant fantôme et dupliqué à chaque import
-    (constaté à la fois sur des one-shots sans numéro ET, séparément, sur une intégrale
-    sans numéro - une seule édition intégrale pour toute la série - qui n'était encore
-    couverte par aucun des cas déjà corrigés ici).
-
-    Retourne (id, filepath, file_size, format) ou (None, None, 0, None) si rien trouvé.
-    """
+    """Technical rationale and compatibility constraints for this code path."""
     if single_album:
         cursor.execute("SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? ORDER BY (filepath IS NOT NULL), id DESC LIMIT 1", (series_id,))
         existing_volume = cursor.fetchone()
@@ -386,19 +347,7 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
 
 @library_bp.route('/')
 def index():
-    """Page d'accueil - Liste des bibliothèques. Une seule bibliothèque configurée: on y
-    va directement plutôt que de forcer un aller-retour par ce sélecteur ("evite de
-    repasser par la fenetre /all quand je clique bibliotheque... quand il y a qu'une seule
-    bibliotheque ca devrait aller directement a la bibliotheque") - le sélecteur ne sert
-    à choisir entre plusieurs bibliothèques, il n'a aucune utilité s'il n'y en a qu'une.
-
-    "appuyer sur + ca fait rien" - bug réel: ce redirect ignorait ?all=1 inconditionnellement,
-    alors que templates/library.html a bien un lien "+" (title="Nouvelle bibliothèque") vers
-    /?all=1 pour justement échapper à ce raccourci et atteindre le formulaire de création -
-    ce lien renvoyait donc silencieusement l'utilisateur sur la même page qu'il venait de
-    quitter (redirect -> redirect immédiat), qui n'a elle-même aucun bouton "+" de création.
-    static/js/index.js avait déjà ce même garde-fou côté client (`!params.has('all')`) mais
-    ne pouvait jamais s'exécuter puisque index.html n'était jamais rendu avant lui dans ce cas."""
+    """Technical rationale and compatibility constraints for this code path."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT id FROM libraries')
@@ -1349,24 +1298,7 @@ def _download_komga_cover(komga_series_id, client):
 
 
 def _sync_komga_books(series_id, komga_series_id, client):
-    """Associe chaque volume local de la série au livre Komga correspondant, PAR NOM DE
-    FICHIER plutôt que par numéro de tome: Komga nomme chaque livre depuis le fichier
-    lui-même, donc son "name" correspond exactement au nom de fichier local sans son
-    extension (constaté sur toute la bibliothèque, aucun écart) - le fichier est
-    strictement le même des deux côtés, pas besoin de recalculer une correspondance de
-    numéro qui peut différer (Komga peut numéroter une "édition"/collection différemment
-    des numéros absolus locaux, voir "Boule et Bill -02-"), ou être totalement absente
-    pour un omnibus/hors-série/anthologie sans "number" ni "#INT"/"#HS" dans le nom
-    (voir "Le Gaulois (Autres)", livres nommés "#201610 - ..." - un code date, pas un
-    numéro de séquence). L'ancienne logique par numéro laissait ~550 tomes sans lien sur
-    cette bibliothèque avant ce changement.
-
-    Repli sur une similarité de mots (même principe que match_bedetheque_volume côté
-    Bédéthèque) si aucune correspondance exacte de nom - rattrape un écart mineur
-    (normalisation Unicode, espace en trop...), toujours par nom, jamais par numéro.
-
-    Best-effort: en cas d'erreur, les volumes restent simplement sans lien direct (pas
-    bloquant pour le matching de la série elle-même)."""
+    """Technical rationale and compatibility constraints for this code path."""
     from blueprints.komga.client import KomgaError, KomgaSeriesNotFoundError
 
     def _resync_stale_match():
@@ -1387,10 +1319,7 @@ def _sync_komga_books(series_id, komga_series_id, client):
 
     if not books:
         # Une série avec un komga_series_id périmé (recréée sous un nouvel id côté Komga)
-        # ne renvoie pas toujours une 404 sur /books - constaté: liste simplement vide,
-        # contrairement à /series/{id} qui, lui, 404 correctement. Une série qui a
-        # pourtant de vrais fichiers locaux ne devrait jamais avoir zéro livre Komga -
-        # revérifier l'existence de la série elle-même avant d'abandonner.
+        # Technical rationale retained for maintainability.
         conn = get_db_connection()
         local_files = conn.execute('SELECT filename FROM volumes WHERE series_id = ?', (series_id,)).fetchall()
         conn.close()
@@ -1532,10 +1461,7 @@ def _strip_bracketed_suffix(title):
 # "Titre (Auteur A / Auteur B)" (ou tout autre variante de ce suffixe) soient
 # considérés comme le même titre
 def _normalize_title_for_match(title):
-    """Accents/casse/ponctuation ignorés (même approche NFKD que
-    BedethequeScraper._normalize_for_match) - un nom de fichier de scan reproduit
-    rarement les accents exacts du titre en base (constaté: "recit" au lieu de "récit"
-    dans un nom de fichier), sans quoi une comparaison stricte échoue en silence."""
+    """Technical rationale and compatibility constraints for this code path."""
     if not title:
         return ''
     normalized = _strip_bracketed_suffix(title)
@@ -4739,22 +4665,7 @@ def _token_skeleton(tokens):
 
 
 def _numeric_variant_clusters(stems):
-    """"pour cubitus tu parses mal les albums... surtout parse par nom de fichier qui se
-    ressemblent et où il y a un chiffre qui varie" - regroupe des noms de fichiers
-    (sans extension) identiques trait pour trait SAUF un seul nombre qui diffère, quelle
-    que soit sa position dans le nom (pas seulement en fin de nom comme
-    _PAGE_NUMBER_RE). Constaté en réel sur un pack Cubitus: "16 - Cubitus - T11 -
-    LOGiTEAM.jpg" et "03 - Cubitus - T11 - LOGiTEAM.jpg" sont deux scans de couverture du
-    même tome (le nombre en tête est un numéro de scan/page sans rapport, "T11" reste
-    identique) - aucune regex fixe ("T0x") n'est nécessaire ici: les deux noms ne
-    diffèrent QUE sur ce premier nombre, ce qui suffit à les rattacher au même album quel
-    que soit le marqueur utilisé par la série (T, INT, HS, ou aucun).
-
-    Retourne {stem: template} - `template` est la clé de regroupement commune à tous les
-    membres d'un même cluster (le nom avec sa position variable neutralisée), un stem
-    sans jumeau garde template == lui-même. Bucketés par squelette (mots non-numériques)
-    d'abord: la comparaison paire-à-paire ne coûte cher qu'à l'intérieur d'un bucket, pas
-    sur l'ensemble du dossier (potentiellement plusieurs centaines de fichiers)."""
+    """Technical rationale and compatibility constraints for this code path."""
     tokenized = {stem: _TOKEN_RE.findall(stem) for stem in stems}
     buckets = {}
     for stem, tokens in tokenized.items():
@@ -5309,24 +5220,7 @@ _IMPORT_CBZ_CONVERTERS = {
 
 
 def _maybe_convert_import_file_to_cbz(file_data, source_path, import_config):
-    """Convertit `source_path` en cbz si `import_config.auto_convert_to_cbz` l'autorise
-    et si son format est convertible - modifie `file_data` en place (filename/filepath/
-    parsed.format) comme le faisaient les deux blocs qu'elle remplace. Retourne
-    (nouveau chemin, message de conversion pour l'historique - vide si rien n'a été
-    fait). Une conversion échouée (archive corrompue...) n'empêche jamais l'import: le
-    fichier d'origine est alors importé tel quel, exactement comme avant.
-
-    pdf: converti ici que l'import soit manuel OU automatique (scheduler périodique,
-    déclenchement immédiat Telegram) - "never mentionned that. remove it", en réaction à
-    la découverte que le scheduler automatique laissait silencieusement des PDF non
-    convertis malgré `auto_convert_to_cbz` activé. Un pdf peut compter des centaines de
-    pages à rendre une par une (plusieurs MINUTES par fichier, constaté en réel) et
-    bloquait donc le scheduler en tâche de fond tout ce temps - accepté explicitement en
-    échange d'un comportement cohérent avec ce que le réglage laisse attendre. Si un
-    conflit de permissions reréapparaît avec un outil tiers qui surveille le même
-    répertoire pendant la conversion (constaté une fois avec Syncthing, voir
-    tempfile.mkstemp/0600 dans convert_pdf_to_cbz), c'est le signe qu'il faut revoir cette
-    permission plutôt que réintroduire l'exclusion silencieuse."""
+    """Technical rationale and compatibility constraints for this code path."""
     if not import_config.get('auto_convert_to_cbz', True):
         return source_path, ''
 
@@ -5423,22 +5317,7 @@ def mark_import_file_manual_route():
 
 @library_bp.route('/api/import/rescan-file', methods=['POST'])
 def rescan_import_file_route():
-    """"add a manual rescan. why the import automatic was triggered if the file was not
-    good. a lot of error in the logs" - un fichier "Fichier corrompu" qui épuise son
-    budget de tentatives rapprochées (voir AUTO_IMPORT_CORRUPTION_RETRY_DELAYS,
-    scheduler.py) reste exclu de tout passage automatique jusqu'à son prochain cooldown
-    de 30 min (AUTO_IMPORT_CORRUPTION_COOLDOWN_SECONDS) - incident réel ayant motivé ce
-    bouton: un pack qBittorrent (3 volumes) tombé en "Fichier corrompu" à répétition
-    pendant sa copie réseau, budget épuisé bien avant la fin du transfert réel, fichiers
-    redevenus parfaitement valides quelques minutes plus tard mais plus aucune tentative
-    automatique - jusqu'ici seul un redémarrage complet de l'app vidait
-    self._failure_counts et leur redonnait une chance. Ce bouton force une
-    revérification IMMÉDIATE sans attendre le cooldown: vide tout l'état d'échec mémorisé
-    pour CE fichier (scheduler ET cache de validité de /import, voir
-    _import_file_validity_cache plus haut) puis relance tout de suite le test
-    d'intégrité réel. "don't make a difference between the download type" - générique,
-    keyé uniquement par filepath, sans savoir ni se soucier d'où vient le fichier
-    (Telegram/qBittorrent/aMule/EBDZ)."""
+    """Technical rationale and compatibility constraints for this code path."""
     data = request.get_json(silent=True) or {}
     filepath = data.get('filepath')
     if not filepath:
@@ -5490,19 +5369,7 @@ def _volume_fields_for_history(parsed):
 
 
 def _should_preserve_import_source(source_path):
-    """True si le fichier source doit être COPIÉ (préservé) plutôt que déplacé -
-    déterminé par un test d'écriture réel sur son dossier parent, pas par une liste de
-    chemins connus codée en dur. "should we add an option to say move or copy file" -
-    délibérément PAS une option Settings ni un simple contrôle du chemin (ex: "c'est le
-    dossier aMule") : que le fichier source soit supprimable est un fait du système de
-    fichiers (montage NFS en lecture seule, permissions), pas une préférence utilisateur
-    qui pourrait être mal réglée (ex: "move" choisi par erreur sur une source read-only
-    ferait échouer l'import). S'adapte automatiquement si une AUTRE source devient
-    read-only plus tard (ex: le dossier aMule lui-même, actuellement un montage NFS
-    ro - voir docker-compose.yml), sans nouveau code ni réglage. os.access plutôt qu'un
-    essai d'écriture réel: suffisant ici (pas de fenêtre de concurrence critique - le
-    pire cas d'une réponse os.access incorrecte est un échec explicite de shutil.move
-    plus bas, pas une corruption silencieuse)."""
+    """Technical rationale and compatibility constraints for this code path."""
     try:
         return not os.access(os.path.dirname(os.path.realpath(source_path)), os.W_OK)
     except OSError:
@@ -5510,37 +5377,7 @@ def _should_preserve_import_source(source_path):
 
 
 def _maybe_complete_tracking_after_move(source_path, destination, outcome='imported', source_was_copied=False):
-    """"add an explicit import result state... skipped, cancelled" - outcome distingue
-    un tome RÉELLEMENT importé/remplacé ('imported', mark_download_imported) d'un
-    doublon reconnu et volontairement ignoré ('skipped', mark_download_skipped) - avant
-    ce paramètre, un "Doublon ignoré" réutilisait 'imported' par commodité (rien
-    n'avait alors été importé), rendant impossible de distinguer les deux cas
-    a posteriori depuis active_downloads.status seul (il fallait recouper
-    import_history_files.action). Les deux restent des états TERMINAUX équivalents
-    pour la logique de nettoyage ci-dessous (un pack encore non vide n'est retiré dans
-    aucun des deux cas) - seul le statut final posé change.
-
-    "pourquoi les fichiers importés ne sont pas retirés de la liste de l'import" -
-    bug réel: un pack (plusieurs fichiers sous le même active_downloads, voir
-    destination['tracking_id']) n'était jamais nettoyé une fois TOUS ses fichiers
-    importés. Le seul nettoyage existant, clear_pending_downloads_by_filenames
-    (scan_import_directory), ne matche que par NOM DE FICHIER exact contre le titre
-    suivi - qui ne ressemble jamais aux noms individuels des tomes extraits d'un pack
-    ("Prince de la Nuit PACK" vs "Prince de la nuit - Tome 3.cbz"). Une fois le DERNIER
-    fichier du pack déplacé hors de son dossier, plus aucun scan ultérieur ne retrouve
-    quoi que ce soit à comparer - la ligne "en attente" restait donc fantôme
-    indéfiniment. Ici, on connaît avec certitude à quel active_downloads ce fichier
-    appartenait (tracking_id, posé par find_active_download_destination/
-    find_active_download_destination_by_torrent_name) - si son dossier ne contient plus
-    AUCUN fichier supporté après ce déplacement, ce téléchargement n'a plus rien à
-    offrir : sa ligne est retirée immédiatement (remove_pending_download) plutôt que de
-    compter sur un matching par nom qui ne fonctionnera jamais pour ce cas.
-
-    Ne s'applique qu'à un fichier venu d'un DOSSIER dédié (pack/torrent multi-fichiers) -
-    un fichier isolé à la racine d'un répertoire surveillé (aMule/Telegram) est déjà
-    couvert par le nettoyage par nom de fichier existant, et "le dossier" y désignerait à
-    tort la racine entière, partagée par des dizaines d'autres téléchargements sans
-    rapport."""
+    """Technical rationale and compatibility constraints for this code path."""
     tracking_id = destination.get('tracking_id') if destination else None
     if not tracking_id:
         return
@@ -6606,8 +6443,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         # les lignes `volumes` directement sans jamais passer par le scanner - une série
         # déjà matchée avant l'import restait donc avec des tomes fraîchement importés
         # sans aucun lien Komga, indéfiniment, jusqu'à un rescan manuel de cette série
-        # précise (constaté sur "Imbattable"/"Carthago": tomes ajoutés par import jamais
-        # liés malgré la série déjà matchée et les livres bien présents côté Komga).
+        # Technical rationale retained for maintainability.
         unmatched_komga_series = []
         matched_komga_series = []
         touched_library_ids = set()
@@ -7394,8 +7230,7 @@ def load_library_import_config():
             saved = json.load(f)
         # Fusionné PAR-DESSUS les défauts (pas juste renvoyé tel quel): un fichier déjà
         # sauvegardé avant l'ajout d'une nouvelle clé aux défauts (ex: monitored_extensions)
-        # n'a sinon jamais cette clé, faute de merge - constaté sur la clé elle-même,
-        # ajoutée après que la plupart des installations aient déjà un fichier existant.
+        # Technical rationale retained for maintainability.
         defaults.update(saved)
         return defaults
 
@@ -7708,29 +7543,7 @@ def _load_all_series_for_auto_import():
 
 
 def _resolve_auto_import_series_match(title, folder_name, all_series):
-    """Résout la série correspondant à `title` (titre parsé du fichier) ou, en repli, à
-    `folder_name` - point d'entrée UNIQUE pour cette résolution, partagé entre
-    find_auto_assign_destination ET _auto_import_skip_reason pour que la raison affichée
-    sur /import ("Aucune série existante") ne puisse jamais diverger de ce que
-    l'auto-import ferait réellement pour ce même fichier.
-
-    "why Pas repris par l'import automatique : Aucune série existante" alors que la série
-    est clairement en base ("Les rugbymen") - constaté sur un dossier nommé selon la
-    convention de tri très répandue localement "Titre (Article)" ("Rugbymen (Les) [HD]").
-    _strip_bracketed_suffix (voir _normalize_title_for_match) retire ce groupe ENTIER
-    plutôt que de le réordonner, perdant l'article - "rugbymen" normalisé ne matche alors
-    jamais "les rugbymen". get_suffix_article_variants (search/routes.py, déjà utilisée
-    pour le matching EBDZ/Bédéthèque - "Le grand vide (Murawiec) could not match ebdz only
-    if i ask about grand vide without le", même bug déjà corrigé là-bas) réordonne
-    "Titre (Article)" en "Article Titre" - jamais appliquée jusqu'ici à ce matching-ci.
-
-    Un simple ebdz_title_variants(folder_name) NE SUFFIT PAS ici: son "cœur" (ebdz_core_title)
-    retire TOUS les groupes crochets/parenthèses de fin D'UN COUP avant d'essayer
-    get_suffix_article_variants dessus, qui exige que le groupe article soit le TOUT
-    DERNIER de la chaîne - avec un second tag après lui ("Rugbymen (Les) [HD]", le "[HD]"
-    de qualité), l'article a déjà disparu avec le reste avant que cette fonction ait pu le
-    voir. On essaie donc get_suffix_article_variants à CHAQUE étape intermédiaire du
-    pelage (un groupe à la fois), pas seulement sur la chaîne brute et le cœur final."""
+    """Technical rationale and compatibility constraints for this code path."""
     from blueprints.search.routes import get_suffix_article_variants
 
     def _candidates(text):

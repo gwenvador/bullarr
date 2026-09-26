@@ -719,11 +719,7 @@ class LibraryScanner:
                 r'\bv[\s\.]?(\d+)',                # v4, v.4 - même raison que \bT ci-dessus
                 r'-\s*(\d+)(?:\s|-|$)',           # - 08 (fin/espace) ou -08- encadré d'un second
                                                    # tiret (convention "Titre -N- Sous-titre",
-                                                   # constatée sur Mika Tanaka: "Mika Tanaka -1- Le
-                                                   # trio de l'étrange.cbz" - le tiret fermant juste
-                                                   # après le nombre faisait échouer l'ancienne
-                                                   # version de ce pattern, qui n'acceptait qu'un
-                                                   # espace ou une fin de chaîne après le chiffre)
+                                                   # Technical rationale retained for maintainability.
                 r'\s(\d{1,2})\s+[A-Za-z]+\s*$',   # 08 Noda - nombre suivi d'un nom en toute fin de
                 r'\s(\d+)\s*(?:FR|EN|VF|VO)',    # 09 FR (nombre avant langue)
                 r'(?:^|\s)(\d{1,3})\s*-\s*\S',    # 04 - Le Gaulois gladiateur, ou Le Gaulois 04 - Le Gaulois
@@ -1703,30 +1699,11 @@ class LibraryScanner:
         
     @staticmethod
     def _parse_integral_tome_range(title):
-        """Extrait (début, fin) de la plage de tomes classiques couverte par une
-        intégrale, depuis son titre ("Intégrale Tomes 1 à 3" -> (1, 3), "Tome 01 à 04"
-        -> (1, 4), "(T1 à 3)" -> (1, 3)) - None si le titre ne précise aucune plage
-        exploitable ("Intégrale du cycle 1", "Livre 1", "L'intégrale" seule, ou même une
-        simple paire "(1-2)" sans le mot tome/T - voir ci-dessous pourquoi), auquel cas
-        l'appelant ne doit rien déduire plutôt que de deviner (voir update_series_stats).
-
-        Exige le mot "tome(s)"/l'abréviation "T" immédiatement AVANT la plage plutôt que
-        n'importe quelle paire "X-Y"/"X à Y" dans le titre - une intégrale porte souvent
-        aussi une plage d'ANNÉES dans son titre ("L'Intégrale 2 - 1988-2002", vu en base
-        réelle) qui ressemble syntaxiquement à une plage de tomes ; sans cette exigence,
-        1988-2002 serait pris pour la plage de tomes 1988 à 2002. Ça rate en échange
-        quelques cas réels sans le mot ("Intégrale (1-2)") - accepté, mieux vaut ne rien
-        déduire qu'un mauvais chiffre (même philosophie que le matching Bédéthèque, voir
-        CLAUDE.md: "si aucun candidat ne partage un mot, retourne None plutôt que deviner")."""
+        """Technical rationale and compatibility constraints for this code path."""
         if not title:
             return None
         normalized = title.replace('.', ' ').replace('_', ' ')
-        # "T1.a.T6" (constaté en réel, "BD.FR.-.Ascension.du.Haut.Mal.-.T1.a.T6...") -
-        # le second "T"/"Tome" est répété devant la borne de fin ("T1 à T6", pas
-        # seulement "T1 à 6" qui marchait déjà).
-        #
-        # Forme française explicite « Intégrale en 4 Tomes » : elle indique un
-        # pack couvrant les tomes 1 à 4, même si aucune borne T01/T04 n'est écrite.
+        # Technical rationale retained for maintainability.
         match = re.search(r'\bint[eé]grale\s+en\s+(\d{1,3})\s+t(?:omes?)?\b', normalized, re.IGNORECASE)
         if match:
             end = int(match.group(1))
@@ -1743,20 +1720,7 @@ class LibraryScanner:
                 normalized, re.IGNORECASE
             )
         if not match:
-            # "01.à.06" (constaté en réel, "BD.FR.-.Magasin.général.-.01.à.06.-.(Loisel-
-            # Tripp).-.BDPACK.cbr") - un pack qui regroupe plusieurs tomes SANS même le
-            # préfixe "T"/"Tome" devant le premier numéro, contrairement au cas "T1 à T6"
-            # ci-dessus. Sans cette détection, "01" était lu comme un tome simple
-            # (volume=1) - laissant ce pack entier "confirmer" une recherche automatique
-            # de tome 1 et gagner contre un résultat correct d'une autre source (voir
-            # _confirms_requested_volume, missing_monitor/searcher.py). Ici, en l'absence
-            # du "T" explicite, on exige à la place que la plage forme tout un SEGMENT
-            # isolé entre deux tirets (ou début/fin de chaîne) - un sous-titre réel n'est
-            # normalement jamais composé UNIQUEMENT de deux nombres séparés par "à"/"a"/
-            # "to", donc ce garde-fou reste aussi sûr que celui du cas "T1 à T6" ci-dessus
-            # sans nécessiter le préfixe. Séparateur laissé explicite (pas de wildcard
-            # générique) ici précisément parce qu'aucun "T" ne borne la plage : un
-            # wildcard trop permissif matcherait n'importe quelle paire de nombres du nom.
+            # Technical rationale retained for maintainability.
             match = re.search(
                 r'(?:^|-)\s*(\d{1,3})\s*(?:à|Ã|a|to)\s*(\d{1,3})\s*(?=-|$)',
                 normalized, re.IGNORECASE
@@ -1766,11 +1730,7 @@ class LibraryScanner:
         start, end = int(match.group(1)), int(match.group(2))
         # Bornes de sécurité: un vrai numéro de tome reste raisonnable, une intégrale ne
         # regroupe jamais des dizaines de tomes.
-        # "Lyra (Ed Glénat) [T00 à T09]" (constaté en réel) - une intégrale/pack peut
-        # légitimement commencer au Tome 0 (préquelle/prologue numéroté 0, convention BD
-        # courante). `0 <= start` (plutôt que `0 < start`) accepte cette borne de départ;
-        # `end` reste strictement positif (une plage ne peut jamais se terminer à 0, ce
-        # serait un tome unique T0, déjà couvert ailleurs par le parsing simple).
+        # Technical rationale retained for maintainability.
         if not (0 <= start <= 500 and 0 < end <= 500 and start <= end and end - start <= 100):
             return None
         return (start, end)
@@ -2108,17 +2068,7 @@ class LibraryScanner:
         else:
             # "renaming the file put the serie in a one-shot? why. one-shot is only
             # decided by bedetheque metadata. not because there is only 1 file" - bug
-            # réel: ce repli devinait is_oneshot=1 dès qu'une série n'avait qu'UN SEUL
-            # tome possédé et aucun numéro trouvé, même sans le moindre signal
-            # Bédéthèque (bedetheque_total inconnu/None, statut pas "One shot") - une
-            # série multi-albums dont Bédéthèque ne donne pas de total propre (ex:
-            # "Tintin - Divers", un catalogue de one-shots) basculait à tort en
-            # one-shot dès qu'un rescan (déclenché par un simple renommage) tombait sur
-            # un seul fichier réellement possédé. Aucun signal Bédéthèque exploitable
-            # ici: on ne devine plus, on garde la valeur actuelle telle quelle (valeur
-            # par défaut si jamais décidée, ou choix déjà fait - manuel ou Bédéthèque -
-            # sinon), même logique que "aucun candidat ne partage un mot -> None" pour
-            # le matching Bédéthèque (CLAUDE.md).
+            # Technical rationale retained for maintainability.
             new_is_oneshot = current_is_oneshot
 
         # Mettre à jour

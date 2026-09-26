@@ -28,7 +28,7 @@ TELEGRAM_FILES_DB = './data/telegram_messages.db'
 
 # Mêmes extensions que le reste du pipeline d'import (voir monitored_extensions,
 # config.py) - filtre aussi les vignettes/miniatures que Telegram attache parfois au même
-# message (constaté: un .jpg de quelques centaines de Ko à côté du .cbz réel)
+# Technical rationale retained for maintainability.
 SUPPORTED_EXTENSIONS = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
 
 _BEDETHEQUE_URL_RE = re.compile(r'https?://(?:www\.)?bedetheque\.com/\S+', re.IGNORECASE)
@@ -540,10 +540,7 @@ async def _download_one(api_id, api_hash, session_string, channel, message_id, t
                         pass
                 await asyncio.sleep(wait_seconds)
 
-        # Un fichier tronqué silencieusement en cours de route (déjà constaté à deux
-        # sur 228 Mo attendus) n'est jamais remonté comme une erreur par download_media
-        # lui-même - il rend juste la main une fois le flux terminé, sans lever
-        # d'exception ni comparer à la taille annoncée par le message.
+        # Technical rationale retained for maintainability.
         actual_size = os.path.getsize(temp_path) if os.path.exists(temp_path) else 0
         if expected_size and actual_size != expected_size:
             try:
@@ -564,31 +561,7 @@ async def _download_one(api_id, api_hash, session_string, channel, message_id, t
 
 
 def download_channel_file_background(api_id, api_hash, session_string, channel, message_id, target_dir, channel_title=None, app=None, pending_title=None, series_id=None, volume_id=None, volume_number=None, retry_count=0, force_replace=False):
-    """Lance le téléchargement dans un thread dédié et retourne immédiatement (voir
-    download_telegram_file dans routes.py) - un fichier de plusieurs centaines de Mo
-    (constaté jusqu'à ~230 Mo sur ces canaux) prend de longues secondes à quelques minutes
-    selon la bande passante ; le bloquer dans la requête HTTP empêcherait le reste de l'app
-    de répondre pendant ce temps (threaded=True côté Flask, voir run.py).
-
-    "when adding a new file whatever source. it should be automatically added to import.
-    then you can poll to get its status" - contrairement à avant (aucun état intermédiaire,
-    le fichier n'apparaissait qu'une fois le scan relancé une fois l'écriture terminée),
-    une ligne "en attente" (active_downloads, voir mark_download_pending) est posée dès le
-    lancement du thread et retirée à la fin (mark_download_completed/mark_download_failed)
-    - pas de vraie progression en %, juste présence/absence (voir get_pending_downloads,
-    consommé par /api/activity/status côté Import).
-
-    app: objet Flask capturé par l'appelant (current_app._get_current_object(), voir
-    routes.py) - nécessaire pour journaliser dans Historique via log_manual_download, qui
-    lit current_app.config depuis CE thread, sans contexte de requête automatique (voir
-    CLAUDE.md: un thread d'arrière-plan qui touche current_app sans app.app_context()
-    explicite échoue silencieusement).
-
-    series_id/volume_id: identité réelle connue si le téléchargement part d'une fiche série
-    (voir mark_download_pending) - simplement transmis tels quels à la ligne active_downloads.
-
-    retry_count: transmis par retry_stalled_telegram_downloads (downloader.py) lors d'une
-    relance automatique d'un téléchargement bloqué - 0 pour un lancement normal."""
+    """Technical rationale and compatibility constraints for this code path."""
     def _log(filename, success, message='', tracking_id=None):
         if not app:
             return

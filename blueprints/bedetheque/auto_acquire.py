@@ -470,25 +470,7 @@ def _normalize_release_text(text):
 
 
 def _strip_trailing_qualifier(title):
-    """Retire un qualificatif de désambiguïsation local en fin de titre de série - un
-    groupe parenthésé final ("Le Gaulois (Autres)") et/ou un marqueur "-NN-" isolé
-    ("Boule et Bill -02- (Édition actuelle)", vu en réel: distingue localement plusieurs
-    éditions/collections de la même série) - avant comparaison à un nom de release réel.
-
-    "check verron and tell me what you would pick... go for each pattern" - bug réel
-    trouvé lors d'un test à blanc: `_identity_tokens(title)` inclut ces mots/jetons tels
-    quels, qui ne peuvent PAR CONSTRUCTION jamais apparaître dans un vrai nom de release
-    ("Boule et Bill - Tome 46 - ...", jamais "... -02- (Édition actuelle)..." - ce
-    qualificatif n'existe que pour distinguer deux entrées LOCALES de cette bibliothèque,
-    pas pour décrire l'œuvre elle-même sur une release). Résultat mesuré sur "Boule et
-    Bill -02- (Édition actuelle)": 22 des 35 tomes manquants avaient un candidat au bon
-    numéro, correctement confirmé, mais rejeté par _series_identity_matches/score faute
-    de ce nettoyage - le même mécanisme touche "Le Gaulois (Autres)" (0/32 matchés).
-
-    Retourne le titre nettoyé (peut être inchangé si aucun des deux motifs n'est présent)
-    - jamais None: l'appelant compare toujours ce résultat EN PLUS du titre complet
-    d'origine (voir ses appelants), jamais à sa place, pour ne pas perdre un titre dont le
-    groupe parenthésé fait légitimement partie du nom (ex. un vrai sous-titre BD)."""
+    """Technical rationale and compatibility constraints for this code path."""
     # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
     stripped = re.sub(r'\s*\([^)]*\)\s*$', '', title or '').strip()
     # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
@@ -790,63 +772,7 @@ def _detect_pack_size(item_title):
 
 
 def _best_pack_result(results, title):
-    """Meilleur "pack" parmi des résultats de recherche série entière (pas un tome
-    précis) - "au lieu de faire une recherche pour chaque volume fait une recherche pour
-    la serie entiere si il y a l'option pack active... prends les fichiers qui ont le
-    plus de volumes (peu importe la preference des sources)". Classement dans cet ordre
-    (chaque critère ne départage qu'à égalité du précédent) :
-    1. Taille de la plage CONFIRMÉE (`_detect_pack_size`, un résultat sans plage
-       détectée compte comme inconnu, PAS comme 0 - voir plus bas pourquoi ce n'est pas
-       la même chose) - une plage vérifiée ("T01 à T41", 41 tomes prouvés) est une preuve
-       strictement plus fiable qu'une simple étiquette "PACK" sans le moindre chiffre.
-    2. Présence du mot "PACK" dans le nom (`_has_pack_keyword`) - ne départage donc plus
-       qu'à taille CONFIRMÉE égale (y compris "aucune des deux plages n'est connue").
-    3. Couleur avant un marqueur explicite NB/noir et blanc, sans exclure NB si c'est
-       le seul candidat valide.
-    4. Format (cbz/zip > cbr/rar > pdf) - même hiérarchie que le reste de l'app
-       (`FORMAT_PRIORITY`/`get_format_priority`, blueprints/library/routes.py).
-    5. Disponibilité mesurée - départage final ; zéro est toujours exclu. Pour EBDZ,
-       une mesure absente est trop incertaine pour l'automatique et part en /validation.
-
-    "check verron and tell me what you would pick... go for each pattern" - l'ordre
-    ci-dessus était inversé à l'origine ("PACK est mieux que T1-TXX", un choix de design
-    initial de la fonctionnalité, jamais remis en cause depuis) : `has_pack` passait
-    AVANT la taille, si bien qu'un simple mot "PACK" sans aucun chiffre associé battait
-    systématiquement une plage de tomes pourtant vérifiée, même bien plus large. Constaté
-    en réel sur 3 séries lors d'un test à blanc sur un échantillon de 20 séries : Nordheim
-    (un pack "STC Team PACK" de 943 Mo sans plage battait un pack étiqueté "T01 à T41 +
-    4HS" de 8,9 Go), Le cycle de Cyann (un "STC Team PACK" de 1,06 Go sans plage battait
-    une plage de tomes explicite. Une
-    plage confirmée est un fait vérifiable ; un simple mot-clé "PACK" sans le moindre
-    chiffre ne l'est pas - même philosophie que le reste de l'app ("ne jamais deviner
-    quand on peut vérifier", voir CLAUDE.md sur le matching Bédéthèque). `size_known`
-    (booléen séparé du `size` numérique lui-même) est nécessaire pour ce tri : sans lui,
-    un résultat SANS plage détectée (`size=0`) se classerait à tort SOUS un résultat avec
-    une VRAIE plage de 1 seul tome (`size=1`, in fine exclu du tri par le filtre
-    `size and size >= 2` plus bas de toute façon, mais gardé explicite par clarté).
-
-    L'ordre de auto_acquire_sources (préférence de source) ne s'applique volontairement
-    PAS ici, contrairement au mode tome par tome (voir run_auto_acquire_for_series). Un
-    résultat qui n'a ni le mot PACK ni une plage d'au moins 2 tomes détectée n'est pas un
-    pack, jamais retenu ici. None si aucun résultat n'est un pack - l'appelant retombe
-    alors sur la recherche tome par tome habituelle plutôt que de rater toute la série
-    faute de pack disponible.
-
-    "PACK.5183.BANDES.DESSINEES.FRENCH.HYBRiD.eBOOK-DDD -> this is not matching the name
-    Le chateau des animaux. so you should not download this one" - bug réel: cette
-    fonction ne filtrait QUE par mot-clé PACK/plage de tomes, jamais par rapport avec la
-    série recherchée elle-même. Un résultat Prowlarr n'a besoin que d'un score de
-    pertinence non-nul pour arriver jusqu'ici (voir search_prowlarr_raw) - un mot commun
-    du titre recherché ("des") apparaissant comme sous-chaîne d'un mot sans rapport du
-    candidat ("bandes") suffisait à le faire passer ce filtre, avant même d'arriver ici.
-    `title` (le titre de la série recherchée) est donc requis, et chaque candidat
-    doit atteindre _PACK_TITLE_MATCH_THRESHOLD de similarité avec lui
-    (BedethequeScraper._match_score, même fonction que _best_confident_result), sauf si
-    _oneshot_title_contained confirme une séquence exacte d'au moins deux mots distinctifs.
-    Un titre d'un seul mot noyé dans un titre plus long n'est volontairement plus une
-    preuve automatique : même un pack probablement valable comme « Les Verron ... »
-    passe en /validation si le bruit de release fait tomber son score sous 0.8. Ce faux
-    négatif prudent est préférable au téléchargement d'une autre série."""
+    """Technical rationale and compatibility constraints for this code path."""
     from blueprints.library.routes import get_format_priority
     from blueprints.bedetheque.scraper import BedethequeScraper
 

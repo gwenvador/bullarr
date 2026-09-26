@@ -209,9 +209,7 @@ def download_fourtoutici_file_background(file_id, filename, target_dir, base_url
             from blueprints.missing_monitor.downloader import log_manual_download
             # "dans historique il faudrait voir quelle est la source du téléchargement et
             # cliquable aussi" - pas de page de release distincte du lien de
-            # téléchargement lui-même pour fourtoutici (même constat que côté
-            # _searchResultSourceLinkUrl, static/js/search-results-table.js), donc pas de
-            # source_link ici.
+            # Technical rationale retained for maintainability.
             with app.app_context():
                 log_manual_download(name, 'fourtoutici', success, message, source='fourtoutici', tracking_id=tracking_id)
         except Exception as e:

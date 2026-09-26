@@ -2690,13 +2690,7 @@ h2 {
     color: var(--color-text);
 }
 
-/* !important nécessaire: ces champs vivent dans des .rename-section réutilisées de la
-   modale de renommage, qui impose déjà `font-family: inherit` sur tout
-   input[type="text"] - cette règle-là a une spécificité PLUS ÉLEVÉE que
-   ".manual-edit-modal-content input" (deux sélecteurs de classe/attribut contre un seul),
-   donc un simple scope au conteneur ne suffisait pas à la faire gagner malgré un chargement
-   de feuille de style postérieur - constaté: Courier New ne s'appliquait qu'aux
-   <textarea> (jamais ciblés par la règle concurrente, qui ne vise que input[type="text"]). */
+/* Technical rationale retained for maintainability. */
 .manual-edit-modal-content input,
 .manual-edit-modal-content textarea {
     font-family: 'Courier New', monospace !important;

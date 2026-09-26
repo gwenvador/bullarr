@@ -146,31 +146,7 @@ def _parse_special_prefix(title):
 
 
 def _index_bedetheque_volumes(bd_volumes):
-    """Indexe les albums d'une fiche série Bedetheque (get_series_info()['volumes']) sur
-    4 clés distinctes selon leur type: numéro de tome classique (champ 'number'), numéro
-    d'intégrale, numéro de hors-série, ou numéro d'épisode. Bédéthèque laisse 'number' à
-    None pour les intégrales/hors-séries et met leur numéro seulement en tête de titre
-    ("INT1 . ...", "HS1 . ...") - sans cette indexation dédiée, ces albums étaient
-    purement et simplement absents du matching par numéro (filtrés par
-    `number is not None`) et retombaient sur l'URL générique de la fiche série au lieu de
-    leur propre page d'album (constaté: intégrales de "Wayne Shelton" avec le <Web> de la
-    série plutôt que le leur).
-
-    Une série qui n'a qu'UNE seule intégrale/hors-série ne porte souvent aucun numéro du
-    tout ("INT . L'intégrale", pas "INT1 . ..."): indexée à la clé None, comme un tome
-    local sans integral_number/hs_number (voir parse_filename) - sans ce cas, un tel
-    album Bédéthèque tombait dans aucune des 3 clés et un tome local is_integral=1/
-    integral_number=None ne pouvait jamais le retrouver (constaté: "Universal War One",
-    l'intégrale locale restait sans match malgré "INT . L'intégrale" bien présent sur la
-    fiche série).
-
-    "Épisode" traité AVANT le test sur 'number': contrairement à INT/HS, Bédéthèque
-    numérote ses épisodes dans le même champ 'number' que ses tomes, à la queue leu leu -
-    https://www.bedetheque.com/serie-70835-BD-Bete-Frank-Pe-Zidrou.html a "Tome 1" ET
-    "Épisode 1" avec number=1 chacun ("il a episode et tome. this is different"). Router
-    Épisode vers by_number comme les autres aurait fait gagner l'un des deux au hasard
-    (setdefault, premier arrivé) et perdre l'autre en silence - le numéro d'épisode est
-    donc extrait du TITRE plutôt que du champ 'number'."""
+    """Technical rationale and compatibility constraints for this code path."""
     by_number, by_integral, by_hs, by_episode = {}, {}, {}, {}
     for v in bd_volumes or []:
         title = (v.get('title') or '').strip()
@@ -268,28 +244,7 @@ def _choose_ambiguous_album_match(matches, local_volume):
 
 
 def match_bedetheque_volume(bd_volumes, local_volume):
-    """Retrouve l'album Bedetheque correspondant à un tome local (dict-like avec les
-    colonnes volume_number/is_integral/integral_number/is_hs/hs_number/filename de
-    `volumes`), ou None si non trouvé. Voir _index_bedetheque_volumes pour le détail du
-    matching par numéro.
-
-    Cas particulier du one-shot: un local sans numéro de tome (ni intégrale ni
-    hors-série) ne peut pas être retrouvé par numéro puisqu'il n'en a pas - mais
-    Bédéthèque ne met pas non plus de 'number' sur l'unique album d'une série one-shot
-    (constaté: "À l'intérieur" avait tous ses champs ComicInfo écrits sauf Title, faute
-    de bd_volume trouvé). S'il n'y a qu'un seul album listé au total, il n'y a pas
-    d'ambiguïté possible: c'est forcément celui-là.
-
-    Cas particulier d'une série ENTIÈREMENT composée d'intégrales (ex: "Ranger Solitaire
-    (Intégrale)"): Bédéthèque n'a alors aucune raison de préfixer "INT" (pas de tomes
-    normaux à côté desquels les distinguer) - ses albums sont numérotés normalement
-    (champ 'number', donc dans by_number) même s'ils s'appellent "L'Intégrale 1",
-    "L'Intégrale 2"... Un tome local is_integral=True dont le numéro n'est pas trouvé
-    dans by_integral retente donc par_number avant d'abandonner.
-
-    Cas particulier "Épisode" (is_episode): voir _index_bedetheque_volumes - numéro
-    d'épisode jamais cherché dans by_number (Tome et Épisode peuvent partager le même
-    'number' Bédéthèque sans être le même album, ex. série #70835 "La Bête")."""
+    """Technical rationale and compatibility constraints for this code path."""
     by_number, by_integral, by_hs, by_episode = _index_bedetheque_volumes(bd_volumes)
     if local_volume.get('is_episode'):
         matches = by_episode.get(local_volume.get('episode_number'))
@@ -330,15 +285,7 @@ def match_bedetheque_volume(bd_volumes, local_volume):
 
 
 def _anti_bot_delay():
-    """Pause après chaque requête vers Bedetheque pour éviter un bannissement IP - durée
-    aléatoire (pas une constante fixe) pour ne pas produire un intervalle parfaitement
-    régulier entre requêtes, plus facilement repérable comme trafic automatisé qu'un
-    délai qui varie. Cette valeur était montée à 2.5-4.5s (depuis un fixe de 2s) après
-    des bannissements constatés en enrichissement de masse (des centaines de tomes
-    d'affilée) - redescendue à ~1s sur demande explicite ("tu peux diminuer l'anti-bot
-    delay a 1s") pour accélérer le matching (chaque candidat homonyme à départager coûte
-    une requête pleine, voir search_and_get_best_match) : risque de bannissement plus
-    élevé qu'avant assumé consciemment, à remonter si des blocages réapparaissent."""
+    """Technical rationale and compatibility constraints for this code path."""
     time.sleep(random.uniform(0.8, 1.2))
 
 
@@ -396,22 +343,7 @@ class BedethequeScraper:
         return f"{article}{rest}" if article.lower() == "l'" else f"{article} {rest}"
 
     def search_series(self, query, limit=20):
-        """
-        Recherche une série sur Bedetheque (recherche globale, qui remonte les fiches
-        séries contrairement à la recherche d'albums)
-        Retourne une liste de résultats avec titre, URL et genre
-
-        Essaie d'abord la requête avec l'article final réordonné (voir
-        _reorder_trailing_article), puis la requête d'origine, puis - si le titre local
-        porte un sous-titre ("Titre - Sous-titre", séparateur le plus courant en pratique,
-        voir aussi " / " que Bedetheque utilise lui-même dans ses propres résultats) -
-        juste la partie avant le séparateur. La recherche Bedetheque ne fait pas de
-        matching flou: une requête complète avec sous-titre ("L'adoption - Une histoire
-        d'adoption") peut ne renvoyer STRICTEMENT AUCUN résultat alors que le titre
-        principal seul ("L'Adoption") trouve la fiche du premier coup - constaté en
-        pratique sur une série restée non matchée après import malgré un titre local
-        pourtant correct.
-        """
+        """Technical rationale and compatibility constraints for this code path."""
         query = unicodedata.normalize('NFC', query)
 
         candidates = [self._reorder_trailing_article(query), query.strip()]
@@ -1229,21 +1161,7 @@ class BedethequeScraper:
 
     @classmethod
     def _match_score(cls, query, candidate_title):
-        """Similarité entre la requête et le titre d'un candidat - 1.0 pour un titre
-        identique (à l'accentuation/ponctuation/ordre des mots près), 0 si aucun mot en
-        commun.
-
-        Deux passes:
-        1. Egalité stricte une fois TOUS les espaces retirés (pas seulement la
-           ponctuation) - rattrape un titre local qui colle plusieurs mots sans
-           séparateur (constaté: "Virus (RicardRica)" en local pour "Virus
-           (Ricard/Rica)" sur Bedetheque). Un score par ensemble de mots serait trompé
-           ici: le token "ricardrica" ne matche ni "ricard" ni "rica" pris séparément,
-           et un candidat plus court sans rapport ("Virus (Cornelis)") gagnerait
-           artificiellement par une plus petite union - alors que la comparaison sans
-           aucun espace les retrouve identiques.
-        2. Sinon, indice de Jaccard par ensemble de mots (ordre/nombre d'occurrences
-           ignorés)."""
+        """Technical rationale and compatibility constraints for this code path."""
         q_norm = cls._normalize_for_match(query)
         c_norm = cls._normalize_for_match(candidate_title)
         if not q_norm or not c_norm:

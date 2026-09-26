@@ -686,7 +686,7 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="prowlarrUrl">URL du serveur</label>
-                                    <input type="text" id="prowlarrUrl" placeholder="http://localhost:9696 ou http://[REDACTED_IP]:9696">
+                                    <input type="text" id="prowlarrUrl" placeholder="http://localhost:9696 ou http://192.0.2.10:9696">
                                     <small class="help-text">Adresse complète du serveur Prowlarr (avec http:// ou https://)</small>
                                 </div>
 
@@ -766,7 +766,7 @@
                                 <div class="help-content">
                                     <ul>
                                         <li>Si Prowlarr est sur la même machine : <code>http://127.0.0.1:9696</code></li>
-                                        <li>Si Prowlarr est sur une autre machine du réseau : <code>http://[REDACTED_IP]:9696</code> (remplacez par l'IP)</li>
+                                        <li>Si Prowlarr est sur une autre machine du réseau : <code>http://192.0.2.10:9696</code> (remplacez par l'IP)</li>
                                         <li>Assurez-vous que le port 9696 (ou celui configuré) est accessible</li>
                                         <li>En HTTPS, utilisez <code>https://</code> au lieu de <code>http://</code></li>
                                     </ul>
@@ -900,7 +900,7 @@
                                 <div class="help-content">
                                     <ul>
                                         <li>Si qBittorrent est sur la même machine : <code>http://localhost:8080</code> ou <code>http://127.0.0.1:8080</code></li>
-                                        <li>Si qBittorrent est sur une autre machine du réseau : <code>http://[REDACTED_IP]:8080</code> (remplacez par l'IP)</li>
+                                        <li>Si qBittorrent est sur une autre machine du réseau : <code>http://192.0.2.10:8080</code> (remplacez par l'IP)</li>
                                         <li>Assurez-vous que le port est accessible (pare-feu)</li>
                                         <li>En HTTPS, utilisez <code>https://</code> au lieu de <code>http://</code></li>
                                     </ul>
@@ -1082,7 +1082,7 @@
                                     <input type="checkbox" id="shelfmarkEnabled">
                                     <label for="shelfmarkEnabled"><strong>Activer l'intégration Shelfmark</strong><span class="help-text">Permet d'envoyer les fichiers Anna à Shelfmark</span></label>
                                 </div>
-                                <div class="form-group"><label for="shelfmarkBaseUrl">Adresse</label><input type="url" id="shelfmarkBaseUrl" placeholder="http://[REDACTED_IP]:8084"></div>
+                                <div class="form-group"><label for="shelfmarkBaseUrl">Adresse</label><input type="url" id="shelfmarkBaseUrl" placeholder="http://192.0.2.10:8084"></div>
                                 <div class="form-group"><label for="shelfmarkUsername">Utilisateur</label><input type="text" id="shelfmarkUsername" autocomplete="username" placeholder="bullar"></div>
                                 <div class="form-group"><label for="shelfmarkPassword">Mot de passe</label><div class="password-input-group"><input type="password" id="shelfmarkPassword" autocomplete="current-password" placeholder="Laisser vide pour conserver"><button type="button" class="btn-toggle-password" onclick="toggleShelfmarkPassword()">Afficher</button></div></div>
                                 <div class="form-actions"><button class="btn" onclick="saveShelfmarkSettings()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg> Sauvegarder</button><button class="btn" onclick="testShelfmarkConnection()">Tester</button></div>
@@ -1117,7 +1117,7 @@
 
                             <div class="form-group">
                                 <label for="komgaUrl">URL du serveur</label>
-                                <input type="text" id="komgaUrl" placeholder="http://localhost:25600 ou http://[REDACTED_IP]:25600">
+                                <input type="text" id="komgaUrl" placeholder="http://localhost:25600 ou http://192.0.2.10:25600">
                                 <small class="help-text">Adresse complète du serveur Komga (avec http:// ou https://)</small>
                             </div>
 
@@ -1168,7 +1168,7 @@
                                 <div class="help-content">
                                     <ul>
                                         <li>Si Komga est sur la même machine : <code>http://127.0.0.1:25600</code></li>
-                                        <li>Si Komga est sur une autre machine du réseau : <code>http://[REDACTED_IP]:25600</code> (remplacez par l'IP)</li>
+                                        <li>Si Komga est sur une autre machine du réseau : <code>http://192.0.2.10:25600</code> (remplacez par l'IP)</li>
                                         <li>Assurez-vous que le port est accessible (pare-feu)</li>
                                         <li>En HTTPS, utilisez <code>https://</code> au lieu de <code>http://</code></li>
                                     </ul>

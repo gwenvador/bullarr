@@ -14,7 +14,7 @@ si absent - PAS reconstruite depuis `port` séparément (les 2 anciennes copies 
 search/routes.py et missing_monitor/searcher.py le faisaient, une divergence avec
 prowlarr/routes.py qui n'utilisait jamais ce champ `port`). Le champ `url` est censé déjà
 contenir le port si besoin (voir le placeholder du formulaire dans /settings:
-"http://[REDACTED_IP]:9696") - c'est aussi la seule variante que /api/prowlarr/test valide
+"http://192.0.2.10:9696") - c'est aussi la seule variante que /api/prowlarr/test valide
 réellement quand l'utilisateur clique "Tester la connexion", donc la seule dont on est
 sûr qu'elle fonctionne en pratique.
 """
