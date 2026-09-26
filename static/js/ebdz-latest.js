@@ -817,6 +817,35 @@ document.addEventListener('click', (e) => {
 // changement de filtre/recherche/onglet doit, lui, repartir de la première page plutôt
 // que de garder une position de pagination qui n'a plus de sens pour le nouvel ensemble
 // filtré (même principe que discoverDisplayedCount dans discover.js).
+let _nouveautesScrollSyncReady = false;
+function syncNouveautesHorizontalScrollbars() {
+    const top = document.getElementById('nouveautes-top-scrollbar');
+    const wrapper = document.getElementById('nouveautes-events-wrapper');
+    const table = wrapper?.querySelector('.nouveautes-table');
+    if (!top || !wrapper || !table) return;
+    const width = Math.max(table.scrollWidth, wrapper.clientWidth);
+    top.firstElementChild.style.width = `${width}px`;
+    top.style.display = table.scrollWidth > wrapper.clientWidth ? 'block' : 'none';
+    if (!_nouveautesScrollSyncReady) {
+        let syncing = false;
+        top.addEventListener('scroll', () => {
+            if (syncing) return;
+            syncing = true;
+            wrapper.scrollLeft = top.scrollLeft;
+            syncing = false;
+        }, { passive: true });
+        wrapper.addEventListener('scroll', () => {
+            if (syncing) return;
+            syncing = true;
+            top.scrollLeft = wrapper.scrollLeft;
+            syncing = false;
+        }, { passive: true });
+        window.addEventListener('resize', syncNouveautesHorizontalScrollbars);
+        _nouveautesScrollSyncReady = true;
+    }
+    top.scrollLeft = wrapper.scrollLeft;
+}
+
 function renderNouveautesEvents(resetPage = true) {
     const query = navNormalizeSearch(document.getElementById('nouveautesTitleFilter').value.trim());
     const matchedOnly = document.getElementById('nouveautesMatchedOnlyFilter').checked;
@@ -849,6 +878,7 @@ function renderNouveautesEvents(resetPage = true) {
         body.innerHTML = '';
         empty.style.display = 'block';
         _renderNouveautesLoadMoreButton(loadMoreDiv, 0);
+        syncNouveautesHorizontalScrollbars();
         return;
     }
     empty.style.display = 'none';
@@ -858,6 +888,7 @@ function renderNouveautesEvents(resetPage = true) {
     checkEmuleStatus();
 
     _renderNouveautesLoadMoreButton(loadMoreDiv, filtered.length - nouveautesDisplayedCount);
+    syncNouveautesHorizontalScrollbars();
 }
 
 function _renderNouveautesLoadMoreButton(loadMoreDiv, remaining) {
