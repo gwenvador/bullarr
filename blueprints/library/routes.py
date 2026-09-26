@@ -4374,14 +4374,6 @@ def _scan_tracked_import_files(validate_files=True):
                         )
                 if not match:
                     continue
-                terminal_download = next(
-                    (d for d in trackable_downloads
-                     if d.get('id') == match.get('tracking_id')
-                     and d.get('download_status') in ('imported', 'skipped')),
-                    None
-                )
-                if terminal_download and not _terminal_download_has_finalized_sibling(entry.path, finalized_source_paths):
-                    continue
                 _append_scanned_file(
                     entry.path, import_path, entry.name, match, scanner, telegram_filenames,
                     manual_override_filepaths, import_config, files_found,
