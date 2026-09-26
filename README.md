@@ -137,7 +137,7 @@ est optionnelle et désactivée tant qu'elle n'est pas explicitement activée.
 
 | Onglet | Rôle |
 |---|---|
-| 🔌 Indexeurs | Sources de recherche des tomes manquants : Prowlarr, EBDZ.net, Telegram (canaux), Komga, sources web (fourtoutici.cc) |
+| 🔌 Indexeurs | Sources de recherche des tomes manquants : Prowlarr, EBDZ.net, Telegram (canaux), Flux RSS, Komga, sources web (fourtoutici.cc) |
 | 💻 Clients | Clients de téléchargement : aMule/eMule, qBittorrent, rTorrent, Deluge |
 | 📱 Notifications | Notifications Telegram (bot) |
 | 🔐 SSO / OIDC | Authentification externe (désactivée par défaut) |
