@@ -1,4 +1,6 @@
+import shutil
 import subprocess
+from unittest import SkipTest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,6 +10,8 @@ BASE_CSS = ROOT / 'static' / 'css' / 'style.css'
 
 
 def run_node(script):
+    if shutil.which('node') is None:
+        raise SkipTest('Node.js is required for this JavaScript regression')
     return subprocess.run(['node', '-e', script], cwd=ROOT, text=True, capture_output=True)
 
 

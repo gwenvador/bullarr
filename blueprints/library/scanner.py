@@ -463,6 +463,7 @@ class LibraryScanner:
 
         # Retirer l'extension pour faciliter le parsing
         name_without_ext = os.path.splitext(str(filename or '')[:255])[0]
+        year_source = name_without_ext
 
         name_without_ext = re.sub(
             r'^\[?BD[.\s-]+(?:FR|EN|VF|VO|FRENCH|ENGLISH)\]?[.\s-]+',
@@ -497,6 +498,13 @@ class LibraryScanner:
                 # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
                 name_without_ext, re.IGNORECASE
             )
+        if not digital_match:
+            bare_px_match = re.search(r'[\[\(](\d{3,4})\s*px[\]\)]', name_without_ext, re.IGNORECASE)
+            if bare_px_match:
+                excluded_numbers.add(int(bare_px_match.group(1)))
+                info['resolution'] = f"{bare_px_match.group(1)}px"
+                name_without_ext = name_without_ext.replace(bare_px_match.group(0), ' ', 1)
+
         if not digital_match:
             # Variante sans crochets/parenthèses: le tag de scan est parfois un simple
             # segment séparé par un tiret en toute fin de nom de fichier plutôt qu'entre
@@ -837,7 +845,7 @@ class LibraryScanner:
             if author_dash_match:
                 info['author'] = author_dash_match.group(1).strip()
 
-        year_match = re.search(r'\b(19\d{2}|20\d{2})\b', name_without_ext)
+        year_match = re.search(r'\b(19\d{2}|20\d{2})\b', year_source)
         if year_match and int(year_match.group(1)) not in excluded_numbers:
             info['year'] = int(year_match.group(1))
             info['title'] = re.sub(rf'\s+{info["year"]}\s*$', '', info['title']).strip()
