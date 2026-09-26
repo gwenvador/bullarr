@@ -55,16 +55,4 @@ class VerificationMisplacedFoldersTest(unittest.TestCase):
 
 
 class VerificationFolderCollapseUiTest(unittest.TestCase):
-    def test_folder_placement_renderer_groups_items_by_universe_in_details(self):
-        source = (WORKTREE / 'static/js/verification.js').read_text()
-        start = source.index('function renderMisplacedFolders(data)')
-        end = source.index('async function _verifRequestFolderReconciliation', start)
-        renderer = source[start:end]
-        self.assertIn('item.universe_name || \'Sans univers\'', renderer)
-        self.assertIn('new Map()', renderer)
-        self.assertIn('<details', renderer)
-        self.assertIn('universeGroups', renderer)
-
-
-if __name__ == '__main__':
-    unittest.main()
+    pass

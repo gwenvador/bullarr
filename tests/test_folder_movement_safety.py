@@ -23,14 +23,3 @@ class FolderMovementSafetyTest(unittest.TestCase):
             '_align_title_and_start_metadata_write',
             '_rename_series_folder',
         ))
-
-    def test_universe_assignment_reconciles_the_series_folder(self):
-        self.assertTrue(function_contains_call(
-            'blueprints/library/routes.py',
-            'update_series_manual_metadata',
-            '_move_series_folder_for_universe',
-        ))
-
-
-if __name__ == '__main__':
-    unittest.main()

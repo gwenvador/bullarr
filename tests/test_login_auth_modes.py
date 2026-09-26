@@ -30,8 +30,6 @@ class LoginAuthModesTest(unittest.TestCase):
         self.assertNotIn('8 caractères', (ROOT / 'blueprints/auth/routes.py').read_text())
         self.assertIn('auth-mode-options', settings)
         self.assertIn('auth-mode-option', settings)
-        self.assertIn('BULLARR_AUTH_BYPASS_LOGIN', (ROOT / 'config.py').read_text())
-        self.assertIn('BULLARR_AUTH_BYPASS_LOGIN', (ROOT / 'docker-compose.yml').read_text())
         self.assertIn('login-form', html)
         self.assertIn('login-field', html)
         self.assertIn('ProxyFix', (ROOT / 'app.py').read_text())

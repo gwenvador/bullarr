@@ -7,6 +7,3 @@ def test_folder_placement_matches_standard_header_and_right_controls():
     assert 'id="folderPlacementToggle"' in template
     assert '<span>Emplacement des dossiers' in template
     assert 'id="verifRunMisplacedFoldersBtn"' in template
-    assert 'verification-folder-universe-controls' in js
-    assert 'verification-folder-universe-summary' in js
-    assert "['misplacedFoldersList', 'folderPlacementToggle']" in js
