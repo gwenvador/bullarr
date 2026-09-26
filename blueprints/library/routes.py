@@ -4249,6 +4249,14 @@ def _collect_download_folder_files(folder_path, import_root, download, destinati
             })
 
 
+def _exclude_terminal_without_manual_override(files_found):
+    return [
+        item for item in files_found
+        if item.get('manual_override')
+        or (item.get('destination') or {}).get('download_status') not in ('imported', 'skipped')
+    ]
+
+
 def _exclude_finalized_import_files(files_found, finalized_source_paths):
     'Hide files already recorded as successfully imported or skipped.'
     return [
@@ -4381,6 +4389,7 @@ def _scan_tracked_import_files(validate_files=True):
                     validate_file=validate_files, manual_destinations=manual_destinations
                 )
 
+    files_found = _exclude_terminal_without_manual_override(files_found)
     return _exclude_finalized_import_files(files_found, finalized_source_paths), incompatible_folders
 
 
