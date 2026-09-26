@@ -163,6 +163,27 @@ est optionnelle et désactivée tant qu'elle n'est pas explicitement activée.
 3. Le scraping automatique (planifié) indexe les liens ed2k dans `data/ebdz.db`,
    indépendamment de la base principale
 
+### Flux RSS
+
+Bullarr peut afficher des flux RSS dans **Nouveautés**, avec leur titre, leur page
+d’origine, leur description et les liens de téléchargement détectés. Les liens torrent
+d’un flux RSS peuvent être envoyés directement vers qBittorrent, rTorrent ou Deluge.
+
+Configuration depuis **Configuration → Indexeurs → Flux RSS** :
+
+- ajoutez un nom et une URL `http://` ou `https://` ;
+- activez ou supprimez les flux depuis la modale de configuration ;
+- jusqu’à 20 flux peuvent être configurés ;
+- les flux sont limités à 2 MiB par réponse ;
+- les réponses valides sont mises en cache pendant cinq minutes ;
+- les erreurs transitoires ne masquent pas immédiatement le dernier résultat valide ;
+- les adresses internes ne sont pas acceptées.
+
+Un flux peut publier une page de discussion et un lien de téléchargement distinct : Bullarr
+conserve ces deux usages séparés. Les boutons d’envoi vers les clients torrent ne sont
+affichés que lorsqu’un lien compatible est présent et que le client correspondant est
+configuré.
+
 ### Configuration Prowlarr, Komga, Web (Indexeurs) / qBittorrent, rTorrent, Deluge (Clients)
 
 Chaque source a sa propre carte cliquable dans `Indexeurs` (recherche) ou `Clients`
