@@ -282,8 +282,15 @@ let nouveautesPendingFilenames = new Set();
 function _nouveautesImportStatus(event) {
     const filenames = event.type === 'ebdz' ? (event.links || []).map(l => l.filename) : [event.filename];
     if (filenames.some(f => nouveautesPendingFilenames.has(f))) return 'pending';
-    if (event.type === 'telegram' && event.downloaded) return 'imported';
+    if ((event.type === 'telegram' || event.type === 'rss') && event.downloaded) return 'downloaded';
     return null;
+}
+
+function _nouveautesSeriesHtml(event) {
+    const seriesTitle = event.type === 'ebdz' ? event.matched_series_title : event.series_title;
+    return seriesTitle
+        ? `<div class="nouveautes-matched-series" data-tooltip="Série locale correspondante">📚 ${escapeHtml(seriesTitle)}</div>`
+        : '';
 }
 
 function _nouveautesMatchedHtml(event) {
@@ -294,13 +301,18 @@ function _nouveautesMatchedHtml(event) {
     const ebdzMatchHtml = event.type === 'ebdz'
         ? `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match EBDZ" onclick="event.stopPropagation(); event.preventDefault(); openEbdzThreadMatchModal('${escapeForAttribute(event.thread_id)}', '${escapeForAttribute(event.title || '')}', ${seriesId == null ? 'null' : seriesId})">${svgIcon('pencil')}</a>`
         : '';
+    const sourceMatchHtml = event.type === 'rss'
+        ? `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match RSS" onclick="event.stopPropagation(); event.preventDefault(); openTelegramMatchOverrideModal('${escapeForAttribute(event.title || '')}', ${seriesId == null ? 'null' : seriesId}, 'rss', '${escapeForAttribute(event.link || '')}')">${svgIcon('pencil')}</a>`
+        : event.type === 'telegram'
+        ? `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match Telegram" onclick="event.stopPropagation(); event.preventDefault(); openTelegramMatchOverrideModal('${escapeForAttribute(event.filename || '')}', ${seriesId == null ? 'null' : seriesId})">${svgIcon('pencil')}</a>`
+        : '';
     if (!_nouveautesMatched(event)) {
         // Un lien Bédéthèque issu d'une source reste utile sans série locale, mais le
         // crayon est toujours disponible pour rattacher le sujet à une série existante.
         const bedethequeHtml = bedethequeUrl
             ? `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:14px; height:14px; vertical-align:-2px;"></a>`
             : '<span style="color:var(--color-text-muted);">—</span>';
-        return `${ebdzMatchHtml} ${bedethequeHtml}`;
+        return `${ebdzMatchHtml || sourceMatchHtml} ${bedethequeHtml}`;
     }
     const matchedSeriesTitle = event.type === 'ebdz' ? event.matched_series_title : event.series_title;
     const checkTooltip = matchedSeriesTitle
@@ -309,11 +321,7 @@ function _nouveautesMatchedHtml(event) {
     const checkHtml = seriesId
         ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${checkTooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${svgIcon('check')}</a>`
         : `<span class="icon-owned" data-tooltip="${checkTooltip}">${svgIcon('check')}</span>`;
-    const changeMatchHtml = event.type === 'ebdz'
-        ? ebdzMatchHtml
-        : (event.type === 'telegram' && seriesId)
-        ? `<a href="#" class="icon-owned" data-tooltip="Ce n'est pas la bonne série ? Changer le match" onclick="event.stopPropagation(); event.preventDefault(); openTelegramMatchOverrideModal('${escapeForAttribute(event.filename)}', ${seriesId})">${svgIcon('pencil')}</a>`
-        : '';
+    const changeMatchHtml = event.type === 'ebdz' ? ebdzMatchHtml : sourceMatchHtml;
     const bedethequeHtml = bedethequeUrl
         ? `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:14px; height:14px; vertical-align:-2px;"></a>`
         : '';
@@ -337,7 +345,7 @@ function _nouveautesMatchedHtml(event) {
 // series-detail.html pour le choix équivalent côté EBDZ) mais listant TOUTES les
 // bibliothèques (pas une seule): Nouveautés n'a pas de "série source" dont on connaîtrait
 // déjà la bibliothèque, contrairement à une fusion lancée depuis une fiche série précise.
-async function openTelegramMatchOverrideModal(filename, currentSeriesId) {
+async function openTelegramMatchOverrideModal(filename, currentSeriesId, source = 'telegram', sourceIdentity = null) {
     let modal = document.getElementById('telegram-match-override-modal');
     if (!modal) {
         modal = document.createElement('div');
@@ -358,10 +366,8 @@ async function openTelegramMatchOverrideModal(filename, currentSeriesId) {
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 700px;">
                 <span class="close-modal" onclick="closeTelegramMatchOverrideModal()">×</span>
-                <h2 class="modal-title" style="margin-bottom: 10px;">✏️ Changer le match</h2>
-                <p class="modal-subtitle">Choisissez la bonne série pour tous les fichiers Telegram nommés comme
-                    <strong>${escapeHtml(filename)}</strong> (s'applique à chaque fichier partageant ce titre, pas
-                    seulement celui-ci).</p>
+                <h2 class="modal-title" style="margin-bottom: 10px;">✏️ Matcher la série</h2>
+                <p class="modal-subtitle">Choisissez la série pour <strong>${escapeHtml(filename)}</strong>.</p>
                 <input type="text" id="telegram-match-override-filter" class="search-box" placeholder="Filtrer les séries..."
                        style="width: 100%; margin-bottom: 12px;">
                 <div id="telegram-match-override-candidates" style="max-height: 50vh; overflow-y: auto;"></div>
@@ -395,7 +401,7 @@ async function openTelegramMatchOverrideModal(filename, currentSeriesId) {
                 const isCurrent = currentSeriesId != null && c.id === currentSeriesId;
                 return `
                 <div class="series-card${isCurrent ? ' series-card-current-match' : ''}" style="cursor: pointer; margin-bottom: 8px;${isCurrent ? ' border: 2px solid var(--color-primary, #2563eb);' : ''}"
-                     onclick="confirmTelegramMatchOverride('${escapeForAttribute(filename)}', ${c.id}, '${escapeForAttribute(c.title)}')">
+                     onclick="confirmTelegramMatchOverride('${escapeForAttribute(filename)}', ${c.id}, '${escapeForAttribute(c.title)}', '${escapeForAttribute(source)}', '${escapeForAttribute(sourceIdentity || '')}')">
                     <div class="series-title">${escapeHtml(c.title)}${isCurrent ? ' <span class="badge-current-match" data-tooltip="C\'est la série actuellement associée à ce fichier">✅ Match actuel</span>' : ''}</div>
                     <div class="series-info">${c.total_volumes || 0} album${(c.total_volumes || 0) > 1 ? 's' : ''}</div>
                 </div>
@@ -421,14 +427,15 @@ function closeTelegramMatchOverrideModal() {
     if (modal) modal.classList.remove('active');
 }
 
-async function confirmTelegramMatchOverride(filename, seriesId, seriesTitle) {
+async function confirmTelegramMatchOverride(filename, seriesId, seriesTitle, source = 'telegram', sourceIdentity = '') {
     const candidatesEl = document.getElementById('telegram-match-override-candidates');
     candidatesEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     try {
-        const response = await fetch('/api/telegram-channels/match-override', {
+        const isRss = source === 'rss';
+        const response = await fetch(isRss ? '/api/ebdz/rss/match-override' : '/api/telegram-channels/match-override', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename, series_id: seriesId })
+            body: JSON.stringify(isRss ? { link: sourceIdentity, title: filename, series_id: seriesId } : { filename, series_id: seriesId })
         });
         const data = await response.json();
         if (!data.success) {
@@ -466,7 +473,7 @@ async function openEbdzThreadMatchModal(threadId, threadTitle, currentSeriesId) 
         modal.innerHTML = `
             <div class="modal-content" style="max-width:700px;">
                 <span class="close-modal" onclick="closeEbdzThreadMatchModal()">×</span>
-                <h2 class="modal-title" style="margin-bottom:10px;">✏️ Matcher le sujet EBDZ</h2>
+                <h2 class="modal-title" style="margin-bottom:10px;">✏️ Matcher la série</h2>
                 <p class="modal-subtitle">Choisissez la série pour <strong>${escapeHtml(threadTitle)}</strong>.</p>
                 <input type="text" id="ebdz-thread-match-filter" class="search-box" placeholder="Filtrer les séries..." style="width:100%; margin-bottom:12px;">
                 <div id="ebdz-thread-match-candidates" style="max-height:50vh; overflow-y:auto;"></div>
@@ -529,8 +536,8 @@ function _nouveautesImportStatusHtml(event) {
     if (status === 'pending') {
         return `<span class="icon-owned" style="background:var(--color-accent); color:#fff;" data-tooltip="Déjà téléchargé, en attente d'import">${svgIcon('history')}</span>`;
     }
-    if (status === 'imported') {
-        return `<span class="icon-owned" data-tooltip="Déjà téléchargé et importé">${svgIcon('check-check')}</span>`;
+    if (status === 'downloaded') {
+        return `<span class="icon-owned" data-tooltip="Déjà téléchargé">${svgIcon('check-check')}</span>`;
     }
     return '';
 }
@@ -641,6 +648,7 @@ function _nouveautesEbdzRowHtml(event, index) {
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
                 <div style="font-weight:600; display:flex; align-items:center; gap:6px;">▸ ${safeTitle}</div>
+                ${_nouveautesSeriesHtml(event)}
                 <div style="color:var(--color-text-muted); font-size:0.9em;">${event.links.length} fichier${event.links.length > 1 ? 's' : ''}</div>
             </td>
             <td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td>
@@ -650,7 +658,19 @@ function _nouveautesEbdzRowHtml(event, index) {
     `;
 }
 
-function _nouveautesRssTorrentClientButtons(event, item) {
+async function _addNouveautesRssTorrentToQbittorrent(torrentUrl, button, title, eventIndex, itemIndex, sourceLink) {
+    await addTorrentToQbittorrent(torrentUrl, button, title, null, null, null, sourceLink);
+    if (button.classList.contains('add-button-added')) {
+        const event = allNouveautesEvents[eventIndex];
+        const item = event?.download_links?.[itemIndex];
+        if (item) {
+            item._addedClients = item._addedClients || {};
+            item._addedClients.qbittorrent = true;
+        }
+    }
+}
+
+function _nouveautesRssTorrentClientButtons(event, item, itemIndex) {
     const url = item?.url || '';
     const probe = url.toLowerCase();
     const isTorrent = probe.startsWith('magnet:') || probe.startsWith('ed2k://') || /\.torrent(?:$|[?#])/.test(probe) || probe.includes('torrent') || probe.includes('/download');
@@ -660,7 +680,10 @@ function _nouveautesRssTorrentClientButtons(event, item) {
     const encodedUrl = escapeForAttribute(url);
     const buttons = [];
     if (enabledDownloadClients.qbittorrent && typeof addTorrentToQbittorrent === 'function') {
-        buttons.push(`<button class="btn-icon-only" type="button" onclick="addTorrentToQbittorrent('${encodedUrl}', this, '${title}', null, null, null, '${sourceLink}')" data-tooltip="Envoyer à qBittorrent" aria-label="Envoyer à qBittorrent"><img src="/static/img/qbittorrent-logo.svg" alt="qBittorrent" class="torrent-client-logo"></button>`);
+        const added = !!item?._addedClients?.qbittorrent;
+        buttons.push(added
+            ? `<button class="btn-icon-only add-button-added" type="button" disabled data-tooltip="Ajouté à qBittorrent" aria-label="Ajouté à qBittorrent"><span class="btn-icon">✓</span> <span style="font-size:0.85em;">Ajouté</span></button>`
+            : `<button class="btn-icon-only" type="button" onclick="event.stopPropagation(); _addNouveautesRssTorrentToQbittorrent('${encodedUrl}', this, '${title}', ${event._index}, ${itemIndex}, '${sourceLink}')" data-tooltip="Envoyer à qBittorrent" aria-label="Envoyer à qBittorrent"><img src="/static/img/qbittorrent-logo.svg" alt="qBittorrent" class="torrent-client-logo"></button>`);
     }
     if (enabledDownloadClients.rtorrent && typeof addTorrentToRtorrent === 'function') {
         buttons.push(`<button class="btn-icon-only" type="button" onclick="addTorrentToRtorrent('${encodedUrl}', this, '${title}', null, null, null, '${sourceLink}')" data-tooltip="Envoyer à rTorrent" aria-label="Envoyer à rTorrent"><img src="/static/img/rtorrent-logo.svg" alt="rTorrent" class="torrent-client-logo"></button>`);
@@ -681,9 +704,12 @@ function _nouveautesRssRowHtml(event) {
         ? escapeHtml(event.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 240)
         : '';
     const addButton = event.title ? `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter à Bullarr" aria-label="Ajouter à Bullarr">${svgIcon('plus')}</button>` : '';
+    const matchedSeriesHtml = _nouveautesSeriesHtml(event);
     const downloadButtons = (event.download_links || []).map(item => `<a class="btn-icon-only" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" data-tooltip="${escapeHtml(item.label || 'Télécharger')}" aria-label="${escapeHtml(item.label || 'Télécharger')}" onclick="event.stopPropagation()">${svgIcon('download')}</a>`).join('');
-    const torrentClientButtons = (event.download_links || []).map(item => _nouveautesRssTorrentClientButtons(event, item)).join('');
-    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td><td style="padding:10px; text-align:center;">—</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
+    const torrentClientButtons = (event.download_links || []).map((item, itemIndex) => _nouveautesRssTorrentClientButtons(event, item, itemIndex)).join('');
+    const rssMonitoredHtml = event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : '';
+    const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
+    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${matchedSeriesHtml}${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td><td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
@@ -708,6 +734,7 @@ function _nouveautesTelegramRowHtml(event) {
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
                 <div style="font-weight:600;">${safeFilename}</div>
+                ${_nouveautesSeriesHtml(event)}
                 <div style="color:var(--color-text-muted); font-size:0.9em;">
                     ${escapeHtml(event.channel_title || event.channel)} · ${formatBytes(event.file_size)}
                     ${event.parsed_volume ? ` · ${escapeHtml(event.parsed_volume)}` : ''}
@@ -920,7 +947,55 @@ async function loadOlderNouveautesEvents() {
 // des milliers d'items) se recharge ensuite silencieusement en tâche de fond et remplace
 // ce premier jeu une fois prête (voir _loadNouveautesBatch).
 const NOUVEAUTES_INITIAL_LIMIT = 100;
+const NOUVEAUTES_CACHE_KEY = 'bullarr:nouveautes:v1';
+const NOUVEAUTES_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 let nouveautesLoadGeneration = 0;
+
+function _saveNouveautesCache(loadedTypes = ['ebdz', 'telegram', 'rss']) {
+    try {
+        let cached = null;
+        try { cached = JSON.parse(localStorage.getItem(NOUVEAUTES_CACHE_KEY) || 'null'); } catch (e) { cached = null; }
+        const eventsByType = {};
+        (cached?.events || []).forEach(event => {
+            (eventsByType[event.type] ||= []).push(event);
+        });
+        loadedTypes.forEach(type => {
+            eventsByType[type] = allNouveautesEvents.filter(event => event.type === type);
+        });
+        localStorage.setItem(NOUVEAUTES_CACHE_KEY, JSON.stringify({
+            savedAt: Date.now(),
+            events: ['ebdz', 'telegram', 'rss'].flatMap(type => eventsByType[type] || []),
+        }));
+    } catch (e) { /* cache indisponible ou trop volumineux - le réseau reste la source */ }
+}
+
+function _restoreNouveautesCache() {
+    try {
+        const cached = JSON.parse(localStorage.getItem(NOUVEAUTES_CACHE_KEY) || 'null');
+        if (!cached || !Array.isArray(cached.events) || !cached.events.length) return false;
+        if (Date.now() - Number(cached.savedAt || 0) > NOUVEAUTES_CACHE_MAX_AGE_MS) return false;
+        allNouveautesEvents = cached.events;
+        renderNouveautesEvents(true);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function _mergeNouveautesClientState(events) {
+    const addedByUrl = new Map();
+    allNouveautesEvents.forEach(event => {
+        (event.download_links || []).forEach(item => {
+            if (item.url && item._addedClients) addedByUrl.set(item.url, item._addedClients);
+        });
+    });
+    events.forEach(event => {
+        (event.download_links || []).forEach(item => {
+            const added = item.url && addedByUrl.get(item.url);
+            if (added) item._addedClients = added;
+        });
+    });
+}
 
 async function loadNouveautesEvents(forceScrape, resetPage = true) {
     const loading = document.getElementById('nouveautes-events-loading');
@@ -956,19 +1031,26 @@ async function loadNouveautesEvents(forceScrape, resetPage = true) {
     nouveautesLoadGeneration++;
     const generation = nouveautesLoadGeneration;
 
-    loading.style.display = 'block';
+    const restoredFromCache = _restoreNouveautesCache();
+    loading.style.display = restoredFromCache ? 'none' : 'block';
     document.getElementById('nouveautes-events-empty').style.display = 'none';
-    document.getElementById('nouveautes-events-body').innerHTML = '';
+    if (!restoredFromCache) document.getElementById('nouveautes-events-body').innerHTML = '';
 
     try {
         // pendingScanData: fichiers actuellement dans la file d'import (voir
         // _nouveautesImportStatus) - même endpoint que la page /import elle-même, un seul
         // appel supplémentaire par chargement de la page Nouveautés.
-        const pendingScanData = await fetch('/api/import/scan', { method: 'POST' }).then(r => r.json()).catch(() => ({ success: false }));
-        if (generation !== nouveautesLoadGeneration) return;
-        nouveautesPendingFilenames = new Set(
-            pendingScanData.success ? (pendingScanData.files || []).map(f => f.filename) : []
-        );
+        // Le scan d'import peut parcourir le stockage et ne doit jamais retarder
+        // les trois sources de Nouveautés. Il met à jour les marqueurs ensuite.
+        const pendingScanPromise = fetch('/api/import/scan', { method: 'POST' })
+            .then(r => r.json()).catch(() => ({ success: false }));
+        pendingScanPromise.then(pendingScanData => {
+            if (generation !== nouveautesLoadGeneration) return;
+            nouveautesPendingFilenames = new Set(
+                pendingScanData.success ? (pendingScanData.files || []).map(f => f.filename) : []
+            );
+            if (allNouveautesEvents.length) renderNouveautesEvents(false);
+        });
 
         if (resetPage) {
             await _loadNouveautesBatch(NOUVEAUTES_INITIAL_LIMIT, generation, true);
@@ -997,6 +1079,19 @@ async function _loadNouveautesBatch(limit, generation, resetPage) {
     let ebdzEvents = [];
     let telegramEvents = [];
     let rssEvents = [];
+    let partialRendered = false;
+
+    const renderPartialNouveautes = (loadedTypes) => {
+        if (generation !== nouveautesLoadGeneration) return;
+        const refreshedEvents = [...ebdzEvents, ...telegramEvents, ...rssEvents]
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+        if (!refreshedEvents.length) return;
+        _mergeNouveautesClientState(refreshedEvents);
+        allNouveautesEvents = refreshedEvents;
+        renderNouveautesEvents(!partialRendered && resetPage);
+        partialRendered = true;
+        _saveNouveautesCache(loadedTypes);
+    };
 
     const ebdzPromise = fetch(`/api/ebdz/latest?days=${nouveautesDaysWindow}${limitParam}`).then(r => r.json()).catch(() => ({ success: false })).then(ebdzData => {
         if (generation !== nouveautesLoadGeneration) return;
@@ -1022,6 +1117,7 @@ async function _loadNouveautesBatch(limit, generation, resetPage) {
             });
         }
         nouveautesHasMoreEbdz = !!ebdzData.has_more;
+        renderPartialNouveautes(['ebdz']);
     });
 
     const telegramPromise = fetch(`/api/telegram-channels/latest?days=${nouveautesDaysWindow}${limitParam}`).then(r => r.json()).catch(() => ({ success: false })).then(telegramData => {
@@ -1043,15 +1139,14 @@ async function _loadNouveautesBatch(limit, generation, resetPage) {
             bedetheque_url: f.bedetheque_url,
             downloaded: !!f.downloaded,
         }));
+        renderPartialNouveautes(['telegram']);
     });
 
-    const rssPromise = fetch(`/api/ebdz/rss/latest?limit=${limit || 100}`).then(r => r.json()).catch(() => ({ success: false })).then(rssData => { if (generation !== nouveautesLoadGeneration) return; rssEvents = (rssData.success ? (rssData.entries || []) : []).map(entry => ({ type: 'rss', ...entry })); });
+    const rssPromise = fetch(`/api/ebdz/rss/latest?limit=${limit || 100}`).then(r => r.json()).catch(() => ({ success: false })).then(rssData => { if (generation !== nouveautesLoadGeneration) return; rssEvents = (rssData.success ? (rssData.entries || []) : []).map(entry => ({ type: 'rss', ...entry })); renderPartialNouveautes(['rss']); });
 
     await Promise.all([ebdzPromise, telegramPromise, rssPromise]);
     if (generation !== nouveautesLoadGeneration) return;
-
-    allNouveautesEvents = [...ebdzEvents, ...telegramEvents, ...rssEvents].sort((a, b) => new Date(b.date) - new Date(a.date));
-    renderNouveautesEvents(resetPage);
+    _saveNouveautesCache();
 
     try {
         localStorage.setItem('nouveautesLastSeenAt', new Date().toISOString());

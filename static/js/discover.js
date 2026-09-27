@@ -122,10 +122,11 @@ async function searchBedethequeSeries() {
     if (typeof logSearchHistoryEvent === 'function') logSearchHistoryEvent(seriesName, 'Recherche de série (Découvrir)');
 
     try {
-        const [response] = await Promise.all([
-            fetch(`/api/bedetheque/search?q=${encodeURIComponent(seriesName)}`),
-            loadOwnedBedethequeUrls()
-        ]);
+        // La recherche Bédéthèque doit afficher ses résultats dès que la réponse externe
+        // revient. Le chargement de toute la bibliothèque (souvent plusieurs Mo) sert
+        // uniquement à marquer les séries déjà possédées et ne doit pas bloquer l'étape 1.
+        const ownedUrlsPromise = loadOwnedBedethequeUrls();
+        const response = await fetch(`/api/bedetheque/search?q=${encodeURIComponent(seriesName)}`);
         const data = await response.json();
 
         if (generation !== searchGeneration) return; // une recherche plus récente a démarré entre-temps
@@ -146,6 +147,11 @@ async function searchBedethequeSeries() {
         discoverDisplayedCount = Math.min(DISCOVER_PAGE_SIZE, results.length);
         displayBedethequeCandidates(generation);
         showElement('bedetheque-search-results');
+        // Les résultats sont déjà visibles ; les marqueurs de séries possédées se
+        // mettent à jour quand le chargement secondaire de la bibliothèque finit.
+        ownedUrlsPromise.then(() => {
+            if (generation === searchGeneration) refreshDiscoverOwnedMarkers();
+        });
 
     } catch (error) {
         if (generation !== searchGeneration) return;
@@ -159,6 +165,25 @@ async function searchBedethequeSeries() {
 // Affiche les séries Bedetheque candidates pour le nom recherché à l'étape 1 (choix de
 // LA série à ajouter). À ne pas confondre avec searchSources plus bas, qui affiche les
 // résultats EBDZ/Prowlarr trouvés à l'étape 3 pour une série déjà sélectionnée
+function refreshDiscoverOwnedMarkers() {
+    document.querySelectorAll('#results-list .result-item[data-url]').forEach(card => {
+        const owned = ownedBedethequeUrls?.get(card.dataset.url);
+        if (!owned) return;
+        card.classList.add('result-item-owned');
+        const titleRow = card.querySelector('.result-title-row');
+        if (titleRow && !titleRow.querySelector('.badge-owned')) {
+            const badge = document.createElement('a');
+            badge.href = `/series/${owned.seriesId}`;
+            badge.target = '_blank';
+            badge.className = 'badge badge-owned';
+            badge.title = 'Déjà en bibliothèque - ouvrir la fiche';
+            badge.textContent = '📚 Déjà en bibliothèque';
+            badge.onclick = event => event.stopPropagation();
+            titleRow.insertBefore(badge, titleRow.querySelector('.badges, .series-link-icon'));
+        }
+    });
+}
+
 function displayBedethequeCandidates(generation) {
     const resultsList = document.getElementById('results-list');
     const resultsCount = document.getElementById('results-count');
@@ -193,8 +218,9 @@ function appendDiscoverCandidateCards(fromIndex, toIndex, generation) {
         div.className = 'result-item' + (owned ? ' result-item-owned' : '');
         div.dataset.url = result.url;
         div.onclick = () => {
-            if (owned && !confirm(
-                `« ${result.title} » est déjà dans votre bibliothèque (${owned.libraryName}).\n\n` +
+            const currentOwned = ownedBedethequeUrls ? ownedBedethequeUrls.get(result.url) : null;
+            if (currentOwned && !confirm(
+                `« ${result.title} » est déjà dans votre bibliothèque (${currentOwned.libraryName}).\n\n` +
                 `Continuer réutilisera la série existante et ne supprimera aucun fichier ni aucune donnée.`
             )) return;
             selectSeries(result.url, result.title, div);

@@ -22,7 +22,7 @@ class NouveautesRssClientsTest(unittest.TestCase):
         self.assertIn("probe.includes('/download')", self.helper)
 
     def test_rss_row_renders_client_buttons_separately_from_open_link(self):
-        self.assertIn('_nouveautesRssTorrentClientButtons(event, item)', self.row)
+        self.assertIn('_nouveautesRssTorrentClientButtons(event, item, itemIndex)', self.row)
         self.assertIn('target="_blank"', self.row)
 
     def test_rss_rows_rerender_after_download_client_config_loads(self):

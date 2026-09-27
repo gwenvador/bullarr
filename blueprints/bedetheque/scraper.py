@@ -27,6 +27,20 @@ logger = logging.getLogger(__name__)
 _ALLOWED_HOSTS = {'www.bedetheque.com', 'bedetheque.com'}
 
 
+def matching_query_variants(query):
+    raw = str(query or '').strip()
+    if not raw:
+        return []
+    bases = [raw, re.sub(r'\bL(?=[A-ZÀ-ÖØ-Ý])', 'L ', raw), re.sub(r'(?<=[a-zà-öø-ÿ])(?=[A-ZÀ-ÖØ-Ý])', ' ', raw)]
+    variants = []
+    for base in bases:
+        words = base.split()
+        variants.append(base)
+        for suffix_count in range(1, len(words)):
+            variants.append(' '.join(words[:-suffix_count]))
+    return list(dict.fromkeys(v for v in variants if v))
+
+
 def _safe_bedetheque_url(value):
     parsed = urlparse(value or '')
     if parsed.scheme != 'https' or parsed.hostname not in _ALLOWED_HOSTS:
@@ -352,6 +366,8 @@ class BedethequeScraper:
                 candidates.append(query.split(sep, 1)[0].strip())
 
         from blueprints.search.routes import ebdz_core_title
+        from blueprints.library.scanner import LibraryScanner
+        parsed_title = LibraryScanner.parse_filename(query).get('title') or ''
         no_suffix = ebdz_core_title(query)
         if no_suffix and no_suffix.lower() != query.strip().lower():
             candidates.append(no_suffix)
@@ -361,12 +377,13 @@ class BedethequeScraper:
         if no_punct and no_punct.lower() != query.strip().lower():
             candidates.append(no_punct)
 
-        words = query.split()
-        truncated = [' '.join(words[:n]) for n in range(len(words) - 1, 1, -1)]
+        variants = []
+        for candidate in candidates + ([parsed_title] if parsed_title else []):
+            variants.extend(matching_query_variants(candidate))
 
         def _try_all(search_fn):
             seen = set()
-            for candidate in candidates + truncated:
+            for candidate in variants:
                 if not candidate or candidate.lower() in seen:
                     continue
                 seen.add(candidate.lower())
@@ -1256,12 +1273,39 @@ class BedethequeScraper:
         plusieurs sont à égalité), ne devine toujours pas - même philosophie que le score
         nul ci-dessus. raw_hint absent (défaut None, replié sur `title`): comportement
         inchangé pour les appelants qui n'ont rien de plus riche à fournir."""
-        results = self.search_series(title, limit=30)
+        # Un nom de fichier peut terminer par un auteur sans séparateur fiable
+        # ("Le Grand Monde DeMetter"). On tente d'abord la chaîne complète, puis on
+        # retire progressivement tous les suffixes finaux jusqu'au dernier mot. La variante retenue doit toujours
+        # produire au moins un candidat suffisamment confiant : on ne choisit jamais
+        # simplement le premier résultat d'une requête raccourcie.
+        from blueprints.library.scanner import LibraryScanner
+        raw_title = str(title or '').strip()
+        parsed_title = LibraryScanner.parse_filename(raw_title).get('title') or raw_title
+        query_variants = list(dict.fromkeys(
+            matching_query_variants(raw_title) + matching_query_variants(parsed_title)
+        ))
+
+        results = []
+        match_query = query_variants[0] if query_variants else raw_title
+        for candidate_query in query_variants:
+            candidate_results = self.search_series(candidate_query, limit=30)
+            if not candidate_results:
+                continue
+            candidate_scored = [
+                result for result in candidate_results
+                if self._is_confident_series_match(
+                    candidate_query, result['title'], self._match_score(candidate_query, result['title'])
+                )
+            ]
+            if candidate_scored:
+                results = candidate_results
+                match_query = candidate_query
+                break
 
         if not results:
             return None
 
-        scored = sorted(results, key=lambda r: self._match_score(title, r['title']), reverse=True)
+        scored = sorted(results, key=lambda r: self._match_score(match_query, r['title']), reverse=True)
         # Ne pas rejeter toute la recherche sur le premier résultat seulement : un titre
         # court peut obtenir un Jaccard un peu plus haut par hasard, alors qu'un candidat
         # légèrement plus bas couvre réellement tous ses mots distinctifs. Seuls les
@@ -1269,7 +1313,7 @@ class BedethequeScraper:
         scored = [
             result for result in scored
             if self._is_confident_series_match(
-                title, result['title'], self._match_score(title, result['title'])
+                match_query, result['title'], self._match_score(match_query, result['title'])
             )
         ]
         if not scored:

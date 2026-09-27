@@ -7279,33 +7279,26 @@ def can_auto_assign(parsed, config):
 
 
 def _match_series_for_auto_import(normalized_title, all_series):
-    """Trouve la série correspondant à `normalized_title` parmi `all_series` (lignes
-    (id, library_id, library_path, title, is_oneshot, library_name)) - égalité stricte d'abord (voir
-    _normalize_title_for_match), puis en repli un préfixe NON AMBIGU: le titre parsé du
-    fichier commence par le titre de la série suivi d'un mot supplémentaire. Couvre le
-    sous-titre d'un hors-série/intégrale non séparé du nom de la série par le parsing (ex:
-    "Mika Tanaka - L'écume de l'aube" pour la série "Mika Tanaka") et un nom d'auteur en fin
-    de nom de fichier qu'aucun pattern de parse_filename n'a pu isoler faute de marqueur
-    de tome à côté duquel s'ancrer (ex: "Un espoir sans papiers Ingrid Chabbert" pour la
-    série "Un espoir sans papiers"). "pourquoi 4 imports ne marchent pas automatiquement".
-    Retourne None si aucune égalité ET que 0 ou PLUSIEURS séries correspondent au repli
-    préfixe (ambigu - mieux vaut ne rien assigner automatiquement que de deviner). Même
-    principe pour l'égalité stricte elle-même: si le titre correspond à PLUSIEURS séries
-    (doublon en base, voir add_series_from_bedetheque/_import_execution_lock - un doublon
-    ne devrait normalement plus se produire, mais un ancien pris avant ce correctif ne
-    doit pas faire deviner silencieusement laquelle des deux importer)."""
-    exact_matches = [row for row in all_series if _normalize_title_for_match(row[3]) == normalized_title]
-    if len(exact_matches) == 1:
-        return exact_matches[0]
-    if len(exact_matches) > 1:
-        return None
+    """Match une série locale avec les mêmes variantes que la recherche Bédéthèque.
 
-    prefix_matches = [
-        row for row in all_series
-        if _normalize_title_for_match(row[3])
-        and normalized_title.startswith(_normalize_title_for_match(row[3]) + ' ')
-    ]
-    return prefix_matches[0] if len(prefix_matches) == 1 else None
+    Chaque variante doit rester une correspondance exacte ou un préfixe local unique;
+    une série ambiguë n'est jamais choisie automatiquement.
+    """
+    from blueprints.bedetheque.scraper import matching_query_variants
+
+    for candidate in matching_query_variants(normalized_title):
+        candidate_key = _normalize_title_for_match(candidate)
+        exact_matches = [row for row in all_series if _normalize_title_for_match(row[3]) == candidate_key]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+        if len(exact_matches) > 1:
+            return None
+        prefix_matches = [row for row in all_series if _normalize_title_for_match(row[3]) and candidate_key.startswith(_normalize_title_for_match(row[3]) + ' ')]
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+        if len(prefix_matches) > 1:
+            return None
+    return None
 
 
 def _auto_import_has_self_numbering(parsed):

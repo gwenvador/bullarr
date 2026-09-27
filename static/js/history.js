@@ -10,6 +10,27 @@ let currentHistoryFilter = 'all';
 // qu'une barre de recherche à part.
 let currentHistorySearchText = '';
 let currentHistoryStatusFilter = '';
+const HISTORY_CACHE_KEY = 'bullarr:history:v1';
+const HISTORY_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function _saveHistoryCache() {
+    try {
+        localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), events: allHistoryEvents }));
+    } catch (e) { /* cache indisponible ou trop volumineux */ }
+}
+
+function _restoreHistoryCache() {
+    try {
+        const cached = JSON.parse(localStorage.getItem(HISTORY_CACHE_KEY) || 'null');
+        if (!cached || !Array.isArray(cached.events) || !cached.events.length) return false;
+        if (Date.now() - Number(cached.savedAt || 0) > HISTORY_CACHE_MAX_AGE_MS) return false;
+        allHistoryEvents = cached.events;
+        renderHistoryEvents();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 
 function _historyNormalizeForSearch(text) {
     return String(text || '')
@@ -26,9 +47,10 @@ function filterHistoryBySearchText(value) {
 }
 
 async function loadHistoryEvents() {
-    document.getElementById('history-events-loading').style.display = 'block';
+    const restoredFromCache = _restoreHistoryCache();
+    document.getElementById('history-events-loading').style.display = restoredFromCache ? 'none' : 'block';
     document.getElementById('history-events-empty').style.display = 'none';
-    document.getElementById('history-events-body').innerHTML = '';
+    if (!restoredFromCache) document.getElementById('history-events-body').innerHTML = '';
 
     try {
         const [importResp, downloadResp, actionResp] = await Promise.all([
@@ -44,6 +66,7 @@ async function loadHistoryEvents() {
         // widget "Historique récent" de /import (import.js) ET la fiche historique d'une
         // série (openSeriesHistoryModal, library.js) plutôt que dupliqué ici.
         allHistoryEvents = mapHistoryResponsesToEvents(importResp, downloadResp, actionResp);
+        _saveHistoryCache();
 
         document.getElementById('history-events-loading').style.display = 'none';
         renderHistoryEvents();

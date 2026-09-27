@@ -805,7 +805,22 @@ def _perform_series_match(series_id, series_title, search_by, value, write_volum
     if search_by == 'url':
         info = scraper.get_series_info(value)
     else:
-        info = scraper.search_and_get_best_match(value)
+        # Les titres issus de noms de fichiers peuvent encore contenir les auteurs et
+        # les marqueurs de release (ex. "... Barré Krassinsky.FR.[PDF]-NOTAG").
+        # Le matching automatique doit essayer le titre nettoyé par le même parseur que
+        # l'import, tout en conservant la valeur originale comme indice pour départager
+        # les homonymes. Sans ce fallback, une recherche Bédéthèque peut échouer alors
+        # que le titre réel est parfaitement identifiable.
+        from blueprints.library.scanner import LibraryScanner
+        parsed_title = LibraryScanner.parse_filename(value or '').get('title')
+        queries = [value]
+        if parsed_title and parsed_title.strip().casefold() != str(value or '').strip().casefold():
+            queries.append(parsed_title)
+        info = None
+        for query in queries:
+            info = scraper.search_and_get_best_match(query, raw_hint=value)
+            if info:
+                break
 
     if not info:
         return False, None, 'Impossible de trouver la série sur Bedetheque'

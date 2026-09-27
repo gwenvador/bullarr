@@ -5,7 +5,10 @@ from flask import request, jsonify, current_app
 from . import ebdz_bp
 import json
 import os
+import re
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from encryption import encrypt, decrypt, ensure_encryption_key
@@ -651,20 +654,254 @@ def auto_scrape_status():
     except Exception as e:
         return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
+def _annotate_rss_entries(events):
+    """Ajoute aux entrées RSS les mêmes repères locaux que Nouveautés EBDZ/Telegram.
+
+    Le RSS ne fournit pas d'identité de série persistée : on utilise uniquement une
+    correspondance de titre locale non ambiguë, sans créer ni modifier de série. Le statut
+    downloaded vient de l'historique des téléchargements réussis (source_link de la page
+    RSS ou titre normalisé) et des téléchargements encore actifs.
+    """
+    from blueprints.search.routes import normalize_search_text, ebdz_core_title
+    from blueprints.library.scanner import LibraryScanner
+    from blueprints.bedetheque.catalog_index import search_catalog_index
+    from blueprints.bedetheque.scraper import BedethequeScraper, matching_query_variants
+
+    def query_variants(title):
+        parsed = LibraryScanner.parse_filename(str(title or '')).get('title') or str(title or '')
+        return matching_query_variants(parsed)
+
+    def keys(title):
+        raw = str(title or '').strip()
+        parsed = LibraryScanner.parse_filename(raw).get('title') or raw
+        variants = [raw, parsed]
+        words = parsed.split()
+        for suffix_count in range(1, len(words)):
+            variants.append(' '.join(words[:-suffix_count]))
+        return {
+            normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(value)))
+            for value in variants if value
+        }
+
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    rows = conn.execute('SELECT id, title, bedetheque_url FROM series').fetchall()
+    monitored = {row[0] for row in conn.execute(
+        'SELECT series_id FROM missing_volume_monitor WHERE enabled = 1'
+    ).fetchall()}
+    successful = conn.execute(
+        'SELECT title, source_link FROM missing_volume_downloads WHERE success = 1'
+    ).fetchall()
+    active = conn.execute(
+        "SELECT title FROM active_downloads WHERE status NOT IN ('failed', 'cancelled')"
+    ).fetchall()
+    conn.close()
+
+    by_title = {}
+    for series_id, title, bedetheque_url in rows:
+        title_key = normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title or '')))
+        if not title_key:
+            continue
+        if title_key in by_title:
+            by_title[title_key] = None  # titre ambigu: ne pas deviner
+        else:
+            by_title[title_key] = (series_id, title, bedetheque_url)
+
+    downloaded_links = {link for _title, link in successful if link}
+    downloaded_titles = set()
+    for title, _link in successful:
+        downloaded_titles.update(keys(title))
+    for (title,) in active:
+        downloaded_titles.update(keys(title))
+
+    catalog_cache = getattr(_annotate_rss_entries, '_catalog_cache', {})
+    rss_overrides = _load_rss_match_overrides()
+    series_by_id = {int(series_id): (series_id, title, url) for series_id, title, url in rows}
+
+    def catalog_match(title):
+        for query in query_variants(title):
+            if query in catalog_cache:
+                candidates = catalog_cache[query]
+            else:
+                candidates = search_catalog_index(query, limit=30) or []
+                catalog_cache[query] = candidates
+            confident = [candidate for candidate in candidates if BedethequeScraper._is_confident_series_match(query, candidate['title'], BedethequeScraper._match_score(query, candidate['title']))]
+            if confident:
+                return sorted(confident, key=lambda candidate: BedethequeScraper._match_score(query, candidate['title']), reverse=True)[0]
+        return None
+
+    annotated = []
+    for event in events:
+        event_keys = keys(event.get('title'))
+        match = next((by_title.get(candidate) for candidate in event_keys if by_title.get(candidate) is not None), None)
+        override_id = rss_overrides.get(event.get('link')) or rss_overrides.get(event.get('title'))
+        if override_id is not None:
+            try:
+                match = series_by_id.get(int(override_id)) or match
+            except (TypeError, ValueError):
+                pass
+        catalog = catalog_match(event.get('title')) if match is None else None
+        downloaded = (
+            event.get('link') in downloaded_links
+            or bool(event_keys & downloaded_titles)
+        )
+        annotated.append({
+            **event,
+            'already_in_library': match is not None,
+            'already_monitored': bool(match and match[0] in monitored),
+            'series_id': match[0] if match else None,
+            'series_title': match[1] if match else (catalog.get('title') if catalog else None),
+            'bedetheque_title': catalog.get('title') if catalog else (match[1] if match else None),
+            'bedetheque_url': match[2] if match else (catalog.get('url') if catalog else None),
+            'downloaded': downloaded,
+            '_rss_annotation_version': RSS_ANNOTATION_VERSION,
+        })
+    _annotate_rss_entries._catalog_cache = catalog_cache
+    return annotated
+
+
+_rss_persistent_cache_lock = threading.Lock()
+RSS_PERSISTENT_CACHE_TTL_SECONDS = 300
+RSS_ANNOTATION_VERSION = 2
+
+
+def _rss_persistent_cache_path():
+    config_path = current_app.config['RSS_CONFIG_FILE']
+    return os.path.join(os.path.dirname(config_path), 'rss_entries_cache.json')
+
+
+def _load_rss_persistent_cache(path):
+    try:
+        with open(path, encoding='utf-8') as handle:
+            value = json.load(handle)
+        return value if isinstance(value, dict) else {}
+    except (FileNotFoundError, OSError, ValueError, TypeError):
+        return {}
+
+
+def _save_rss_persistent_cache(path, cache):
+    temp_path = path + '.tmp'
+    with _rss_persistent_cache_lock:
+        with open(temp_path, 'w', encoding='utf-8') as handle:
+            json.dump(cache, handle, ensure_ascii=False)
+        os.replace(temp_path, path)
+
+
+def _refresh_rss_persistent_feed(feed, path):
+    try:
+        entries = fetch_feed(feed)
+        cache = _load_rss_persistent_cache(path)
+        cache[feed['url']] = {'fetched_at': time.time(), 'entries': entries}
+        _save_rss_persistent_cache(path, cache)
+    except Exception:
+        pass
+
+
+def _rss_match_overrides_path():
+    return os.path.join(os.path.dirname(_rss_persistent_cache_path()), 'rss_series_matches.json')
+
+
+def _load_rss_match_overrides():
+    try:
+        with open(_rss_match_overrides_path(), encoding='utf-8') as handle:
+            value = json.load(handle)
+        return value if isinstance(value, dict) else {}
+    except (FileNotFoundError, OSError, ValueError, TypeError):
+        return {}
+
+
+@ebdz_bp.route('/rss/match-override', methods=['POST'])
+def rss_match_override():
+    data = request.get_json(silent=True) or {}
+    identity = str(data.get('link') or data.get('title') or '').strip()
+    try:
+        series_id = int(data.get('series_id'))
+    except (TypeError, ValueError):
+        series_id = None
+    if not identity or series_id is None:
+        return jsonify({'success': False, 'error': 'Lien/titre et série requis'}), 400
+    overrides = _load_rss_match_overrides()
+    overrides[identity] = series_id
+    path = _rss_match_overrides_path()
+    temp = path + '.tmp'
+    with open(temp, 'w', encoding='utf-8') as handle:
+        json.dump(overrides, handle, ensure_ascii=False)
+    os.replace(temp, path)
+    # Invalider les annotations persistées : le prochain rendu doit refléter
+    # immédiatement le nouveau rattachement manuel.
+    cache_path = _rss_persistent_cache_path()
+    cache = _load_rss_persistent_cache(cache_path)
+    changed = False
+    for cached in cache.values():
+        if isinstance(cached, dict) and 'annotated_entries' in cached:
+            cached.pop('annotated_entries', None)
+            changed = True
+    if changed:
+        _save_rss_persistent_cache(cache_path, cache)
+    return jsonify({'success': True})
+
+
 @ebdz_bp.route('/rss/latest', methods=['GET'])
 def rss_latest():
     feeds = [feed for feed in load_feeds(current_app.config['RSS_CONFIG_FILE']) if feed.get('enabled', True)]
+    cache_path = _rss_persistent_cache_path()
+    persistent_cache = _load_rss_persistent_cache(cache_path)
+    stale_feeds = []
+    newly_fetched_feeds = []
     events = []
     errors = []
     def read(feed):
-        try: return feed, fetch_feed(feed), None
-        except Exception as exc: return feed, [], str(exc)
+        cached = persistent_cache.get(feed['url'])
+        if isinstance(cached, dict) and isinstance(cached.get('entries'), list):
+            if time.time() - float(cached.get('fetched_at') or 0) > RSS_PERSISTENT_CACHE_TTL_SECONDS:
+                stale_feeds.append(feed)
+            # Les annotations sont persistées séparément afin qu'un redémarrage
+            # ne force pas une recherche Bédéthèque avant le premier rendu.
+            annotated = cached.get('annotated_entries')
+            usable = isinstance(annotated, list) and all(isinstance(item, dict) and item.get('_rss_annotation_version') == RSS_ANNOTATION_VERSION for item in annotated)
+            return feed, annotated if usable else cached['entries'], None
+        try:
+            entries = fetch_feed(feed)
+            persistent_cache[feed['url']] = {'fetched_at': time.time(), 'entries': entries}
+            newly_fetched_feeds.append(feed)
+            return feed, entries, None
+        except Exception as exc:
+            return feed, [], str(exc)
     with ThreadPoolExecutor(max_workers=min(5, max(1, len(feeds)))) as executor:
         for feed, entries, error in executor.map(read, feeds):
             if error: errors.append({'name': feed.get('name', feed['url']), 'error': error})
             events.extend({**entry, 'type': 'rss', 'feed_name': feed.get('name', entry.get('feed_title') or feed['url'])} for entry in entries)
     events.sort(key=lambda event: event.get('date', ''), reverse=True)
+    if newly_fetched_feeds:
+        try:
+            _save_rss_persistent_cache(cache_path, persistent_cache)
+        except OSError:
+            pass
+    # Les données périmées sont servies immédiatement; une mise à jour réseau ne doit
+    # jamais retarder la page. Le prochain appel récupérera les résultats frais.
+    for feed in stale_feeds:
+        threading.Thread(target=_refresh_rss_persistent_feed, args=(feed, cache_path), daemon=True).start()
     limit = min(max(request.args.get('limit', default=100, type=int), 1), 500)
     # Le plafond s'applique à chaque flux, pas à l'ensemble agrégé: un flux récent
     # très prolifique ne doit pas masquer un second flux plus ancien dans Nouveautés.
+    # Les événements déjà enrichis sont directement rendus : aucune recherche
+    # Bédéthèque ne doit bloquer le premier affichage après un redémarrage.
+    if not events or not all(event.get('_rss_annotation_version') == RSS_ANNOTATION_VERSION for event in events):
+        events = _annotate_rss_entries(events)
+    # Conserver le résultat enrichi par flux : il est disponible immédiatement
+    # après un redémarrage, pendant que les flux périmés se rafraîchissent.
+    try:
+        by_feed = {}
+        for event in events:
+            by_feed.setdefault(event.get('feed_name'), []).append(event)
+        changed = False
+        for feed in feeds:
+            cached = persistent_cache.get(feed['url'])
+            name = feed.get('name')
+            if isinstance(cached, dict) and by_feed.get(name):
+                cached['annotated_entries'] = by_feed[name]
+                changed = True
+        if changed:
+            _save_rss_persistent_cache(cache_path, persistent_cache)
+    except (OSError, TypeError):
+        pass
     return jsonify({'success': True, 'entries': events[:limit * max(1, len(feeds))], 'errors': errors})
