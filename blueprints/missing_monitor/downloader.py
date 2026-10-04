@@ -5,6 +5,7 @@ import os
 import re
 import json
 import sys
+import secrets
 import unicodedata
 from typing import Dict, List, Optional, Tuple
 from flask import current_app
@@ -347,7 +348,7 @@ def get_trackable_active_downloads(include_failed=False, include_terminal=False)
             statuses = "('pending', 'completed', 'importing', 'failed')" if include_failed else "('pending', 'completed', 'importing')"
         cursor.execute(f'''
             SELECT id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count,
-                   client, client_item_id, force_replace, status,
+                   client, client_item_id, client_item_name, force_replace, status,
                    is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
             FROM active_downloads
             WHERE series_id IS NOT NULL
@@ -363,11 +364,12 @@ def get_trackable_active_downloads(include_failed=False, include_terminal=False)
         rows = [
             {'id': row_id, 'title': title, 'series_id': series_id, 'volume_id': volume_id, 'volume_number': volume_number,
              'is_pack': bool(is_pack), 'expected_volume_count': expected_volume_count,
-             'client': client, 'client_item_id': client_item_id, 'force_replace': bool(force_replace), 'download_status': status,
+             'client': client, 'client_item_id': client_item_id, 'client_item_name': client_item_name,
+             'force_replace': bool(force_replace), 'download_status': status,
              'is_integral': bool(is_integral), 'integral_number': integral_number,
              'is_hs': bool(is_hs), 'hs_number': hs_number,
              'is_episode': bool(is_episode), 'episode_number': episode_number}
-            for row_id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count, client, client_item_id, force_replace, status,
+            for row_id, title, series_id, volume_id, volume_number, is_pack, expected_volume_count, client, client_item_id, client_item_name, force_replace, status,
                 is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
             in cursor.fetchall()
         ]
@@ -404,14 +406,36 @@ def match_filename_against_trackable_downloads(filename: str, rows: List[Dict]) 
     """Matching pur Python (voir _filenames_match) contre une liste déjà chargée (voir
     get_trackable_active_downloads) - retourne {'series_id':, 'volume_id':,
     'volume_number':} ou None, sans toucher la DB."""
+    normalized_filename = _normalize_filename(filename)
+    if not normalized_filename:
+        return None
     for row in rows:
-        if _filenames_match(row['title'], filename):
+        normalized_title = row.get('_normalized_title')
+        if normalized_title is None:
+            normalized_title = _normalize_filename(row['title'])
+        if normalized_title and (
+            normalized_title == normalized_filename
+            or normalized_title in normalized_filename
+            or normalized_filename in normalized_title
+        ):
             return {
                 'tracking_id': row['id'], 'series_id': row['series_id'],
                 'volume_id': row['volume_id'], 'volume_number': row['volume_number'],
                 'force_replace': row.get('force_replace', False),
             }
     return None
+
+
+def prepare_trackable_downloads_for_matching(rows: List[Dict]) -> List[Dict]:
+    """Normalise chaque titre une fois avant de comparer beaucoup de fichiers.
+
+    Le scan d'Import compare des centaines de fichiers à des centaines de lignes.
+    Conserver la clé sur chaque ligne évite de la recalculer à chaque paire, tout en
+    préservant l'ordre et les règles du premier match de la fonction ci-dessus.
+    """
+    for row in rows:
+        row['_normalized_title'] = _normalize_filename(row['title'])
+    return rows
 
 
 def find_active_downloads_by_client_item_ids(client: str, client_item_ids) -> Dict[str, Dict]:
@@ -1172,13 +1196,13 @@ def _reconcile_stuck_completed_download(download_status, is_pack, series_id, ser
             and series_path and os.path.isdir(series_path)):
         return False
     try:
-        disk_match = any(
-            os.path.isfile(os.path.join(series_path, name)) and _filenames_match(title, name)
-            for name in os.listdir(series_path)
-        )
+        matching_paths = [
+            os.path.join(series_path, name) for name in os.listdir(series_path)
+            if os.path.isfile(os.path.join(series_path, name)) and _filenames_match(title, name)
+        ]
     except OSError:
-        disk_match = False
-    if not disk_match:
+        matching_paths = []
+    if not matching_paths:
         return False
     try:
         from blueprints.library.scanner import LibraryScanner
@@ -1186,7 +1210,38 @@ def _reconcile_stuck_completed_download(download_status, is_pack, series_id, ser
     except Exception as e:
         print(f"✗ Erreur auto-résolution téléchargement bloqué (série #{series_id}): {e}")
         return False
-    return True
+    # Un scan réussi peut ne pas avoir retenu le fichier. Confirmer son existence dans
+    # la base avant de clôturer le téléchargement suivi.
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        return conn.execute(
+            f"SELECT 1 FROM volumes WHERE series_id = ? AND filepath IN ({','.join('?' for _ in matching_paths)}) LIMIT 1",
+            (series_id, *matching_paths),
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def reconcile_completed_download_files():
+    """Repair old completed rows in the background, never during an Import page read."""
+    db_path = current_app.config.get('DATABASE')
+    if not db_path:
+        return 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        rows = conn.execute('''
+            SELECT ad.id, ad.status, ad.is_pack, ad.series_id, s.path, ad.title
+            FROM active_downloads ad JOIN series s ON s.id = ad.series_id
+            WHERE ad.status = 'completed' AND ad.is_pack = 0
+        ''').fetchall()
+    finally:
+        conn.close()
+    repaired = 0
+    for download_id, status, is_pack, series_id, series_path, title in rows:
+        if _reconcile_stuck_completed_download(status, is_pack, series_id, series_path, title, db_path):
+            mark_download_imported(download_id)
+            repaired += 1
+    return repaired
 
 
 def get_pending_downloads() -> List[Dict]:
@@ -1245,8 +1300,34 @@ def get_pending_downloads() -> List[Dict]:
             conn.close()
             return []
 
-        cursor.execute("SELECT series_id, volume_number FROM volumes WHERE filepath IS NOT NULL AND filepath != ''")
+        # ``volume_number`` is NULL for integrals, specials and episodes.  Keeping
+        # those rows in the generic (series_id, volume_number) set makes every
+        # download whose parsed number is also NULL look already owned as soon as
+        # *one* integral/special/episode of the series exists.  Build separate
+        # ownership sets so the Import queue compares the right kind of number.
+        cursor.execute(
+            "SELECT series_id, volume_number FROM volumes "
+            "WHERE volume_number IS NOT NULL AND filepath IS NOT NULL AND filepath != ''"
+        )
         owned_volumes = {(r['series_id'], r['volume_number']) for r in cursor.fetchall()}
+        cursor.execute(
+            "SELECT series_id, integral_number FROM volumes "
+            "WHERE is_integral = 1 AND integral_number IS NOT NULL "
+            "AND filepath IS NOT NULL AND filepath != ''"
+        )
+        owned_integrals = {(r['series_id'], r['integral_number']) for r in cursor.fetchall()}
+        cursor.execute(
+            "SELECT series_id, hs_number FROM volumes "
+            "WHERE is_hs = 1 AND hs_number IS NOT NULL "
+            "AND filepath IS NOT NULL AND filepath != ''"
+        )
+        owned_hs = {(r['series_id'], r['hs_number']) for r in cursor.fetchall()}
+        cursor.execute(
+            "SELECT series_id, episode_number FROM volumes "
+            "WHERE is_episode = 1 AND episode_number IS NOT NULL "
+            "AND filepath IS NOT NULL AND filepath != ''"
+        )
+        owned_episodes = {(r['series_id'], r['episode_number']) for r in cursor.fetchall()}
         cursor.execute(
             "SELECT DISTINCT v.series_id FROM volumes v JOIN series s ON s.id = v.series_id "
             "WHERE s.is_oneshot = 1 AND v.volume_number IS NULL AND v.filepath IS NOT NULL AND v.filepath != ''"
@@ -1296,13 +1377,6 @@ def get_pending_downloads() -> List[Dict]:
                 continue
             seen_pending_keys.add(dedupe_key)
 
-            # Auto-résolution d'une ligne 'completed' orpheline (import interrompu par un
-            # redémarrage avant la mise à jour de volumes.filepath) - voir
-            # Technical rationale retained for maintainability.
-            if _reconcile_stuck_completed_download(download_status, is_pack, series_id, series_path, title, db_path):
-                # Le fichier est maintenant lié (volumes.filepath) - cette ligne n'a plus
-                # lieu d'apparaître comme "en attente"/"Prêt".
-                continue
             try:
                 parsed = LibraryScanner.parse_filename(title)
                 parsed_type = {
@@ -1321,11 +1395,29 @@ def get_pending_downloads() -> List[Dict]:
                     'is_episode': stored_is_episode, 'episode_number': row['episode_number'],
                 }
                 resolved_volume_number = None
-            if series_id is not None and not is_pack and (
-                (series_id, resolved_volume_number) in owned_volumes
-                or (resolved_volume_number is None and series_id in owned_oneshot_series_ids)
-            ):
-                continue
+            if series_id is not None and not is_pack:
+                if parsed_type.get('is_integral'):
+                    already_owned = (
+                        series_id, parsed_type.get('integral_number')
+                    ) in owned_integrals
+                elif parsed_type.get('is_hs'):
+                    already_owned = (
+                        series_id, parsed_type.get('hs_number')
+                    ) in owned_hs
+                elif parsed_type.get('is_episode'):
+                    already_owned = (
+                        series_id, parsed_type.get('episode_number')
+                    ) in owned_episodes
+                else:
+                    already_owned = (
+                        resolved_volume_number is not None
+                        and (series_id, resolved_volume_number) in owned_volumes
+                    )
+                if (
+                    already_owned
+                    or (resolved_volume_number is None and series_id in owned_oneshot_series_ids)
+                ):
+                    continue
             exhausted = (
                 client == 'telegram' and bytes_downloaded is not None
                 and (retry_count or 0) >= TELEGRAM_MAX_RETRY_ATTEMPTS
@@ -1434,9 +1526,11 @@ class MissingVolumeDownloader:
             # With Bullarr auth enabled, the auth middleware otherwise returns
             # HTTP 302 to /auth/login before the client route is reached.
             client = current_app.test_client()
+            csrf_token = secrets.token_urlsafe(32)
             with client.session_transaction() as internal_session:
                 internal_session['user'] = {'name': 'bullarr-internal', 'auth_method': 'internal'}
-            response = client.post(path, json=payload)
+                internal_session['csrf_token'] = csrf_token
+            response = client.post(path, json=payload, headers={'X-CSRF-Token': csrf_token})
             print(f"[{client_label} Download] Réponse HTTP: {response.status_code}", file=sys.stderr)
 
             if response.status_code == 200:

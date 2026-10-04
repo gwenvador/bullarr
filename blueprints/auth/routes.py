@@ -6,6 +6,8 @@ le PKCE et la validation du token d'identité — pas de JWT fait maison.
 from flask import request, jsonify, redirect, url_for, session, current_app, render_template
 from authlib.integrations.flask_client import OAuth
 from werkzeug.security import check_password_hash, generate_password_hash
+import hmac
+import secrets
 import requests
 
 from . import auth_bp
@@ -63,6 +65,11 @@ def enforce_login():
         return None
 
     if session.get('user'):
+        if request.method not in {'GET', 'HEAD', 'OPTIONS'}:
+            expected = session.get('csrf_token')
+            supplied = request.headers.get('X-CSRF-Token', '')
+            if not expected or not hmac.compare_digest(expected, supplied):
+                return jsonify({'success': False, 'error': 'Jeton de sécurité manquant ou invalide'}), 403
         return None
 
     # Keep the post-login destination same-origin. Storing request.url trusted the
@@ -196,6 +203,14 @@ def logout_provider():
 def current_user():
     """Retourne l'utilisateur de la session courante (ou null si non connecté)"""
     return jsonify({'user': session.get('user')})
+
+
+@auth_bp.route('/api/auth/csrf')
+def csrf_token():
+    """Provide a per-session token for same-origin state-changing requests."""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_urlsafe(32)
+    return jsonify({'token': session['csrf_token']})
 
 
 @auth_bp.route('/api/auth/config', methods=['GET', 'POST'])

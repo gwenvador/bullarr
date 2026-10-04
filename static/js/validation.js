@@ -7,6 +7,16 @@ function reviewEscape(value) {
 // lgtm [js/incomplete-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
 function reviewAttr(value) { return reviewEscape(value).replace(/'/g, "\\'").replace(/`/g, '&#96;'); }
 function reviewSourceUrl(candidate) { return candidate.thread_url || candidate.info_url || candidate.source_link || candidate.link || ''; }
+function reviewFileSize(value) {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes <= 0) return '—';
+    const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
+    let amount = bytes;
+    let unit = 0;
+    while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit++; }
+    const digits = unit === 0 || amount >= 100 ? 0 : 1;
+    return `${amount.toLocaleString('fr-FR', { maximumFractionDigits: digits })} ${units[unit]}`;
+}
 function reviewDecodeFilename(filename) {
     if (!filename) return filename;
     let decoded = filename;
@@ -99,6 +109,44 @@ function closeReviewBedethequeModal() {
 let _reviewModalReviewId = null;
 
 let expandedReviewCandidates = new Set();
+const reviewKnownSeriesUrls = new Map();
+
+async function retryReviewSeriesAddition(reviewId, button) {
+    const url = reviewKnownSeriesUrls.get(reviewId);
+    if (!url) return;
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = svgIcon('loader-circle', 'icon-spin');
+    try {
+        const librariesResponse = await fetch('/api/libraries');
+        const libraries = await librariesResponse.json();
+        const libraryId = Array.isArray(libraries) ? libraries[0]?.id : null;
+        if (!libraryId) throw new Error('Aucune bibliothèque disponible');
+        const addResponse = await fetch('/api/bedetheque/add-series', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, library_id: libraryId, skip_auto_acquire: true })
+        });
+        const added = await addResponse.json();
+        if (!addResponse.ok || !added.success) throw new Error(added.error || 'Ajout de la série impossible');
+        const searchResponse = await fetch('/api/bedetheque/auto-acquire/run', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ series_id: added.series_id })
+        });
+        const search = await searchResponse.json();
+        if (!searchResponse.ok || !search.success) throw new Error(search.error || 'Recherche automatique impossible');
+        const resolveResponse = await fetch(`/api/auto-acquire/reviews/${reviewId}/resolve`, { method: 'POST' });
+        if (!resolveResponse.ok) throw new Error('Série ajoutée, mais validation non clôturée');
+        showToast('review-series-retry', 'Série ajoutée ; recherche automatique lancée.', {
+            icon: 'check', autoHideMs: 6000, href: `/series/${added.series_id}`
+        });
+        await loadAutoAcquireReviews();
+    } catch (error) {
+        showToast('review-series-retry', error.message, { icon: 'circle-x', autoHideMs: 7000 });
+    } finally {
+        button.disabled = false;
+        button.innerHTML = original;
+    }
+}
 
 function toggleReviewCandidates(reviewId) {
     if (expandedReviewCandidates.has(reviewId)) expandedReviewCandidates.delete(reviewId);
@@ -166,6 +214,11 @@ async function selectReviewBedethequeCandidate(url, title) {
 // au niveau du groupe pour ne plus se répéter à chaque tome.
 function _reviewTomeHtml(review) {
     const volume = review.volume_label || (review.volume_number == null ? 'Album' : `Tome ${review.volume_number}`);
+    const knownUrl = !review.series_id && (review.candidates || []).find(candidate => candidate.bedetheque_url)?.bedetheque_url;
+    if (knownUrl) reviewKnownSeriesUrls.set(review.id, knownUrl);
+    const retryAction = knownUrl
+        ? `<button class="review-icon-btn review-download-btn" type="button" onclick="retryReviewSeriesAddition(${review.id}, this)" title="Réessayer l'ajout et la recherche">${svgIcon('refresh-cw')}</button><a class="review-icon-btn" href="${reviewAttr(knownUrl)}" target="_blank" rel="noopener" title="Fiche Bédéthèque identifiée"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:18px;height:18px;object-fit:contain;"></a>`
+        : '';
     const seriesMatchAction = !review.series_id
         ? `<button class="review-icon-btn review-download-btn" type="button" onclick="openReviewBedethequeModal(${review.id}, '${reviewAttr(review.series_title || '')}')" title="Matcher cette série sur Bédéthèque"><img src="/static/img/bedetheque-logo.png" alt="" style="width:18px;height:18px;object-fit:contain;"></button>`
         : '';
@@ -174,18 +227,19 @@ function _reviewTomeHtml(review) {
         const name = reviewDecodeFilename(candidate.filename || candidate.title || 'Résultat sans nom');
         const url = reviewSourceUrl(candidate);
         const action = review.series_id
-            ? `<button class="review-icon-btn review-download-btn" type="button" title="Ajouter ce fichier au téléchargement" onclick="downloadReviewCandidate(${review.id}, ${index}, this)">${svgIcon('plus')}</button>`
-            : seriesMatchAction;
-        return `<div class="review-candidate"><span class="review-source">${reviewSourceIcon(candidate)}</span><span class="review-candidate-name">${reviewEscape(name)}</span>${_reviewCandidateAvailabilityHtml(candidate, review.id, index)}${url ? `<a class="review-icon-btn" href="${reviewAttr(url)}" target="_blank" rel="noopener" title="Ouvrir la source">${svgIcon('link')}</a>` : ''}${action}</div>`;
+            ? `<button class="review-icon-btn review-download-btn" type="button" title="Ajouter ce fichier au téléchargement" onclick="downloadReviewCandidate(${review.id}, ${candidate.candidate_index ?? index}, this)">${svgIcon('plus')}</button>`
+            : knownUrl ? '' : seriesMatchAction;
+        return `<div class="review-candidate"><span class="review-source">${reviewSourceIcon(candidate)}</span><span class="review-candidate-name">${reviewEscape(name)}</span><span class="review-candidate-size" title="Taille du fichier">${reviewEscape(reviewFileSize(candidate.size))}</span>${_reviewCandidateAvailabilityHtml(candidate, review.id, index)}${url ? `<a class="review-icon-btn" href="${reviewAttr(url)}" target="_blank" rel="noopener" title="Ouvrir la source">${svgIcon('link')}</a>` : ''}${action}</div>`;
     }).join('');
     const isExpanded = expandedReviewCandidates.has(review.id);
     const count = candidateList.length;
     return `<div class="review-tome" data-review-id="${review.id}">
         <button class="review-dismiss-btn" type="button" title="Supprimer cette validation" onclick="resolveAutoAcquireReview(${review.id})">${svgIcon('x')}</button>
         <div class="review-tome-header">
-            <span class="review-volume">${reviewEscape(volume)} ${reviewDateHtml(review.created_at)}</span>
+            <span class="review-volume">${reviewEscape(volume)} ${reviewDateHtml(review.created_at)} ${retryAction}</span>
             <button class="review-candidates-toggle${isExpanded ? ' review-candidates-toggle-open' : ''}" type="button" id="review-candidates-toggle-${review.id}" onclick="toggleReviewCandidates(${review.id})">${count} candidat${count > 1 ? 's' : ''} ${svgIcon('chevron-down')}</button>
         </div>
+        ${review.reason ? `<div class="review-meta">${reviewEscape(review.reason)}</div>` : ''}
         <div class="review-candidates" id="review-candidates-${review.id}" style="display:${isExpanded ? 'grid' : 'none'}">${candidatesHtml || '<div class="review-meta">Aucun candidat détaillé.</div>'}</div>
     </div>`;
 }

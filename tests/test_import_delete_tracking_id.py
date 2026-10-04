@@ -34,13 +34,13 @@ class PendingOneShotPayloadTest(unittest.TestCase):
 
 
 class ImportManualReviewPresentationTest(unittest.TestCase):
-    def test_initial_import_load_populates_known_volumes_before_rendering(self):
+    def test_initial_import_load_renders_before_loading_known_volumes(self):
         source = (Path(__file__).resolve().parents[1] / 'static/js/import.js').read_text()
         start = source.index('async function loadActiveDownloads()')
         end = source.index('function renderCurrentlyProcessingBanner()', start)
         body = source[start:end]
-        self.assertIn('await _ensureVolumesLoadedForFiles(importFiles);', body)
-        self.assertLess(body.index('await _ensureVolumesLoadedForFiles(importFiles);'), body.index('displayImportFiles();'))
+        self.assertIn('_ensureVolumesLoadedForFiles(volumesToRefresh).then(() => displayImportFiles());', body)
+        self.assertLess(body.index('displayImportFiles();'), body.index('_ensureVolumesLoadedForFiles(volumesToRefresh)'))
 
 
 class ImportVolumeOwnershipPresentationTest(unittest.TestCase):

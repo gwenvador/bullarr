@@ -3,10 +3,9 @@ Routes pour l'intégration Bedetheque
 """
 from flask import request, jsonify, current_app
 from . import bedetheque_bp
-from .scraper import BedethequeScraper, BedethequeDatabase, match_bedetheque_volume, _parse_int_hs_prefix, _parse_special_prefix
+from .scraper import BedethequeScraper, BedethequeDatabase, match_bedetheque_volume, _parse_int_hs_prefix, _parse_special_prefix, _numbered_special_label, _safe_bedetheque_url
 from .comicinfo_writer import build_comicinfo_fields, apply_volume_comicinfo, UnsupportedFormatError
 from .cbr_converter import convert_cbr_to_cbz, CbrConversionError
-from network_safety import safe_external_get
 import sqlite3
 import json
 import logging
@@ -19,6 +18,29 @@ import re
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_bedetheque_page(scraper, url, *, timeout=20, max_bytes=12 * 1024 * 1024):
+    """Read a fixed Bédéthèque page through the warmed scraper session.
+
+    Its session cookie is needed by Cloudflare on theme/detail pages. The generic
+    pinned-IP fetcher opens a new connection and receives a 403 there. Restrict this
+    path to the canonical Bédéthèque host, reject redirects, and bound the response.
+    """
+    safe_url = _safe_bedetheque_url(url)
+    with scraper.session.get(safe_url, timeout=timeout, stream=True, allow_redirects=False) as response:
+        if 300 <= response.status_code < 400:
+            raise ValueError('Redirection Bédéthèque inattendue')
+        response.raise_for_status()
+        length = response.headers.get('Content-Length')
+        if length is not None and int(length) > max_bytes:
+            raise ValueError('Page Bédéthèque trop volumineuse')
+        chunks = bytearray()
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            chunks.extend(chunk)
+            if len(chunks) > max_bytes:
+                raise ValueError('Page Bédéthèque trop volumineuse')
+        return bytes(chunks)
 
 
 def get_db_connection():
@@ -151,9 +173,8 @@ def _parse_indispensable_genre(url):
         from bs4 import BeautifulSoup
         scraper = BedethequeScraper()
         scraper._ensure_session()
-        response = safe_external_get(url, session=scraper.session, timeout=15, max_bytes=4 * 1024 * 1024)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
+        page = _fetch_bedetheque_page(scraper, url, timeout=15, max_bytes=4 * 1024 * 1024)
+        soup = BeautifulSoup(page, 'html.parser')
         label = soup.find('label', string=lambda value: value and 'Genre' in value)
         value = label.find_next('span', class_='style-serie') if label else None
         return value.get_text(' ', strip=True) if value else '-'
@@ -201,9 +222,8 @@ def pantheon_authors():
             # Cloudflare sans la session réchauffée du scraper principal.
             scraper = BedethequeScraper()
             scraper._ensure_session()
-            response = safe_external_get(_PANTHEON_CATEGORIES[category], session=scraper.session, timeout=20, max_bytes=12 * 1024 * 1024)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
+            page = _fetch_bedetheque_page(scraper, _PANTHEON_CATEGORIES[category], timeout=20, max_bytes=12 * 1024 * 1024)
+            soup = BeautifulSoup(page, 'html.parser')
             items = []
             listing = soup.select_one('ul.indispensables-list')
             rows = listing.select(':scope > li') if listing else []
@@ -255,7 +275,8 @@ def pantheon_authors():
                 owned_author_urls.update(str(u).rstrip('/') for u in links.values() if u)
         items = [dict(item, already_owned=item['url'].rstrip('/') in owned_author_urls) for item in items]
         return jsonify({'success': True, 'category': category, 'items': items, 'cached': was_cached})
-    except Exception as exc:
+    except Exception:
+        logger.exception('Erreur lors du chargement Bédéthèque')
         return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 
@@ -279,9 +300,8 @@ def list_themes():
         # Cloudflare sans la session réchauffée du scraper principal.
         scraper = BedethequeScraper()
         scraper._ensure_session()
-        response = safe_external_get('https://www.bedetheque.com/theme', session=scraper.session, timeout=20, max_bytes=12 * 1024 * 1024)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
+        page = _fetch_bedetheque_page(scraper, 'https://www.bedetheque.com/theme', timeout=20, max_bytes=12 * 1024 * 1024)
+        soup = BeautifulSoup(page, 'html.parser')
         ul = soup.select_one('div.select-theme > ul')
         groups = []
         current = None
@@ -301,7 +321,8 @@ def list_themes():
             current['themes'].append({'name': name, 'slug': m.group(1), 'url': href})
         save_scrape_cache('themes:list', groups)
         return jsonify({'success': True, 'groups': groups, 'cached': False})
-    except Exception as exc:
+    except Exception:
+        logger.exception('Erreur lors du chargement Bédéthèque')
         return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 
@@ -331,9 +352,8 @@ def theme_series():
             # Cloudflare sans la session réchauffée du scraper principal.
             scraper = BedethequeScraper()
             scraper._ensure_session()
-            response = safe_external_get(theme_url, session=scraper.session, timeout=20, max_bytes=12 * 1024 * 1024)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
+            page = _fetch_bedetheque_page(scraper, theme_url, timeout=20, max_bytes=12 * 1024 * 1024)
+            soup = BeautifulSoup(page, 'html.parser')
             # Pas de <h1>/<h2> dédié sur cette page - le nom du thème n'apparaît que
             # comme dernier maillon (li.active) de son propre fil d'Ariane.
             title_node = soup.select_one('.single-title-serie .breadcrumb li.active')
@@ -380,7 +400,8 @@ def theme_series():
 
         items = [dict(item, already_owned=_match_series_id(item) is not None, series_id=_match_series_id(item)) for item in items]
         return jsonify({'success': True, 'slug': slug, 'title': theme_title, 'items': items, 'cached': was_cached})
-    except Exception as exc:
+    except Exception:
+        logger.exception('Erreur lors du chargement Bédéthèque')
         return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 
@@ -405,9 +426,8 @@ def indispensable_series():
             # sans la session réchauffée du scraper principal.
             scraper = BedethequeScraper()
             scraper._ensure_session()
-            response = safe_external_get(_INDISPENSABLE_CATEGORIES[category], session=scraper.session, timeout=20, max_bytes=12 * 1024 * 1024)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
+            page = _fetch_bedetheque_page(scraper, _INDISPENSABLE_CATEGORIES[category], timeout=20, max_bytes=12 * 1024 * 1024)
+            soup = BeautifulSoup(page, 'html.parser')
             items, seen = [], set()
             listing = soup.select_one('ul.indispensables-list')
             links = []
@@ -449,7 +469,8 @@ def indispensable_series():
             return series_by_url.get(item['url'].rstrip('/')) or series_by_title.get(_normalize_indispensable_title(item['title']))
         items = [dict(item, already_in_library=_match_series_id(item) is not None, series_id=_match_series_id(item)) for item in items]
         return jsonify({'success': True, 'category': category, 'items': items, 'cached': was_cached})
-    except Exception as exc:
+    except Exception:
+        logger.exception('Erreur lors du chargement Bédéthèque')
         return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 @bedetheque_bp.route('/search', methods=['GET'])
@@ -1270,7 +1291,8 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT id, volume_number, filename, filepath, format, comicinfo,
-                       is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
+                       is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
+                       is_special, special_label, is_bis, bis_suffix
                 FROM volumes WHERE series_id = ?
             ''', (series_id,))
             local_volumes = cursor.fetchall()
@@ -1346,17 +1368,19 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
                 # pas seulement le ComicInfo.xml - couvre aussi la MAJ "série entière"
                 # (ce thread), pas seulement le bouton par tome.
                 if bd_volume is not None:
-                    classified = _classify_bedetheque_number(bd_volume.get('number'), bd_volume.get('title'), is_oneshot_series)
+                    classified = _classify_bedetheque_album(bd_volume, is_oneshot_series)
                     (new_volume_number, new_is_integral, new_integral_number, new_is_hs, new_hs_number,
                      new_is_episode, new_episode_number, new_is_special, new_special_label) = classified
+                    new_bis_suffix = (bd_volume.get('bis_suffix') or '').strip() if new_volume_number is not None else ''
                     conn2 = sqlite3.connect(db_path, timeout=120.0)
                     conn2.execute('''
                         UPDATE volumes SET volume_number = ?, is_integral = ?, integral_number = ?,
                                             is_hs = ?, hs_number = ?, is_episode = ?, episode_number = ?,
-                                            is_special = ?, special_label = ?
+                                            is_special = ?, special_label = ?, is_bis = ?, bis_suffix = ?
                         WHERE id = ?
                     ''', (new_volume_number, int(new_is_integral), new_integral_number, int(new_is_hs), new_hs_number,
-                          int(new_is_episode), new_episode_number, int(new_is_special), new_special_label, lv['id']))
+                          int(new_is_episode), new_episode_number, int(new_is_special), new_special_label,
+                          int(bool(new_bis_suffix)), new_bis_suffix or None, lv['id']))
                     conn2.commit()
                     conn2.close()
 
@@ -2054,17 +2078,19 @@ def update_metadata_volume(volume_id):
         # fields/match_bedetheque_volume) - sa classification prime, c'est tout le sens de
         # cette action ("copier les données depuis Bédéthèque").
         if bd_volume is not None:
-            classified = _classify_bedetheque_number(bd_volume.get('number'), bd_volume.get('title'), bool(vol['is_oneshot']))
+            classified = _classify_bedetheque_album(bd_volume, bool(vol['is_oneshot']))
             (new_volume_number, new_is_integral, new_integral_number, new_is_hs, new_hs_number,
              new_is_episode, new_episode_number, new_is_special, new_special_label) = classified
+            new_bis_suffix = (bd_volume.get('bis_suffix') or '').strip() if new_volume_number is not None else ''
             conn3 = get_db_connection()
             conn3.execute('''
                 UPDATE volumes SET volume_number = ?, is_integral = ?, integral_number = ?,
                                     is_hs = ?, hs_number = ?, is_episode = ?, episode_number = ?,
-                                    is_special = ?, special_label = ?
+                                    is_special = ?, special_label = ?, is_bis = ?, bis_suffix = ?
                 WHERE id = ?
             ''', (new_volume_number, int(new_is_integral), new_integral_number, int(new_is_hs), new_hs_number,
-                  int(new_is_episode), new_episode_number, int(new_is_special), new_special_label, volume_id))
+                  int(new_is_episode), new_episode_number, int(new_is_special), new_special_label,
+                  int(bool(new_bis_suffix)), new_bis_suffix or None, volume_id))
             conn3.commit()
             conn3.close()
 
@@ -2122,6 +2148,15 @@ def _classify_bedetheque_number(number, title, is_oneshot_series):
 
     volume_number = None if (is_integral or is_hs or is_episode or is_special) else number
     return volume_number, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number, is_special, special_label
+
+
+def _classify_bedetheque_album(album, is_oneshot_series):
+    """Classe les suppléments N SUP / courts N TL parmi les spéciaux."""
+    number = album.get('number')
+    special_label = None if is_oneshot_series else _numbered_special_label(album)
+    if special_label:
+        return None, False, None, False, None, False, None, True, special_label
+    return _classify_bedetheque_number(number, album.get('title'), is_oneshot_series)
 
 
 def _bedetheque_title_to_folder_name(title):
@@ -2279,7 +2314,8 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
         # _classify_bedetheque_number - réutilisée par update_metadata_volume/
         # _write_series_volumes_metadata_async, voir son docstring.
         (volume_number, is_integral, integral_number, is_hs, hs_number,
-         is_episode, episode_number, is_special, special_label) = _classify_bedetheque_number(number, title, is_oneshot_series)
+         is_episode, episode_number, is_special, special_label) = _classify_bedetheque_album(
+             {**bd_vol, 'number': number}, is_oneshot_series)
         if is_oneshot_series:
             # Jamais un numéro de tome pour un one-shot - la dédup plus bas doit voir
             # `number` lui aussi à None (pas seulement volume_number), voir
@@ -2433,6 +2469,9 @@ def _sync_bedetheque_placeholder_volumes(series_id, info, scraper):
                 existing_hs_titles.add(title)
         elif is_bis:
             existing_bis_identities.add((number, bis_suffix))
+        elif is_special:
+            if title:
+                existing_special_titles.add(title)
         elif number is not None:
             existing_numbers.add(number)
         elif title:
@@ -2669,6 +2708,26 @@ def run_auto_acquire_now():
             missing = json.loads(row['missing_volumes']) if row['missing_volumes'] else []
         except (TypeError, ValueError):
             missing = []
+        if not missing and not row['is_oneshot']:
+            # Une ancienne confirmation d'import pouvait écraser missing_volumes
+            # avec les seuls fichiers absents du disque. Recalculer sur demande si
+            # des tomes placeholder sans fichier existent encore.
+            check = get_db_connection()
+            has_placeholders = check.execute(
+                'SELECT 1 FROM volumes WHERE series_id = ? AND volume_number IS NOT NULL '
+                'AND filepath IS NULL AND is_bis = 0 LIMIT 1', (series_id,)
+            ).fetchone()
+            check.close()
+            if has_placeholders:
+                from blueprints.library.scanner import LibraryScanner
+                LibraryScanner().update_series_stats(series_id)
+                check = get_db_connection()
+                refreshed = check.execute('SELECT missing_volumes FROM series WHERE id = ?', (series_id,)).fetchone()
+                check.close()
+                try:
+                    missing = json.loads(refreshed['missing_volumes'] or '[]') if refreshed else []
+                except (TypeError, ValueError):
+                    missing = []
         if not missing and row['is_oneshot']:
             missing = [None]
 

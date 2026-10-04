@@ -99,6 +99,7 @@ class LibraryImportScheduler:
         self.app = app
         self.job_id = 'library_auto_import'
         self.stalled_telegram_job_id = 'retry_stalled_telegram'
+        self.completed_reconcile_job_id = 'reconcile_completed_imports'
         self._file_size_history = {}
         self._failure_counts = {}
         # Dernier message d'erreur ('Erreur interne' côté _execute_import_batch) par fichier -
@@ -163,6 +164,16 @@ class LibraryImportScheduler:
             except Exception as e:
                 print(f"Erreur lors de la relance des téléchargements Telegram bloqués: {e}")
 
+    def _reconcile_completed_imports_tick(self):
+        if not self.app:
+            return
+        with self.app.app_context():
+            try:
+                from blueprints.missing_monitor.downloader import reconcile_completed_download_files
+                reconcile_completed_download_files()
+            except Exception as exc:
+                print(f"Erreur réconciliation des imports terminés: {exc}")
+
     def add_stalled_telegram_job(self):
         """Programme _retry_stalled_telegram_tick - TOUJOURS appelée au démarrage (voir
         app.py), sans condition contrairement à add_job/sync_auto_import_schedule (voir
@@ -170,16 +181,23 @@ class LibraryImportScheduler:
         TELEGRAM_RETRY_AFTER_STALLED_MINUTES (downloader.py, 1 minute) pour détecter un
         blocage dans un délai comparable, pas des minutes plus tard."""
         self.start()
-        if self.scheduler.get_job(self.stalled_telegram_job_id):
-            return
-        self.scheduler.add_job(
-            func=self._retry_stalled_telegram_tick,
-            trigger=IntervalTrigger(seconds=30),
-            id=self.stalled_telegram_job_id,
-            name='Retry Stalled Telegram Downloads',
-            replace_existing=True
-        )
-        print("✓ Tâche de relance des téléchargements Telegram bloqués programmée: toutes les 30s")
+        if not self.scheduler.get_job(self.stalled_telegram_job_id):
+            self.scheduler.add_job(
+                func=self._retry_stalled_telegram_tick,
+                trigger=IntervalTrigger(seconds=30),
+                id=self.stalled_telegram_job_id,
+                name='Retry Stalled Telegram Downloads',
+                replace_existing=True
+            )
+            print("✓ Tâche de relance des téléchargements Telegram bloqués programmée: toutes les 30s")
+        if not self.scheduler.get_job(self.completed_reconcile_job_id):
+            self.scheduler.add_job(
+                func=self._reconcile_completed_imports_tick,
+                trigger=IntervalTrigger(minutes=5),
+                id=self.completed_reconcile_job_id,
+                name='Reconcile completed imports',
+                replace_existing=True,
+            )
 
     def _check_new_files_available(self, all_relpaths):
         """Notification Telegram best-effort ("notification pour... import disponible")
@@ -267,8 +285,12 @@ class LibraryImportScheduler:
                 # Chargé une seule fois pour tout le scan plutôt qu'une requête
                 # active_downloads par fichier (voir même correctif côté
                 # scan_import_directory, routes.py - "pourquoi ca met scanner en loading").
-                from blueprints.missing_monitor.downloader import get_trackable_active_downloads
-                trackable_downloads = get_trackable_active_downloads()
+                from blueprints.missing_monitor.downloader import (
+                    get_trackable_active_downloads, prepare_trackable_downloads_for_matching,
+                )
+                trackable_downloads = prepare_trackable_downloads_for_matching(
+                    get_trackable_active_downloads()
+                )
 
                 # Même raisonnement que trackable_downloads ci-dessus: un seul appel groupé
                 # à l'API qBittorrent pour tout le tick (voir get_qbittorrent_torrent_names,

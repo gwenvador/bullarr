@@ -179,7 +179,41 @@ def queue_series_match_review(series_title, candidates, reason='La série n’a 
     Unlike a borderline volume match, this review has no library series id yet;
     the user must match the displayed title before importing it.
     """
-    queue_manual_review(None, series_title, None, 'Série à matcher', candidates, reason, force_candidates=True)
+    from flask import current_app
+    candidates = [candidate for candidate in candidates or [] if isinstance(candidate, dict) and
+                  (candidate.get('filename') or candidate.get('title'))]
+    if not candidates:
+        return
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    try:
+        _ensure_manual_review_table(conn)
+        existing = conn.execute(
+            "SELECT id, candidates_json FROM auto_acquire_reviews "
+            "WHERE series_id IS NULL AND series_title = ? AND volume_number IS NULL "
+            "AND status = 'pending' ORDER BY id DESC LIMIT 1", (series_title,)
+        ).fetchone()
+        if existing:
+            previous = json.loads(existing[1] or '[]')
+            by_source = {(item.get('source'), item.get('info_url') or item.get('link') or item.get('filename')): item
+                         for item in previous if isinstance(item, dict)}
+            for candidate in candidates:
+                by_source[(candidate.get('source'), candidate.get('info_url') or
+                           candidate.get('link') or candidate.get('filename'))] = candidate
+            conn.execute(
+                "UPDATE auto_acquire_reviews SET candidates_json = ?, reason = ?, "
+                "created_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (json.dumps(list(by_source.values()), ensure_ascii=False), reason, existing[0])
+            )
+        else:
+            conn.execute(
+                "INSERT INTO auto_acquire_reviews "
+                "(series_id, series_title, volume_number, volume_label, candidates_json, reason) "
+                "VALUES (NULL, ?, NULL, 'Série à ajouter', ?, ?)",
+                (series_title, json.dumps(candidates, ensure_ascii=False), reason)
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_manual_reviews():
@@ -205,14 +239,42 @@ def get_manual_reviews():
             except (TypeError, ValueError):
                 candidates = []
                 item.pop('candidates_json', None)
-            filtered_candidates = _manual_review_candidates(candidates, item['series_title'], item['volume_number'])
-            # Une validation manuelle doit rester visible même si aucun candidat ne
-            # atteint le seuil borderline: l'automatisation a précisément signalé qu'une
-            # décision humaine était nécessaire. Conserver au maximum 20 résultats.
-            item['candidates'] = filtered_candidates or [
-                candidate for candidate in candidates[:20]
-                if candidate.get('filename') or candidate.get('title')
-            ]
+            # Le filtrage borderline a déjà été appliqué à l'écriture quand il est
+            # voulu. Les validations forcées contiennent aussi des candidats sûrs :
+            # les retirer ici cachait notamment les torrents derrière Telegram.
+            indexed = [(index, candidate) for index, candidate in enumerate(candidates)
+                       if isinstance(candidate, dict) and (candidate.get('filename') or candidate.get('title'))]
+            if item['volume_number'] is not None:
+                from blueprints.missing_monitor.searcher import MissingVolumeSearcher
+                searcher = MissingVolumeSearcher()
+                volume_number = item['volume_number']
+
+                def relevance(entry):
+                    name = entry[1].get('filename') or entry[1].get('title') or ''
+                    confirmed = searcher._confirms_requested_volume(name, volume_number, None)[0]
+                    identity = _series_identity_matches(name, item['series_title'], volume_number)
+                    return int(confirmed and identity), int(confirmed and _review_candidate_matches_series(
+                        entry[1], item['series_title'], volume_number))
+
+                # Un résultat du bon tome et de la bonne série passe en premier.
+                # Représenter ensuite chaque source dans les 20 places disponibles.
+                relevant = [entry for entry in indexed if relevance(entry)[1]]
+                if relevant:
+                    indexed = relevant
+                groups = {}
+                for entry in indexed:
+                    groups.setdefault(entry[1].get('source') or '', []).append(entry)
+                for group in groups.values():
+                    group.sort(key=lambda entry: relevance(entry), reverse=True)
+                indexed = []
+                while groups and len(indexed) < 20:
+                    for source in list(groups):
+                        indexed.append(groups[source].pop(0))
+                        if not groups[source]:
+                            del groups[source]
+                        if len(indexed) == 20:
+                            break
+            item['candidates'] = [dict(candidate, candidate_index=index) for index, candidate in indexed[:20]]
             if not item['candidates']:
                 continue
             output.append(item)
@@ -241,6 +303,40 @@ def download_manual_review_candidate(review_id, candidate_index):
             conn.execute("UPDATE auto_acquire_reviews SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP WHERE id = ?", (review_id,))
             conn.commit()
         return success, message
+    finally:
+        conn.close()
+
+
+def _resolve_pending_pack_review(series_id):
+    """Résout une proposition de pack/intégrale quand tous les tomes sont couverts."""
+    from flask import current_app
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    try:
+        _ensure_manual_review_table(conn)
+        conn.execute(
+            "UPDATE auto_acquire_reviews SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP "
+            "WHERE series_id = ? AND volume_number IS NULL "
+            "AND (volume_label LIKE 'Pack à confirmer%' OR volume_label LIKE 'Intégrale à confirmer%') "
+            "AND status = 'pending'",
+            (series_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _resolve_pending_volume_review(series_id, volume_number):
+    """An automatic download supersedes an older pending review for that album."""
+    from flask import current_app
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    try:
+        _ensure_manual_review_table(conn)
+        conn.execute(
+            "UPDATE auto_acquire_reviews SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP "
+            "WHERE series_id = ? AND volume_number IS ? AND status = 'pending'",
+            (series_id, volume_number),
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -771,6 +867,42 @@ def _detect_pack_size(item_title):
     return end - start + 1
 
 
+def _series_bundle_kind(item_title, missing_volumes):
+    """Classer les lots avant la revue par tome, même sans le mot « PACK ».
+
+    Une intégrale sans numéro, « Intégrale 5 tomes » et une plage (01-05)
+    désignent plusieurs tomes. Une plage partielle est exclue des revues d'un
+    seul tome, mais n'est pas présentée comme couvrant toute la série.
+    """
+    from blueprints.library.scanner import LibraryScanner
+    title = unquote(item_title or '')
+    parsed = LibraryScanner.parse_filename(title)
+    if parsed.get('is_pack'):
+        return 'integral' if re.search(r'(?i)\bint[eé]grale\b', title) else 'pack'
+    count = re.search(r'(?i)int[eé]grale[\s._-]+(\d+)[\s._-]+tomes?\b', title)
+    if count:
+        return 'integral' if int(count.group(1)) >= len(missing_volumes) else 'partial'
+    if parsed.get('is_integral'):
+        return 'partial'  # intégrale numérotée : ni tome ordinaire ni pack complet prouvé
+    if (_detect_pack_size(title) or 0) >= 2:
+        return 'pack'
+    range_match = re.search(r'(?<!\d)[(\[]0*(\d{1,2})\s*[-–]\s*0*(\d{1,2})\+?[)\]]', title)
+    if range_match:
+        start, end = map(int, range_match.groups())
+        if 1 <= start < end <= 99:
+            numbered = [vol for vol in missing_volumes if vol is not None]
+            return 'pack' if numbered and all(start <= vol <= end for vol in numbered) else 'partial'
+    return None
+
+
+def _review_candidate_matches_series(result, series_title, volume_number):
+    """Écarter les tomes d'une autre série renvoyés par une recherche globale."""
+    from blueprints.bedetheque.scraper import BedethequeScraper
+    title = unquote(result.get('filename') or result.get('title') or '')
+    return (_series_identity_matches(title, series_title, volume_number)
+            or BedethequeScraper._match_score(series_title, title) >= 0.45)
+
+
 def _best_pack_result(results, title):
     """Technical rationale and compatibility constraints for this code path."""
     from blueprints.library.routes import get_format_priority
@@ -899,6 +1031,15 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
             # mais _is_auto_download_eligible interdit leur téléchargement automatique.
             results = _enrich_ed2k_availability(results)
 
+            bundle_rows = [
+                (result, _series_bundle_kind(result.get('filename') or result.get('title') or '', missing_volumes))
+                for result in results
+            ]
+            reviewable_bundles = [(result, kind) for result, kind in bundle_rows if kind in ('integral', 'pack')]
+            # Une intégrale ou un lot de tomes n'est jamais le candidat d'un tome
+            # individuel, y compris quand la recherche de packs est désactivée.
+            individual_results = [result for result, kind in bundle_rows if kind is None]
+            best_pack = None
             if pack_search_enabled:
                 best_pack = _best_pack_result(results, title)
                 if best_pack:
@@ -915,69 +1056,73 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
                             remaining_volumes = []
                     except Exception as e:
                         print(f"Erreur téléchargement pack auto-acquire {title}: {e}")
-                # Les packs incertains doivent rester visibles dans /validation même
-                # lorsqu'un AUTRE pack suffisamment fiable a été sélectionné. L'ancienne
-                # condition `if not best_pack` les faisait disparaître dès qu'un bon
-                # candidat coexistait dans les résultats. Ne retenir ici que les vrais
-                # candidats pack/plage qui échouent individuellement au seuil automatique ;
-                # un autre pack valide mais simplement moins bien classé n'est pas ambigu.
-                rejected_packs = []
-                for result in results:
-                    item_title = result.get('filename') or result.get('title') or ''
-                    is_pack_candidate = _has_pack_keyword(item_title)                         or ((_detect_pack_size(item_title) or 0) >= 2)
-                    if is_pack_candidate and result is not best_pack                             and _best_pack_result([result], title) is None:
-                        rejected_packs.append(result)
-                if rejected_packs:
-                    queue_manual_review(
-                        series_id, title, None, 'Pack à confirmer', rejected_packs,
-                        'Pack trouvé, mais identité de la série insuffisamment fiable.',
-                        force_candidates=True,
-                    )
-                    # Un pack déjà mis en revue ne doit pas être répété ensuite comme
-                    # candidat de chaque Tome N manquant. Conserver les autres résultats
-                    # individuels pour le repli tome par tome.
-                    results = [
-                        result for result in results
-                        if all(result is not rejected for rejected in rejected_packs)
-                    ]
-
                 # Aucun pack trouvé: remaining_volumes reste = missing_volumes, chaque
                 # tome est résolu ci-dessous DANS ces mêmes résultats déjà récupérés.
 
+            dispatched_volumes = set()
             for vol_num in remaining_volumes:
                 if not _still_enabled():
                     stopped_early = True
                     break
                 candidates = [
-                    r for r in results
+                    r for r in individual_results
                     if searcher._confirms_requested_volume(r.get('filename') or r.get('title') or '', vol_num, None)[0]
                 ]
+                if reviewable_bundles:
+                    candidates = [r for r in candidates if _review_candidate_matches_series(r, title, vol_num)]
                 # Le premier résultat n'est pas une preuve d'identité. L'automatisation
                 # applique un score de titre renforcé; les cas ambigus sont mis en revue.
                 best = _best_confident_result(candidates, vol_num, title, source_order=sources) if candidates else None
 
                 if best:
+                    success = False
                     try:
                         success, msg = _download_result(app, best, series_id, title, vol_num)
                         print(f"  Tome {vol_num}: {msg}")
                         if success:
                             downloaded_count += 1
+                            dispatched_volumes.add(vol_num)
+                            _resolve_pending_volume_review(series_id, vol_num)
                             filename = _decode_display_filename(best.get('filename') or best.get('title') or '?')
                             source_label = _SOURCE_LABELS.get(best.get('source'), best.get('source') or '?')
                             vol_label = f"Tome {vol_num}" if vol_num is not None else "Album"
                             download_lines.append(f"{vol_label} : {filename} ({source_label})")
                     except Exception as e:
                         print(f"Erreur téléchargement auto-acquire {title} vol {vol_num}: {e}")
-                elif results:
+                    if not success:
+                        queue_manual_review(
+                            series_id, title, vol_num, f'Tome {vol_num}', candidates,
+                            'Résultat identifié, mais le téléchargement a échoué. Vérifiez le candidat.',
+                            force_candidates=True,
+                        )
+                elif candidates or (individual_results and not reviewable_bundles):
                     # Des résultats existent (pour la série) mais aucun assez confiant
                     # pour être LE tome demandé - ne jamais télécharger à l'aveugle (voir
                     # docstring _confirms_requested_volume). La vérification reste
                     # volontairement manuelle et visible dans la file de validation.
-                    queue_manual_review(series_id, title, vol_num, f'Tome {vol_num}', candidates or results,
+                    queue_manual_review(series_id, title, vol_num, f'Tome {vol_num}', candidates or individual_results,
                                         'Aucun résultat n’atteint le niveau de confiance requis pour un téléchargement automatique.',
                                         force_candidates=True)
                 # Plus de délai ici: aucune requête réseau supplémentaire par tome
                 # (tout vient de `results`, déjà récupéré une seule fois ci-dessus).
+            # Un pack déjà choisi ou tous les tomes envoyés séparément rendent la
+            # validation de pack inutile. Sinon le pack incertain peut encore aider
+            # à couvrir les tomes qui n'ont pas pu être envoyés.
+            if not remaining_volumes or downloaded_count >= len(missing_volumes):
+                _resolve_pending_pack_review(series_id)
+            elif pack_search_enabled and reviewable_bundles:
+                missing_after_attempt = [vol for vol in missing_volumes if vol not in dispatched_volumes]
+                missing_numbers = ', '.join(str(vol) if vol is not None else 'Album' for vol in missing_after_attempt)
+                missing_label = (f'Tome {missing_numbers} manquant' if len(missing_after_attempt) == 1
+                                 else f'Tomes {missing_numbers} manquants')
+                is_integral = any(kind == 'integral' for _, kind in reviewable_bundles)
+                bundle_label = 'Intégrale' if is_integral else 'Pack'
+                queue_manual_review(
+                    series_id, title, None, f'{bundle_label} à confirmer · {missing_label}',
+                    [result for result, _ in reviewable_bundles],
+                    f'{bundle_label} à vérifier ; {missing_label.lower()} après la recherche individuelle.',
+                    force_candidates=True,
+                )
         else:
             # Un seul tome manquant (ou recherche ciblée molette/one-shot) - recherche
             # directe pour CE tome précis. label transmis à search_for_volume (voir sa
@@ -1004,17 +1149,26 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
                 best = _best_confident_result(results, vol_num, title, source_order=sources) if results else None
 
                 if best:
+                    success = False
                     try:
                         success, msg = _download_result(app, best, series_id, title, vol_num)
                         print(f"  Tome {vol_num}: {msg}")
                         if success:
                             downloaded_count += 1
+                            _resolve_pending_volume_review(series_id, vol_num)
                             filename = _decode_display_filename(best.get('filename') or best.get('title') or '?')
                             source_label = _SOURCE_LABELS.get(best.get('source'), best.get('source') or '?')
                             vol_label = label or (f"Tome {vol_num}" if vol_num is not None else "Album")
                             download_lines.append(f"{vol_label} : {filename} ({source_label})")
                     except Exception as e:
                         print(f"Erreur téléchargement auto-acquire {title} vol {vol_num}: {e}")
+                    if not success:
+                        queue_manual_review(
+                            series_id, title, vol_num,
+                            label or (f'Tome {vol_num}' if vol_num is not None else 'Album'),
+                            results, 'Résultat identifié, mais le téléchargement a échoué. Vérifiez le candidat.',
+                            force_candidates=True,
+                        )
                 elif results:
                     # Résultats présents mais non confirmés : aucun téléchargement
                     # automatique et aucune notification Telegram ; vérification manuelle

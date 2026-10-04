@@ -266,11 +266,12 @@ async function scanLibrary(libraryId) {
     }
 
     try {
-        const response = await fetch(`/api/scan/${libraryId}`);
-        const data = await response.json();
+        const response = await fetch(`/api/scan/${libraryId}`, { method: 'POST' });
+        const started = await response.json();
 
-        if (data.success) {
-            alert(`✅ Scan terminé ! ${data.series_count} séries trouvées.`);
+        if (started.success) {
+            const result = await waitForScanJob(started.job_id);
+            alert(`✅ Scan terminé ! ${result.series_count} séries trouvées.`);
             loadLibraries();
         } else {
             alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));

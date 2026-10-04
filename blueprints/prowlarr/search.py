@@ -53,9 +53,9 @@ def search_prowlarr_raw(title, volume_num=None, label=None, confirm=False, limit
     série ?) - seule la recherche par tome précis (missing_monitor) en a besoin, pas une
     recherche libre par titre de série sans tome demandé en particulier.
 
-    limit (optionnel): ne considérer que les `limit` premiers résultats bruts renvoyés
-    par Prowlarr avant scoring - repli historique du monitoring (voir l'ancien
-    _search_prowlarr), pas appliqué par défaut."""
+    limit (optionnel): limiter les résultats pertinents après scoring et tri. Prowlarr
+    regroupe parfois ses réponses par indexeur ; couper la liste brute pouvait masquer
+    un torrent exact situé après les premiers résultats d'un autre indexeur."""
     config = load_prowlarr_config()
     if not config.get('enabled'):
         return None
@@ -104,8 +104,6 @@ def search_prowlarr_raw(title, volume_num=None, label=None, confirm=False, limit
 
     raw_data = response.json()
     data = raw_data if isinstance(raw_data, list) else raw_data.get('results', [])
-    if limit:
-        data = data[:limit]
 
     # Import tardif (évite un import circulaire au chargement du module: MissingVolumeSearcher
     # importe elle-même ce module pour son ancien _search_prowlarr, désormais un simple
@@ -174,6 +172,8 @@ def search_prowlarr_raw(title, volume_num=None, label=None, confirm=False, limit
         results.sort(key=lambda r: (r['unconfirmed_volume'], -r['_score'], -(r.get('seeders', 0) or 0)))
     else:
         results.sort(key=lambda r: (-(r.get('seeders', 0) or 0), -r['_score']))
+    if limit:
+        results = results[:limit]
     for r in results:
         del r['_score']
 

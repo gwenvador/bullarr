@@ -3,6 +3,7 @@ Chargement/sauvegarde de la configuration SSO / OIDC (partagé entre routes.py e
 """
 import json
 import os
+import tempfile
 from flask import current_app
 from encryption import encrypt, decrypt
 
@@ -47,9 +48,18 @@ def save_oidc_config(config):
             if 'client_secret_decrypted' in config_to_save:
                 del config_to_save['client_secret_decrypted']
 
-        with open(config_file, 'w') as f:
-            json.dump(config_to_save, f, indent=4)
-        os.chmod(config_file, 0o600)
+        directory = os.path.dirname(config_file)
+        fd, temporary = tempfile.mkstemp(prefix='.oidc-config-', dir=directory)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(config_to_save, f, indent=4)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, config_file)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
         return True
     except Exception as e:
         print(f"Erreur sauvegarde config OIDC : {e}")

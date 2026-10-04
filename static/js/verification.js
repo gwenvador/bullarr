@@ -13,8 +13,7 @@ function escapeHtml(text) {
 }
 
 function escapeForAttribute(text) {
-    // lgtm [js/incomplete-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
-    return text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return String(text ?? '').replace(/&/g, '&amp;').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ===== VÉRIFICATION DE LA BIBLIOTHÈQUE (métadonnées manquantes + nommage + fichiers

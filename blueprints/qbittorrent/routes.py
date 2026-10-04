@@ -4,11 +4,72 @@ Routes pour l'intégration qBittorrent
 from flask import request, jsonify, current_app
 from . import qbittorrent_bp
 import os
+import sqlite3
 import sys
 import time
 import requests
+import hmac
+import re
+from urllib.parse import parse_qs, urljoin, urlparse
 from encryption import decrypt, load_encrypted_json_config, save_encrypted_json_config
 from network_safety import safe_external_get
+
+
+_MAX_TORRENT_BYTES = 10 * 1024 * 1024
+
+
+def _is_configured_prowlarr_download(url):
+    """Reconnaît uniquement un lien /<indexeur>/download du Prowlarr configuré.
+
+    Prowlarr peut être joignable par une adresse privée/Tailscale, tandis que les
+    autres URL de torrent restent soumises au garde-fou anti-SSRF public.
+    """
+    from blueprints.prowlarr.config_store import load_prowlarr_config
+    from encryption import decrypt
+
+    config = load_prowlarr_config()
+    base = (config.get('url') or '').strip()
+    if not config.get('enabled') or not base:
+        return False
+    if not base.startswith(('http://', 'https://')):
+        base = 'http://' + base
+    expected = urlparse(base)
+    candidate = urlparse(url)
+    if (candidate.scheme != expected.scheme or candidate.netloc.lower() != expected.netloc.lower()
+            or candidate.username or candidate.password or candidate.fragment):
+        return False
+    prefix = expected.path.rstrip('/')
+    if not re.fullmatch(re.escape(prefix) + r'/\d+/download', candidate.path):
+        return False
+    configured_key = config.get('api_key_decrypted') or decrypt(config.get('api_key', ''))
+    supplied_keys = parse_qs(candidate.query).get('apikey', [])
+    return bool(configured_key and len(supplied_keys) == 1
+                and hmac.compare_digest(configured_key, supplied_keys[0]))
+
+
+def _download_torrent_bytes(url, source):
+    if source != 'prowlarr' or not _is_configured_prowlarr_download(url):
+        response = safe_external_get(url, timeout=30, max_bytes=_MAX_TORRENT_BYTES)
+        response.raise_for_status()
+        return response.content
+
+    # Le seul hôte privé autorisé est celui configuré par l'administrateur. Ne pas
+    # suivre automatiquement une redirection Prowlarr vers une autre destination.
+    with requests.get(url, timeout=30, verify=False, stream=True, allow_redirects=False) as response:
+        if response.is_redirect:
+            destination = urljoin(url, response.headers.get('Location') or '')
+            redirected = safe_external_get(destination, timeout=30, max_bytes=_MAX_TORRENT_BYTES)
+            redirected.raise_for_status()
+            return redirected.content
+        response.raise_for_status()
+        if int(response.headers.get('Content-Length') or 0) > _MAX_TORRENT_BYTES:
+            raise ValueError('Fichier torrent trop volumineux')
+        data = bytearray()
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            data.extend(chunk)
+            if len(data) > _MAX_TORRENT_BYTES:
+                raise ValueError('Fichier torrent trop volumineux')
+        return bytes(data)
 
 
 def load_qbittorrent_config():
@@ -358,7 +419,24 @@ def get_qbittorrent_torrent_names(hashes):
             params={'hashes': '|'.join(hashes)}, timeout=8, verify=False
         )
         response.raise_for_status()
-        return {t['hash'].lower(): t['name'] for t in response.json() if t.get('hash') and t.get('name')}
+        names = {t['hash'].lower(): t['name'] for t in response.json() if t.get('hash') and t.get('name')}
+        db_path = current_app.config.get('DATABASE')
+        if db_path and names:
+            conn = None
+            try:
+                conn = sqlite3.connect(db_path, timeout=10.0)
+                conn.executemany(
+                    "UPDATE active_downloads SET client_item_name = ? "
+                    "WHERE client = 'qbittorrent' AND LOWER(client_item_id) = ?",
+                    [(name, torrent_hash) for torrent_hash, name in names.items()],
+                )
+                conn.commit()
+            except sqlite3.Error as exc:
+                print(f"Erreur cache des noms qBittorrent: {exc}")
+            finally:
+                if conn:
+                    conn.close()
+        return names
     except Exception as e:
         print(f"Erreur récupération noms de torrents qBittorrent: {e}")
         return {}
@@ -477,8 +555,7 @@ def add_torrent():
             # C'est une URL de fichier torrent - télécharger le fichier
             try:
                 # Télécharger le fichier torrent
-                torrent_response = safe_external_get(torrent_url, timeout=30, max_bytes=10 * 1024 * 1024)
-                torrent_response.raise_for_status()
+                torrent_bytes = _download_torrent_bytes(torrent_url, source)
 
                 # Créer un fichier temporaire
                 temp_dir = tempfile.gettempdir()
@@ -486,10 +563,10 @@ def add_torrent():
 
                 # Écrire le fichier
                 with open(torrent_file_path, 'wb') as f:
-                    f.write(torrent_response.content)
+                    f.write(torrent_bytes)
 
                 from torrent_hash import compute_torrent_info_hash
-                computed_client_item_id = compute_torrent_info_hash(torrent_response.content)
+                computed_client_item_id = compute_torrent_info_hash(torrent_bytes)
 
                 # Préparer le fichier à envoyer en multipart
                 files_to_send = {

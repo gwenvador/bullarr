@@ -91,8 +91,8 @@ def _run_scan_phase(library_id, library_path, progress):
     # _scan_library_and_sync (routes.py) plutôt que LibraryScanner().scan_directory() nu:
     # même comportement qu'un clic manuel sur "Scanner" (synchronisation Komga/EBDZ
     # incluse), pas juste le scan de fichiers seul - voir son docstring.
-    from .routes import _scan_library_and_sync
-    _scan_library_and_sync(library_id, library_path)
+    from .scan_service import scan_library_and_sync
+    scan_library_and_sync(library_id, library_path)
 
 
 def _run_match_phase(library_id, progress):

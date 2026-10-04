@@ -100,6 +100,9 @@ def create_app(config_name='default'):
         from blueprints.library.scanner import LibraryScanner
         LibraryScanner()
 
+        from blueprints.library.scan_jobs import init_scan_jobs
+        init_scan_jobs(app.config['DATABASE'])
+
         # Initialiser la table d'historique des imports
         from blueprints.library.import_history import init_import_history_table, cleanup_stale_operations, init_import_manual_overrides_table, init_import_in_progress_table
         init_import_history_table()

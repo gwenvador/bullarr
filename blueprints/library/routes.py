@@ -44,6 +44,27 @@ def _import_staging_directory():
     return path
 
 
+def _sync_komga_after_import(app, unmatched_series, matched_series):
+    """Best-effort Komga metadata sync after its asynchronous library scan starts."""
+    time.sleep(5)
+    with app.app_context():
+        from blueprints.komga.client import KomgaClient, KomgaError
+        try:
+            client = KomgaClient()
+            for series_id, title in unmatched_series:
+                try:
+                    _try_komga_title_match(series_id, title, client)
+                except KomgaError:
+                    continue
+            for series_id, komga_series_id in matched_series:
+                try:
+                    _sync_komga_books(series_id, komga_series_id, client)
+                except KomgaError:
+                    continue
+        except KomgaError:
+            pass
+
+
 # Empêche un import manuel (execute_import, requête HTTP) et l'import automatique
 # (execute_auto_import, tourne sur son propre thread APScheduler - voir
 # blueprints/library/scheduler.py) de s'exécuter en même temps : chacun ouvre plusieurs
@@ -284,7 +305,9 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
             query = 'SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND is_episode = 1 AND episode_number IS NULL'
             params = (series_id,)
     elif volume_number is not None:
-        query = 'SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND volume_number = ?'
+        # Un fichier « tome N » doit remplir le tome principal, jamais le dernier
+        # placeholder N Bis / N TL créé pour une autre édition du même numéro.
+        query = 'SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND volume_number = ? AND COALESCE(is_bis, 0) = 0'
         params = (series_id, volume_number)
     elif is_integral:
         if integral_number is not None:
@@ -422,7 +445,8 @@ def queue_series_match_review_route():
     if not title or not candidates:
         return jsonify({'success': False, 'error': 'Titre et candidat requis'}), 400
     from blueprints.bedetheque.auto_acquire import queue_series_match_review
-    queue_series_match_review(title, candidates)
+    queue_series_match_review(title, candidates, (data.get('reason') or '').strip() or
+                              'La série n’a pas pu être associée automatiquement.')
     return jsonify({'success': True})
 
 
@@ -631,214 +655,47 @@ def library_operations(library_id):
             return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def _scan_library_and_sync(library_id, library_path, force_metadata_refresh=False):
-    """Cœur de scan_library (scan + synchronisation Komga/EBDZ) - factorisé pour être
-    appelé aussi par run_library_onboarding (library/onboarding.py: "add a new
-    bibliothèque from existing files"), qui a besoin exactement du même comportement
-    qu'un clic manuel sur "Scanner" plutôt qu'un scan appauvri qui sauterait la
-    synchronisation Komga/EBDZ. Retourne series_count, lève sur erreur (chemin
-    introuvable...) - au lieu de renvoyer une réponse Flask, pour rester appelable hors
-    requête HTTP."""
-    scanner = LibraryScanner()
-    series_count = scanner.scan_directory(
-        library_id, library_path, auto_enrich=False, force_metadata_refresh=force_metadata_refresh
-    )
-
-    # Déclenché tôt, avant toute tentative de matching/sync Komga ci-dessous: comme à
-    # l'import (voir execute_import), Komga doit d'abord avoir eu le temps de
-    # rescanner et de connaître les fichiers que ce scan vient de découvrir sur le
-    # disque, sinon une recherche par titre pour une série neuve ne trouve rien.
-    # Best-effort, ne bloque pas le scan si Komga est indisponible/non configuré.
-    changed_series_ids = scanner.series_created_or_changed
-    new_series_ids = scanner.newly_created_series
-    if changed_series_ids or new_series_ids:
-        from blueprints.komga.client import trigger_scan_async
-        trigger_scan_async()
-        time.sleep(5)
-
-    # Les volumes inchangés gardent déjà leur komga_book_id/url (repris depuis le
-    # cache par scan_directory). Seules les séries nouvelles ou ayant au moins un
-    # volume ajouté/modifié ont besoin d'une re-synchronisation Komga (appel réseau),
-    # ce qui évite de refaire ~275 requêtes HTTP à chaque scan rapide sans rien de
-    # changé. Best-effort: n'échoue pas le scan si Komga est indisponible/non configuré.
-    if changed_series_ids:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        placeholders = ','.join('?' * len(changed_series_ids))
-        cursor.execute(
-            f'SELECT id, komga_series_id FROM series '
-            f'WHERE library_id = ? AND komga_series_id IS NOT NULL AND id IN ({placeholders})',
-            (library_id, *changed_series_ids)
-        )
-        matched_series = cursor.fetchall()
-        conn.close()
-
-        if matched_series:
-            from blueprints.komga.client import KomgaClient, KomgaError
-            try:
-                client = KomgaClient()
-                for series_row in matched_series:
-                    _sync_komga_books(series_row['id'], series_row['komga_series_id'], client)
-            except KomgaError:
-                pass
-
-    # Tentative de matching Komga automatique pour les séries qui viennent d'être
-    # créées par ce scan (pas les séries existantes: celles-ci restent à matcher
-    # manuellement). Best-effort: n'échoue pas le scan si Komga est indisponible/non
-    # configuré, ou si le titre ne désigne pas un résultat unique/exact.
-    if new_series_ids:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        placeholders = ','.join('?' * len(new_series_ids))
-        cursor.execute(
-            f'SELECT id, title FROM series WHERE id IN ({placeholders})',
-            tuple(new_series_ids)
-        )
-        new_series = cursor.fetchall()
-        conn.close()
-
-        if new_series:
-            from blueprints.komga.client import KomgaClient, KomgaError
-            try:
-                client = KomgaClient()
-                for series_row in new_series:
-                    try:
-                        _try_komga_title_match(series_row['id'], series_row['title'], client)
-                    except KomgaError:
-                        continue
-            except KomgaError:
-                pass
-
-    # Tentative de matching EBDZ automatique par titre pour TOUTES les séries de la
-    # bibliothèque pas encore matchées (pas seulement les nouvelles: contrairement à
-    # Komga, c'est une recherche locale en base, sans appel réseau). Fait en un seul
-    # lot plutôt qu'un appel par série (voir _bulk_ebdz_autodetect): avec une table
-    # ed2k_links de plusieurs dizaines de milliers de lignes, refaire une requête SQL
-    # avec fonction Python par ligne pour CHAQUE série non matchée pouvait prendre
-    # plusieurs minutes et donnait l'impression que le scan ne terminait jamais.
-    try:
-        _bulk_ebdz_autodetect(library_id)
-    except Exception:
-        pass
-
-    return series_count
-
-
-@library_bp.route('/api/scan/<int:library_id>', methods=['GET', 'POST'])
+@library_bp.route('/api/scan/<int:library_id>', methods=['POST'])
 def scan_library(library_id):
-    """Scanne une bibliothèque (détecte séries et volumes, sans enrichissement)"""
-
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('SELECT name, path FROM libraries WHERE id = ?', (library_id,))
-        result = cursor.fetchone()
-        conn.close()
-
-        if not result:
-            return jsonify({'success': False, 'error': 'Bibliothèque non trouvée'}), 404
-
-        library_name = result['name']
-        library_path = result['path']
-
-        # Vérifier que le chemin est accessible avant de scanner
-        if not os.path.exists(library_path):
-            return jsonify({
-                'success': False,
-                'error': f'Le dossier de la bibliothèque "{library_name}" n\'existe pas ou n\'est pas accessible.\nChemin: {library_path}'
-            }), 400
-
-        if not os.path.isdir(library_path):
-            return jsonify({
-                'success': False,
-                'error': f'Le chemin n\'est pas un répertoire: {library_path}'
-            }), 400
-
-        # force=1 déclenche un scan complet (ré-extrait page_count/ComicInfo.xml/
-        # couverture de tous les fichiers, même inchangés); par défaut le scan est
-        # rapide et ne retraite que les fichiers nouveaux/modifiés
-        force_metadata_refresh = request.args.get('force', '').lower() in ('1', 'true')
-
-        series_count = _scan_library_and_sync(library_id, library_path, force_metadata_refresh=force_metadata_refresh)
-
-        return jsonify({'success': True, 'series_count': series_count})
-
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Erreur lors du scan de la bibliothèque {library_id}: {error_msg}")
-        return jsonify({
-            'success': False,
-            'error': f'Erreur lors du scan: {error_msg}'
-        }), 500
+    """Start a library scan without holding the HTTP request open."""
+    conn = get_db_connection()
+    row = conn.execute('SELECT name, path FROM libraries WHERE id = ?', (library_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'success': False, 'error': 'Bibliothèque non trouvée'}), 404
+    if not os.path.isdir(row['path']):
+        return jsonify({'success': False, 'error': f"Dossier inaccessible: {row['path']}"}), 400
+    from .scan_jobs import start_scan
+    force = request.args.get('force', '').lower() in ('1', 'true')
+    job_id = start_scan(current_app._get_current_object(), 'library', library_id, force)
+    if job_id is None:
+        return jsonify({'success': False, 'error': 'Un scan est déjà en cours'}), 409
+    return jsonify({'success': True, 'job_id': job_id}), 202
 
 
 @library_bp.route('/api/scan/series/<int:series_id>', methods=['POST'])
 def scan_series(series_id):
-    """Scanne une seule série (met à jour ses volumes)"""
+    """Start a series scan without holding the HTTP request open."""
+    conn = get_db_connection()
+    row = conn.execute('SELECT id FROM series WHERE id = ?', (series_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'success': False, 'error': 'Série non trouvée'}), 404
+    from .scan_jobs import start_scan
+    force = request.args.get('force', '').lower() in ('1', 'true')
+    job_id = start_scan(current_app._get_current_object(), 'series', series_id, force)
+    if job_id is None:
+        return jsonify({'success': False, 'error': 'Un scan est déjà en cours'}), 409
+    return jsonify({'success': True, 'job_id': job_id}), 202
 
-    try:
-        force_metadata_refresh = request.args.get('force', '').lower() in ('1', 'true')
 
-        check_conn = get_db_connection()
-        check_row = check_conn.execute('SELECT id FROM series WHERE id = ?', (series_id,)).fetchone()
-        check_conn.close()
-        if not check_row:
-            return jsonify({'success': False, 'error': 'Série non trouvée'}), 404
-
-        scanner = LibraryScanner()
-        volumes_count = scanner.scan_single_series(series_id, force_metadata_refresh=force_metadata_refresh)
-
-        # Un scan remplace tous les volumes (delete + insert): si la série était déjà
-        # matchée à Komga, les liens directs par volume seraient sinon perdus jusqu'au
-        # prochain matching manuel. Best-effort: n'échoue pas le scan si Komga est
-        # indisponible/non configuré.
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT title, komga_series_id, ebdz_thread_id FROM series WHERE id = ?', (series_id,))
-        row = cursor.fetchone()
-        conn.close()
-
-        if row and row['komga_series_id']:
-            from blueprints.komga.client import KomgaClient, KomgaError
-            try:
-                client = KomgaClient()
-                _sync_komga_books(series_id, row['komga_series_id'], client)
-            except KomgaError:
-                pass
-        elif row:
-            # Pas encore matchée à Komga: tenter un matching automatique par titre
-            from blueprints.komga.client import KomgaClient, KomgaError
-            try:
-                client = KomgaClient()
-                _try_komga_title_match(series_id, row['title'], client)
-            except KomgaError:
-                pass
-
-        # Idem côté EBDZ: tenter/rafraîchir le matching automatique par titre si la série
-        # n'est pas déjà matchée à un thread précis (recherche locale, pas d'appel réseau)
-        if row and not row['ebdz_thread_id']:
-            try:
-                _ebdz_enrich_series(series_id)
-            except Exception:
-                pass
-
-        return jsonify({'success': True, 'volumes_count': volumes_count})
-
-    except SeriesDirectoryMissingError as e:
-        return jsonify({
-            'success': True,
-            'deleted': True,
-            'message': f'Répertoire introuvable, série "{e}" supprimée de la bibliothèque'
-        })
-
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Erreur lors du scan de la série {series_id}: {error_msg}")
-        return jsonify({
-            'success': False,
-            'error': f'Erreur lors du scan: {error_msg}'
-        }), 500
+@library_bp.route('/api/scan/jobs/<job_id>', methods=['GET'])
+def scan_job_status(job_id):
+    from .scan_jobs import get_scan
+    job = get_scan(current_app.config['DATABASE'], job_id)
+    if job is None:
+        return jsonify({'success': False, 'error': 'Scan introuvable'}), 404
+    return jsonify({'success': True, 'job': job})
 
 
 def _get_owned_volumes(cursor, series_id):
@@ -1494,13 +1351,15 @@ def _mark_imported_volumes_present(conn, volume_ids):
             WHERE series_id = ? AND filepath IS NOT NULL AND filesystem_present = 0
             ORDER BY volume_number
         """, (series_id,)).fetchall()
-        missing_numbers = [row[0] for row in missing if row[0] is not None]
         state = 'partial' if missing else 'present'
+        # missing_volumes recense les tomes à acquérir (y compris les placeholders
+        # sans fichier). Ici, on ne vérifie que la présence filesystem des fichiers
+        # importés ; l'écraser avec cette liste effaçait les tomes réellement manquants.
         cursor.execute("""
             UPDATE series SET filesystem_state = ?, filesystem_missing_count = ?,
-                missing_volumes = ?, filesystem_checked_at = CURRENT_TIMESTAMP
+                filesystem_checked_at = CURRENT_TIMESTAMP
             WHERE id = ?
-        """, (state, len(missing), json.dumps(missing_numbers), series_id))
+        """, (state, len(missing), series_id))
 
 def get_owned_volume_signatures(series_ids, conn=None):
     """Pour chaque série de `series_ids`, l'ensemble des numéros RÉELLEMENT POSSÉDÉS
@@ -2021,6 +1880,21 @@ def get_library_series(library_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+
+        if request.args.get('view') == 'import':
+            # Import n'utilise que ces champs pour les listes de séries et le lien
+            # Bédéthèque. Le détail complet dépasse 1,5 Mo pour cette bibliothèque.
+            cursor.execute('''
+                SELECT id, title, is_oneshot, bedetheque_total_volumes,
+                       bedetheque_url
+                FROM series WHERE library_id = ? ORDER BY title
+            ''', (library_id,))
+            series_list = [
+                {**dict(row), 'is_oneshot': bool(row['is_oneshot'])}
+                for row in cursor.fetchall()
+            ]
+            conn.close()
+            return jsonify(series_list)
 
         cursor.execute('''
             SELECT s.id, s.title, s.path, s.total_volumes, s.missing_volumes, s.has_parts, s.last_scanned,
@@ -2601,7 +2475,7 @@ def get_series_details(series_id):
             SELECT id, part_number, part_name, volume_number, filename, filepath, filesystem_present, filesystem_checked_at,
                    author, year, resolution, release_group, file_size, page_count, format, comicinfo, cover_path,
                    komga_book_url, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
-                   is_special, special_label
+                   is_special, special_label, is_bis, bis_suffix
             FROM volumes
             WHERE series_id = ?
             ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, filename
@@ -2635,7 +2509,9 @@ def get_series_details(series_id):
                 'is_episode': bool(vol['is_episode']),
                 'episode_number': vol['episode_number'],
                 'is_special': bool(vol['is_special']),
-                'special_label': vol['special_label']
+                'special_label': vol['special_label'],
+                'is_bis': bool(vol['is_bis']),
+                'bis_suffix': vol['bis_suffix']
             })
 
         # Les recommandations « À lire aussi » sont mises en cache lors du dernier
@@ -3758,6 +3634,10 @@ def upload_series_file(series_id):
     Komga...) au lieu de dupliquer sa logique ici."""
     from werkzeug.utils import secure_filename
 
+    max_upload_bytes = 2 * 1024 * 1024 * 1024
+    if request.content_length and request.content_length > max_upload_bytes + 1024 * 1024:
+        return jsonify({'success': False, 'error': 'Fichier trop volumineux (limite: 2 Go)'}), 413
+
     uploaded = request.files.get('file')
     if not uploaded or not uploaded.filename:
         return jsonify({'success': False, 'error': 'Aucun fichier reçu'}), 400
@@ -3806,7 +3686,22 @@ def upload_series_file(series_id):
         base, ext2 = os.path.splitext(filename)
         target_path = resolve_within(os.path.join(upload_dir, f"{base}_{int(time.time())}{ext2}"), import_root)
 
-    uploaded.save(target_path)
+    written = 0
+    created = False
+    try:
+        with open(target_path, 'xb') as destination:
+            created = True
+            while chunk := uploaded.stream.read(1024 * 1024):
+                written += len(chunk)
+                if written > max_upload_bytes:
+                    raise ValueError('Fichier trop volumineux (limite: 2 Go)')
+                destination.write(chunk)
+    except Exception as exc:
+        if created and os.path.exists(target_path):
+            os.unlink(target_path)
+        if isinstance(exc, ValueError):
+            return jsonify({'success': False, 'error': str(exc)}), 413
+        raise
 
     scanner = LibraryScanner()
     parsed = scanner.parse_filename(os.path.basename(target_path))
@@ -3869,34 +3764,60 @@ def import_pending_count():
 
 
 def _extract_one_archive(archive_path, ext, target_dir):
-    """Extrait archive_path (zip ou rar) dans target_dir, à plat (voir
-    os.path.basename ci-dessous) - un membre d'archive n'est jamais recréé dans une
-    sous-arborescence, à la fois pour rester cohérent avec le tri par dossier du scan
-    d'import ET pour se prémunir d'un "zip slip" (nom de membre contenant "../.." pour
-    s'échapper de target_dir - os.path.basename neutralise ça par construction, aucun
-    composant de répertoire n'est jamais conservé).
+    """Extract to a staging directory and never replace an existing destination."""
+    import tempfile
 
-    L'archive d'origine n'est supprimée qu'après extraction intégralement réussie -
-    voir cbr_converter.py, même principe de prudence ("jamais toucher l'original avant
-    que le résultat soit confirmé bon")."""
-    os.makedirs(target_dir, exist_ok=True)
+    if os.path.islink(target_dir) or (os.path.lexists(target_dir) and not os.path.isdir(target_dir)):
+        raise ValueError('Dossier de destination non autorisé')
 
     if ext == '.zip':
         opener = zipfile.ZipFile
     else:
         opener = rarfile.RarFile
 
-    with opener(archive_path) as archive:
-        members = [m for m in archive.infolist() if not (m.is_dir() if ext == '.zip' else m.isdir())]
-        for member in members:
-            dest_name = os.path.basename(member.filename)
-            if not dest_name:
-                continue
-            dest_path = os.path.join(target_dir, dest_name)
-            with archive.open(member) as src, open(dest_path, 'wb') as dst:
-                shutil.copyfileobj(src, dst)
+    parent_dir = os.path.dirname(target_dir)
+    staging_dir = tempfile.mkdtemp(prefix='.extract-', dir=parent_dir)
+    try:
+        with opener(archive_path) as archive:
+            members = [m for m in archive.infolist() if not (m.is_dir() if ext == '.zip' else m.isdir())]
+            if len(members) > 10000:
+                raise ValueError('Archive contenant trop de fichiers')
+            names = set()
+            total_bytes = 0
+            for member in members:
+                dest_name = os.path.basename(member.filename)
+                if not dest_name or dest_name in ('.', '..') or dest_name.casefold() in names:
+                    raise ValueError('Archive contenant un nom de fichier vide ou dupliqué')
+                names.add(dest_name.casefold())
+                dest_path = os.path.join(staging_dir, dest_name)
+                with archive.open(member) as src, open(dest_path, 'xb') as dst:
+                    while chunk := src.read(1024 * 1024):
+                        total_bytes += len(chunk)
+                        if total_bytes > 10 * 1024 * 1024 * 1024:
+                            raise ValueError('Archive trop volumineuse')
+                        dst.write(chunk)
 
-    os.remove(archive_path)
+        if os.path.exists(target_dir):
+            for name in os.listdir(staging_dir):
+                if os.path.lexists(os.path.join(target_dir, name)):
+                    raise FileExistsError(f'Fichier déjà présent: {name}')
+            added = []
+            try:
+                for name in os.listdir(staging_dir):
+                    destination = os.path.join(target_dir, name)
+                    os.link(os.path.join(staging_dir, name), destination)
+                    added.append(destination)
+            except Exception:
+                for destination in added:
+                    os.unlink(destination)
+                raise
+        else:
+            os.replace(staging_dir, target_dir)
+            staging_dir = None
+        os.remove(archive_path)
+    finally:
+        if staging_dir is not None:
+            shutil.rmtree(staging_dir, ignore_errors=True)
 
 
 def _zip_is_single_packaged_comic(archive_path):
@@ -4016,7 +3937,7 @@ def _pack_file_matches_destination(parsed, destination):
     return _normalize_title_for_match(parsed_title) == _normalize_title_for_match(series_title)
 
 
-def _append_scanned_file(filepath, import_root, filename, destination, scanner, telegram_filenames,
+def _append_scanned_file(filepath, import_root, filename, destination, scanner,
                           manual_override_filepaths, import_config, files_found, pack_download_id=None,
                           validate_file=True, manual_destinations=None):
     """Construit et ajoute une entrée files_found - factorisé entre le fichier isolé (à
@@ -4051,18 +3972,16 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
     if file_destination:
         gate_passed = apply_tracked_volume_and_gate(parsed, file_destination)
 
-    if filename in telegram_filenames:
+    # Le client suivi dans active_downloads est plus fiable qu'une recherche du nom
+    # parmi tout l'historique Telegram (plus de 120 000 noms chargés par page).
+    tracked_client = (file_destination or {}).get('client')
+    if tracked_client == 'telegram' or import_root == current_app.config.get('TELEGRAM_IMPORT_DIRECTORY'):
         client = 'telegram'
-    elif import_root == current_app.config.get('TELEGRAM_IMPORT_DIRECTORY'):
-        # Filet de sécurité si jamais absent de telegram_filenames (ex: base
-        # telegram_messages.db reconstruite/vidée) - ce répertoire n'est écrit que par les
-        # téléchargements Telegram.
-        client = 'telegram'
-    elif import_root == current_app.config.get('AMULE_IMPORT_DIRECTORY'):
+    elif tracked_client == 'amule' or import_root == current_app.config.get('AMULE_IMPORT_DIRECTORY'):
         client = 'amule'
-    elif import_root == current_app.config.get('FOURTOUTICI_IMPORT_DIRECTORY'):
+    elif tracked_client == 'fourtoutici' or import_root == current_app.config.get('FOURTOUTICI_IMPORT_DIRECTORY'):
         client = 'fourtoutici'
-    elif import_root == current_app.config.get('SHELFMARK_IMPORT_DIRECTORY'):
+    elif tracked_client == 'shelfmark' or import_root == current_app.config.get('SHELFMARK_IMPORT_DIRECTORY'):
         client = 'shelfmark'
     else:
         client = 'torrent'
@@ -4117,7 +4036,7 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner, 
 
 
 def _collect_download_folder_files(folder_path, import_root, download, destination, scanner,
-                                    supported_extensions, telegram_filenames, manual_override_filepaths,
+                                    supported_extensions, manual_override_filepaths,
                                     import_config, files_found, incompatible_folders,
                                     validate_files=True, manual_destinations=None):
     """Ajoute à files_found/incompatible_folders tout ce qui se trouve DANS folder_path
@@ -4153,7 +4072,7 @@ def _collect_download_folder_files(folder_path, import_root, download, destinati
                 mark_import_file_manual(filepath)
                 manual_override_filepaths.add(filepath)
             _append_scanned_file(
-                filepath, import_root, filename, destination, scanner, telegram_filenames,
+                filepath, import_root, filename, destination, scanner,
                 manual_override_filepaths, import_config, files_found,
                 pack_download_id=download['id'], validate_file=validate_files,
                 manual_destinations=manual_destinations
@@ -4227,26 +4146,17 @@ def _scan_tracked_import_files(validate_files=True):
         'monitored_extensions', ['.cbz', '.cbr', '.zip', '.rar', '.pdf']
     ))
 
-    from blueprints.telegram_channels.scraper import get_downloaded_filenames
-    telegram_filenames = get_downloaded_filenames()
-
-    from blueprints.missing_monitor.downloader import get_trackable_active_downloads
-    trackable_downloads = get_trackable_active_downloads(include_terminal=True)
-
-    from blueprints.qbittorrent.routes import get_qbittorrent_torrent_names
-    qbittorrent_hashes = {
-        d['client_item_id'] for d in trackable_downloads
-        if d.get('client') == 'qbittorrent' and d.get('client_item_id')
-    }
-    torrent_names_by_hash = get_qbittorrent_torrent_names(qbittorrent_hashes)
-
-    # Identité de dossier -> téléchargement suivi (voir _resolve_download_folder_identity)
-    # - le plus récent gagne en cas de collision (trackable_downloads déjà trié
-    # created_at DESC, voir get_trackable_active_downloads).
-    downloads_by_folder_name = {}
-    for d in trackable_downloads:
-        for identity in _download_folder_identities(d, torrent_names_by_hash):
-            downloads_by_folder_name.setdefault(identity, d)
+    from blueprints.missing_monitor.downloader import (
+        get_trackable_active_downloads, prepare_trackable_downloads_for_matching,
+    )
+    tracked_rows = get_trackable_active_downloads(include_terminal=True)
+    if not tracked_rows:
+        # Aucun suivi éligible en base : aucun fichier du disque ne peut devenir un
+        # import. Éviter de charger l'index Telegram et de parcourir les montages.
+        from .import_history import persist_discovered_import_items
+        readable_roots = [root for root in current_app.config['IMPORT_DIRECTORIES'] if os.path.isdir(root)]
+        persist_discovered_import_items([], scanned_roots=readable_roots)
+        return [], []
 
     from .import_history import (
         get_finalized_import_source_paths,
@@ -4257,8 +4167,46 @@ def _scan_tracked_import_files(validate_files=True):
     manual_destinations = get_manual_override_destinations()
     finalized_source_paths = get_finalized_import_source_paths()
 
+    manually_tracked_ids = {
+        destination.get('tracking_id') for destination in manual_destinations.values()
+        if destination.get('tracking_id') is not None
+    }
+    # Les ~900 téléchargements individuels déjà importés n'ont plus de fichier à
+    # découvrir. Garder les packs terminaux (un membre peut subsister) et les
+    # assignations manuelles explicites, puis normaliser seulement ces candidats.
+    trackable_downloads = prepare_trackable_downloads_for_matching([
+        row for row in tracked_rows
+        if row.get('download_status') not in ('imported', 'skipped')
+        or row.get('is_pack') or row['id'] in manually_tracked_ids
+    ])
+
+    # L'affichage courant lit le nom réel du torrent conservé en base par le
+    # planificateur. Une requête HTTP lente ou indisponible chez qBittorrent ne doit
+    # plus bloquer la page Import lorsqu'aucun téléchargement n'est en cours.
+    torrent_names_by_hash = {
+        d['client_item_id'].lower(): d['client_item_name']
+        for d in trackable_downloads
+        if d.get('client') == 'qbittorrent' and d.get('client_item_id') and d.get('client_item_name')
+    }
+    if validate_files:
+        from blueprints.qbittorrent.routes import get_qbittorrent_torrent_names
+        qbittorrent_hashes = {
+            d['client_item_id'] for d in trackable_downloads
+            if d.get('client') == 'qbittorrent' and d.get('client_item_id')
+        }
+        torrent_names_by_hash.update(get_qbittorrent_torrent_names(qbittorrent_hashes))
+
+    # Identité de dossier -> téléchargement suivi (voir _resolve_download_folder_identity)
+    # - le plus récent gagne en cas de collision (trackable_downloads déjà trié
+    # created_at DESC, voir get_trackable_active_downloads).
+    downloads_by_folder_name = {}
+    for d in trackable_downloads:
+        for identity in _download_folder_identities(d, torrent_names_by_hash):
+            downloads_by_folder_name.setdefault(identity, d)
+
     files_found = []
     incompatible_folders = []
+    scanned_roots = []
 
     # Un seul listage NON récursif par répertoire surveillé (pas d'os.walk global) -
     # chaque entrée est soit le dossier d'un téléchargement suivi (repli sur son
@@ -4274,6 +4222,7 @@ def _scan_tracked_import_files(validate_files=True):
             entries = list(os.scandir(import_path))
         except OSError:
             continue
+        scanned_roots.append(import_path)
 
         for entry in entries:
             if entry.name.startswith('.'):
@@ -4291,7 +4240,7 @@ def _scan_tracked_import_files(validate_files=True):
                 )
                 _collect_download_folder_files(
                     entry.path, import_path, download, destination, scanner,
-                    supported_extensions, telegram_filenames, manual_override_filepaths,
+                    supported_extensions, manual_override_filepaths,
                     import_config, files_found, incompatible_folders,
                     validate_files=validate_files, manual_destinations=manual_destinations
                 )
@@ -4309,7 +4258,7 @@ def _scan_tracked_import_files(validate_files=True):
                 if not match:
                     continue
                 _append_scanned_file(
-                    entry.path, import_path, entry.name, match, scanner, telegram_filenames,
+                    entry.path, import_path, entry.name, match, scanner,
                     manual_override_filepaths, import_config, files_found,
                     pack_download_id=match.get('tracking_id'),
                     validate_file=validate_files, manual_destinations=manual_destinations
@@ -4318,7 +4267,7 @@ def _scan_tracked_import_files(validate_files=True):
     files_found = _exclude_terminal_without_manual_override(files_found)
     files_found = _exclude_finalized_import_files(files_found, finalized_source_paths)
     from .import_history import persist_discovered_import_items
-    persist_discovered_import_items(files_found)
+    persist_discovered_import_items(files_found, scanned_roots=scanned_roots)
     return files_found, incompatible_folders
 
 
@@ -4489,8 +4438,12 @@ def import_state_snapshot():
         # distinct du badge générique "Import en cours" déjà affiché sur tous les
         # fichiers d'un batch en vol (voir statusBadge, import.js) - celui-ci ne dit
         # jamais LEQUEL est le fichier actif ni depuis combien de temps.
-        from .import_history import get_currently_processing_file, get_waiting_import_snapshot
+        from .import_history import (
+            get_claimed_import_filepaths, get_currently_processing_file,
+            get_waiting_import_snapshot,
+        )
         currently_processing = get_currently_processing_file()
+        importing_filepaths = get_claimed_import_filepaths()
         waiting_snapshot = get_waiting_import_snapshot()
 
         from .import_history import get_finalized_import_source_paths
@@ -4513,6 +4466,7 @@ def import_state_snapshot():
             'files': files,
             'incompatible_folders': incompatible_folders,
             'currently_processing': currently_processing,
+            'importing_filepaths': importing_filepaths,
             'waiting_file_count': waiting_snapshot['waiting_file_count'],
             'awaiting_discovery_count': waiting_snapshot['awaiting_discovery_count'],
         })
@@ -6395,9 +6349,11 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         if tracking_id_file_counts:
             conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
             conn.executemany(
-                "UPDATE active_downloads SET is_pack = ? "
+                # Un import d'un seul tome ne prouve pas qu'un pack ne contient qu'un
+                # fichier. Ne jamais rétrograder un pack déjà identifié comme tel.
+                "UPDATE active_downloads SET is_pack = 1 "
                 "WHERE id = ? AND expected_volume_count IS NULL",
-                [(1 if count > 1 else 0, tid) for tid, count in tracking_id_file_counts.items()]
+                [(tid,) for tid, count in tracking_id_file_counts.items() if count > 1]
             )
             conn.commit()
             conn.close()
@@ -6515,29 +6471,15 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         else:
             update_import_operation(operation_id, 'completed', imported_count, replaced_count, skipped_count, failed_count)
 
-        # Tentative de matching Komga automatique par titre pour les séries pas encore
-        # matchées, et (re)synchronisation par livre pour celles qui l'étaient déjà (voir
-        # commentaire plus haut) - en tout dernier, avec un délai supplémentaire pour
-        # laisser le rescan Komga déclenché ci-dessus le temps de se terminer côté serveur
-        # Komga. Même logique/best-effort que pour les séries créées par un scan (voir
-        # scan_library).
+        # La base et l'historique sont déjà committés. La synchronisation Komga est
+        # secondaire et attend cinq secondes pour laisser démarrer son scan : ne pas
+        # imposer cette attente à la requête d'import ni au cycle du planificateur.
         if unmatched_komga_series or matched_komga_series:
-            time.sleep(5)
-            from blueprints.komga.client import KomgaClient, KomgaError
-            try:
-                client = KomgaClient()
-                for row_id, row_title in unmatched_komga_series:
-                    try:
-                        _try_komga_title_match(row_id, row_title, client)
-                    except KomgaError:
-                        continue
-                for row_id, row_komga_series_id in matched_komga_series:
-                    try:
-                        _sync_komga_books(row_id, row_komga_series_id, client)
-                    except KomgaError:
-                        continue
-            except KomgaError:
-                pass
+            threading.Thread(
+                target=_sync_komga_after_import,
+                args=(current_app._get_current_object(), unmatched_komga_series, matched_komga_series),
+                daemon=True,
+            ).start()
 
         print(f"✓ Import {operation_type} terminé: {imported_count} importés, {replaced_count} remplacés, {skipped_count} ignorés, {failed_count} erreurs")
         _notify_import_completed(imported_count, replaced_count, notify_source, logs_to_record)
@@ -7278,7 +7220,22 @@ def can_auto_assign(parsed, config):
     return True
 
 
-def _match_series_for_auto_import(normalized_title, all_series):
+def _build_auto_import_series_match_index(all_series):
+    """Pré-normalise les titres locaux pour les listes de centaines de résultats.
+
+    Le matcher historique normalisait chaque série plusieurs fois pour chaque fichier,
+    soit un coût fichiers × variantes × séries. L'index conserve exactement les mêmes
+    règles d'unicité, y compris les titres locaux dupliqués.
+    """
+    by_title = {}
+    for row in all_series:
+        key = _normalize_title_for_match(row[3])
+        if key:
+            by_title.setdefault(key, []).append(row)
+    return by_title
+
+
+def _match_series_for_auto_import(normalized_title, all_series, normalized_series_index=None):
     """Match une série locale avec les mêmes variantes que la recherche Bédéthèque.
 
     Chaque variante doit rester une correspondance exacte ou un préfixe local unique;
@@ -7288,12 +7245,19 @@ def _match_series_for_auto_import(normalized_title, all_series):
 
     for candidate in matching_query_variants(normalized_title):
         candidate_key = _normalize_title_for_match(candidate)
-        exact_matches = [row for row in all_series if _normalize_title_for_match(row[3]) == candidate_key]
+        if normalized_series_index is None:
+            exact_matches = [row for row in all_series if _normalize_title_for_match(row[3]) == candidate_key]
+            prefix_matches = [row for row in all_series if _normalize_title_for_match(row[3]) and candidate_key.startswith(_normalize_title_for_match(row[3]) + ' ')]
+        else:
+            exact_matches = normalized_series_index.get(candidate_key, [])
+            words = candidate_key.split()
+            prefix_matches = []
+            for size in range(1, len(words)):
+                prefix_matches.extend(normalized_series_index.get(' '.join(words[:size]), []))
         if len(exact_matches) == 1:
             return exact_matches[0]
         if len(exact_matches) > 1:
             return None
-        prefix_matches = [row for row in all_series if _normalize_title_for_match(row[3]) and candidate_key.startswith(_normalize_title_for_match(row[3]) + ' ')]
         if len(prefix_matches) == 1:
             return prefix_matches[0]
         if len(prefix_matches) > 1:
@@ -7359,11 +7323,13 @@ def _build_active_download_destination(series_id, volume_number, tracking_id, fo
         # destination existe : un fichier suivi peut encore être téléchargé, en cours
         # d'import ou déjà terminé.
         download_status = None
+        tracked_client = None
         if tracking_id is not None:
             status_row = cursor.execute(
-                'SELECT status FROM active_downloads WHERE id = ?', (tracking_id,)
+                'SELECT status, client FROM active_downloads WHERE id = ?', (tracking_id,)
             ).fetchone()
             download_status = status_row[0] if status_row else None
+            tracked_client = status_row[1] if status_row else None
         conn.close()
 
         series_id, library_id, library_path, library_name, series_title, is_oneshot, bedetheque_total_volumes = row
@@ -7373,6 +7339,7 @@ def _build_active_download_destination(series_id, volume_number, tracking_id, fo
             'library_path': library_path,
             'library_name': library_name,
             'series_title': series_title,
+            'client': tracked_client,
             'is_new_series': False,
             'is_oneshot': bool(is_oneshot),
             # Bédéthèque définit parfois une série à album unique comme « Série finie »

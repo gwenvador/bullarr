@@ -12,6 +12,9 @@ class NouveautesRssClientsTest(unittest.TestCase):
         self.row = source[end:source.index('function _nouveautesTelegramRowHtml', end)]
         self.nav = (Path(__file__).resolve().parents[1] / 'static/js/nav.js').read_text()
 
+    def test_rss_origin_prefers_the_published_indexer_title(self):
+        self.assertIn("e.feed_title || e.feed_name", self.source)
+
     def test_rss_torrent_buttons_use_enabled_clients(self):
         self.assertIn('enabledDownloadClients.qbittorrent', self.helper)
         self.assertIn('enabledDownloadClients.rtorrent', self.helper)
@@ -24,6 +27,14 @@ class NouveautesRssClientsTest(unittest.TestCase):
     def test_rss_row_renders_client_buttons_separately_from_open_link(self):
         self.assertIn('_nouveautesRssTorrentClientButtons(event, item, itemIndex)', self.row)
         self.assertIn('target="_blank"', self.row)
+
+    def test_rss_qbittorrent_button_forwards_matched_series(self):
+        helper_start = self.source.index('async function _addNouveautesRssTorrentToQbittorrent')
+        helper_end = self.source.index('function _nouveautesRssTorrentClientButtons', helper_start)
+        helper = self.source[helper_start:helper_end]
+        self.assertIn('const event = allNouveautesEvents[eventIndex];', helper)
+        self.assertIn('event?.series_id ?? null', helper)
+        self.assertLess(helper.index('const event ='), helper.index('addTorrentToQbittorrent'))
 
     def test_rss_rows_rerender_after_download_client_config_loads(self):
         self.assertIn("download-clients-ready", self.source)

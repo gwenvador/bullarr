@@ -439,7 +439,7 @@ def get_downloaded_filenames():
     return names
 
 
-def get_latest_files(days=15, limit=None):
+def get_latest_files(days=15, limit=None, older_than_days=None):
     """Fichiers scrapés dans les `days` derniers jours, plus récents d'abord - même fenêtre
     glissante que GET /api/ebdz/latest (voir routes.py de ebdz), pour un rendu cohérent
     entre les deux sources sur la page Nouveautés.
@@ -456,9 +456,12 @@ def get_latest_files(days=15, limit=None):
     sql = '''
         SELECT * FROM telegram_files
         WHERE message_date >= datetime('now', ?)
-        ORDER BY message_date DESC
     '''
     params = [f'-{int(days)} days']
+    if older_than_days is not None:
+        sql += " AND message_date < datetime('now', ?)"
+        params.append(f'-{int(older_than_days)} days')
+    sql += ' ORDER BY message_date DESC'
     if limit:
         sql += ' LIMIT ?'
         params.append(int(limit))

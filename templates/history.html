@@ -123,9 +123,10 @@
                         <div id="history-events-empty" style="padding:20px; text-align:center; color:#666; display:none;">
                             <p>Aucun événement trouvé</p>
                         </div>
-                        <div id="history-events-loading" style="text-align:center; padding:20px; color:#666;">
-                            <p>Chargement de l'historique...</p>
+                        <div id="history-events-load-more" style="text-align:center; padding:15px; display:none;">
+                            <button class="btn" type="button" onclick="loadMoreHistoryEvents()"></button>
                         </div>
+                        <div id="history-events-loading" class="loading"><div class="spinner"></div><p>Chargement...</p></div>
                     </div>
                 </div>
             </div>

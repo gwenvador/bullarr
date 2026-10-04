@@ -553,7 +553,8 @@ def _annotate_already_in_library(files):
     manquants ou non de la série"), pas seulement "la série existe-t-elle"."""
     from blueprints.library.routes import (
         get_db_connection, _normalize_title_for_match, _match_series_for_auto_import,
-        get_owned_volume_signatures, volume_possession_status
+        _build_auto_import_series_match_index, get_owned_volume_signatures,
+        volume_possession_status
     )
     from blueprints.library.scanner import LibraryScanner
 
@@ -566,6 +567,7 @@ def _annotate_already_in_library(files):
     ''')
     all_series = cursor.fetchall()
     series_by_id = {row[0]: row for row in all_series}
+    series_match_index = _build_auto_import_series_match_index(all_series)
     owned_by_series = get_owned_volume_signatures([row[0] for row in all_series], conn=conn)
     cursor.execute('SELECT series_id FROM missing_volume_monitor WHERE enabled = 1')
     monitored_series_ids = {row[0] for row in cursor.fetchall()}
@@ -586,7 +588,7 @@ def _annotate_already_in_library(files):
         parsed = scanner.parse_filename(f['filename'])
         normalized = _normalize_title_for_match(parsed.get('title', ''))
         override_series_id = title_overrides.get(normalized)
-        match = series_by_id[override_series_id] if override_series_id else _match_series_for_auto_import(normalized, all_series)
+        match = series_by_id[override_series_id] if override_series_id else _match_series_for_auto_import(normalized, all_series, series_match_index)
         f['match_overridden'] = bool(override_series_id)
         # "in telegram if there is a bedetheque link use it in the nouveautes serie
         # column" - un lien bedetheque.com extrait de la légende du message (voir
@@ -682,7 +684,8 @@ def latest():
 
     days = request.args.get('days', 15)
     limit = request.args.get('limit', type=int)
-    files = get_latest_files(days=days, limit=limit)
+    older_than_days = request.args.get('older_than_days', type=int)
+    files = get_latest_files(days=days, limit=limit, older_than_days=older_than_days)
     return jsonify({'success': True, 'files': _annotate_already_in_library(files)})
 
 

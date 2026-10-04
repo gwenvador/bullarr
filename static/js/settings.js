@@ -1348,15 +1348,20 @@ function displayIndexers(indexers) {
         }
         
         html += `
-            <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 5px; margin-bottom: 15px; background: #fafafa;">
+            <div class="prowlarr-indexer-row ${indexer.selected ? 'indexer-active' : 'indexer-inactive'}" style="padding: 15px; border: 1px solid var(--color-border, #e0e0e0); border-radius: 5px; margin-bottom: 15px; opacity: ${indexer.selected ? '1' : '0.45'}; background: ${indexer.selected ? 'var(--color-surface-alt, #fafafa)' : 'transparent'};">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
-                    <input type="checkbox" id="indexer-${indexer.id}" class="indexer-checkbox" value="${indexer.id}" ${indexer.selected ? 'checked' : ''}>
+                    <input type="checkbox" id="indexer-${indexer.id}" class="indexer-checkbox" value="${indexer.id}" ${indexer.selected ? 'checked' : ''} onchange="toggleProwlarrIndexerActive(this)">
                     <div style="flex: 1;">
                         <label for="indexer-${indexer.id}" style="cursor: pointer; margin: 0;">
                             <strong>${indexer.name}</strong>
                             <span style="color: #999; font-size: 0.9em; margin-left: 10px;">(ID: ${indexer.id})</span>
                         </label>
                         ${indexer.language ? `<div style="font-size: 0.85em; color: #666;">🌐 ${indexer.language}</div>` : ''}
+                        <div class="indexer-rss-choice" style="margin-top: 8px; display: flex; align-items: center; gap: 12px; font-size: 0.9em;">
+                            <strong>Flux RSS :</strong>
+                            <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="radio" class="rss-indexer-radio" name="rss-indexer-${indexer.id}" data-indexer-id="${indexer.id}" value="yes" ${indexer.rss_enabled ? 'checked' : ''}> Oui</label>
+                            <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="radio" class="rss-indexer-radio" name="rss-indexer-${indexer.id}" data-indexer-id="${indexer.id}" value="no" ${indexer.rss_enabled ? '' : 'checked'}> Non</label>
+                        </div>
                     </div>
                 </div>
                 ${categoriesHtml}
@@ -1367,8 +1372,19 @@ function displayIndexers(indexers) {
     list.innerHTML = html;
 }
 
+function toggleProwlarrIndexerActive(checkbox) {
+    const row = checkbox.closest('.prowlarr-indexer-row');
+    if (!row) return;
+    const active = checkbox.checked;
+    row.classList.toggle('indexer-active', active);
+    row.classList.toggle('indexer-inactive', !active);
+    row.style.opacity = active ? '1' : '0.45';
+    row.style.background = active ? 'var(--color-surface-alt, #fafafa)' : 'transparent';
+}
+
 async function saveProwlarrIndexers() {
     const selected = [];
+    const rssIndexers = [];
     const selectedCategories = {};
     
     // Récupérer les indexeurs sélectionnés
@@ -1377,6 +1393,10 @@ async function saveProwlarrIndexers() {
         selectedCategories[checkbox.value.toString()] = [];
     });
     
+    document.querySelectorAll('.rss-indexer-radio:checked[value="yes"]').forEach(radio => {
+        rssIndexers.push(parseInt(radio.getAttribute('data-indexer-id')));
+    });
+
     // Récupérer les catégories sélectionnées pour chaque indexeur
     document.querySelectorAll('.category-checkbox:checked').forEach(checkbox => {
         const indexerId = checkbox.getAttribute('data-indexer-id');
@@ -1396,6 +1416,7 @@ async function saveProwlarrIndexers() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ 
                 selected_indexers: selected,
+                rss_indexers: rssIndexers,
                 selected_categories: selectedCategories
             })
         });
@@ -2749,7 +2770,7 @@ function updateRssCardStatus() {
 function renderRssFeeds() {
     const el = document.getElementById('rssFeedsList');
     if (!el) return;
-    el.innerHTML = rssFeeds.length ? rssFeeds.map((feed, i) => `<div class="rss-feed-row"><div class="rss-feed-row-copy"><strong>${escapeHtml(feed.name)}</strong><small>${escapeHtml(feed.url)}</small></div><button class="btn-icon-only" type="button" onclick="rssFeeds.splice(${i},1); renderRssFeeds()" aria-label="Supprimer le flux RSS" data-tooltip="Supprimer le flux RSS">${svgIcon('trash-2')}</button></div>`).join('') : '<p class="help-text">Aucun flux configuré.</p>';
+    el.innerHTML = rssFeeds.length ? rssFeeds.map((feed, i) => { const detail = feed.provider === 'prowlarr' ? 'Tous les indexeurs Prowlarr (clé conservée côté serveur)' : feed.url; return `<div class="rss-feed-row"><div class="rss-feed-row-copy"><strong>${escapeHtml(feed.name)}</strong><small>${escapeHtml(detail)}</small></div><button class="btn-icon-only" type="button" onclick="rssFeeds.splice(${i},1); renderRssFeeds()" aria-label="Supprimer le flux RSS" data-tooltip="Supprimer le flux RSS">${svgIcon('trash-2')}</button></div>`; }).join('') : '<p class="help-text">Aucun flux configuré.</p>';
 }
 function addRssFeed() { const name = document.getElementById('rssFeedName').value.trim(); const url = document.getElementById('rssFeedUrl').value.trim(); if (!url) return; rssFeeds.push({name: name || url, url, enabled: true}); document.getElementById('rssFeedName').value=''; document.getElementById('rssFeedUrl').value=''; renderRssFeeds(); }
 async function saveRssFeeds() { try { const response = await fetch('/api/settings/rss', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({feeds:rssFeeds})}); const data=await response.json(); if (!response.ok || !data.success) throw new Error(data.error || 'Erreur'); rssFeeds=data.feeds || []; renderRssFeeds(); updateRssCardStatus(); showSettingsMessage('rssMessage','✅ Flux RSS enregistré','success'); } catch(e) { showSettingsMessage('rssMessage','❌ '+e.message,'error'); } }
@@ -2771,8 +2792,7 @@ function escapeHtml(text) {
 // CLAUDE.md (escapeForAttribute pour un littéral JS entre guillemets simples dans un
 // onclick, jamais pour un attribut HTML classique comme value=/title=)
 function escapeForAttribute(text) {
-    // lgtm [js/incomplete-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
-    return String(text).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return String(text ?? '').replace(/&/g, '&amp;').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ===== BACKUP / RESTAURATION =====

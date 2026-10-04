@@ -12,6 +12,8 @@ let currentHistorySearchText = '';
 let currentHistoryStatusFilter = '';
 const HISTORY_CACHE_KEY = 'bullarr:history:v1';
 const HISTORY_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const HISTORY_PAGE_SIZE = 50;
+let historyDisplayedCount = HISTORY_PAGE_SIZE;
 
 function _saveHistoryCache() {
     try {
@@ -148,7 +150,7 @@ function setHistorySort(column) {
     renderHistoryEvents();
 }
 
-function renderHistoryEvents() {
+function renderHistoryEvents(resetPage = true) {
     let events = currentHistoryFilter === 'all'
         ? allHistoryEvents
         : currentHistoryFilter === 'search'
@@ -171,10 +173,13 @@ function renderHistoryEvents() {
 
     const body = document.getElementById('history-events-body');
     const empty = document.getElementById('history-events-empty');
+    const loadMore = document.getElementById('history-events-load-more');
+    if (resetPage) historyDisplayedCount = HISTORY_PAGE_SIZE;
 
     if (events.length === 0) {
         body.innerHTML = '';
         empty.style.display = 'block';
+        loadMore.style.display = 'none';
         return;
     }
     empty.style.display = 'none';
@@ -182,7 +187,18 @@ function renderHistoryEvents() {
     // historyEventRowHtml: voir history-shared.js - gabarit de ligne partagé avec le
     // widget de /import (même code, "widget history and /history should have the same
     // UI"). idPrefix par défaut ('history-row') laissé tel quel ici.
-    body.innerHTML = events.map((e, index) => historyEventRowHtml(e, index)).join('');
+    body.innerHTML = events.slice(0, historyDisplayedCount)
+        .map((e, index) => historyEventRowHtml(e, index)).join('');
+    const remaining = events.length - historyDisplayedCount;
+    loadMore.style.display = remaining > 0 ? 'block' : 'none';
+    if (remaining > 0) {
+        loadMore.querySelector('button').textContent = `Afficher ${Math.min(HISTORY_PAGE_SIZE, remaining)} autres événements (${remaining} restants)`;
+    }
+}
+
+function loadMoreHistoryEvents() {
+    historyDisplayedCount += HISTORY_PAGE_SIZE;
+    renderHistoryEvents(false);
 }
 
 // toggleImportFiles/toggleActionDetail: voir history-shared.js - partagées avec le widget

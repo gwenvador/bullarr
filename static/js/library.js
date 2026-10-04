@@ -1591,6 +1591,19 @@ async function reloadLibraryData(buttonEl) {
     }
 }
 
+async function waitForScanJob(jobId) {
+    while (true) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const response = await fetch(`/api/scan/jobs/${encodeURIComponent(jobId)}`);
+        if (!response.ok) throw new Error('Impossible de suivre le scan');
+        const payload = await response.json();
+        const job = payload.job;
+        if (job.status === 'running') continue;
+        if (job.status === 'succeeded') return job.result || {};
+        throw new Error(job.error || 'Scan interrompu');
+    }
+}
+
 async function scanLibrary(passedLibraryId, forceFull, buttonEl) {
     // Support deux modes d'appel:
     // 1. Depuis library.html: sans libraryId, utilise le libraryId global; buttonEl est
@@ -1628,9 +1641,10 @@ async function scanLibrary(passedLibraryId, forceFull, buttonEl) {
                 body: JSON.stringify({})
             });
 
-            const data = await response.json();
+            const started = await response.json();
 
-            if (data.success) {
+            if (started.success) {
+                await waitForScanJob(started.job_id);
                 await loadLibraryData();
             } else {
                 alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));
@@ -1648,11 +1662,12 @@ async function scanLibrary(passedLibraryId, forceFull, buttonEl) {
         }
 
         try {
-            const response = await fetch(scanUrl);
-            const data = await response.json();
+            const response = await fetch(scanUrl, { method: 'POST' });
+            const started = await response.json();
 
-            if (data.success) {
-                alert(`✅ Scan terminé ! ${data.series_count} séries trouvées.`);
+            if (started.success) {
+                const result = await waitForScanJob(started.job_id);
+                alert(`✅ Scan terminé ! ${result.series_count} séries trouvées.`);
                 location.reload();
             } else {
                 alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));
@@ -1675,15 +1690,16 @@ async function scanSeries(seriesId, forceFull) {
             headers: { 'Content-Type': 'application/json' }
         });
 
-        const data = await response.json();
+        const started = await response.json();
+        const data = started.success ? await waitForScanJob(started.job_id) : started;
 
-        if (data.success && data.deleted) {
+        if (started.success && data.deleted) {
             // Le répertoire n'existe plus: la série a été supprimée de la base. On ne
             // peut plus afficher sa page de détail, retour à la bibliothèque
             alert('🗑️ ' + data.message);
             const libId = (currentSeriesDetail && currentSeriesDetail.library && currentSeriesDetail.library.id) || libraryId;
             window.location.href = libId ? `/library/${libId}` : '/';
-        } else if (data.success) {
+        } else if (started.success) {
             // Recharger la vue de détail en place pour voir les changements - seulement
             // si on est bien sur la page de détail (#modal-body n'existe pas quand ce
             // bouton est déclenché depuis l'overlay au survol d'une affiche de la grille)
@@ -6644,7 +6660,7 @@ function decodeFilename(filename) {
 }
 
 function escapeForAttribute(text) {
-    return String(text ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(text ?? '').replace(/&/g, '&amp;').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 async function copyLink(link, button) {

@@ -3985,3 +3985,13 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
     height: 14px;
     flex: 0 0 auto;
 }
+
+.nouveautes-matched-series a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+.nouveautes-matched-series a:hover,
+.nouveautes-matched-series a:focus-visible {
+    color: var(--color-accent-hover);
+    text-decoration: underline;
+}

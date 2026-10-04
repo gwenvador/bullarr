@@ -159,6 +159,49 @@ def _parse_special_prefix(title):
     return False, None
 
 
+def _numbered_special_label(album):
+    """Repère un petit supplément numéroté avec son tome de rattachement.
+
+    Un ``N Bis`` ou un TL de longueur normale reste une édition du tome N. ``SUP``
+    désigne un supplément ; un TL de quelques pages est aussi un objet distinct du
+    tome principal (ex. Monsieur Jean 4 TL, 8 pages contre 54 pour le tome 4).
+    """
+    number = album.get('number')
+    suffix = (album.get('bis_suffix') or '').strip().upper()
+    if number is None or not suffix:
+        return None
+    if suffix == 'SUP':
+        return f'{number} {suffix}'
+    try:
+        pages = int(album.get('pages') or 0)
+    except (TypeError, ValueError):
+        pages = 0
+    if suffix == 'TL' and 0 < pages <= 16:
+        return f'{number} {suffix}'
+    return None
+
+
+def _main_album_total(info):
+    """Retire les suppléments du total si Bédéthèque les y a inclus.
+
+    On n'ajuste le nombre annoncé que si la liste numérotée explique exactement ce
+    total. Les fiches à numérotation partielle gardent la valeur fournie par le site.
+    """
+    total = info.get('total_volumes')
+    albums = info.get('volumes') or []
+    specials = [album for album in albums if _numbered_special_label(album)]
+    if not specials:
+        return total
+    main_numbers = {
+        album['number'] for album in albums
+        if album.get('number') is not None and not _numbered_special_label(album)
+        and not re.search(r'\b[EÉ]p(?:isode)?\.?\s*\d+\b', album.get('title') or '', re.IGNORECASE)
+    }
+    if total == len(main_numbers) + len(specials):
+        return len(main_numbers)
+    return total
+
+
 def _index_bedetheque_volumes(bd_volumes):
     """Technical rationale and compatibility constraints for this code path."""
     by_number, by_integral, by_hs, by_episode = {}, {}, {}, {}
@@ -260,6 +303,10 @@ def _choose_ambiguous_album_match(matches, local_volume):
 def match_bedetheque_volume(bd_volumes, local_volume):
     """Technical rationale and compatibility constraints for this code path."""
     by_number, by_integral, by_hs, by_episode = _index_bedetheque_volumes(bd_volumes)
+    if local_volume.get('is_special') and local_volume.get('special_label'):
+        for album in bd_volumes or []:
+            if _numbered_special_label(album) == local_volume['special_label']:
+                return album
     if local_volume.get('is_episode'):
         matches = by_episode.get(local_volume.get('episode_number'))
         return matches[0] if matches else None
@@ -703,7 +750,10 @@ class BedethequeScraper:
                 'read_also': []
             }
 
-            h1 = soup.select_one('.bandeau-info.serie h1 a')
+            # Bédéthèque a remplacé le bandeau historique par .bdt-ah--serie.
+            # Garder les deux structures : l'index de recherche peut trouver une
+            # série alors que son détail n'est plus parsé par les anciens sélecteurs.
+            h1 = soup.select_one('.bandeau-info.serie h1 a, .bdt-ah--serie h1 a')
             if h1:
                 info['title'] = h1.get_text(strip=True)
 
@@ -725,6 +775,24 @@ class BedethequeScraper:
                 elif key == 'Langue':
                     info['language'] = value or None
 
+            if not info['genre']:
+                genres = [a.get_text(' ', strip=True) for a in soup.select('.bdt-ah--serie .bdt-sh-genre')]
+                info['genre'] = ', '.join(g for g in genres if g) or None
+            if not info['status']:
+                status = soup.select_one('.bdt-ah--serie .bdt-sh-parution')
+                info['status'] = status.get_text(' ', strip=True) if status else None
+            for pill in soup.select('.bdt-ah--serie .bdt-ah-pastilles li'):
+                label = (pill.get('title') or '').lower()
+                value = pill.get_text(' ', strip=True)
+                if 'nombre de tomes' in label:
+                    match = re.search(r'\d+', value)
+                    if match:
+                        info['total_volumes'] = int(match.group())
+                elif 'origine' in label:
+                    info['origin'] = value or None
+                elif 'langue' in label:
+                    info['language'] = value or None
+
             h3 = soup.select_one('.bandeau-info.serie h3')
             if h3:
                 h3_text = h3.get_text(' ', strip=True)
@@ -736,12 +804,19 @@ class BedethequeScraper:
                     single_year = re.search(r'\b(19\d{2}|20\d{2})\b', h3_text)
                     if single_year:
                         info['year_start'] = int(single_year.group(1))
+            if not h3:
+                years = soup.select_one('.bdt-ah--serie .bdt-ah-by')
+                if years:
+                    matches = re.findall(r'\b(?:19|20)\d{2}\b', years.get_text(' ', strip=True))
+                    if matches:
+                        info['year_start'] = int(matches[0])
+                        info['year_end'] = int(matches[1]) if len(matches) > 1 else None
 
-            desc_p = soup.select_one('div.single-content.serie > p')
+            desc_p = soup.select_one('div.single-content.serie > p, .bdt-sh-resume')
             if desc_p:
                 info['description'] = desc_p.get_text(separator=' ', strip=True)
 
-            cover_img = soup.select_one('div.serie-image img')
+            cover_img = soup.select_one('div.serie-image img, .bdt-ah-cover .bdt-sh-tomes img')
             if cover_img and cover_img.get('src'):
                 cover_url = urljoin(self.base_url, cover_img['src'])
                 info['cover_url'] = cover_url
@@ -790,13 +865,29 @@ class BedethequeScraper:
                     'url': read_also_url,
                     'cover_url': urljoin(self.base_url, read_also_cover) if read_also_cover else None
                 })
+            if not info['read_also']:
+                for a in soup.select('.bdt-alire-track a.bdt-alire[href*="/serie-"]'):
+                    image = a.find('img')
+                    title_node = a.select_one('.bdt-alire-titre')
+                    title = (a.get('title') or
+                             (title_node.get_text(' ', strip=True) if title_node else '')).strip()
+                    if not title:
+                        continue
+                    info['read_also'].append({
+                        'title': title,
+                        'url': urljoin(self.base_url, a['href']),
+                        'cover_url': urljoin(self.base_url, image['src']) if image and image.get('src') else None,
+                    })
 
             scenaristes, dessinateurs, editeurs = [], [], []
             # {nom: url fiche auteur} - item #25 improvement.txt, voir _author_link_from_span.
             # Un même nom peut apparaître sur plusieurs tomes (voir _reformat_bedetheque_
             # author_name pour le format "Prénom Nom"), on garde la première URL trouvée.
             author_links = {}
-            for album_li in soup.select('ul.liste-albums li[itemtype="https://schema.org/Book"]'):
+            album_nodes = soup.select('ul.liste-albums li[itemtype="https://schema.org/Book"]')
+            if not album_nodes:
+                album_nodes = soup.select('article.bdt-edition[itemtype="https://schema.org/Book"]')
+            for album_li in album_nodes:
                 volume = self._parse_volume(album_li)
                 if not volume:
                     continue
@@ -985,7 +1076,7 @@ class BedethequeScraper:
             if anchor:
                 volume['id'] = anchor.get('name')
 
-            title_link = li.select_one('h3 a.titre')
+            title_link = li.select_one('h3 a.titre, .bdt-edition-head h3 a[itemprop="url"]')
             if title_link and title_link.get('href'):
                 volume['url'] = urljoin(self.base_url, title_link['href'])
 
@@ -1010,12 +1101,12 @@ class BedethequeScraper:
                     # titre retourné, d'autres parseurs comme _parse_special_prefix/
                     # _parse_int_hs_prefix le lisent depuis là), le texte redevient "N .
                     # Titre", identique à un tome classique.
-                    numa_span = name_span.select_one('span.numa')
+                    numa_span = name_span.select_one('span.numa, span.bdt-numa')
                     numa_text = re.sub(r'\s+', ' ', numa_span.get_text(strip=True)).strip() if numa_span else ''
                     bis_number = None
                     if numa_span and numa_text:
                         clone = copy.copy(name_span)
-                        clone_numa = clone.select_one('span.numa')
+                        clone_numa = clone.select_one('span.numa, span.bdt-numa')
                         if clone_numa:
                             clone_numa.extract()
                         text_without_numa = re.sub(r'\s+', ' ', clone.get_text(' ', strip=True)).strip()
@@ -1029,15 +1120,21 @@ class BedethequeScraper:
                     else:
                         volume['title'] = full_text or None
 
-            cover_img = li.select_one('.couv img')
+            cover_img = li.select_one('.couv img, .bdt-ecov img[itemprop="image"]')
             if cover_img and cover_img.get('src'):
                 volume['cover_url'] = urljoin(self.base_url, cover_img['src'])
 
+            info_items = []
             for info_li in li.select('ul.infos li'):
                 label = info_li.find('label')
-                if not label:
-                    continue
-                key = label.get_text(strip=True).rstrip(':').strip().lower()
+                if label:
+                    info_items.append((label.get_text(strip=True), info_li))
+            for label in li.select('dl.bdt-sheet dt'):
+                value = label.find_next_sibling('dd')
+                if value:
+                    info_items.append((label.get_text(' ', strip=True), value))
+            for label_text, info_li in info_items:
+                key = label_text.rstrip(':').strip().lower()
                 if key == 'scénario':
                     span = info_li.select_one('span[itemprop="author"]')
                     volume['scenario'] = _reformat_bedetheque_author_name(span.get_text(strip=True)) if span else None
@@ -1050,10 +1147,10 @@ class BedethequeScraper:
                     span = info_li.select_one('span[itemprop="illustrator"]')
                     volume['couleurs'] = _reformat_bedetheque_author_name(span.get_text(strip=True)) if span else None
                     volume['couleurs_url'] = _author_link_from_span(span)
-                elif key == 'editeur':
+                elif key in ('editeur', 'éditeur'):
                     span = info_li.select_one('span[itemprop="publisher"]')
                     volume['editeur'] = span.get_text(strip=True) if span else None
-                elif key == 'isbn':
+                elif key in ('isbn', 'ean/isbn'):
                     span = info_li.select_one('span[itemprop="isbn"]')
                     volume['isbn'] = span.get_text(strip=True) if span else None
                 elif key == 'planches':
@@ -1486,7 +1583,7 @@ class BedethequeDatabase:
                 bedetheque_info.get('description') or None,
                 bedetheque_info.get('genre'),
                 bedetheque_info.get('status'),
-                bedetheque_info.get('total_volumes'),
+                _main_album_total(bedetheque_info),
                 bedetheque_info.get('origin'),
                 bedetheque_info.get('language'),
                 ', '.join(bedetheque_info.get('scenaristes') or []) or None,

@@ -207,6 +207,7 @@ def prowlarr_indexers():
             saved_config = load_prowlarr_config()
             selected_ids = saved_config.get('selected_indexers', [])
             selected_categories = saved_config.get('selected_categories', {})  # Format: {indexer_id: [cat_ids]}
+            rss_indexer_ids = saved_config.get('rss_indexers')
             
             # Formater les indexeurs
             indexers = []
@@ -250,6 +251,7 @@ def prowlarr_indexers():
                     'name': indexer.get('name', 'Indexeur'),
                     'language': indexer.get('language'),
                     'selected': indexer_id in selected_ids,
+                    'rss_enabled': rss_indexer_ids is None or str(indexer_id) in {str(value) for value in rss_indexer_ids},
                     'categories': [
                         {
                             'id': cat['id'],
@@ -286,10 +288,12 @@ def prowlarr_indexers():
             data = request.get_json()
             selected_indexers = data.get('selected_indexers', [])
             selected_categories = data.get('selected_categories', {})  # Format: {indexer_id: [cat_ids]}
+            rss_indexers = data.get('rss_indexers', [])
             
             config = load_prowlarr_config()
             config['selected_indexers'] = selected_indexers
             config['selected_categories'] = selected_categories
+            config['rss_indexers'] = [int(value) for value in rss_indexers if str(value).isdigit()]
             
             if save_prowlarr_config(config):
                 return jsonify({'success': True})

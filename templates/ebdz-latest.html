@@ -55,7 +55,7 @@
                                 </button>
                                 <button class="tab-button" id="nouveautes-filter-rss" onclick="filterNouveautesEvents('rss')"><img src="{{ url_for('static', filename='img/rss-logo.svg') }}" alt="" class="nouveautes-source-icon"> RSS</button>
                             </div>
-                            <button class="btn" onclick="loadNouveautesEvents(true)" id="nouveautesRescanBtn" data-tooltip="Scraper EBDZ + Telegram pour de nouveaux fichiers" style="padding:8px 15px; font-size:14px;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
+                            <button class="btn" onclick="loadNouveautesEvents(true)" id="nouveautesRescanBtn" data-tooltip="Recharger EBDZ, Telegram et RSS" style="padding:8px 15px; font-size:14px;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg></button>
                         </div>
 
                         <div id="nouveautes-top-scrollbar" class="nouveautes-top-scrollbar" aria-label="Défilement horizontal du tableau" tabindex="0"><div></div></div>
@@ -89,10 +89,17 @@
                                             </div>
                                         </th>
                                         <th class="volume-table-sortable" data-sort-column="matched" onclick="setNouveautesSort('matched')">
-                                            <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:inherit;" data-tooltip="N'afficher que les sujets déjà matchés à une série (comparaison directe du thread EBDZ, pas juste un titre proche)" onclick="event.stopPropagation()">
-                                                <input type="checkbox" id="nouveautesMatchedOnlyFilter" autocomplete="off" onchange="renderNouveautesEvents()">
-                                                Série
-                                            </label><span class="nouveautes-sort-arrow"></span>
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label" style="cursor:pointer;" onclick="setNouveautesSort('matched')">Série<span class="nouveautes-sort-arrow"></span></span>
+                                                <span class="th-filterable-filter" onclick="event.stopPropagation()">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <select id="nouveautesOwnershipFilter" class="th-filterable-control" aria-label="Filtrer par possession" onchange="_syncFilterControlActive(this); renderNouveautesEvents()">
+                                                        <option value="">Tous</option>
+                                                        <option value="owned">En bibliothèque</option>
+                                                        <option value="missing">Pas en bibliothèque</option>
+                                                    </select>
+                                                </span>
+                                            </div>
                                         </th>
                                         <th class="volume-table-sortable" data-sort-column="status" onclick="setNouveautesSort('status')" data-tooltip="Nouveau/déjà connu, surveillé, statut d'import, ajout à la bibliothèque">
                                             Actions<span class="nouveautes-sort-arrow"></span>
@@ -106,9 +113,7 @@
                         <div id="nouveautes-events-empty" style="padding:20px; text-align:center; color:#666; display:none;">
                             <p>Aucun élément trouvé</p>
                         </div>
-                        <div id="nouveautes-events-loading" style="text-align:center; padding:20px; color:#666;">
-                            <p>Chargement...</p>
-                        </div>
+                        <div id="nouveautes-events-loading" class="loading"><div class="spinner"></div><p>Chargement...</p></div>
                     </div>
                 </div>
             </div>

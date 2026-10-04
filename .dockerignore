@@ -18,3 +18,12 @@ CLAUDE.md
 EXCEPTION_CASES.md
 IMPORT_AUTOMATIQUE.md
 TEST_PLAN.md
+
+# Never include local configuration or imported content in an image.
+.env*
+.mcp.json
+.claude/
+.playwright-mcp/
+.pytest_cache/
+_test_data/
+incoming/

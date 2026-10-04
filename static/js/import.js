@@ -14,7 +14,7 @@ let currentFileIndices = [];
 let allLibraries = [];
 let librariesSeriesMap = {};
 // Distingue "le tout premier rendu de la page n'a pas encore eu lieu" de "rendu, et rien
-// à montrer" - mis à true inconditionnellement dès window.addEventListener('load', ...)
+// à montrer" - mis à true inconditionnellement dès DOMContentLoaded
 // (voir plus bas), plus par un scan lui-même: "for import there should be a database of
 // all the downloads... do not display what files are on disk" - il n'y a plus de scan de
 // répertoire automatique au chargement, seulement le cache local + les téléchargements
@@ -369,8 +369,10 @@ let pendingDownloads = [];
 let anyImportInProgress = false;
 
 let currentlyProcessingFile = null;
+let importingFilepaths = new Set();
 
 async function loadActiveDownloads() {
+    let volumesToRefresh = [];
     try {
         // Le serveur renvoie un instantané unique contenant la progression du client,
         // active_downloads et les fichiers suivis. Ne pas combiner dans le navigateur
@@ -403,10 +405,14 @@ async function loadActiveDownloads() {
             });
             incompatibleFolders = data.incompatible_folders || [];
             currentlyProcessingFile = data.currently_processing || null;
+            importingFilepaths = new Set(data.importing_filepaths || []);
             window.importWaitingFileCount = data.waiting_file_count;
             window.importAwaitingDiscoveryCount = data.awaiting_discovery_count || 0;
             document.dispatchEvent(new CustomEvent('import-state-confirmed', { detail: { waitingFileCount: data.waiting_file_count } }));
-            await _ensureVolumesLoadedForFiles(importFiles);
+            // L'état des fichiers est déjà disponible. Les listes de tomes servent aux
+            // menus d'assignation et peuvent remplir ces menus après le premier rendu.
+            volumesToRefresh = importFiles.filter(file => file.destination?.series_id != null
+                && !file.destination.is_new_series && !_seriesVolumesCache[file.destination.series_id]);
             hasScannedOnce = true;
         }
     } catch (error) {
@@ -417,6 +423,9 @@ async function loadActiveDownloads() {
     hasCheckedActiveDownloadsOnce = true;
     renderCurrentlyProcessingBanner();
     displayImportFiles();
+    if (volumesToRefresh.length) {
+        _ensureVolumesLoadedForFiles(volumesToRefresh).then(() => displayImportFiles());
+    }
 }
 
 function renderCurrentlyProcessingBanner() {
@@ -743,7 +752,8 @@ function _activeDownloadProgressLabelHtml(item) {
     const stateLabel = CLIENT_STATE_LABELS[item.state] || item.state || '—';
     const progress = Math.min(100, Math.max(0, item.progress || 0));
     const etaText = formatEta(item.eta_seconds);
-    return `${progress.toFixed(1)}% · ${escapeHtml(stateLabel)}${etaText ? ` · ${etaText}` : ''}`;
+    const seriesValidationText = item.series_id == null ? ' · attente validation manuelle de la série' : '';
+    return `${progress.toFixed(1)}% · ${escapeHtml(stateLabel)}${etaText ? ` · ${etaText}` : ''}${seriesValidationText}`;
 }
 
 function _activeDownloadKey(clientKey, item) {
@@ -1071,7 +1081,7 @@ async function loadAllLibraries() {
 
         // Charger les séries de toutes les bibliothèques en parallèle
         await Promise.all(allLibraries.map(async (lib) => {
-            const seriesResponse = await fetch(`/api/library/${lib.id}/series`);
+            const seriesResponse = await fetch(`/api/library/${lib.id}/series?view=import`);
             librariesSeriesMap[lib.id] = await seriesResponse.json();
         }));
     } catch (error) {
@@ -1869,24 +1879,9 @@ function _convertActionHtml(file) {
 // formule exacte (une seule source de vérité), mais n'est plus forcément affiché comme
 // une ligne de CE tableau - voir plus bas.
 function _isFileImportingNow(file) {
-    const persistedStatus = file.destination && file.destination.download_status;
-    // Le cycle de vie de la base fait foi pour les fichiers suivis. En particulier, ne
-    // pas étiqueter un fichier terminé comme « en cours d'import » uniquement parce que
-    // le planificateur est activé ou qu'une autre opération d'import est en cours.
-    if (persistedStatus) return persistedStatus === 'importing';
-    const hasDestination = file.destination;
-    const hasKnownVolume = _hasKnownVolume(file);
-    const hasDatabaseVolume = !!file.destination?.volume_id;
-    const isManualOverride = !!(file.manual_override || (file.destination && file.destination.manual_override));
-    const willAutoImportItself = hasDestination && hasKnownVolume && !isManualOverride && !file.auto_import_skip_reason;
-    // "si l'import ne marche pas garde en import manuel. retire import en cours dans
-    // ce cas" - un fichier avec auto_import_skip_reason (ex: échec répété, voir
-    // _repeated_failure_skip_reason côté Flask) ne sera JAMAIS repris par le
-    // scheduler: même si un AUTRE import tourne au même moment ailleurs
-    // (anyImportInProgress), ce fichier-ci doit rester en mode manuel normal
-    // (sélectionnable, Modifier/Retirer/Supprimer visibles) plutôt que d'afficher à
-    // tort "⏳ Import en cours" pour une opération qui ne le concerne pas.
-    return hasDestination && hasKnownVolume && !file.auto_import_skip_reason && (anyImportInProgress || willAutoImportItself);
+    // Le statut « importing » est partagé par tous les tomes d'un pack. La réclamation
+    // de CE chemin identifie le seul fichier réellement traité à cet instant.
+    return importingFilepaths.has(file.filepath);
 }
 
 // Ligne d'un fichier prêt à importer (déjà scanné sur disque, voir scan_import_directory) -
@@ -1901,12 +1896,8 @@ function _importFileRowHtml(file, index) {
     // "en import en cours je ne devrais plus rien changer. c'est uniquement en mode
     // import manuel" - calculé une seule fois ici (avant albumHtml/_volumeCellHtml/
     // statusBadge, qui en ont tous besoin) plutôt que recalculé séparément à chaque
-    // usage: un import déjà en vol (anyImportInProgress) OU ce fichier lui-même sur
-    // le point d'être pris en charge (willAutoImportItself) verrouille à la fois les
-    // champs Modifier/tome, la corbeille et le badge de statut. Cette ligne n'est
-    // atteinte pour un fichier "en cours" QUE depuis l'intérieur d'un pack déplié
-    // (_pendingPackGroupRowHtml) - le niveau racine du tableau les retire plutôt de
-    // fileEntries (voir displayImportFiles) au profit du bandeau au-dessus du tableau.
+    // Seul un fichier réellement réclamé par l'import verrouille ses actions et porte
+    // le badge « Import en cours ». Les autres membres du pack restent visibles.
     const isImportingNow = _isFileImportingNow(file);
     const seriesTitleHtml = hasDestination
         ? ((file.destination.series_id && !file.destination.is_new_series)
@@ -1944,10 +1935,10 @@ function _importFileRowHtml(file, index) {
             : `<span style="color:#dc3545; font-weight:600;" data-tooltip="${escapeHtml(file.validation_error)}">${svgIcon('circle-x')} Corrompu</span><br><button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" ${file._rescanning ? 'disabled' : ''} onclick="rescanCorruptedFile(${index})" data-tooltip="Refait le test d'intégrité maintenant, sans attendre le prochain essai automatique">${file._rescanning ? 'Vérification…' : 'Revérifier'}</button> ${file.convertible && String(file.convertible).startsWith('mislabeled-') ? `<button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" onclick="convertMislabeledImportFile(${index})">Convertir en CBZ</button>` : ''} <button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" onclick="forceImportCorruptedFile(${index})">Importer quand même</button>`)
         : trackedConflictVolume != null
         ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Le tome ${escapeHtml(String(trackedConflictVolume))} était attendu (recherché), mais ce fichier est en réalité ${file.parsed.is_integral ? 'une intégrale' : file.parsed.is_hs ? 'un hors-série' : file.parsed.is_episode ? 'un épisode' : 'un one-shot'} - à vérifier avant de valider">${svgIcon('triangle-alert')} Tome inattendu</span>`
+        : isImportingNow
+            ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
         : file.destination?.download_status === 'pending'
             ? `<span style="color:#6c757d; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Téléchargement...</span>`
-        : file.destination?.download_status === 'importing'
-        ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
         : hasDatabaseVolume
             ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Cet album existe déjà dans la base Bullarr. Choisissez explicitement si le nouveau fichier doit le remplacer.">${svgIcon('triangle-alert')} Fichier existant — choix manuel</span>`
         : file.destination?.download_status === 'completed'
@@ -1956,17 +1947,7 @@ function _importFileRowHtml(file, index) {
                 : file.manual_override
                     ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Assignation faite à la main - cliquez sur « Importer » pour valider, l'import automatique ne le reprendra pas tout seul">${svgIcon('check')} Prêt — import manuel</span>`
                     : `<span style="color:#28a745; font-weight:600;" data-tooltip="Aucune action nécessaire - importé automatiquement dans les secondes qui suivent">${svgIcon('check')} Prêt — import automatique</span>`)
-        : isImportingNow
-            // Même badge "Import en cours" (loader-circle) dans les deux cas (un autre
-            // import déjà en vol, ou ce fichier lui-même sur le point d'être pris en
-            // charge par le scan de 5s) - seuls couleur/tooltip distinguent lequel,
-            // "Prêt" (check) laisserait sinon croire à tort qu'une action de
-            // l'utilisateur est encore attendue ("s'il y a un import en cours je ne
-            // devrais pas voir Pret... ca fait une grosse confusion").
-            ? (anyImportInProgress
-                ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Un import est déjà en cours - ce fichier est peut-être déjà en train d'être traité">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
-                : `<span style="color:#6c757d; font-weight:600;" data-tooltip="Aucune action nécessaire - importé automatiquement dans les secondes qui suivent">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`)
-            // "au lieu de Pret met une information sur ce qu'il faut faire. attente
+        // "au lieu de Pret met une information sur ce qu'il faut faire. attente
             // d'import manuelle, etc..." - cette branche n'est atteinte QUE quand
             // isImportingNow est false alors que hasDestination && hasKnownVolume sont
             // vrais: par construction (voir _isFileImportingNow plus haut), ça veut dire
@@ -2121,6 +2102,8 @@ function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
     const readyCount = readyFileMatches.length;
     const autoReadyCount = readyFileMatches.filter(({ file }) => !file.auto_import_skip_reason && !file.manual_override).length;
     const packNeedsManualAction = readyCount > 0 && autoReadyCount < readyCount;
+    const isImportingNow = pending.status === 'importing'
+        || fileMatches.some(({ file }) => _isFileImportingNow(file));
     const seriesLabel = pending.series_title
         ? (pending.series_id ? `<a href="/series/${pending.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(pending.series_title)}</a>` : escapeHtml(pending.series_title))
         : '—';
@@ -2132,13 +2115,17 @@ function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
             <td class="import-files-table-filename">
                 <button class="btn-icon-only" onclick="togglePendingPackGroup(${pending.id})" data-tooltip="Afficher/masquer les fichiers de ce pack" style="vertical-align:middle; margin-right:2px;">${svgIcon('chevron-down')}</button>
                 <span style="font-weight:600;" data-tooltip="${escapeHtml(pending.title)}">${svgIcon('package')} ${escapeHtml(pending.series_title || pending.title)}</span>
-                <div style="font-size:0.9em;">${readyCount} ${pluralize(readyCount, 'fichier')} ${pluralize(readyCount, 'prêt')} à importer${fileMatches.length !== readyCount ? ` (${fileMatches.length} au total)` : ''}${folderMatches.length ? ` + ${folderMatches.length} ${pluralize(folderMatches.length, 'dossier incompatible', 'dossiers incompatibles')}` : ''}</div>
+                <div style="font-size:0.9em;">${isImportingNow
+                    ? `${fileMatches.length} ${pluralize(fileMatches.length, 'fichier')} détecté${fileMatches.length > 1 ? 's' : ''} · import en cours`
+                    : `${readyCount} ${pluralize(readyCount, 'fichier')} ${pluralize(readyCount, 'prêt')} à importer${fileMatches.length !== readyCount ? ` (${fileMatches.length} au total)` : ''}`}${folderMatches.length ? ` + ${folderMatches.length} ${pluralize(folderMatches.length, 'dossier incompatible', 'dossiers incompatibles')}` : ''}</div>
             </td>
             <td>${seriesLabel}</td>
             <td>—</td>
             <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml([...new Set(fileMatches.map(({ file }) => _importFileExtension(file)))].filter(Boolean).join(', '))}</td>
             <td style="text-align:center; min-width:110px;">
-                <div>${total === 0
+                <div>${isImportingNow
+                    ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
+                    : total === 0
                     ? `<span style="font-size:0.85em;">${svgIcon('loader-circle', 'icon-spin')} En attente...</span>`
                     : readyCount === total && folderMatches.length === 0
                         ? (packNeedsManualAction
@@ -2177,6 +2164,19 @@ function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
             </td>
         </tr>
     `;
+}
+
+function _importingBannerLabels(importingFiles, pendingPackGroups) {
+    // Les fichiers d'un pack sont retirés des lignes racines du tableau. Compter
+    // leur groupe une seule fois, sinon le bandeau disparaît précisément quand
+    // l'import se fait à partir d'une intégrale ou répète le nom de la série.
+    const labels = importingFiles.map(file => fileGroupTitle(file));
+    for (const { pending, fileMatches } of pendingPackGroups) {
+        if (pending.status === 'importing' || fileMatches.some(({ file }) => _isFileImportingNow(file))) {
+            labels.push(pending.series_title || pending.title);
+        }
+    }
+    return labels;
 }
 
 function displayImportFiles() {
@@ -2244,9 +2244,10 @@ function displayImportFiles() {
         return set;
     }, new Set());
 
-    const importingFiles = sortedEntries
-        .filter(({ file, index }) => !nestedInPackIndices.has(index) && _isFileImportingNow(file))
-        .map(({ file }) => file);
+    const importingEntries = sortedEntries
+        .filter(({ file, index }) => !nestedInPackIndices.has(index) && _isFileImportingNow(file));
+    const importingFiles = importingEntries.map(({ file }) => file);
+    const importingRowsHtml = importingEntries.map(({ file, index }) => _importFileRowHtml(file, index)).join('');
 
     const fileEntries = sortedEntries
         .filter(({ file, index }) => !nestedInPackIndices.has(index)
@@ -2310,11 +2311,11 @@ function displayImportFiles() {
         });
     const pendingRowsHtml = pendingEntries.map(e => e.html).join('');
 
-    const mainRowsHtml = importTableSort.column === 'date'
+    const mainRowsHtml = importingRowsHtml + (importTableSort.column === 'date'
         ? [...pendingEntries, ...activeEntries, ...fileEntries]
             .sort((a, b) => importTableSort.direction === 'asc' ? a.date - b.date : b.date - a.date)
             .map(e => e.html).join('')
-        : pendingRowsHtml + activeRowsHtml + rowsHtml;
+        : pendingRowsHtml + activeRowsHtml + rowsHtml);
 
     // Options des selects Type/Volume/Ext. (voir leurs commentaires): seulement ce qui
     // est réellement présent dans les données, PAS encore réduit par les autres filtres
@@ -2345,15 +2346,15 @@ function displayImportFiles() {
         if (ext) availableExtensions.add(ext);
     });
 
-    // Bandeau "N fichier(s) en cours d'import" au-dessus du tableau (voir importingFiles
-    // plus haut) - noeud séparé de `container`, mis à jour indépendamment plutôt que
-    // reconstruit avec le tableau à chaque rendu.
+    // Bandeau au-dessus du tableau : fichiers autonomes et groupes d'intégrale/pack.
+    // Nœud séparé de `container`, mis à jour indépendamment du tableau.
     const importBanner = document.getElementById('import-in-progress-banner');
     if (importBanner) {
-        if (importingFiles.length > 0) {
-            const names = importingFiles.slice(0, 5).map(f => escapeHtml(fileGroupTitle(f))).join(', ');
-            const extra = importingFiles.length > 5 ? ` et ${importingFiles.length - 5} ${pluralize(importingFiles.length - 5, 'autre')}` : '';
-            importBanner.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} ${importingFiles.length} ${pluralize(importingFiles.length, 'fichier')} en cours d'import : ${names}${extra}`;
+        const labels = _importingBannerLabels(importingFiles, pendingPackGroups);
+        if (labels.length > 0) {
+            const names = labels.slice(0, 5).map(escapeHtml).join(', ');
+            const extra = labels.length > 5 ? ` et ${labels.length - 5} ${pluralize(labels.length - 5, 'autre')}` : '';
+            importBanner.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} ${labels.length} ${pluralize(labels.length, 'import')} en cours : ${names}${extra}`;
             importBanner.style.display = 'flex';
         } else {
             importBanner.style.display = 'none';
@@ -2571,15 +2572,23 @@ async function rescanCorruptedFile(fileIndex) {
 }
 
 let _seriesVolumesCache = {};
+const _seriesVolumesPending = new Map();
 
 async function _ensureSeriesVolumesLoaded(seriesId) {
     if (seriesId == null || _seriesVolumesCache[seriesId]) return;
-    try {
-        const response = await fetch(`/api/series/${seriesId}/volumes`);
-        _seriesVolumesCache[seriesId] = await response.json();
-    } catch (e) {
-        _seriesVolumesCache[seriesId] = [];
-    }
+    if (_seriesVolumesPending.has(seriesId)) return _seriesVolumesPending.get(seriesId);
+    const pending = (async () => {
+        try {
+            const response = await fetch(`/api/series/${seriesId}/volumes`);
+            _seriesVolumesCache[seriesId] = await response.json();
+        } catch (e) {
+            _seriesVolumesCache[seriesId] = [];
+        } finally {
+            _seriesVolumesPending.delete(seriesId);
+        }
+    })();
+    _seriesVolumesPending.set(seriesId, pending);
+    return pending;
 }
 
 // Précharge en une fois tous les tomes des séries EXISTANTES déjà assignées parmi
@@ -3796,7 +3805,7 @@ function escapeHtml(text) {
 }
 
 function escapeForAttribute(text) {
-    return String(text ?? '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return String(text ?? '').replace(/&/g, '&amp;').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ===== HISTORIQUE RÉCENT DES IMPORTS (résumé en bas de /import) =====
@@ -3837,7 +3846,7 @@ async function loadImportHistorySection(silent = false) {
 
         const wasInProgress = anyImportInProgress;
         anyImportInProgress = events.some(e => e.status === 'started');
-        if (anyImportInProgress !== wasInProgress) displayImportFiles();
+        if (anyImportInProgress !== wasInProgress && hasScannedOnce) displayImportFiles();
 
         if (events.length === 0) {
             if (silent && _importHistorySignature === '[]') return;
@@ -3943,7 +3952,7 @@ window.onclick = function(event) {
     }
 }
 
-window.addEventListener('load', function() {
+document.addEventListener('DOMContentLoaded', function() {
     // "why different windows different result.. is there any cache that shoud not be
     // there.. remove the cache it does not help" - un cache localStorage par fenêtre
     // affichait un état périmé différent selon quelle fenêtre l'avait écrit en dernier
@@ -3957,12 +3966,18 @@ window.addEventListener('load', function() {
     // invitant à Actualiser, ou le chargement en cours - voir hasCheckedActiveDownloadsOnce)
     // plutôt que de laisser indéfiniment le placeholder statique "Scan en cours..." du
     // template, qui ne correspond plus à rien.
+    // Démarrer dès que le DOM est prêt : attendre window.load retarde les fichiers
+    // jusqu'à la fin des images et autres ressources de la page.
     hasScannedOnce = true;
     updateImportStats();
     displayImportFiles();
 
     (async () => {
         await Promise.all([loadAllLibraries(), loadActiveDownloads()]);
+        // Le premier rendu peut précéder la liste des séries. Recalculer seulement les
+        // liens dérivés de cette liste une fois ses données légères reçues.
+        importFiles.forEach(file => { delete file._bedethequeLinkHtml; });
+        displayImportFiles();
         // "when you load the import page and the file is downloading completly you
         // should scan the folder to display the file itself. no need of manual action
         // here" - le scan de rattrapage lui-même vit maintenant DANS loadActiveDownloads
@@ -3970,9 +3985,12 @@ window.addEventListener('load', function() {
         // the scan" - un téléchargement qui passe 'completed' PENDANT que la page est
         // déjà ouverte (détecté par refreshDownloadingProgress, plus bas) a besoin du
         // même rattrapage que le tout premier chargement, pas seulement celui-ci.
-        loadImportHistorySection();
     })();
 });
+
+// L'historique n'a besoin ni de la liste des bibliothèques ni de l'état des clients.
+// Le charger dès que son tableau existe évite d'attendre les appels réseau de /import.
+document.addEventListener('DOMContentLoaded', () => loadImportHistorySection());
 
 // "why having a schedule for re render? [...] i don't want to have a re render instead
 // it is manually done" - plus de reconstruction complète périodique du tableau

@@ -364,13 +364,15 @@ def activity_status():
 
     # "the db is filled when files are downloaded and put as imported once it is
     # imported. the other files for any clients should not appear there" - UNE seule
-    # lecture de la base ici, réutilisée à la fois pour savoir quels clients valent la
-    # peine d'être sondés (ceux qui ont au moins une ligne 'pending') et comme périmètre
-    # de correspondance par nom plus bas (jamais un historique large de 30 jours).
+    # lecture de la base ici. Seuls les téléchargements encore 'pending' ont une
+    # progression à demander au client. Une ligne 'completed' est déjà arrivée :
+    # sonder qBittorrent/aMule à chaque ouverture d'Import peut bloquer plusieurs
+    # secondes et la disparition ultérieure du torrent ne doit pas annuler cet état.
     pending_rows = get_pending_downloads()
     pending_by_client = {}
     for p in pending_rows:
-        pending_by_client.setdefault(p['client'], []).append(p)
+        if p['status'] == 'pending':
+            pending_by_client.setdefault(p['client'], []).append(p)
 
     clients_to_probe = {client: fn for client, fn in check_fns.items() if pending_by_client.get(client)}
 
@@ -383,7 +385,7 @@ def activity_status():
     # Technical rationale retained for maintainability.
     linked_rows_by_client = {}
     for p in pending_rows:
-        if p.get('client_item_id'):
+        if p['status'] == 'pending' and p.get('client_item_id'):
             linked_rows_by_client.setdefault(p['client'], []).append(p)
 
     clients = []

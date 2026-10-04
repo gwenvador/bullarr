@@ -10,6 +10,9 @@ class Config:
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     DEBUG = False
+    # Backup restores can be up to 3 GiB uncompressed; bound multipart uploads
+    # before Werkzeug spools an unlimited request to disk.
+    MAX_CONTENT_LENGTH = 4 * 1024 * 1024 * 1024
     
     # Chemins
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -428,6 +431,8 @@ class Config:
 
         cursor.execute("PRAGMA table_info(active_downloads)")
         existing_columns = {row[1] for row in cursor.fetchall()}
+        if 'client_item_name' not in existing_columns:
+            cursor.execute("ALTER TABLE active_downloads ADD COLUMN client_item_name TEXT")
         # volume_number: le numéro de tome (int simple), connu même quand volume_id est
         # NULL (tome manquant, pas encore de ligne `volumes` - voir commentaire ci-dessus) -
         # sert à afficher/assigner le bon tome sans avoir à le re-parser depuis le nom de

@@ -181,6 +181,14 @@
     flex: 0 0 18px;
 }
 
+.review-candidate-size {
+    flex: 0 0 auto;
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
 .review-candidate-availability {
     flex: 0 0 auto;
     color: var(--color-text-muted);

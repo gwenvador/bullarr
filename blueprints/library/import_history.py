@@ -62,6 +62,11 @@ def init_import_history_table():
         if 'parsed_volume_json' not in existing_columns:
             cursor.execute("ALTER TABLE import_history_files ADD COLUMN parsed_volume_json TEXT")
 
+        # La liste de l'historique récupère les noms de fichiers par operation_id.
+        # Sans cet index, chaque ligne relit toute la table import_history_files.
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_import_history_files_operation ON import_history_files(operation_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_import_history_created ON import_history(created_at DESC)")
+
         cursor.execute("""CREATE TABLE IF NOT EXISTS import_items (
             item_key TEXT PRIMARY KEY, tracking_id INTEGER, source_path TEXT NOT NULL,
             filename TEXT NOT NULL, source_available INTEGER NOT NULL DEFAULT 1,
@@ -83,8 +88,8 @@ def init_import_history_table():
         return False
 
 
-def persist_discovered_import_items(files):
-    """Persist the file-level discovery result used by both Import and its badge."""
+def persist_discovered_import_items(files, scanned_roots=()):
+    """Persist discovery, invalidating only roots that were actually readable."""
     conn = None
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
@@ -100,7 +105,13 @@ def persist_discovered_import_items(files):
         columns = {row[1] for row in conn.execute("PRAGMA table_info(import_items)").fetchall()}
         if "force_replace" not in columns:
             conn.execute("ALTER TABLE import_items ADD COLUMN force_replace INTEGER NOT NULL DEFAULT 0")
-        conn.execute("UPDATE import_items SET source_available=0, updated_at=CURRENT_TIMESTAMP")
+        for root in scanned_roots:
+            prefix = os.path.realpath(root).rstrip(os.sep) + os.sep
+            conn.execute(
+                "UPDATE import_items SET source_available=0, updated_at=CURRENT_TIMESTAMP "
+                "WHERE substr(source_path, 1, length(?)) = ?",
+                (prefix, prefix),
+            )
         for item in files or []:
             source_path = item.get('filepath')
             destination = item.get('destination') or {}
@@ -892,8 +903,15 @@ def get_manual_override_filepaths():
         cursor = conn.cursor()
         cursor.execute('SELECT filepath FROM import_manual_overrides')
         rows = [row[0] for row in cursor.fetchall()]
-        finalized_names = {row[0] for row in cursor.execute("SELECT DISTINCT filename FROM import_history_files WHERE action IN ('imported','replaced','skipped') AND status = 'success'")}
-        finalized_overrides = [p for p in rows if os.path.basename(p) in finalized_names]
+        if not rows:
+            return set()
+        # Deux téléchargements différents peuvent partager le même nom de fichier.
+        # Seul le chemin exact de la source importée clôt son assignation manuelle.
+        finalized_paths = {row[0] for row in cursor.execute(
+            "SELECT DISTINCT source_path FROM import_history_files "
+            "WHERE action IN ('imported','replaced','skipped') AND status = 'success'"
+        ) if row[0]}
+        finalized_overrides = [p for p in rows if p in finalized_paths]
         if finalized_overrides:
             cursor.executemany('DELETE FROM import_manual_overrides WHERE filepath = ?', [(p,) for p in finalized_overrides])
             conn.commit()
@@ -1045,3 +1063,22 @@ def get_in_progress_filepaths():
                 conn.close()
             except:
                 pass
+
+
+def get_claimed_import_filepaths():
+    """Read the live per-file claims for the Import page without writing to SQLite."""
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        rows = conn.execute(
+            "SELECT filepath FROM import_in_progress "
+            "WHERE claimed_at >= datetime('now', ?)",
+            (f'-{_IN_PROGRESS_STALE_MINUTES} minutes',),
+        ).fetchall()
+        return [row[0] for row in rows]
+    except Exception as exc:
+        print(f"Erreur lecture des fichiers réclamés pour import: {exc}")
+        return []
+    finally:
+        if conn:
+            conn.close()

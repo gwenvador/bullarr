@@ -1,3 +1,29 @@
+// Attach the per-session CSRF token to same-origin writes from every page.
+(function installCsrfFetch() {
+    const originalFetch = window.fetch.bind(window);
+    let tokenPromise = null;
+    window.fetch = async function(input, options = {}) {
+        const method = String(options.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+        const target = new URL(input instanceof Request ? input.url : input, window.location.href);
+        if (target.origin !== window.location.origin || ['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+            return originalFetch(input, options);
+        }
+        if (!tokenPromise) {
+            tokenPromise = originalFetch('/api/auth/csrf', { credentials: 'same-origin' })
+                .then(response => {
+                    if (!response.ok) throw new Error('Impossible de charger le jeton de sécurité');
+                    return response.json();
+                })
+                .then(data => data.token)
+                .catch(error => { tokenPromise = null; throw error; });
+        }
+        const token = await tokenPromise;
+        const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
+        headers.set('X-CSRF-Token', token);
+        return originalFetch(input, { ...options, headers });
+    };
+})();
+
 // Thème clair/sombre (voir /settings, onglet "🌓 Thème"). Le choix est déjà appliqué
 // avant même ce script - un petit script inline dans le <head> de chaque page lit
 // localStorage et pose data-theme="dark" sur <html> avant le premier rendu, pour éviter

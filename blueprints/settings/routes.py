@@ -2,7 +2,6 @@
 Routes pour la page de configuration
 """
 import os
-import io
 import json
 import shutil
 import sqlite3
@@ -14,6 +13,7 @@ import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from flask import render_template, request, jsonify, current_app, send_file
+from backup_utils import PENDING_RESTORE_DIR, snapshot_sqlite
 from . import settings_bp
 from .rename_config_store import load_rename_config, save_rename_config, DEFAULT_RENAME_CONFIG
 from .rss import load_feeds, save_feeds
@@ -43,12 +43,27 @@ def verification_page():
     return render_template('verification.html', komga_configured=is_komga_configured())
 
 
+def preserve_server_managed_feeds(existing_feeds, submitted_feeds):
+    """Keep internal providers that the generic RSS editor does not render."""
+    result = list(submitted_feeds or [])
+    submitted_providers = {feed.get('provider') for feed in result if isinstance(feed, dict)}
+    for feed in existing_feeds or []:
+        if isinstance(feed, dict) and feed.get('provider') == 'prowlarr' and 'prowlarr' not in submitted_providers:
+            result.append(feed)
+    return result
+
+
 @settings_bp.route('/api/settings/rss', methods=['GET', 'POST'])
 def rss_config():
     if request.method == 'GET':
         return jsonify({'feeds': load_feeds(current_app.config['RSS_CONFIG_FILE'])})
     try:
-        feeds = save_feeds(current_app.config['RSS_CONFIG_FILE'], (request.get_json(silent=True) or {}).get('feeds', []))
+        payload_feeds = (request.get_json(silent=True) or {}).get('feeds', [])
+        existing_feeds = load_feeds(current_app.config['RSS_CONFIG_FILE'])
+        feeds = save_feeds(
+            current_app.config['RSS_CONFIG_FILE'],
+            preserve_server_managed_feeds(existing_feeds, payload_feeds),
+        )
         return jsonify({'success': True, 'feeds': feeds})
     except ValueError as exc:
         return jsonify({'success': False, 'error': str(exc)}), 400
@@ -142,38 +157,44 @@ def _validate_staged_backup_file(path, name):
 
 @settings_bp.route('/api/settings/backup', methods=['GET'])
 def download_backup():
-    """Technical rationale and compatibility constraints for this code path."""
-    buf = io.BytesIO()
+    """Stream a backup with consistent snapshots of live WAL databases."""
+    data_dir = current_app.config['DATA_DIR']
+    specs = _backup_file_specs()
+    missing = next((path for _, path, required in specs if required and not os.path.exists(path)), None)
+    if missing:
+        return jsonify({'success': False, 'error': f'Fichier requis introuvable: {missing}'}), 500
+    archive_file = tempfile.TemporaryFile(mode='w+b', dir=data_dir)
     included = []
-    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for name, path, required in _backup_file_specs():
-            if path and os.path.exists(path):
-                zf.write(path, name)
-                included.append(name)
-            elif required:
-                return jsonify({'success': False, 'error': f'Fichier requis introuvable: {path}'}), 500
-        zf.writestr(BACKUP_MANIFEST_NAME, json.dumps({
-            'created_at': datetime.now().isoformat(),
-            'files': included,
-        }, indent=2))
+    try:
+        with tempfile.TemporaryDirectory(prefix='.backup_', dir=data_dir) as staging_dir:
+            with zipfile.ZipFile(archive_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for name, path, required in specs:
+                    if path and os.path.exists(path):
+                        if name.endswith('.db'):
+                            snapshot_path = os.path.join(staging_dir, name)
+                            snapshot_sqlite(path, snapshot_path)
+                            zf.write(snapshot_path, name)
+                        else:
+                            zf.write(path, name)
+                        included.append(name)
+                zf.writestr(BACKUP_MANIFEST_NAME, json.dumps({
+                    'created_at': datetime.now().isoformat(),
+                    'files': included,
+                }, indent=2))
 
-    buf.seek(0)
-    filename = f"bullarr_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-    return send_file(buf, mimetype='application/zip', as_attachment=True, download_name=filename)
+        archive_file.seek(0)
+        filename = f"bullarr_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        response = send_file(archive_file, mimetype='application/zip', as_attachment=True, download_name=filename)
+        response.call_on_close(archive_file.close)
+        return response
+    except Exception:
+        archive_file.close()
+        raise
 
 
 @settings_bp.route('/api/settings/backup/restore', methods=['POST'])
 def restore_backup():
-    """Restaure un backup .zip précédemment téléchargé (voir download_backup):
-    écrit ses fichiers dans data/, en gardant une copie de sécurité de chaque fichier
-    remplacé (suffixe .before_restore) au cas où l'archive importée serait invalide.
-    N'écrit QUE les fichiers reconnus (noms fixes de _backup_file_specs, jamais les
-    chemins tels que fournis dans le zip) - pas de risque de zip-slip, et un zip
-    contenant autre chose est ignoré pour ces entrées.
-
-    Ne redémarre PAS l'app (connexions DB/scheduler déjà en cours, clé de chiffrement
-    déjà chargée en mémoire ailleurs dans le code) - l'utilisateur doit redémarrer le
-    conteneur pour repartir proprement avec les fichiers restaurés."""
+    """Validate and stage a backup; the entrypoint applies it before app startup."""
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'Aucun fichier fourni'}), 400
 
@@ -212,12 +233,15 @@ def restore_backup():
         zf.close()
         return jsonify({'success': False, 'error': "L'archive ne contient pas de base de données reconnue - restauration annulée"}), 400
 
-    restored = []
     data_dir = current_app.config['DATA_DIR']
     os.makedirs(data_dir, exist_ok=True)
+    pending_dir = os.path.join(data_dir, PENDING_RESTORE_DIR)
+    if os.path.lexists(pending_dir):
+        zf.close()
+        return jsonify({'success': False, 'error': 'Une restauration attend déjà un redémarrage'}), 409
     try:
         with tempfile.TemporaryDirectory(prefix='.restore_', dir=data_dir) as staging_dir:
-            staged = []
+            staged_names = []
             for name, path, required in specs:
                 if name not in names_in_zip:
                     continue
@@ -225,15 +249,10 @@ def restore_backup():
                 with zf.open(name) as src, open(staged_path, 'wb') as dst:
                     shutil.copyfileobj(src, dst)
                 _validate_staged_backup_file(staged_path, name)
-                staged.append((name, path, staged_path))
-
-            for name, path, staged_path in staged:
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                if os.path.exists(path):
-                    shutil.copy2(path, path + '.before_restore')
-                os.replace(staged_path, path)
-                os.chmod(path, 0o600)
-                restored.append(name)
+                staged_names.append(name)
+            with open(os.path.join(staging_dir, 'manifest.json'), 'w', encoding='utf-8') as manifest:
+                json.dump({'files': staged_names}, manifest)
+            os.rename(staging_dir, pending_dir)
     except (OSError, ValueError, json.JSONDecodeError, sqlite3.DatabaseError) as exc:
         return jsonify({'success': False, 'error': f'Backup invalide: {exc}'}), 400
     finally:
@@ -241,8 +260,8 @@ def restore_backup():
 
     return jsonify({
         'success': True,
-        'restored': restored,
-        'message': "Backup restauré. Redémarre le conteneur (docker compose restart) pour que les changements prennent effet."
+        'restored': staged_names,
+        'message': "Backup validé. Redémarre le conteneur (docker compose restart) pour appliquer la restauration."
     })
 
 

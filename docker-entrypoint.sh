@@ -11,4 +11,5 @@ fi
 
 # Start a production WSGI master. A Gunicorn hook owns exactly one independent
 # scheduler process; web workers never start duplicate APScheduler instances.
+python3 /app/backup_utils.py apply-pending /app/data
 exec gunicorn -c /app/gunicorn.conf.py wsgi:application
