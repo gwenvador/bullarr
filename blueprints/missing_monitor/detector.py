@@ -4,8 +4,7 @@ Détecteur de volumes manquants
 import sqlite3
 import json
 from flask import current_app
-from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 
 def _is_bedetheque_finished(status: str) -> bool:
@@ -112,27 +111,6 @@ class MissingVolumeDetector:
         
         return series
     
-    def get_search_queries(self, series: Dict) -> List[str]:
-        """Génère les requêtes de recherche pour une série
-        
-        Args:
-            series: Données de la série
-            
-        Returns:
-            Liste de requêtes de recherche (ex: "Série Titre vol 1 scan")
-        """
-        queries = []
-        title = series['title'].strip()
-        
-        for vol_num in series['missing_volumes']:
-            # Format: "Série Titre vol 1"
-            queries.append(f"{title} vol {vol_num}")
-            queries.append(f"{title} volume {vol_num}")
-            
-            # Variantes courantes
-            queries.append(f"{title} {vol_num}")
-        
-        return queries
     
     def create_monitor_entry(self, series_id: int, config_data: Dict = None) -> bool:
         """Crée une entrée de surveillance pour une série
@@ -176,35 +154,6 @@ class MissingVolumeDetector:
             conn.close()
             return False
     
-    def update_last_checked(self, monitor_id: int) -> bool:
-        """Met à jour le timestamp de dernière vérification
-        
-        Args:
-            monitor_id: ID du monitor
-            
-        Returns:
-            True si succès
-        """
-        if not monitor_id:
-            return False
-        
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute('''
-                UPDATE missing_volume_monitor
-                SET last_checked = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (monitor_id,))
-            
-            conn.commit()
-            conn.close()
-            return True
-        except Exception as e:
-            print(f"Erreur update last_checked: {e}")
-            conn.close()
-            return False
     
     def get_monitored_series_count(self) -> int:
         """Compte le nombre de séries en surveillance"""

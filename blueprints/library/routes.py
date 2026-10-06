@@ -2,9 +2,10 @@
 Routes pour la gestion des bibliothèques
 """
 from flask import render_template, request, jsonify, current_app, redirect, url_for
+from error_utils import error_message
+from path_safety import UnsafePathError, resolve_within, resolve_within_any, configured_root
 from . import library_bp
-from .scanner import LibraryScanner, SeriesDirectoryMissingError, COMICINFO_FIELDS, scan_import_lock
-from blueprints.bedetheque.cbr_converter import convert_cbr_to_cbz, CbrConversionError
+from .scanner import LibraryScanner, COMICINFO_FIELDS, scan_import_lock
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
 from .zip_converter import convert_zip_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
 from .archive_converter import classify_archive, convert_mislabeled_archive_in_place
@@ -22,10 +23,7 @@ import zipfile
 import rarfile
 from pathlib import Path
 from collections import Counter
-from .import_worker import (
-    ImportWorkerError, ImportWorkerTimeout, prepare_import_file,
-    transfer_import_file, cleanup_stale_staging,
-)
+from .import_worker import prepare_import_file, transfer_import_file, cleanup_stale_staging
 
 
 # Potentially blocking filesystem work runs in a separate OS process. A Python
@@ -130,6 +128,107 @@ def _check_import_file_validity_cached(filepath, fmt):
     _import_file_validity_cache[cache_key] = error
     return error
 
+# Un pack copié par le réseau (Syncthing, NFS, ...) arrive fichier par fichier, parfois
+# avec plusieurs minutes d'écart. Les premiers fichiers arrivés peuvent tous être des
+# doublons: supprimés, ils laissent le dossier vide, et le pack était alors clos
+# ('skipped') alors que ses derniers tomes n'étaient pas encore là - ils n'étaient plus
+# jamais repris. Un pack n'est donc clos que lorsqu'aucun fichier n'est apparu ni n'a
+# changé de taille depuis PACK_TRANSFER_QUIET_SECONDS (voir note_pack_transfer_activity,
+# appelée par le scheduler) et qu'aucun fichier temporaire de transfert ne reste dedans.
+# Tant que ce n'est pas le cas il reste 'completed' (en attente d'import) et sa clôture
+# est retentée à chaque tick du scheduler (retry_deferred_pack_finalizations).
+# En mémoire seulement: après un redémarrage le scheduler revoit tous les fichiers comme
+# nouveaux, ce qui relance simplement la période de calme.
+PACK_TRANSFER_QUIET_SECONDS = 600
+_PACK_TRANSFER_TEMP_SUFFIXES = ('.tmp', '.part', '.partial', '.!qb', '.crdownload', '.filepart')
+_pack_transfer_activity = {}
+_deferred_pack_finalizations = {}
+
+
+def _pack_top_level_dir(import_root, filepath):
+    """Dossier racine (sous l'import_root) contenant ce fichier, ou None s'il est à plat."""
+    parts = os.path.relpath(filepath, import_root).split(os.sep)
+    if len(parts) < 2 or parts[0] == os.pardir:
+        return None
+    return os.path.join(import_root, parts[0])
+
+
+def note_pack_transfer_activity(import_root, filepath):
+    """Un fichier vient d'apparaître ou de changer de taille dans un dossier de pack."""
+    top_level_dir = _pack_top_level_dir(import_root, filepath)
+    if top_level_dir:
+        _pack_transfer_activity[os.path.realpath(top_level_dir)] = time.time()
+
+
+def _pack_transfer_in_progress(top_level_dir):
+    if not top_level_dir:
+        return False
+    key = os.path.realpath(top_level_dir)
+    last_activity = _pack_transfer_activity.get(key)
+    if last_activity is not None:
+        if time.time() - last_activity < PACK_TRANSFER_QUIET_SECONDS:
+            return True
+        _pack_transfer_activity.pop(key, None)
+    try:
+        safe_dir = resolve_within_any(top_level_dir, current_app.config.get('IMPORT_DIRECTORIES', []))
+    except UnsafePathError:
+        return False
+    if os.path.isdir(safe_dir):
+        for _root, _dirs, files in os.walk(safe_dir):
+            if any(name.lower().endswith(_PACK_TRANSFER_TEMP_SUFFIXES) for name in files):
+                return True
+    return False
+
+
+def _is_pack_tracking(tracking_id):
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        row = conn.execute('SELECT is_pack FROM active_downloads WHERE id = ?', (tracking_id,)).fetchone()
+        return bool(row and row[0])
+    except Exception:
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def _pack_has_unfinalized_files(folder_path):
+    """True s'il reste dans le dossier du pack un fichier supporté sans résultat d'import
+    (importé/remplacé/ignoré) dans l'historique. Les doublons déjà traités qui reviennent
+    dans le dossier (resynchronisation, source en lecture seule) ne comptent pas: ils ne
+    seront jamais retraités et bloqueraient sinon le pack pour toujours."""
+    from .import_history import get_finalized_import_source_paths
+    finalized = {os.path.realpath(path) for path in get_finalized_import_source_paths() if path}
+    supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
+    for root, _dirs, files in os.walk(folder_path):
+        for filename in files:
+            if os.path.splitext(filename)[1].lower() in supported_extensions \
+                    and os.path.realpath(os.path.join(root, filename)) not in finalized:
+                return True
+    return False
+
+
+def _defer_pack_finalization(tracking_id, top_level_dir, source_path, destination, outcome, source_was_copied):
+    """True si le pack reçoit encore des fichiers: il reste 'completed' et sa clôture sera retentée."""
+    if not _pack_transfer_in_progress(top_level_dir) or not _is_pack_tracking(tracking_id):
+        _deferred_pack_finalizations.pop(tracking_id, None)
+        return False
+    from blueprints.missing_monitor.downloader import mark_download_completed
+    mark_download_completed(tracking_id)
+    if tracking_id not in _deferred_pack_finalizations:
+        print(f"⏳ Pack #{tracking_id} encore en cours de transfert, clôture différée")
+    _deferred_pack_finalizations[tracking_id] = (source_path, destination, outcome, source_was_copied)
+    return True
+
+
+def retry_deferred_pack_finalizations():
+    for source_path, destination, outcome, source_was_copied in list(_deferred_pack_finalizations.values()):
+        _maybe_complete_tracking_after_move(
+            source_path, destination, outcome=outcome, source_was_copied=source_was_copied
+        )
+
+
 _conversion_lock = threading.Lock()
 
 
@@ -232,21 +331,7 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
         print(f"Erreur notification Telegram (import terminé): {e}")
 
 
-class UnsafePathError(ValueError):
-    """Levée quand un chemin/nom fourni par le client tenterait d'échapper au
-    répertoire autorisé (import root ou bibliothèque) - typiquement via '../'"""
-    pass
-
-
-def resolve_within(path, root):
-    """Résout `path` et vérifie qu'il reste bien contenu dans `root` (répertoire
-    d'import ou de bibliothèque connu/configuré). Lève UnsafePathError sinon.
-    Retourne le chemin réel (symlinks résolus) de `path`."""
-    root_real = os.path.realpath(root)
-    path_real = os.path.realpath(path)
-    if os.path.commonpath([path_real, root_real]) != root_real:
-        raise UnsafePathError(f"Chemin en dehors du répertoire autorisé: {path}")
-    return path_real
+# UnsafePathError, resolve_within, resolve_within_any, configured_root: voir path_safety.py
 
 
 def sanitize_path_component(name, label='nom'):
@@ -551,7 +636,7 @@ def libraries():
         except sqlite3.IntegrityError:
             return jsonify({'success': False, 'error': 'Une bibliothèque avec ce nom existe déjà'}), 400
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/libraries/<int:library_id>/onboard', methods=['POST'])
@@ -652,7 +737,7 @@ def library_operations(library_id):
             return jsonify({'success': True})
         
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/scan/<int:library_id>', methods=['POST'])
@@ -985,9 +1070,9 @@ def enrich_series_ebdz(series_id):
     try:
         result = _ebdz_enrich_series(series_id)
     except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 404
+        return jsonify({'success': False, 'error': error_message(e)}), 404
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
     result['success'] = True
     return jsonify(result)
@@ -1016,12 +1101,12 @@ def ebdz_match_candidates(series_id):
         try:
             candidates = search_ebdz_threads(query)
         except LookupError as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            return jsonify({'success': False, 'error': error_message(e)}), 500
 
         return jsonify({'success': True, 'candidates': candidates})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/ebdz-match', methods=['POST'])
@@ -1101,7 +1186,7 @@ def ebdz_match_series(series_id):
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/ebdz-unmatch', methods=['POST'])
@@ -1127,7 +1212,7 @@ def ebdz_unmatch_series(series_id):
         return jsonify({'success': True, 'match_status': 'unmatched'})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 def _download_komga_cover(komga_series_id, client):
@@ -1329,7 +1414,6 @@ def _normalize_title_for_match(title):
     return re.sub(r'\s+', ' ', normalized).strip()
 
 
-
 def _mark_imported_volumes_present(conn, volume_ids):
     # Import has already completed its file transfer before this is called;
     # recording presence prevents a pre-import verification result from hiding it.
@@ -1445,12 +1529,12 @@ def komga_match_candidates(series_id):
             client = KomgaClient()
             candidates = client.search_series(query)
         except KomgaError as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
+            return jsonify({'success': False, 'error': error_message(e)}), 400
 
         return jsonify({'success': True, 'candidates': candidates})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/komga-match', methods=['POST'])
@@ -1483,14 +1567,14 @@ def komga_match_series(series_id):
             client = KomgaClient()
             series_info = client.get_series(komga_series_id)
         except KomgaError as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
+            return jsonify({'success': False, 'error': error_message(e)}), 400
 
         result = _apply_komga_match(series_id, series_info, client)
         result['success'] = True
         return jsonify(result)
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/komga-unmatch', methods=['POST'])
@@ -1509,7 +1593,7 @@ def komga_unmatch_series(series_id):
         return jsonify({'success': True, 'match_status': 'unmatched'})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 # Recherche par titre une série Komga candidate et l'adopte comme match si elle désigne
@@ -1582,7 +1666,7 @@ def komga_enrich_series(series_id):
         try:
             client = KomgaClient()
         except KomgaError as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
+            return jsonify({'success': False, 'error': error_message(e)}), 400
 
         try:
             if matched_id:
@@ -1594,7 +1678,7 @@ def komga_enrich_series(series_id):
             candidates = []
             result = _try_komga_title_match(series_id, series_title, client, out_candidates=candidates)
         except KomgaError as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
+            return jsonify({'success': False, 'error': error_message(e)}), 400
 
         if result:
             result.update({'success': True, 'candidates': []})
@@ -1604,7 +1688,7 @@ def komga_enrich_series(series_id):
         return jsonify({'success': True, 'match_status': 'unmatched', 'candidates': candidates})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 def _synthetic_bd_volume_entry(album, **kwargs):
@@ -1870,9 +1954,9 @@ def create_series():
             trigger_new_series_bedetheque_fetch(series_id, series_title, bedetheque_url)
         return jsonify({'success': True, 'series_id': series_id, 'title': series_title})
     except UnsafePathError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': error_message(e)}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/library/<int:library_id>/series')
@@ -1987,7 +2071,7 @@ def get_library_series(library_id):
         return jsonify(series_list)
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 @library_bp.route('/api/series/<int:series_id>', methods=['DELETE'])
 def delete_series(series_id):
@@ -2027,7 +2111,7 @@ def delete_series(series_id):
                 safe_path = resolve_within(series_path, library_path)
             except UnsafePathError as e:
                 log_action('delete', series_id, series_title, series_path, success=False, error=str(e))
-                return jsonify({'success': False, 'error': f'Chemin de série invalide: {e}'}), 400
+                return jsonify({'success': False, 'error': error_message(e, 'Chemin de série invalide')}), 400
             shutil.rmtree(safe_path)
 
         conn = get_db_connection()
@@ -2041,7 +2125,7 @@ def delete_series(series_id):
         return jsonify({'success': True, 'library_id': library_id})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/merge', methods=['POST'])
@@ -2085,14 +2169,14 @@ def merge_series(series_id):
                                         target['library_path'])
         except UnsafePathError as e:
             conn.close()
-            return jsonify({'success': False, 'error': f'Chemin de série invalide: {e}'}), 400
+            return jsonify({'success': False, 'error': error_message(e, 'Chemin de série invalide')}), 400
 
         if not os.path.isdir(target_dir):
             try:
                 os.makedirs(target_dir, exist_ok=True)
             except OSError as e:
                 conn.close()
-                return jsonify({'success': False, 'error': f"Impossible de créer le dossier de la série cible: {e}"}), 500
+                return jsonify({'success': False, 'error': error_message(e, 'Impossible de créer le dossier de la série cible')}), 500
 
         cursor.execute('''
             SELECT id, filename, filepath, volume_number, is_integral, integral_number, is_hs, hs_number,
@@ -2228,7 +2312,7 @@ def merge_series(series_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 def _set_series_universe(conn, series_id, universe_id):
@@ -2614,7 +2698,7 @@ def get_series_details(series_id):
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/manual-metadata', methods=['PUT'])
@@ -2683,7 +2767,7 @@ def update_series_manual_metadata(series_id):
                 updates.append('universe_id')
             except ValueError as e:
                 conn.close()
-                return jsonify({'success': False, 'error': str(e)}), 400
+                return jsonify({'success': False, 'error': error_message(e)}), 400
 
             # "assigner un univers via _set_series_universe devrait déplacer les
             # fichiers. Pourquoi c'est pas?" - INCOHÉRENCE CORRIGÉE (2026-09-03):
@@ -2730,7 +2814,7 @@ def update_series_manual_metadata(series_id):
         return jsonify({'success': True})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/refresh', methods=['POST'])
@@ -2769,7 +2853,7 @@ def refresh_volume(volume_id):
 
         return jsonify({'success': True, 'file_size': file_size, 'page_count': page_count})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/download', methods=['GET'])
@@ -2864,9 +2948,9 @@ def update_volume_manual_metadata(volume_id):
         return jsonify({'success': True, 'comicinfo': new_comicinfo, **db_updates})
 
     except UnsupportedFormatError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        return jsonify({'success': False, 'error': error_message(e)}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/move-to-series', methods=['PUT'])
@@ -2928,7 +3012,7 @@ def move_volume_to_series(volume_id):
                                         target['library_path'])
         except UnsafePathError as e:
             conn.close()
-            return jsonify({'success': False, 'error': f'Chemin de série invalide: {e}'}), 400
+            return jsonify({'success': False, 'error': error_message(e, 'Chemin de série invalide')}), 400
 
         # Même repli que merge_series: une série ajoutée depuis Bédéthèque sans aucun
         # tome possédé n'a pas encore de dossier physique.
@@ -2937,7 +3021,7 @@ def move_volume_to_series(volume_id):
                 os.makedirs(target_dir, exist_ok=True)
             except OSError as e:
                 conn.close()
-                return jsonify({'success': False, 'error': f"Impossible de créer le dossier de la série cible: {e}"}), 500
+                return jsonify({'success': False, 'error': error_message(e, 'Impossible de créer le dossier de la série cible')}), 500
 
         if vol['filepath'] and os.path.exists(os.path.join(target_dir, vol['filename'])):
             conn.close()
@@ -3005,7 +3089,7 @@ def move_volume_to_series(volume_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 def _volume_identity_label(fields):
@@ -3257,7 +3341,7 @@ def delete_volume(volume_id):
             except UnsafePathError as e:
                 log_action('delete_volume', series_id, series_title, vol['filename'] or f'#{volume_id}',
                            success=False, error=str(e))
-                return jsonify({'success': False, 'error': f'Chemin de fichier invalide: {e}'}), 400
+                return jsonify({'success': False, 'error': error_message(e, 'Chemin de fichier invalide')}), 400
             if os.path.isfile(safe_path):
                 os.remove(safe_path)
 
@@ -3292,7 +3376,7 @@ def delete_volume(volume_id):
         return jsonify({'success': True, 'series_id': series_id})
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/toggle-oneshot', methods=['POST'])
@@ -3339,7 +3423,7 @@ def toggle_series_oneshot(series_id):
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/toggle-complete-override', methods=['POST'])
@@ -3367,7 +3451,7 @@ def toggle_series_complete_override(series_id):
         })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/library/<int:library_id>/stats')
@@ -3420,7 +3504,7 @@ def get_library_stats_route(library_id):
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/library/<int:library_id>/last-updated')
@@ -3460,7 +3544,7 @@ def get_library_last_updated(library_id):
             'volumes_count': row[5],
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/libraries/<int:library_id>')
@@ -3492,7 +3576,7 @@ def get_library_info(library_id):
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
     
 @library_bp.route('/api/series/<int:series_id>/download', methods=['GET'])
 def download_series(series_id):
@@ -3700,7 +3784,7 @@ def upload_series_file(series_id):
         if created and os.path.exists(target_path):
             os.unlink(target_path)
         if isinstance(exc, ValueError):
-            return jsonify({'success': False, 'error': str(exc)}), 413
+            return jsonify({'success': False, 'error': 'Fichier trop volumineux (limite: 2 Go)'}), 413
         raise
 
     scanner = LibraryScanner()
@@ -4095,9 +4179,13 @@ def _collect_download_folder_files(folder_path, import_root, download, destinati
 
 
 def _exclude_terminal_without_manual_override(files_found):
+    # Un pack clos trop tôt (ou dont des tomes sont arrivés après coup) garde ses fichiers
+    # non traités visibles: les fichiers déjà finalisés sont retirés juste après par
+    # _exclude_finalized_import_files, il ne reste donc que ceux qui attendent un import.
     return [
         item for item in files_found
         if item.get('manual_override')
+        or (item.get('destination') or {}).get('is_pack_download')
         or (item.get('destination') or {}).get('download_status') not in ('imported', 'skipped')
     ]
 
@@ -4238,6 +4326,8 @@ def _scan_tracked_import_files(validate_files=True):
                 destination = _build_active_download_destination(
                     download['series_id'], download.get('volume_number'), download['id']
                 )
+                if destination and download.get('is_pack'):
+                    destination['is_pack_download'] = True
                 _collect_download_folder_files(
                     entry.path, import_path, download, destination, scanner,
                     supported_extensions, manual_override_filepaths,
@@ -4337,7 +4427,7 @@ def scan_import_directory():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/import/validation', methods=['GET'])
@@ -4379,7 +4469,7 @@ def import_validation_items():
         } for folder in incompatible_folders]
         return jsonify({'success': True, 'items': items + folders})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/import/state', methods=['GET'])
@@ -4496,12 +4586,13 @@ def delete_import_file():
         return jsonify({'error': 'import_root et relative_path requis'}), 400
 
     import_directories = current_app.config['IMPORT_DIRECTORIES']
-    import_root = os.path.realpath(import_root)
-    if import_root not in [os.path.realpath(d) for d in import_directories]:
+    import_root = configured_root(import_root, import_directories)
+    if import_root is None:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
 
-    filepath = os.path.realpath(os.path.join(import_root, relative_path))
-    if os.path.commonpath([filepath, import_root]) != import_root:
+    try:
+        filepath = resolve_within(os.path.join(import_root, relative_path), import_root)
+    except UnsafePathError:
         return jsonify({'error': 'Chemin de fichier invalide'}), 403
 
     if not os.path.isfile(filepath):
@@ -4532,7 +4623,7 @@ def delete_import_file():
         mark_import_item_unavailable(filepath)
         return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client})
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/import/incompatible-folder/files', methods=['GET'])
@@ -4551,12 +4642,15 @@ def list_incompatible_folder_files():
         return jsonify({'error': 'import_root et relative_path requis'}), 400
 
     import_directories = current_app.config['IMPORT_DIRECTORIES']
-    import_root = os.path.realpath(import_root)
-    if import_root not in [os.path.realpath(d) for d in import_directories]:
+    import_root = configured_root(import_root, import_directories)
+    if import_root is None:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
 
-    folder_path = os.path.realpath(os.path.join(import_root, relative_path))
-    if folder_path == import_root or os.path.commonpath([folder_path, import_root]) != import_root:
+    try:
+        folder_path = resolve_within(os.path.join(import_root, relative_path), import_root)
+    except UnsafePathError:
+        return jsonify({'error': 'Chemin de dossier invalide'}), 403
+    if folder_path == import_root:
         return jsonify({'error': 'Chemin de dossier invalide'}), 403
 
     if not os.path.isdir(folder_path):
@@ -4565,7 +4659,7 @@ def list_incompatible_folder_files():
     try:
         entries = sorted(os.listdir(folder_path))
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
     # Plafonné: certains packs contiennent des centaines de pages scannées individuelles
     # (voir le cas qui a motivé cette fonctionnalité, ~370 .jpg) - au-delà, le nombre total
@@ -4588,12 +4682,15 @@ def _resolve_incompatible_folder_path(import_root, relative_path):
         return None, ({'error': 'import_root et relative_path requis'}, 400)
 
     import_directories = current_app.config['IMPORT_DIRECTORIES']
-    import_root_real = os.path.realpath(import_root)
-    if import_root_real not in [os.path.realpath(d) for d in import_directories]:
+    import_root_real = configured_root(import_root, import_directories)
+    if import_root_real is None:
         return None, ({'error': "Répertoire d'import non autorisé"}, 403)
 
-    folder_path = os.path.realpath(os.path.join(import_root_real, relative_path))
-    if folder_path == import_root_real or os.path.commonpath([folder_path, import_root_real]) != import_root_real:
+    try:
+        folder_path = resolve_within(os.path.join(import_root_real, relative_path), import_root_real)
+    except UnsafePathError:
+        return None, ({'error': 'Chemin de dossier invalide'}, 403)
+    if folder_path == import_root_real:
         return None, ({'error': 'Chemin de dossier invalide'}, 403)
 
     if not os.path.isdir(folder_path):
@@ -4779,15 +4876,18 @@ def _package_loose_image_groups_as_cbz(folder_path, groups):
     for group in groups:
         base_name = _bedetheque_title_to_folder_name(group['label']) or 'Album'
         cbz_name = f"{base_name}.cbz"
-        cbz_path = os.path.join(folder_path, cbz_name)
-        # Un nom déjà pris (conversion relancée, ou nom d'album coïncidant avec un
-        # fichier existant) suffixé plutôt qu'écrasé, même convention que
-        # download_channel_file_background/upload_series_file.
-        if os.path.exists(cbz_path):
+        try:
+            cbz_path = resolve_within(os.path.join(folder_path, cbz_name), folder_path)
+            # Un nom déjà pris (conversion relancée, ou nom d'album coïncidant avec un
+            # fichier existant) suffixé plutôt qu'écrasé, même convention que
+            # download_channel_file_background/upload_series_file.
             counter = 1
             while os.path.exists(cbz_path):
-                cbz_path = os.path.join(folder_path, f"{base_name}_{counter}.cbz")
+                cbz_path = resolve_within(os.path.join(folder_path, f"{base_name}_{counter}.cbz"), folder_path)
                 counter += 1
+        except UnsafePathError:
+            errors.append(f"{group['label']}: nom d'album invalide")
+            continue
 
         try:
             with zipfile.ZipFile(cbz_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
@@ -4812,7 +4912,7 @@ def _package_loose_image_groups_as_cbz(folder_path, groups):
                     os.remove(cbz_path)
                 except OSError:
                     pass
-            errors.append(f"{group['label']}: {e}")
+            errors.append(f"{group['label']}: {error_message(e)}")
 
     return created, errors
 
@@ -4895,7 +4995,7 @@ def preview_convert_incompatible_folder_to_cbz():
     try:
         entries = sorted(os.listdir(folder_path))
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
     image_files = [
         name for name in entries
@@ -4948,7 +5048,7 @@ def convert_incompatible_folder_to_cbz():
     try:
         entries = sorted(os.listdir(folder_path))
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
     image_files = [
         name for name in entries
@@ -5016,17 +5116,19 @@ def delete_incompatible_folder():
         return jsonify({'error': 'import_root et relative_path requis'}), 400
 
     import_directories = current_app.config['IMPORT_DIRECTORIES']
-    import_root = os.path.realpath(import_root)
-    if import_root not in [os.path.realpath(d) for d in import_directories]:
+    import_root = configured_root(import_root, import_directories)
+    if import_root is None:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
 
-    folder_path = os.path.realpath(os.path.join(import_root, relative_path))
-    # != (pas juste commonpath) - refuse explicitement de supprimer le répertoire
-    # surveillé lui-même si relative_path était vide/'.', même si un appelant buggé
-    # l'envoyait par erreur (scan_import_directory ne génère jamais cette entrée pour la
-    # racine, voir "root != import_path" dans sa boucle, mais mieux vaut une double garde
-    # ici vu qu'on appelle rmtree juste après).
-    if folder_path == import_root or os.path.commonpath([folder_path, import_root]) != import_root:
+    try:
+        folder_path = resolve_within(os.path.join(import_root, relative_path), import_root)
+    except UnsafePathError:
+        return jsonify({'error': 'Chemin de dossier invalide'}), 403
+    # Refuse explicitement de supprimer le répertoire surveillé lui-même si relative_path
+    # était vide/'.', même si un appelant buggé l'envoyait par erreur (scan_import_directory
+    # ne génère jamais cette entrée pour la racine, voir "root != import_path" dans sa
+    # boucle, mais mieux vaut une double garde ici vu qu'on appelle rmtree juste après).
+    if folder_path == import_root:
         return jsonify({'error': 'Chemin de dossier invalide'}), 403
 
     if not os.path.isdir(folder_path):
@@ -5036,7 +5138,7 @@ def delete_incompatible_folder():
         shutil.rmtree(folder_path)
         return jsonify({'success': True})
     except OSError as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 def _convert_single_import_file(import_root, relative_path, force_mislabeled=False):
@@ -5048,14 +5150,14 @@ def _convert_single_import_file(import_root, relative_path, force_mislabeled=Fal
         return None, 'import_root et relative_path requis', 400
 
     import_directories = current_app.config['IMPORT_DIRECTORIES']
-    import_root = os.path.realpath(import_root)
-    if import_root not in [os.path.realpath(d) for d in import_directories]:
+    import_root = configured_root(import_root, import_directories)
+    if import_root is None:
         return None, "Répertoire d'import non autorisé", 403
 
     try:
         filepath = resolve_within(os.path.join(import_root, relative_path), import_root)
-    except UnsafePathError as e:
-        return None, str(e), 403
+    except UnsafePathError:
+        return None, 'Chemin de fichier invalide', 403
 
     if not os.path.isfile(filepath):
         return None, 'Fichier introuvable', 404
@@ -5070,7 +5172,7 @@ def _convert_single_import_file(import_root, relative_path, force_mislabeled=Fal
             try:
                 new_path = convert_mislabeled_archive_in_place(filepath)
             except Exception as e:
-                return None, str(e), 500
+                return None, error_message(e), 500
         return {
             'filename': os.path.basename(new_path), 'filepath': new_path,
             'relative_path': os.path.relpath(new_path, import_root),
@@ -5090,7 +5192,7 @@ def _convert_single_import_file(import_root, relative_path, force_mislabeled=Fal
             else:
                 new_path = convert_zip_to_cbz(filepath)
         except (PdfConversionError, ZipConversionError) as e:
-            return None, str(e), 500
+            return None, error_message(e), 500
 
     scanner = LibraryScanner()
     new_filename = os.path.basename(new_path)
@@ -5162,52 +5264,6 @@ def convert_import_files_batch():
     return jsonify({'success': True, 'count': len(files)})
 
 
-# "regarde le statut de la conversion si ce n'est pas en cbz. met une option pour
-# automatiquement convertir pour cbz dans l'import automatique. si c'est desactivé
-# l'utilisateur doit manuellement convertir": convertisseur commun cbr/rar/pdf/zip nu
-# utilisé par execute_import (manuel) ET execute_auto_import - avant cette option, la
-# conversion cbr->cbz était inconditionnelle et pdf/zip n'étaient jamais convertis à
-# l'import (seulement via le bouton "Convertir en CBZ" de /import, voir
-# convert_import_file). Gouverné par library_import_config.auto_convert_to_cbz - si
-# désactivé, le fichier est importé tel quel et la conversion doit être faite à la main
-# (bouton "Convertir en CBZ" de /import pour un fichier pas encore importé, action
-# "Convertir en cbz" de la molette d'un tome pour un fichier déjà importé, voir
-# buildVolumeActionsGearHtml côté library.js).
-_IMPORT_CBZ_CONVERTERS = {
-    'cbr': (convert_cbr_to_cbz, CbrConversionError),
-    'rar': (convert_cbr_to_cbz, CbrConversionError),
-    'pdf': (convert_pdf_to_cbz, PdfConversionError),
-    'zip': (convert_zip_to_cbz, ZipConversionError),
-}
-
-
-def _maybe_convert_import_file_to_cbz(file_data, source_path, import_config):
-    """Technical rationale and compatibility constraints for this code path."""
-    if not import_config.get('auto_convert_to_cbz', True):
-        return source_path, ''
-
-    fmt = file_data['parsed'].get('format')
-    entry = _IMPORT_CBZ_CONVERTERS.get(fmt)
-    if not entry:
-        return source_path, ''
-
-    convert_fn, error_cls = entry
-    # Voir _conversion_lock: sérialise avec toute AUTRE conversion (bouton "Convertir en
-    # CBZ", groupé ou non) plutôt que de les laisser tourner en parallèle et cumuler leur
-    # pic mémoire.
-    with _conversion_lock:
-        try:
-            new_path = convert_fn(source_path)
-        except error_cls as e:
-            print(f"Conversion {fmt}->cbz échouée pour {file_data['filename']}: {e}")
-            return source_path, ''
-
-    file_data['filename'] = os.path.basename(new_path)
-    file_data['filepath'] = new_path
-    file_data['parsed']['format'] = 'cbz'
-    return new_path, f'Converti {fmt.upper()} → CBZ'
-
-
 @library_bp.route('/api/import/replacement-required', methods=['POST'])
 def import_replacement_required_route():
     """Report whether a known target album already exists in Bullarr's database."""
@@ -5264,11 +5320,9 @@ def mark_import_file_manual_route():
     # Même garde que execute_import: ne marquer que des fichiers réellement dans un
     # répertoire d'import surveillé, pas un chemin arbitraire fourni par le client.
     import_roots = current_app.config['IMPORT_DIRECTORIES']
-    filepath_real = os.path.realpath(filepath)
-    if not any(
-        os.path.commonpath([filepath_real, os.path.realpath(r)]) == os.path.realpath(r)
-        for r in import_roots
-    ):
+    try:
+        resolve_within_any(filepath, import_roots)
+    except UnsafePathError:
         return jsonify({'success': False, 'error': 'Chemin hors des répertoires d\'import autorisés'}), 400
 
     from .import_history import mark_import_file_manual
@@ -5286,14 +5340,12 @@ def rescan_import_file_route():
         return jsonify({'success': False, 'error': 'filepath manquant'}), 400
 
     import_roots = current_app.config['IMPORT_DIRECTORIES']
-    filepath_real = os.path.realpath(filepath)
-    if not any(
-        os.path.commonpath([filepath_real, os.path.realpath(r)]) == os.path.realpath(r)
-        for r in import_roots
-    ):
+    try:
+        safe_filepath = resolve_within_any(filepath, import_roots)
+    except UnsafePathError:
         return jsonify({'success': False, 'error': 'Chemin hors des répertoires d\'import autorisés'}), 400
 
-    if not os.path.exists(filepath):
+    if not os.path.exists(safe_filepath):
         return jsonify({'success': False, 'error': 'Fichier introuvable sur le disque'}), 404
 
     from .scheduler import library_import_scheduler
@@ -5308,8 +5360,8 @@ def rescan_import_file_route():
 
     from blueprints.settings.routes import _check_volume_file_validity
     parsed = LibraryScanner().parse_filename(os.path.basename(filepath))
-    error = _check_volume_file_validity(filepath, parsed.get('format'))
-    current_size = os.path.getsize(filepath)
+    error = _check_volume_file_validity(safe_filepath, parsed.get('format'))
+    current_size = os.path.getsize(safe_filepath)
     _import_file_size_history[filepath] = current_size
     _import_file_validity_cache[(filepath, current_size)] = error
 
@@ -5377,7 +5429,10 @@ def _maybe_complete_tracking_after_move(source_path, destination, outcome='impor
                 continue
             parts = rel.split(os.sep)
             if len(parts) > 1:
-                top_level_dir = os.path.join(import_root, parts[0])
+                try:
+                    top_level_dir = resolve_within(os.path.join(import_root, parts[0]), import_root)
+                except UnsafePathError:
+                    top_level_dir = None
             break
         if not top_level_dir or not os.path.isdir(top_level_dir):
             # Le client torrent peut supprimer le conteneur juste après le déplacement
@@ -5387,13 +5442,19 @@ def _maybe_complete_tracking_after_move(source_path, destination, outcome='impor
             # supprimé, pour garder une trace durable de ce téléchargement suivi (mêmes
             # principe et no-expiry que 'completed'/'failed', voir get_pending_downloads)
             # au lieu de le faire disparaître silencieusement de la base.
+            if _defer_pack_finalization(tracking_id, top_level_dir, source_path,
+                                        destination, outcome, source_was_copied):
+                return
             finalize(tracking_id)
             return
 
-        supported_extensions = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
-        for root, _dirs, files in os.walk(top_level_dir):
-            if any(os.path.splitext(f)[1].lower() in supported_extensions for f in files):
-                return  # il reste au moins un tome à importer, ne rien faire
+        if _pack_has_unfinalized_files(top_level_dir):
+            return  # il reste au moins un tome à importer, ne rien faire
+
+        # Dossier vide mais pack encore en cours de transfert: ne rien nettoyer ni clore.
+        if _defer_pack_finalization(tracking_id, top_level_dir, source_path,
+                                    destination, outcome, source_was_copied):
+            return
 
         # Le client peut laisser le conteneur torrent vide après le déplacement du
         # dernier fichier. Nettoyer uniquement les répertoires réellement vides : un
@@ -5642,11 +5703,11 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 # configuré: sans ce contrôle, un appel direct à cette API (sans passer par
                 # l'UI) pourrait faire déplacer/écraser n'importe quel fichier accessible au
                 # conteneur en fournissant un filepath arbitraire
-                source_path_real = os.path.realpath(source_path)
-                if not any(
-                    os.path.commonpath([source_path_real, os.path.realpath(r)]) == os.path.realpath(r)
-                    for r in import_roots
-                ):
+                try:
+                    # Chemin vérifié: seul lui sert aux opérations sur le disque ci-dessous;
+                    # original_source_path reste la valeur d'origine (clés de suivi/historique).
+                    safe_source_path = resolve_within_any(source_path, import_roots)
+                except UnsafePathError:
                     raise UnsafePathError(f"Fichier source hors des répertoires d'import autorisés: {source_path}")
 
                 if not _import_execution_lock.acquire(timeout=lock_timeout):
@@ -5665,8 +5726,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     if early_existing_path and os.path.exists(early_existing_path) \
                             and not destination.get('force_replace') and not is_better_volume(source_size, early_existing_size):
                         source_was_copied = _should_preserve_import_source(original_source_path)
-                        if not source_was_copied and os.path.exists(original_source_path):
-                            os.remove(original_source_path)
+                        if not source_was_copied and os.path.exists(safe_source_path):
+                            os.remove(safe_source_path)
                         if staged_source_path and os.path.exists(staged_source_path):
                             os.remove(staged_source_path)
                             try:
@@ -5712,7 +5773,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 integrity_error = preparation.get('validation_error')
                 try:
                     _import_file_validity_cache[(
-                        original_source_path, os.path.getsize(original_source_path)
+                        original_source_path, os.path.getsize(safe_source_path)
                     )] = integrity_error
                 except OSError:
                     pass
@@ -5822,7 +5883,6 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 target_path = os.path.join(target_dir, file_data['filename'])
 
                 # Vérifier si un fichier/placeholder existe déjà pour ce même tome
-                import shutil
                 existing_volume_id, existing_file_path, existing_file_size, existing_format = \
                     _find_existing_volume_for_import(cursor, series_id, file_data['parsed'], single_album=bool(destination.get('is_single_album')))
 
@@ -5911,8 +5971,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         # nothing should go after that") - le suivi doit toujours être
                         # clos ici, que la source ait été supprimée ou préservée.
                         source_was_copied = _should_preserve_import_source(original_source_path)
-                        if not source_was_copied and os.path.exists(original_source_path):
-                            os.remove(original_source_path)
+                        if not source_was_copied and os.path.exists(safe_source_path):
+                            os.remove(safe_source_path)
                         if staged_source_path and os.path.exists(staged_source_path):
                             os.remove(staged_source_path)
                             try:
@@ -6180,9 +6240,9 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 # transaction. Remove a writable source only after the destination and
                 # volume row are durable; read-only/NFS sources remain preserved.
                 if tracking_finalization and not source_was_copied \
-                        and original_source_path and os.path.exists(original_source_path):
+                        and original_source_path and os.path.exists(safe_source_path):
                     try:
-                        os.remove(original_source_path)
+                        os.remove(safe_source_path)
                     except OSError as cleanup_error:
                         print(f"⚠️ Source importée non supprimée {original_source_path}: {cleanup_error}")
 
@@ -6509,7 +6569,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
             'failed_count': failed_count,
             'failures': failures,
             'cleaned_directories': cleaned_dirs,
-            'error': str(e)
+            'error': error_message(e)
         }
     finally:
         if operation_id:
@@ -6600,7 +6660,7 @@ def manage_series_tags(series_id):
         
         except Exception as e:
             conn.close()
-            return jsonify({'error': str(e)}), 500
+            return jsonify({'error': error_message(e)}), 500
 
 def cleanup_empty_directories(base_path):
     """
@@ -6647,7 +6707,7 @@ def cleanup_import_directory():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 # ========== RENOMMAGE DE FICHIERS/DOSSIER AU FORMAT CONFIGURABLE ==========
@@ -6851,7 +6911,7 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
             raise UnsafePathError(f"Titre de série invalide: {raw_name!r}")
         new_series_path = resolve_within(os.path.join(library_path, *folder_segments), library_path)
     except UnsafePathError as e:
-        return {'success': False, 'old_path': series_path, 'error': str(e)}
+        return {'success': False, 'old_path': series_path, 'error': error_message(e)}
 
     current_path_real = os.path.realpath(series_path)
 
@@ -6893,7 +6953,7 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
         else:
             os.rename(current_path_real, new_series_path)
     except OSError as e:
-        return {'success': False, 'old_path': series_path, 'new_path': new_series_path, 'error': str(e)}
+        return {'success': False, 'old_path': series_path, 'new_path': new_series_path, 'error': error_message(e)}
 
     # Le dossier a bien été renommé sur disque à ce stade: la base DOIT refléter le
     # nouveau chemin, indépendamment du succès du re-scan tenté juste après
@@ -6980,7 +7040,7 @@ def preview_rename(series_id):
                 'changed': os.path.realpath(series_path) != new_series_path
             }
         except UnsafePathError as e:
-            folder_change = {'old_path': series_path, 'changed': False, 'error': str(e)}
+            folder_change = {'old_path': series_path, 'changed': False, 'error': error_message(e)}
 
         return jsonify({
             'success': True,
@@ -6993,7 +7053,7 @@ def preview_rename(series_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/series/<int:series_id>/rename/execute', methods=['POST'])
@@ -7085,7 +7145,7 @@ def execute_rename(series_id):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 def _log_rename_action(series_id, series_title, file_results, folder_result, universe_name=None):
@@ -7892,7 +7952,7 @@ def log_search_action():
         log_action('search', series_id, title, detail, success=True)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/actions/history', methods=['GET'])
@@ -7909,7 +7969,7 @@ def actions_history():
 
         return jsonify({'success': True, 'history': history})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/actions/history/<int:action_id>', methods=['GET'])
@@ -7936,7 +7996,7 @@ def action_history_detail(action_id):
 
         return jsonify({'success': True, 'action': action})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/import/history', methods=['GET'])
@@ -7951,7 +8011,7 @@ def import_history():
 
         return jsonify({'success': True, 'history': history})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/import/history/<operation_id>', methods=['GET'])
@@ -7967,7 +8027,7 @@ def import_operation_details(operation_id):
         
         return jsonify({'success': True, 'details': details})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500
 
 
 @library_bp.route('/api/import/history/<operation_id>/undo', methods=['POST'])
@@ -7984,4 +8044,4 @@ def undo_import_operation(operation_id):
             return jsonify({'error': message}), 400
             
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': error_message(e)}), 500

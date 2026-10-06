@@ -416,29 +416,6 @@ def search_channels(api_id, api_hash, session_string, channels, query, limit=30)
     return _store_scrape_results(results)
 
 
-def get_downloaded_filenames():
-    """Noms de fichiers connus de cette table (scrapés, téléchargés ou non) - utilisé par
-    le scan d'import (blueprints/library/routes.py) pour attribuer le client 'telegram' aux
-    fichiers déjà sur disque, en confirmation du répertoire dédié TELEGRAM_IMPORT_DIRECTORY
-    ('/downloads/telegram', voir config.py).
-
-    PAS filtré sur downloaded=1 ("pourquoi c'est amule" pour un fichier réellement
-    téléchargé via Telegram, avant la séparation en répertoires dédiés par source - "create
-    a download folder with the 3 options torrents amule telegram"): un téléchargement
-    Telegram interrompu par un redémarrage du process juste avant la mise à jour de
-    `downloaded` (déjà arrivé une fois, voir CLAUDE.md) laisse le fichier marqué
-    downloaded=0 en base tout en étant réellement sur disque - la simple PRÉSENCE d'une
-    ligne pour ce nom de fichier suffit à l'identifier comme venant de Telegram,
-    `downloaded` ne concerne que le suivi de progression, pas
-    l'origine du fichier."""
-    conn = _connect_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT filename FROM telegram_files')
-    names = {row[0] for row in cursor.fetchall()}
-    conn.close()
-    return names
-
-
 def get_latest_files(days=15, limit=None, older_than_days=None):
     """Fichiers scrapés dans les `days` derniers jours, plus récents d'abord - même fenêtre
     glissante que GET /api/ebdz/latest (voir routes.py de ebdz), pour un rendu cohérent

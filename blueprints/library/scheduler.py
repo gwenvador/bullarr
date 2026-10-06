@@ -259,7 +259,6 @@ class LibraryImportScheduler:
                 # _auto_import, y compris celle du nettoyage de .part ajouté juste avant)
                 from . import routes
                 from .scanner import LibraryScanner
-                import sqlite3
 
                 # Charger la configuration d'import
                 config = routes.load_library_import_config()
@@ -268,6 +267,9 @@ class LibraryImportScheduler:
 
                 # Répertoires d'import surveillés (toujours scannés ensemble)
                 import_directories = current_app.config['IMPORT_DIRECTORIES']
+
+                # Clôtures de packs différées parce qu'ils recevaient encore des fichiers
+                routes.retry_deferred_pack_finalizations()
 
                 # Scanner les fichiers à importer
                 scanner = LibraryScanner()
@@ -380,6 +382,7 @@ class LibraryImportScheduler:
                                 previous_size = self._file_size_history.get(filepath)
                                 new_size_history[filepath] = current_size
                                 if previous_size != current_size:
+                                    routes.note_pack_transfer_activity(import_path, filepath)
                                     continue
 
                                 parsed = scanner.parse_filename(filename)

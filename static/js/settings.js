@@ -1173,6 +1173,7 @@ async function loadOidcSettings() {
         document.getElementById('oidcIssuer').value = config.issuer || '';
         document.getElementById('oidcClientId').value = config.client_id || '';
         document.getElementById('oidcScopes').value = config.scopes || 'openid profile email';
+        document.getElementById('oidcAutoRedirect').checked = !!config.auto_redirect;
 
         // Voir le commentaire équivalent dans loadSettings (aMule) - même correctif
         if (config.client_secret) {
@@ -1192,15 +1193,17 @@ async function saveOidcSettings() {
         issuer: document.getElementById('oidcIssuer').value.trim(),
         client_id: document.getElementById('oidcClientId').value.trim(),
         client_secret: document.getElementById('oidcClientSecret').value,
-        scopes: document.getElementById('oidcScopes').value.trim() || 'openid profile email'
+        scopes: document.getElementById('oidcScopes').value.trim() || 'openid profile email',
+        auto_redirect: document.getElementById('oidcAutoRedirect').checked
     };
+    const usesOidc = config.mode === 'oidc' || config.mode === 'both';
 
-    if (config.mode === 'oidc' && !config.issuer) {
+    if (usesOidc && !config.issuer) {
         showMessage('oidcMessage', "⚠️ Veuillez entrer l'URL de l'issuer OIDC", 'warning');
         return;
     }
 
-    if (config.mode === 'oidc' && !config.client_id) {
+    if (usesOidc && !config.client_id) {
         showMessage('oidcMessage', '⚠️ Veuillez entrer le Client ID OIDC', 'warning');
         return;
     }
@@ -1253,6 +1256,7 @@ function resetOidcSettings() {
     document.getElementById('oidcClientId').value = '';
     document.getElementById('oidcClientSecret').value = '';
     document.getElementById('oidcScopes').value = 'openid profile email';
+    document.getElementById('oidcAutoRedirect').checked = false;
     showMessage('oidcMessage', '🔄 Configuration réinitialisée', 'info');
 }
 
@@ -1276,13 +1280,15 @@ function selectAuthMode(mode) {
 
 function updateAuthModeFields() {
     const mode = document.getElementById('authMode').value;
-    document.getElementById('passwordAuthFields').style.display = mode === 'password' ? '' : 'none';
-    ['oidcIssuer', 'oidcClientId', 'oidcClientSecret', 'oidcScopes'].forEach(id => {
+    const usesPassword = mode === 'password' || mode === 'both';
+    const usesOidc = mode === 'oidc' || mode === 'both';
+    document.getElementById('passwordAuthFields').style.display = usesPassword ? '' : 'none';
+    ['oidcIssuer', 'oidcClientId', 'oidcClientSecret', 'oidcScopes', 'oidcAutoRedirect'].forEach(id => {
         const input = document.getElementById(id);
-        if (input) input.closest('.form-group').style.display = mode === 'oidc' ? '' : 'none';
+        if (input) input.closest('.form-group').style.display = usesOidc ? '' : 'none';
     });
     const testButton = document.querySelector('[onclick="testOidcConnection()"]');
-    if (testButton) testButton.style.display = mode === 'oidc' ? '' : 'none';
+    if (testButton) testButton.style.display = usesOidc ? '' : 'none';
 }
 
 // ===== PROWLARR INDEXERS =====

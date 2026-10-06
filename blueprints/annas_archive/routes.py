@@ -41,7 +41,6 @@ def shelfmark_download():
     """Queue an Anna's Archive release in the configured Shelfmark instance."""
     import re
     import requests
-    from flask import current_app
 
     data = request.get_json() or {}
     md5 = str(data.get('md5') or '').strip().lower()

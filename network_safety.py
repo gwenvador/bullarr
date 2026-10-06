@@ -63,14 +63,6 @@ class _PinnedAddressAdapter(HTTPAdapter):
         )
 
 
-def is_safe_external_url(url):
-    try:
-        _public_target(url)
-        return True
-    except ValueError:
-        return False
-
-
 def safe_external_get(url, *, session=None, timeout=30, max_bytes=None, max_redirects=5,
                       verify=True, headers=None, params=None):
     """GET an untrusted URL while validating every redirect and limiting its size."""

@@ -4,11 +4,23 @@ Configuration centralisée de l'application
 import os
 import sqlite3
 
+
+def _env_flag(name, default=False):
+    """Variable d'environnement booléenne: 1/true/yes/on (insensible à la casse) = activée."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 class Config:
     """Configuration de base"""
     
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    # Commutateur de récupération (voir README): désactive la garde d'authentification pour
+    # corriger une mauvaise configuration SSO/mot de passe. Jamais activé par défaut.
+    AUTH_BYPASS_LOGIN = _env_flag('BULLARR_AUTH_BYPASS_LOGIN')
     DEBUG = False
     # Backup restores can be up to 3 GiB uncompressed; bound multipart uploads
     # before Werkzeug spools an unlimited request to disk.

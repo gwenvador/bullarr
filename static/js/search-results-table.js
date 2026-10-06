@@ -740,6 +740,14 @@ let _searchTableFilters = { source: '', format: '', blackAndWhite: '', size: '',
 // fournit un. volumeNumber (le numéro simple, toujours connu dès qu'un tome précis est
 // recherché) comble cet écart pour l'affichage/l'auto-assignation à l'import.
 let _searchResultsContextSeriesId = null;
+
+// Un identifiant de série est toujours un entier de la base. Il est lu depuis un attribut du
+// DOM (data-series-id) puis réinséré dans du HTML et des requêtes: tout ce qui n'est pas un
+// entier positif est écarté ici plutôt que de dépendre de l'échappement à chaque insertion.
+function _normalizeSeriesId(value) {
+    const id = Number.parseInt(value, 10);
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 let _searchResultsContextVolumeId = null;
 let _searchResultsContextVolumeNumber = null;
 // "Remplacer quand même" - true seulement pour une recherche explicite "Rechercher un
@@ -1129,7 +1137,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
         _searchTableFilters = { source: '', format: '', blackAndWhite: '', size: '', volume: '', title: '', hideUnconfirmed: true, owned: '' };
         _searchTableSort = { column: null, direction: 'asc' };
     }
-    _searchResultsContextSeriesId = seriesId;
+    _searchResultsContextSeriesId = _normalizeSeriesId(seriesId);
     _searchResultsContextVolumeId = volumeId;
     _searchResultsContextVolumeNumber = volumeNumber;
     _searchResultsContextIsReplacement = isReplacement;

@@ -5,9 +5,8 @@ import re
 import os
 from typing import List, Dict, Optional
 from flask import current_app
-from datetime import datetime
 from urllib.parse import unquote
-from .request_throttler import RequestThrottler, SearchResultCache, SmartSearchOptimizer
+from .request_throttler import RequestThrottler, SearchResultCache
 
 
 # "je ne veux pas avoir epub etre download. ajoute une section pour desactiver les
@@ -30,7 +29,6 @@ class MissingVolumeSearcher:
     # Instance partagée du throttler et du cache (global)
     _throttler = RequestThrottler(requests_per_minute=30)
     _cache = SearchResultCache(cache_duration_minutes=60)
-    _optimizer = SmartSearchOptimizer()
     
     def __init__(self):
         self.sources = {

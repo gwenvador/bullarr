@@ -12,7 +12,7 @@ import requests
 
 from . import auth_bp
 from encryption import decrypt
-from .config_store import load_oidc_config, save_oidc_config, normalize_issuer_url
+from .config_store import AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url
 
 # Endpoints toujours accessibles, même quand le SSO/OIDC est activé (sans quoi
 # l'utilisateur ne pourrait jamais atteindre le flux de connexion ou les assets statiques)
@@ -21,6 +21,35 @@ _PUBLIC_ENDPOINTS = {
     'auth.logout', 'auth.logout_provider',
     'static', 'serve_cover',
 }
+
+
+def _auth_mode(config):
+    return config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')
+
+
+def _password_enabled(config):
+    return _auth_mode(config) in {'password', 'both'}
+
+
+def _oidc_enabled(config):
+    return _auth_mode(config) in {'oidc', 'both'}
+
+
+def _oidc_ready(config):
+    """SSO activé ET suffisamment configuré pour démarrer le flux."""
+    return _oidc_enabled(config) and bool(config.get('issuer')) and bool(config.get('client_id'))
+
+
+def _render_login(config, error=None, status=200):
+    """Page de connexion: formulaire et/ou bouton SSO selon le mode configuré."""
+    oidc_ready = _oidc_ready(config)
+    if _oidc_enabled(config) and not oidc_ready and not error:
+        error = "Configuration OIDC incomplète : vérifiez l'issuer et le client ID dans les paramètres."
+        if not _password_enabled(config):
+            status = 500
+    return render_template(
+        'login.html', password_enabled=_password_enabled(config), oidc_enabled=oidc_ready, error=error
+    ), status
 
 
 def _get_oidc_client(config):
@@ -60,7 +89,7 @@ def enforce_login():
         return None
 
     config = load_oidc_config()
-    mode = config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')
+    mode = _auth_mode(config)
     if mode == 'none':
         return None
 
@@ -81,33 +110,27 @@ def enforce_login():
 
 @auth_bp.route('/login')
 def login():
-    """Affiche un écran de chargement, puis laisse /login/redirect démarrer le flux
-    OIDC (la découverte du fournisseur SSO passe par le réseau et peut prendre un
-    instant : sans cet écran intermédiaire, le navigateur reste blanc pendant ce temps)"""
-    config = load_oidc_config()
+    """Page de connexion: formulaire identifiant/mot de passe et/ou bouton SSO selon le mode.
 
-    mode = config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')
-    if mode == 'none':
+    Aucune redirection automatique vers le SSO par défaut: elle n'a lieu que si
+    « auto_redirect » est activé, et jamais avec ?noauto=1 (accès au formulaire, retour
+    après une déconnexion)."""
+    config = load_oidc_config()
+    if _auth_mode(config) == 'none':
         return redirect('/')
-    if mode == 'password':
-        return render_template('login.html', mode='password')
-    if not config.get('issuer') or not config.get('client_id'):
-        return render_template(
-            'login.html',
-            error="Configuration OIDC incomplète : vérifiez l'issuer et le client ID dans les paramètres.",
-            mode='oidc'
-        ), 500
-    return render_template('login.html', loading=True, mode='oidc')
+    if _oidc_ready(config) and config.get('auto_redirect') and not request.args.get('noauto'):
+        return redirect(url_for('auth.login_redirect'))
+    return _render_login(config)
 
 
 @auth_bp.route('/login/password', methods=['POST'])
 def login_password():
     config = load_oidc_config()
-    mode = config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')
     username = (request.form.get('username') or '').strip()
     password = request.form.get('password') or ''
-    if mode != 'password' or not username or username != config.get('username') or not config.get('password_hash') or not check_password_hash(config['password_hash'], password):
-        return render_template('login.html', mode='password', error='Identifiant ou mot de passe incorrect.'), 401
+    if (not _password_enabled(config) or not username or username != config.get('username')
+            or not config.get('password_hash') or not check_password_hash(config['password_hash'], password)):
+        return _render_login(config, error='Identifiant ou mot de passe incorrect.', status=401)
     next_url = session.get('next_url') or '/'
     session.clear()
     session['user'] = {'name': username, 'auth_method': 'password'}
@@ -118,27 +141,24 @@ def login_password():
 def login_redirect():
     """Effectue la découverte OIDC et la redirection vers le fournisseur SSO"""
     config = load_oidc_config()
-
-    if (config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')) != 'oidc':
+    if not _oidc_enabled(config):
         return redirect('/')
+    if not _oidc_ready(config):
+        return _render_login(config, status=500)
 
     try:
         oidc_client = _get_oidc_client(config)
         redirect_uri = url_for('auth.callback', _external=True)
         return oidc_client.authorize_redirect(redirect_uri)
     except Exception as e:
-        return render_template(
-            'login.html',
-            error=f"Erreur lors de la connexion au fournisseur SSO : {e}"
-        ), 500
+        return _render_login(config, error=f"Erreur lors de la connexion au fournisseur SSO : {e}", status=500)
 
 
 @auth_bp.route('/callback')
 def callback():
     """Termine l'échange de tokens OIDC et ouvre la session utilisateur"""
     config = load_oidc_config()
-
-    if (config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')) != 'oidc':
+    if not _oidc_enabled(config):
         return redirect('/')
 
     try:
@@ -155,10 +175,7 @@ def callback():
         next_url = session.pop('next_url', None) or '/'
         return redirect(next_url)
     except Exception as e:
-        return render_template(
-            'login.html',
-            error=f"Erreur lors de l'authentification SSO : {e}"
-        ), 500
+        return _render_login(config, error=f"Erreur lors de l'authentification SSO : {e}", status=500)
 
 
 @auth_bp.route('/logout')
@@ -173,7 +190,7 @@ def logout():
     session.pop('user', None)
     session.pop('next_url', None)
 
-    show_provider_link = bool((config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')) == 'oidc' and config.get('issuer'))
+    show_provider_link = bool(_oidc_enabled(config) and config.get('issuer'))
     return render_template('logout.html', show_provider_link=show_provider_link)
 
 
@@ -182,7 +199,7 @@ def logout_provider():
     """Termine aussi la session côté fournisseur OIDC (lien optionnel depuis /logout)"""
     config = load_oidc_config()
 
-    if (config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')) != 'oidc' or not config.get('issuer'):
+    if not _oidc_enabled(config) or not config.get('issuer'):
         return redirect(url_for('auth.login'))
 
     try:
@@ -221,9 +238,10 @@ def oidc_config():
         config = load_oidc_config()
 
         return jsonify({
-            'mode': config.get('mode') or ('oidc' if config.get('enabled', False) else 'none'),
+            'mode': _auth_mode(config),
             'username': config.get('username', ''),
             'enabled': config.get('enabled', False),
+            'auto_redirect': bool(config.get('auto_redirect', False)),
             'issuer': config.get('issuer', ''),
             'client_id': config.get('client_id', ''),
             'client_secret': '****' if config.get('client_secret') else '',
@@ -236,7 +254,7 @@ def oidc_config():
             config = load_oidc_config()
 
             mode = new_config.get('mode', 'none')
-            if mode not in {'none', 'password', 'oidc'}:
+            if mode not in AUTH_MODES:
                 return jsonify({'success': False, 'error': 'Mode d’authentification invalide'}), 400
             config['mode'] = mode
             config['enabled'] = mode != 'none'
@@ -244,11 +262,14 @@ def oidc_config():
             new_password = new_config.get('password') or ''
             if new_password:
                 config['password_hash'] = generate_password_hash(new_password)
-            if mode == 'password' and (not config.get('username') or not config.get('password_hash')):
+            if mode in {'password', 'both'} and (not config.get('username') or not config.get('password_hash')):
                 return jsonify({'success': False, 'error': 'Un identifiant et un mot de passe sont requis'}), 400
             config['issuer'] = normalize_issuer_url(new_config.get('issuer', ''))
             config['client_id'] = new_config.get('client_id', '').strip()
             config['scopes'] = (new_config.get('scopes') or 'openid profile email').strip()
+            if mode in {'oidc', 'both'} and (not config['issuer'] or not config['client_id']):
+                return jsonify({'success': False, 'error': "L'URL de l'issuer et le Client ID sont requis"}), 400
+            config['auto_redirect'] = bool(new_config.get('auto_redirect', False))
 
             # Ne change le secret client que s'il n'est pas masqué
             new_secret = new_config.get('client_secret', '')

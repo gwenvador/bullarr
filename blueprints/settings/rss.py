@@ -269,7 +269,7 @@ def fetch_prowlarr_feed(_feed):
     # côté serveur tout en laissant les tests/harnesses fournir indexer_ids.
     if _feed.get('indexer_ids') is None:
         try:
-            from flask import has_app_context, current_app
+            from flask import has_app_context
             if has_app_context():
                 from blueprints.prowlarr.config_store import load_prowlarr_config
                 configured = load_prowlarr_config()

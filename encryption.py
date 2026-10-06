@@ -4,7 +4,6 @@ Module de chiffrement pour les données sensibles
 import os
 import json
 from cryptography.fernet import Fernet
-import base64
 
 # Fichier où stocker la clé de chiffrement
 ENCRYPTION_KEY_FILE = './data/.encryption_key'

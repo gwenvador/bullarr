@@ -3,6 +3,9 @@ Routes pour l'intégration Bedetheque
 """
 from flask import request, jsonify, current_app
 from . import bedetheque_bp
+from .parsers import (
+    parse_indispensables, parse_pantheon, parse_theme_groups, parse_theme_tiles, parse_theme_page,
+)
 from .scraper import BedethequeScraper, BedethequeDatabase, match_bedetheque_volume, _parse_int_hs_prefix, _parse_special_prefix, _numbered_special_label, _safe_bedetheque_url
 from .comicinfo_writer import build_comicinfo_fields, apply_volume_comicinfo, UnsupportedFormatError
 from .cbr_converter import convert_cbr_to_cbz, CbrConversionError
@@ -10,9 +13,7 @@ import sqlite3
 import json
 import logging
 import os
-import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import unicodedata
 import re
 from urllib.parse import urlparse
@@ -224,38 +225,9 @@ def pantheon_authors():
             scraper._ensure_session()
             page = _fetch_bedetheque_page(scraper, _PANTHEON_CATEGORIES[category], timeout=20, max_bytes=12 * 1024 * 1024)
             soup = BeautifulSoup(page, 'html.parser')
-            items = []
-            listing = soup.select_one('ul.indispensables-list')
-            rows = listing.select(':scope > li') if listing else []
-            for row in rows:
-                link = row.select_one('.hall-auteur .auteur a[href*="/auteur-"]')
-                if not link:
-                    continue
-                url = link.get('href', '').strip()
-                name = link.get_text(' ', strip=True) or link.get('title') or ''
-                if not name or not url:
-                    continue
-                photo = row.select_one('.hall-photo img')
-                dates_node = row.select_one('.date-auteur')
-                professions_node = row.select_one('.metiers-auteur')
-                country_node = row.select_one('.pays-auteur')
-                works_node = row.select_one('.texte-auteur')
-                cat_node = row.select_one('.cat-hall a')
-                year_node = row.select_one('.annee-hall')
-                def _clean(node):
-                    return ' '.join(node.get_text(' ', strip=True).split()) if node else ''
-                items.append({
-                    'rank': len(items) + 1,
-                    'name': name,
-                    'url': url,
-                    'photo': photo.get('src', '').strip() if photo else None,
-                    'dates': _clean(dates_node),
-                    'professions': _clean(professions_node),
-                    'country': _clean(country_node),
-                    'notable_works': _clean(works_node),
-                    'category': _clean(cat_node),
-                    'year': _clean(year_node),
-                })
+            items = parse_pantheon(soup)
+            if not items:
+                return _layout_changed_response('panthéon')
             save_scrape_cache(cache_key, items)
             was_cached = False
 
@@ -280,6 +252,14 @@ def pantheon_authors():
         return jsonify({'success': False, 'error': 'Erreur interne'}), 502
 
 
+def _layout_changed_response(what):
+    """Une page qui ne donne plus AUCUN résultat est presque sûrement une refonte de la mise
+    en page de Bédéthèque: erreur explicite, et surtout rien n'est mis en cache (le cache n'a
+    pas d'expiration, un résultat vide y resterait jusqu'à un rafraîchissement manuel)."""
+    logger.error(f"Aucun résultat Bédéthèque pour {what}: mise en page modifiée ?")
+    return jsonify({'success': False, 'error': f"Aucun résultat pour {what} - la mise en page de Bédéthèque a peut-être changé"}), 502
+
+
 _THEME_SLUG_RE = re.compile(r'^[A-Za-z0-9_-]{1,80}$')
 
 
@@ -302,23 +282,21 @@ def list_themes():
         scraper._ensure_session()
         page = _fetch_bedetheque_page(scraper, 'https://www.bedetheque.com/theme', timeout=20, max_bytes=12 * 1024 * 1024)
         soup = BeautifulSoup(page, 'html.parser')
-        ul = soup.select_one('div.select-theme > ul')
         groups = []
-        current = None
-        for li in (ul.select(':scope > li') if ul else []):
-            a = li.select_one('a')
-            if not a:
-                continue
-            href = a.get('href', '').strip()
-            name = a.get_text(strip=True)
-            if 'super' in (li.get('class') or []):
-                current = {'name': name, 'themes': []}
-                groups.append(current)
-                continue
-            m = re.search(r'theme-BD-([A-Za-z0-9_-]+)\.html', href)
-            if not m or current is None:
-                continue
-            current['themes'].append({'name': name, 'slug': m.group(1), 'url': href})
+        for group in parse_theme_groups(soup):
+            themes = group['themes']
+            # La page /theme n'affiche qu'un aperçu de chaque groupe: la liste complète est
+            # derrière son lien "Tous les thèmes".
+            if group['more_url'] and group['declared'] and len(themes) < group['declared']:
+                from .scraper import _anti_bot_delay
+                _anti_bot_delay()
+                full_page = _fetch_bedetheque_page(scraper, group['more_url'], timeout=20, max_bytes=12 * 1024 * 1024)
+                full_themes = parse_theme_tiles(BeautifulSoup(full_page, 'html.parser'))
+                if len(full_themes) > len(themes):
+                    themes = full_themes
+            groups.append({'name': group['name'], 'themes': themes})
+        if not any(group['themes'] for group in groups):
+            return _layout_changed_response('thèmes')
         save_scrape_cache('themes:list', groups)
         return jsonify({'success': True, 'groups': groups, 'cached': False})
     except Exception:
@@ -354,34 +332,9 @@ def theme_series():
             scraper._ensure_session()
             page = _fetch_bedetheque_page(scraper, theme_url, timeout=20, max_bytes=12 * 1024 * 1024)
             soup = BeautifulSoup(page, 'html.parser')
-            # Pas de <h1>/<h2> dédié sur cette page - le nom du thème n'apparaît que
-            # comme dernier maillon (li.active) de son propre fil d'Ariane.
-            title_node = soup.select_one('.single-title-serie .breadcrumb li.active')
-            theme_title = title_node.get_text(strip=True) if title_node else slug
-            items = []
-            ul = soup.select_one('ul.theme')
-            for li in (ul.select(':scope > li') if ul else []):
-                link = li.select_one('.info h3 a') or li.select_one('.couv a')
-                if not link:
-                    continue
-                url = link.get('href', '').strip()
-                title = link.get_text(strip=True)
-                if not url or not title:
-                    continue
-                cover = li.select_one('.couv img')
-                origin_node = li.select_one('.info .origine')
-                authors_node = li.select_one('.info .auteurs')
-                note_node = li.select_one('.info .note img')
-                summary_node = li.select_one('.info > p')
-                items.append({
-                    'title': title,
-                    'url': url,
-                    'cover': cover.get('src', '').strip() if cover else None,
-                    'origin': origin_node.get_text(strip=True) if origin_node else '',
-                    'authors': authors_node.get_text(strip=True) if authors_node else '',
-                    'note': note_node.get('title', '').strip() if note_node else '',
-                    'summary': summary_node.get_text(' ', strip=True) if summary_node else '',
-                })
+            theme_title, items = parse_theme_page(soup, fallback_title=slug)
+            if not items:
+                return _layout_changed_response(f'thème {slug}')
             save_scrape_cache(cache_key, {'items': items, 'title': theme_title})
             was_cached = False
 
@@ -429,21 +382,14 @@ def indispensable_series():
             page = _fetch_bedetheque_page(scraper, _INDISPENSABLE_CATEGORIES[category], timeout=20, max_bytes=12 * 1024 * 1024)
             soup = BeautifulSoup(page, 'html.parser')
             items, seen = [], set()
-            listing = soup.select_one('ul.indispensables-list')
-            links = []
-            if listing:
-                for row in listing.select(':scope > li'):
-                    link = row.select_one('a[href*="/serie-"]')
-                    if not link:
-                        continue
-                    links.append((link, row.select_one('.style')))
-            else:
-                links = [(link, None) for link in soup.select('a[href*="/serie-"]')]
-            for link, genre_node in links:
-                url = link.get('href', '')
+            parsed_entries = parse_indispensables(soup)
+            if not parsed_entries:
+                return _layout_changed_response('indispensables')
+            for entry in parsed_entries:
+                url = entry['url']
                 if not url.startswith('https://www.bedetheque.com/serie-'):
                     continue
-                title = (link.get_text(' ', strip=True) or link.get('title') or '').strip()
+                title = entry['title']
                 article_match = re.match(r'^(.*?)\s*\((Le|La|Les|L\'|Un|Une)\)$', title, re.IGNORECASE)
                 if article_match:
                     base, article = article_match.groups()
@@ -451,7 +397,7 @@ def indispensable_series():
                 if not title or url in seen:
                     continue
                 seen.add(url)
-                genre = genre_node.get_text(' ', strip=True) if genre_node else '-'
+                genre = entry['genre']
                 items.append({'rank': len(items) + 1, 'title': title, 'url': url, 'genre': genre, 'category': {'all': 'Tous', 'franco-belge': 'Franco-belge', 'comics': 'Comics', 'manga': 'Manga'}[category]})
                 if len(items) >= 100:
                     break
@@ -1281,8 +1227,6 @@ def _write_series_volumes_metadata_async(app, db_path, series_id, series_title, 
     (RuntimeError "Working outside of application context", avalée par le except général)
     puisque ce thread n'a par défaut aucun contexte Flask actif."""
     from blueprints.library.scanner import LibraryScanner
-    from blueprints.library.routes import _conversion_lock
-    from blueprints.library.archive_converter import classify_archive, convert_mislabeled_archive_in_place
 
     try:
         with app.app_context():
@@ -2773,6 +2717,8 @@ def _convert_volume_to_cbz(volume_id, source_format, convert_fn, error_cls):
     validée (voir cbr_converter/pdf_converter/zip_converter pour la sécurité de
     l'écriture)."""
     from blueprints.library.scanner import LibraryScanner
+    from blueprints.library.routes import _conversion_lock
+    from blueprints.library.archive_converter import classify_archive, convert_mislabeled_archive_in_place
 
     try:
         conn = get_db_connection()

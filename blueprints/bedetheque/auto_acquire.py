@@ -28,7 +28,6 @@ import sqlite3
 import threading
 from urllib.parse import unquote
 import html as html_module
-import time
 
 _running_series_ids = set()
 _running_series_lock = threading.Lock()

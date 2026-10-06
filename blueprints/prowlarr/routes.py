@@ -1,7 +1,7 @@
 """
 Routes pour l'intégration Prowlarr
 """
-from flask import request, jsonify, current_app
+from flask import request, jsonify
 from . import prowlarr_bp
 import requests
 from encryption import decrypt

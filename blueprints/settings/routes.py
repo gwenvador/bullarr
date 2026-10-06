@@ -10,9 +10,9 @@ import threading
 import zipfile
 from archive_utils import detect_actual_format
 import unicodedata
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from flask import render_template, request, jsonify, current_app, send_file
+from error_utils import error_message
 from backup_utils import PENDING_RESTORE_DIR, snapshot_sqlite
 from . import settings_bp
 from .rename_config_store import load_rename_config, save_rename_config, DEFAULT_RENAME_CONFIG
@@ -66,7 +66,7 @@ def rss_config():
         )
         return jsonify({'success': True, 'feeds': feeds})
     except ValueError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': error_message(exc)}), 400
     except OSError:
         return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
@@ -96,7 +96,7 @@ def rename_config():
         return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
 BACKUP_MANIFEST_NAME = 'backup_manifest.json'
@@ -254,7 +254,7 @@ def restore_backup():
                 json.dump({'files': staged_names}, manifest)
             os.rename(staging_dir, pending_dir)
     except (OSError, ValueError, json.JSONDecodeError, sqlite3.DatabaseError) as exc:
-        return jsonify({'success': False, 'error': f'Backup invalide: {exc}'}), 400
+        return jsonify({'success': False, 'error': error_message(exc, 'Backup invalide')}), 400
     finally:
         zf.close()
 

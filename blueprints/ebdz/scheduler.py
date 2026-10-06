@@ -3,8 +3,6 @@ Gestionnaire du scraping automatique pour ebdz.net
 """
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-import json
-import os
 from datetime import datetime
 
 
@@ -102,7 +100,6 @@ class EBDZScheduler:
                 from .scraper import MyBBScraper
                 import sqlite3
                 from flask import current_app
-                from encryption import decrypt
                 
                 # Charger la configuration EBDZ
                 config = routes.load_ebdz_config()

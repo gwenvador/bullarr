@@ -9,7 +9,7 @@ Routes pour le Top 100 annuel BDGest (https://www.bdgest.com/top/annuel)
   fiche là-bas) - le matching "déjà possédé" réutilise donc le même identifiant fort
   (series.bedetheque_url) que le reste de l'app, pas un nouveau mécanisme.
 """
-from flask import Blueprint, request, jsonify, current_app
+from flask import request, jsonify, current_app
 from . import bdgest_bp
 from network_safety import safe_external_get
 import requests
@@ -72,6 +72,7 @@ def top_annuel():
     # pas bedetheque.com mais le mécanisme de cache lui-même n'a rien de spécifique au
     # site. Rafraîchi seulement sur ?refresh=1 explicite (bouton "Actualiser").
     from blueprints.bedetheque.catalog_index import get_cached_scrape, save_scrape_cache
+    from blueprints.bedetheque.parsers import parse_bdgest_top
     cache_key = f'bdgest:top-annuel:{annee}:{origine}'
     force_refresh = request.args.get('refresh') in ('1', 'true')
     try:
@@ -89,44 +90,10 @@ def top_annuel():
             response = safe_external_get(url, session=_warmed_bdgest_session(), timeout=20, max_bytes=12 * 1024 * 1024)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, 'html.parser')
-            items = []
-            ol = soup.select_one('ol.top-ventes')
-            for li in (ol.select(':scope > li') if ol else []):
-                link = li.select_one('.main h3 a') or li.select_one('.couv')
-                if not link:
-                    continue
-                url_ = link.get('href', '').strip()
-                series_title = link.get_text(strip=True)
-                if not url_ or not series_title:
-                    continue
-                place_node = li.select_one('.place')
-                rank_match = re.search(r'(\d+)', place_node.get_text() if place_node else '')
-                rank = int(rank_match.group(1)) if rank_match else len(items) + 1
-                h3 = li.select_one('.main h3')
-                volume_label = ''
-                if h3:
-                    br = h3.find('br')
-                    if br and br.next_sibling:
-                        volume_label = ' '.join(str(br.next_sibling).split())
-                cover = li.select_one('.couv img')
-                publisher_node = li.select_one('.infos .icon-building')
-                publisher = publisher_node.find_next('span').get_text(strip=True) if publisher_node else ''
-                date_node = li.select_one('.infos .icon-calendar')
-                release_date = date_node.find_next('span').get_text(strip=True) if date_node else ''
-                votes_node = li.select_one('.infos .icon-trophy')
-                votes = votes_node.find_next('span').get_text(strip=True) if votes_node else ''
-                summary_node = li.select_one('.main > p')
-                items.append({
-                    'rank': rank,
-                    'title': series_title,
-                    'volume_label': volume_label,
-                    'url': url_,
-                    'cover': cover.get('src', '').strip() if cover else None,
-                    'publisher': publisher,
-                    'release_date': release_date,
-                    'votes': votes,
-                    'summary': summary_node.get_text(' ', strip=True) if summary_node else '',
-                })
+            items = parse_bdgest_top(soup)
+            if not items:
+                # Rien n'est mis en cache: un résultat vide y resterait (pas d'expiration).
+                return jsonify({'success': False, 'error': "Aucun résultat - la mise en page de BDGest a peut-être changé"}), 502
             save_scrape_cache(cache_key, items)
             was_cached = False
 

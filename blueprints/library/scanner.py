@@ -5,7 +5,6 @@ import sqlite3
 import os
 import re
 import hashlib
-from pathlib import Path
 from zipfile import ZipFile
 import rarfile
 from pypdf import PdfReader
@@ -489,17 +488,16 @@ class LibraryScanner:
         # UpScale, Scan...). On garde le texte du tag tel quel (casse d'origine, tiret ou
         # espace) plutôt que de le reconstruire, pour ne pas perdre ces variantes
         digital_match = re.search(
-            r'[\[\(]([A-Za-z][A-Za-z\s.-]*?(\d+)\s*px)[\]\)]',
+            r'[\[\(]([A-Za-z][A-Za-z\s.-]{0,40}?(\d+)\s{0,5}px)[\]\)]',
             name_without_ext, re.IGNORECASE
         )
         if not digital_match:
             digital_match = re.search(
-                r'[\[\(][^\[\]\(\)]*?((?:Digital|ePub|Printer|Print|Upscale|Up-Scale|Re-?Scan|Scan|[0-9]p)[\s.-]*(\d+))[^\[\]\(\)]*?[\]\)]',
-                # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
+                r'[\[\(][^\[\]\(\)]{0,40}?((?:Digital|ePub|Printer|Print|Upscale|Up-Scale|Re-?Scan|Scan|[0-9]p)[\s.-]{0,5}(\d+))[^\[\]\(\)]{0,60}?[\]\)]',
                 name_without_ext, re.IGNORECASE
             )
         if not digital_match:
-            bare_px_match = re.search(r'[\[\(](\d{3,4})\s*px[\]\)]', name_without_ext, re.IGNORECASE)
+            bare_px_match = re.search(r'[\[\(](\d{3,4})\s{0,5}px[\]\)]', name_without_ext, re.IGNORECASE)
             if bare_px_match:
                 excluded_numbers.add(int(bare_px_match.group(1)))
                 info['resolution'] = f"{bare_px_match.group(1)}px"
@@ -2119,27 +2117,3 @@ class LibraryScanner:
             conn.commit()
             conn.close()
 
-    def get_library_stats(self, library_id):
-        """Récupère les statistiques d'une bibliothèque"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # Nombre de séries
-        cursor.execute('SELECT COUNT(*) FROM series WHERE library_id = ?', (library_id,))
-        series_count = cursor.fetchone()[0]
-
-        # Nombre total de volumes
-        cursor.execute('''
-            SELECT COUNT(*)
-            FROM volumes v
-            JOIN series s ON v.series_id = s.id
-            WHERE s.library_id = ?
-        ''', (library_id,))
-        volumes_count = cursor.fetchone()[0]
-
-        conn.close()
-
-        return {
-            'series_count': series_count,
-            'volumes_count': volumes_count
-        }

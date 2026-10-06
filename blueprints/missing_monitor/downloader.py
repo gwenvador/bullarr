@@ -3,7 +3,6 @@ Envoi automatique des téléchargements aux clients (qBittorrent, aMule)
 """
 import os
 import re
-import json
 import sys
 import secrets
 import unicodedata
@@ -56,12 +55,6 @@ def match_pending_download_by_name(client_pending_rows, item_name):
         (p for p in client_pending_rows if not p.get('client_item_id') and _filenames_match(item_name, p['title'])),
         None
     )
-
-
-def _title_already_imported(title, imported_filenames):
-    """`title` (nom de fichier réel suivi, voir mark_download_pending) désigne-t-il le même
-    fichier qu'un des noms déjà importés avec succès ? Voir _filenames_match."""
-    return any(_filenames_match(title, filename) for filename in imported_filenames)
 
 
 def find_pending_download_duplicate(title: Optional[str], series_id: Optional[int] = None,
@@ -682,11 +675,6 @@ def mark_download_skipped(download_id: Optional[int]) -> None:
     _set_pending_download_status(download_id, 'skipped')
 
 
-def mark_download_cancelled(download_id: Optional[int]) -> None:
-    '''Mark an explicitly removed import row as cancelled without touching its source.'''
-    _set_pending_download_status(download_id, 'cancelled')
-
-
 def reconcile_stale_active_downloads() -> int:
     """Technical rationale and compatibility constraints for this code path."""
     try:
@@ -1241,6 +1229,50 @@ def reconcile_completed_download_files():
         if _reconcile_stuck_completed_download(status, is_pack, series_id, series_path, title, db_path):
             mark_download_imported(download_id)
             repaired += 1
+    return repaired + reconcile_completed_packs()
+
+
+def reconcile_completed_packs():
+    """Clôt les packs 'completed' dont il ne reste plus rien à importer.
+
+    Un pack reste 'completed' tant que son dossier contient des fichiers; si tous ceux qui
+    restent ont déjà un résultat d'import (doublons ignorés revenus par resynchronisation,
+    sources en lecture seule...), plus aucun passage ne le clôturait et /import l'affichait
+    indéfiniment « Prêt - scan automatique sous peu ». Un pack encore en cours de transfert
+    (fichier récent ou temporaire, voir _pack_transfer_in_progress) n'est jamais clos ici.
+    """
+    from blueprints.library.routes import _pack_has_unfinalized_files, _pack_transfer_in_progress
+    from path_safety import UnsafePathError, resolve_within
+
+    db_path = current_app.config.get('DATABASE')
+    import_roots = current_app.config.get('IMPORT_DIRECTORIES', [])
+    if not db_path or not import_roots:
+        return 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        rows = conn.execute('''
+            SELECT id, client_item_name, title FROM active_downloads
+            WHERE status = 'completed' AND is_pack = 1 AND series_id IS NOT NULL
+        ''').fetchall()
+    finally:
+        conn.close()
+    repaired = 0
+    for download_id, client_item_name, title in rows:
+        folder_name = (client_item_name or title or '').strip()
+        if not folder_name or os.sep in folder_name or folder_name in ('.', '..'):
+            continue
+        for import_root in import_roots:
+            try:
+                folder = resolve_within(os.path.join(import_root, folder_name), import_root)
+            except UnsafePathError:
+                continue
+            if folder == os.path.realpath(import_root) or not os.path.isdir(folder):
+                continue
+            if _pack_transfer_in_progress(folder) or _pack_has_unfinalized_files(folder):
+                break
+            mark_download_imported(download_id)
+            repaired += 1
+            break
     return repaired
 
 
@@ -1493,26 +1525,6 @@ class MissingVolumeDownloader:
         except Exception as e:
             return False, f"Erreur {client}: {'Erreur interne'}"
     
-    def _get_default_client(self) -> str:
-        """Détermine le client par défaut (le premier actif)"""
-        try:
-            config_file = current_app.config.get('QBITTORRENT_CONFIG_FILE')
-            if config_file:
-                with open(config_file, 'r') as f:
-                    config = json.load(f)
-                    if config.get('enabled'):
-                        return 'qbittorrent'
-        except:
-            pass
-        
-        try:
-            config = current_app.config.get('EMULE_CONFIG', {})
-            if config.get('enabled'):
-                return 'amule'
-        except:
-            pass
-        
-        return 'qbittorrent'  # Par défaut
     
     def _post_to_client(self, endpoint: str, payload: dict, client_key: str, client_label: str,
                          title: str, volume_num: Optional[int], source: Optional[str],

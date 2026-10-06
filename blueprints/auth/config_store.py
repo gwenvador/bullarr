@@ -7,6 +7,10 @@ import tempfile
 from flask import current_app
 from encryption import encrypt, decrypt
 
+# none: pas d'authentification; password: formulaire seul; oidc: bouton SSO seul;
+# both: formulaire identifiant/mot de passe ET bouton SSO sur la même page.
+AUTH_MODES = {'none', 'password', 'oidc', 'both'}
+
 
 def load_oidc_config():
     """Charge la configuration OIDC"""
@@ -20,8 +24,11 @@ def load_oidc_config():
 
     # Backward compatibility: the old boolean enabled meant OIDC.
     mode = cfg.get('mode')
-    if mode not in {'none', 'password', 'oidc'}:
+    if mode not in AUTH_MODES:
         cfg['mode'] = 'oidc' if cfg.get('enabled', False) else 'none'
+
+    # Pas de redirection automatique vers le SSO tant qu'elle n'est pas demandée.
+    cfg['auto_redirect'] = bool(cfg.get('auto_redirect', False))
 
     # Déchiffrer le secret client s'il existe
     client_secret = cfg.get('client_secret', '')

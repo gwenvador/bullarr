@@ -23,6 +23,8 @@ import unicodedata
 from pathlib import Path
 import hashlib
 
+from .parsers import parse_search_links, parse_album_reviews
+
 logger = logging.getLogger(__name__)
 _ALLOWED_HOSTS = {'www.bedetheque.com', 'bedetheque.com'}
 
@@ -230,8 +232,14 @@ def _local_title_from_filename(filename):
     reste ("Série - Titre de l'album") comparable au titre d'un album Bedetheque."""
     if not filename:
         return None
-    name = re.sub(r'\.\w+$', '', filename)
-    name = re.sub(r'\s*-\s*\(\d{4}\)\s*$', '', name)
+    name = re.sub(r'\.\w+$', '', filename).rstrip()
+    # " - (2011)" final, sans regex ambiguë (\s*-\s*...\s*$ est polynomiale sur de longues
+    # suites d'espaces): on retire d'abord l'année entre parenthèses puis le tiret.
+    year = re.search(r'\(\d{4}\)$', name)
+    if year:
+        head = name[:year.start()].rstrip()
+        if head.endswith('-'):
+            name = head[:-1]
     return name.strip() or None
 
 
@@ -478,18 +486,11 @@ class BedethequeScraper:
             soup = BeautifulSoup(response.content, 'html.parser')
 
             results = []
-            for li in soup.select('ul.nav-liste li'):
-                link = li.select_one('a[href*="/serie-"]')
-                if not link:
-                    continue
-                title = link.get_text(strip=True)
-                if not title:
-                    continue
-                genre_el = li.select_one('span.count')
+            for item in parse_search_links(soup, 'serie'):
                 results.append({
-                    'title': title,
-                    'url': urljoin(self.base_url, link['href']),
-                    'genre': genre_el.get_text(strip=True) if genre_el else None
+                    'title': item['name'],
+                    'url': urljoin(self.base_url, item['href']),
+                    'genre': item['meta'] or None
                 })
                 if len(results) >= limit:
                     break
@@ -529,16 +530,8 @@ class BedethequeScraper:
 
             soup = BeautifulSoup(response.content, 'html.parser')
             results = []
-            seen_urls = set()
-            for link in soup.select('a[href*="/auteur-"]'):
-                url = urljoin(self.base_url, link['href'])
-                if url in seen_urls:
-                    continue
-                name = link.get_text(strip=True)
-                if not name:
-                    continue
-                seen_urls.add(url)
-                results.append({'name': name, 'url': url})
+            for item in parse_search_links(soup, 'auteur'):
+                results.append({'name': item['name'], 'url': urljoin(self.base_url, item['href'])})
                 if len(results) >= limit:
                     break
             return results
@@ -582,14 +575,19 @@ class BedethequeScraper:
                 return []
 
             soup = BeautifulSoup(response.content, 'html.parser')
-            table = soup.select_one('table.biblio-auteur')
+            # Mise en page actuelle (bdt-*): section "Sa bibliographie", première table =
+            # "Séries principales" (la suivante regroupe les collaborations). Ancienne
+            # mise en page (table.biblio-auteur) gardée en repli.
+            table = (soup.select_one('section.bdt-auteur-biblio table.bdt-biblio')
+                     or soup.select_one('table.biblio-auteur'))
             if not table:
                 return []
 
             results = []
             seen_urls = set()
             for row in table.select('tbody tr'):
-                serie_link = row.select_one('span.serie a[href*="/serie-"]')
+                serie_link = (row.select_one('td.bdt-biblio-titre a[href*="/serie-"]')
+                              or row.select_one('span.serie a[href*="/serie-"]'))
                 if not serie_link:
                     continue
                 serie_url = urljoin(self.base_url, serie_link['href'])
@@ -597,20 +595,20 @@ class BedethequeScraper:
                     continue
                 seen_urls.add(serie_url)
 
-                flag_img = row.select_one('span.ico img')
+                flag_img = row.select_one('img.bdt-biblio-flag') or row.select_one('span.ico img')
                 flag_filename = flag_img['src'].split('/')[-1] if flag_img and flag_img.get('src') else ''
                 flag_country = os.path.splitext(flag_filename)[0]
 
-                year_cells = row.select('td')
-                year_start = year_cells[1].get_text(strip=True) if len(year_cells) > 1 else None
-                year_end = year_cells[2].get_text(strip=True) if len(year_cells) > 2 else None
+                year_cells = row.select('td.n') or row.select('td')[1:3]
+                year_start = year_cells[0].get_text(strip=True) if len(year_cells) > 0 else None
+                year_end = year_cells[1].get_text(strip=True) if len(year_cells) > 1 else None
 
                 results.append({
                     'title': serie_link.get_text(strip=True),
                     'bedetheque_url': serie_url,
                     'year_start': int(year_start) if year_start and year_start.isdigit() else None,
                     'year_end': int(year_end) if year_end and year_end.isdigit() else None,
-                    'is_french': flag_country == 'France',
+                    'is_french': flag_country == 'France' or (not flag_country and row.get('data-langue') == 'fr'),
                     'flag_country': flag_country or None,
                 })
             return results
@@ -645,7 +643,7 @@ class BedethequeScraper:
             covers_dir = "./data/covers"
         try:
             self._ensure_session()
-            response = self.session.get(author_url, timeout=15)
+            response = self.session.get(_safe_bedetheque_url(author_url), timeout=15)
             response.encoding = 'utf-8'
             _anti_bot_delay()
             if response.status_code != 200:
@@ -714,7 +712,7 @@ class BedethequeScraper:
 
             logger.info(f"Récupération des infos: {all_url}")
 
-            response = self.session.get(all_url, timeout=15)
+            response = self.session.get(_safe_bedetheque_url(all_url), timeout=15)
             response.encoding = 'utf-8'
 
             # Pause pour éviter un bannissement IP
@@ -945,7 +943,7 @@ class BedethequeScraper:
             return None
 
         try:
-            response = self.session.get(album_url, timeout=15)
+            response = self.session.get(_safe_bedetheque_url(album_url), timeout=15)
             response.encoding = 'utf-8'
             _anti_bot_delay()
 
@@ -971,7 +969,7 @@ class BedethequeScraper:
             return ''
 
         try:
-            response = self.session.get(album_url, timeout=15)
+            response = self.session.get(_safe_bedetheque_url(album_url), timeout=15)
             response.encoding = 'utf-8'
             _anti_bot_delay()
 
@@ -997,8 +995,7 @@ class BedethequeScraper:
 
     def get_album_reviews(self, album_url):
         """Récupère les avis de lecteurs publiés sur la page d'un album ("L'avis des
-        visiteurs", <ol class="commentlist"><div class="the-comment" itemprop="reviews"
-        itemtype="https://schema.org/Review">...) - texte intégral, pas juste la note
+        visiteurs", <article class="bdt-review" itemprop="review">...) - texte intégral, pas juste la note
         agrégée déjà récupérée par ailleurs (voir _index_bedetheque_volumes/'rating').
         Une page d'album sans aucun avis n'a pas ce bloc du tout (pas de <ol> vide) -
         retourne simplement []."""
@@ -1006,7 +1003,7 @@ class BedethequeScraper:
             return []
 
         try:
-            response = self.session.get(album_url, timeout=15)
+            response = self.session.get(_safe_bedetheque_url(album_url), timeout=15)
             response.encoding = 'utf-8'
             _anti_bot_delay()
 
@@ -1014,35 +1011,7 @@ class BedethequeScraper:
                 return []
 
             soup = BeautifulSoup(response.content, 'html.parser')
-            reviews = []
-            for comment in soup.select('.commentlist .the-comment'):
-                author_el = comment.select_one('.comment-author .name')
-                date_meta = comment.select_one('.comment-author meta[itemprop="datePublished"]')
-                rating_meta = comment.select_one('meta[itemprop="reviewRating"]')
-                body_el = comment.select_one('.comment-text [itemprop="reviewBody"]')
-                if not body_el:
-                    continue
-
-                # <br> dans le texte de l'avis -> retour à la ligne réel plutôt qu'espace
-                # (get_text seul les avalerait silencieusement)
-                for br in body_el.find_all('br'):
-                    br.replace_with('\n')
-
-                rating = None
-                if rating_meta and rating_meta.get('content'):
-                    try:
-                        rating = int(rating_meta['content'])
-                    except ValueError:
-                        rating = None
-
-                reviews.append({
-                    'author': author_el.get_text(strip=True) if author_el else None,
-                    'date': date_meta['content'] if date_meta and date_meta.get('content') else None,
-                    'rating': rating,
-                    'text': body_el.get_text(strip=True),
-                })
-
-            return reviews
+            return parse_album_reviews(soup)
 
         except Exception as e:
             logger.warning(f"Impossible de récupérer les avis de l'album {album_url}: {e}")

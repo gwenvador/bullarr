@@ -5,13 +5,12 @@ from flask import request, jsonify, current_app
 from . import ebdz_bp
 import json
 import os
-import re
 import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
-from encryption import encrypt, decrypt, ensure_encryption_key
+from encryption import encrypt, decrypt
 from blueprints.settings.rss import fetch_feed, load_feeds, feed_cache_key
 from blueprints.prowlarr.config_store import load_prowlarr_config
 

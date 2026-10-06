@@ -33,8 +33,9 @@ tomes manquants.
   standard, et test d'intégrité réel des archives (zip/rar/pdf), avec actions de
   correction en masse
 - 🕓 **Historique** : imports et actions (renommage/suppression/déplacement) journalisés
-- 🔐 **Sécurité** : secrets (mots de passe/clés API) chiffrés sur disque (Fernet), SSO/OIDC
-  optionnel (désactivé par défaut)
+- 🔐 **Sécurité** : secrets (mots de passe/clés API) chiffrés sur disque (Fernet),
+  authentification optionnelle (désactivée par défaut) : identifiant/mot de passe, SSO/OIDC,
+  ou les deux sur la même page de connexion
 - 🐳 **100 % Docker**, base SQLite (aucune base externe à gérer)
 
 ---
@@ -140,7 +141,7 @@ est optionnelle et désactivée tant qu'elle n'est pas explicitement activée.
 | 🔌 Indexeurs | Sources de recherche des tomes manquants : Prowlarr, EBDZ.net, Telegram (canaux), Flux RSS, Komga, sources web (fourtoutici.cc) |
 | 💻 Clients | Clients de téléchargement : aMule/eMule, qBittorrent, rTorrent, Deluge |
 | 📱 Notifications | Notifications Telegram (bot) |
-| 🔐 SSO / OIDC | Authentification externe (désactivée par défaut) |
+| 🔐 SSO / OIDC | Authentification : mot de passe, OIDC ou les deux (désactivée par défaut). La page de connexion affiche le formulaire et/ou un bouton SSO ; la redirection automatique vers le SSO est une option, désactivée par défaut |
 | 📊 Surveillance | Détection et acquisition automatique des tomes manquants |
 | 📥 Imports | Activation et règles de l'import automatique de fichiers |
 | 🗂️ Recherche | Priorité des formats dans les résultats de recherche |

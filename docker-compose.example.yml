@@ -19,5 +19,7 @@ services:
       - ./incoming:/downloads/fourtoutici
     environment:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Bullarr}
+      # Récupération d'accès uniquement (voir README): true le temps de corriger la configuration
+      BULLARR_AUTH_BYPASS_LOGIN: ${BULLARR_AUTH_BYPASS_LOGIN:-false}
       TZ: Europe/Paris
     restart: unless-stopped

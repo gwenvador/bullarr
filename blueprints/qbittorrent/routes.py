@@ -10,7 +10,7 @@ import time
 import requests
 import hmac
 import re
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlparse
 from encryption import decrypt, load_encrypted_json_config, save_encrypted_json_config
 from network_safety import safe_external_get
 
@@ -18,46 +18,59 @@ from network_safety import safe_external_get
 _MAX_TORRENT_BYTES = 10 * 1024 * 1024
 
 
-def _is_configured_prowlarr_download(url):
-    """Reconnaît uniquement un lien /<indexeur>/download du Prowlarr configuré.
+def _configured_prowlarr_download_url(url):
+    """URL de téléchargement Prowlarr reconstruite à partir de la configuration, ou None.
 
-    Prowlarr peut être joignable par une adresse privée/Tailscale, tandis que les
-    autres URL de torrent restent soumises au garde-fou anti-SSRF public.
+    Schéma, hôte et préfixe viennent de la configuration de l'administrateur (jamais d'une
+    valeur fournie par la requête), ce qui garantit que la requête sortante ne peut viser
+    que son Prowlarr; seuls l'identifiant numérique et les paramètres de requête (apikey
+    vérifiée, link, file...) sont repris de `url`.
     """
     from blueprints.prowlarr.config_store import load_prowlarr_config
     from encryption import decrypt
-
     config = load_prowlarr_config()
     base = (config.get('url') or '').strip()
     if not config.get('enabled') or not base:
-        return False
+        return None
     if not base.startswith(('http://', 'https://')):
         base = 'http://' + base
     expected = urlparse(base)
     candidate = urlparse(url)
     if (candidate.scheme != expected.scheme or candidate.netloc.lower() != expected.netloc.lower()
             or candidate.username or candidate.password or candidate.fragment):
-        return False
+        return None
     prefix = expected.path.rstrip('/')
-    if not re.fullmatch(re.escape(prefix) + r'/\d+/download', candidate.path):
-        return False
+    match = re.fullmatch(re.escape(prefix) + r'/(\d+)/download', candidate.path)
+    if not match:
+        return None
     configured_key = config.get('api_key_decrypted') or decrypt(config.get('api_key', ''))
     supplied_keys = parse_qs(candidate.query).get('apikey', [])
-    return bool(configured_key and len(supplied_keys) == 1
-                and hmac.compare_digest(configured_key, supplied_keys[0]))
+    if not (configured_key and len(supplied_keys) == 1
+            and hmac.compare_digest(configured_key, supplied_keys[0])):
+        return None
+    # Les autres paramètres (link, file...) sont repris tels quels: ils ne changent pas la
+    # destination, fixée ci-dessus par la configuration.
+    query = urlencode(parse_qsl(candidate.query, keep_blank_values=True))
+    return f"{expected.scheme}://{expected.netloc}{prefix}/{int(match.group(1))}/download?{query}"
+
+
+def _is_configured_prowlarr_download(url):
+    """Reconnaît uniquement un lien /<indexeur>/download du Prowlarr configuré."""
+    return _configured_prowlarr_download_url(url) is not None
 
 
 def _download_torrent_bytes(url, source):
-    if source != 'prowlarr' or not _is_configured_prowlarr_download(url):
+    prowlarr_url = _configured_prowlarr_download_url(url) if source == 'prowlarr' else None
+    if prowlarr_url is None:
         response = safe_external_get(url, timeout=30, max_bytes=_MAX_TORRENT_BYTES)
         response.raise_for_status()
         return response.content
 
     # Le seul hôte privé autorisé est celui configuré par l'administrateur. Ne pas
     # suivre automatiquement une redirection Prowlarr vers une autre destination.
-    with requests.get(url, timeout=30, verify=False, stream=True, allow_redirects=False) as response:
+    with requests.get(prowlarr_url, timeout=30, verify=False, stream=True, allow_redirects=False) as response:
         if response.is_redirect:
-            destination = urljoin(url, response.headers.get('Location') or '')
+            destination = urljoin(prowlarr_url, response.headers.get('Location') or '')
             redirected = safe_external_get(destination, timeout=30, max_bytes=_MAX_TORRENT_BYTES)
             redirected.raise_for_status()
             return redirected.content

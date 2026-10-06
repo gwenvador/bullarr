@@ -1361,7 +1361,7 @@
                             <style>
         .auth-mode-group { margin-bottom: 28px; }
         .auth-mode-heading { display:flex; flex-direction:column; gap:5px; margin-bottom:12px; }
-        .auth-mode-options { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+        .auth-mode-options { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
         .auth-mode-option { display:flex; align-items:flex-start; gap:12px; min-height:76px; padding:15px; border:1px solid var(--border-color, #e5e7eb); border-radius:14px; background:var(--card-background, #fff); color:inherit; text-align:left; cursor:pointer; transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease, background .18s ease; }
         .auth-mode-option:hover { transform:translateY(-1px); border-color:#8b5cf6; box-shadow:0 5px 16px rgba(99,102,241,.12); }
         .auth-mode-option.is-selected { border-color:#6366f1; background:linear-gradient(135deg, rgba(99,102,241,.10), rgba(139,92,246,.05)); box-shadow:0 0 0 2px rgba(99,102,241,.14); }
@@ -1397,6 +1397,10 @@
                                     <button type="button" class="auth-mode-option" data-auth-mode="oidc" role="radio" aria-checked="false" onclick="selectAuthMode('oidc')">
                                         <span class="auth-mode-icon">◎</span>
                                         <span class="auth-mode-copy"><strong>OIDC</strong><small>Connexion via un fournisseur</small></span>
+                                    </button>
+                                    <button type="button" class="auth-mode-option" data-auth-mode="both" role="radio" aria-checked="false" onclick="selectAuthMode('both')">
+                                        <span class="auth-mode-icon">⇄</span>
+                                        <span class="auth-mode-copy"><strong>Mot de passe + OIDC</strong><small>Formulaire ou bouton SSO sur la page de connexion</small></span>
                                     </button>
                                 </div>
                             </div>
@@ -1438,6 +1442,14 @@
                                 <label for="oidcScopes">Scopes</label>
                                 <input type="text" id="oidcScopes" placeholder="openid profile email">
                                 <small class="help-text">Liste de scopes séparés par des espaces</small>
+                            </div>
+
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="oidcAutoRedirect">
+                                <label for="oidcAutoRedirect">
+                                    <strong>Redirection automatique vers le SSO</strong>
+                                    <span class="help-text">Désactivée par défaut : la page de connexion affiche un bouton. Une fois activée, le formulaire reste accessible via /login?noauto=1.</span>
+                                </label>
                             </div>
 
                             <div class="form-actions">

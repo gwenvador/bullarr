@@ -5,7 +5,6 @@ from flask import Flask, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 from config import config
 import os
-import sys
 import uuid
 from encryption import ensure_encryption_key
 
@@ -17,6 +16,9 @@ def create_app(config_name='default'):
 
     app = Flask(__name__)
     app.config.from_object(config[config_name])
+    if app.config.get('AUTH_BYPASS_LOGIN'):
+        print("⚠️ BULLARR_AUTH_BYPASS_LOGIN actif: l'authentification est désactivée. "
+              "Corrigez la configuration puis repassez-le à false et redémarrez.")
 
     # Bullarr is served behind Nginx Proxy Manager. Trust one proxy hop so
     # url_for(..., _external=True) uses the public HTTPS scheme/host for OIDC.

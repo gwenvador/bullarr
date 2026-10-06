@@ -4,7 +4,6 @@ Historique des imports de fichiers
 import sqlite3
 import json
 import os
-from datetime import datetime
 from flask import current_app
 
 
@@ -628,7 +627,6 @@ def undo_import_operation(operation_id):
     try:
         import os
         import shutil
-        from datetime import datetime
         
         operation_details = get_operation_details(operation_id)
         if not operation_details or not operation_details['operation']:
@@ -781,77 +779,6 @@ def mark_import_file_manual(filepath, destination=None):
             except:
                 pass
 
-
-def remove_import_file_manual(filepath):
-    # Un fichier finalisé ne doit plus rester retenu par le hold manuel.
-    conn = None
-    try:
-        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
-        conn.execute('DELETE FROM import_manual_overrides WHERE filepath = ?', (filepath,))
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f"Erreur lors du retrait de l'assignation manuelle de {filepath}: {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
-
-
-def mark_import_file_packaged(filepath, destination=None):
-    conn = None
-    try:
-        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
-        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)')
-        import json
-        encoded = json.dumps(destination, ensure_ascii=False) if destination else None
-        conn.execute('INSERT OR IGNORE INTO import_packaged_files (filepath, destination_json) VALUES (?, ?)', (filepath, encoded))
-        if encoded:
-            conn.execute('UPDATE import_packaged_files SET destination_json = ? WHERE filepath = ?', (encoded, filepath))
-        conn.commit()
-        return True
-    except Exception as e:
-        print(f'Erreur marquage fichier empaqueté {filepath}: {e}')
-        return False
-    finally:
-        if conn: conn.close()
-
-
-def get_packaged_filepaths():
-    conn = None
-    try:
-        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
-        conn.execute('CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)')
-        rows = [row[0] for row in conn.execute('SELECT filepath FROM import_packaged_files').fetchall()]
-        stale = [p for p in rows if not os.path.exists(p)]
-        if stale:
-            conn.executemany('DELETE FROM import_packaged_files WHERE filepath = ?', [(p,) for p in stale])
-            conn.commit()
-        return {p for p in rows if p not in stale}
-    except Exception as e:
-        print(f'Erreur lecture fichiers empaquetés: {e}')
-        return set()
-    finally:
-        if conn: conn.close()
-
-
-def get_packaged_destinations():
-    import json
-    conn = None
-    try:
-        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
-        conn.execute("CREATE TABLE IF NOT EXISTS import_packaged_files (filepath TEXT PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, destination_json TEXT)")
-        cols = {row[1] for row in conn.execute('PRAGMA table_info(import_packaged_files)').fetchall()}
-        if 'destination_json' not in cols: conn.execute('ALTER TABLE import_packaged_files ADD COLUMN destination_json TEXT')
-        result = {}
-        for filepath, encoded in conn.execute('SELECT filepath, destination_json FROM import_packaged_files').fetchall():
-            if os.path.exists(filepath) and encoded:
-                try: result[filepath] = json.loads(encoded)
-                except (TypeError, ValueError): pass
-        return result
-    except Exception as e: print(f'Erreur lecture destinations empaquetées: {e}'); return {}
-    finally:
-        if conn: conn.close()
 
 def get_finalized_import_source_paths():
     conn = None
