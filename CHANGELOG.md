@@ -38,7 +38,7 @@ Version de consolidation : mise à jour directe depuis v4.4, sans migration de b
 - Les chemins fournis par le client sont confinés aux dossiers d'import et de bibliothèque (nouveau module `path_safety.py`).
 - Les requêtes sortantes vers Bédéthèque et Prowlarr ne peuvent viser que leur hôte attendu.
 - Deux expressions régulières coûteuses sont bornées, et l'identifiant de série lu dans la page est converti en entier avant d'être réinséré dans le HTML.
-- Analyse CodeQL : les 114 alertes ouvertes au 6 octobre sont corrigées (deux, sur des messages d'erreur volontairement détaillés, sont classées comme faux positifs).
+- Analyse CodeQL : sur les 114 alertes ouvertes au 6 octobre, 111 sont corrigées et 3 sont classées comme faux positifs (deux sur des messages d'erreur volontairement détaillés, une sur un nom de fichier qui est toujours un simple nom produit par la conversion, sans séparateur de chemin possible).
 
 ### Nettoyage et tests
 
