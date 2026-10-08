@@ -2,6 +2,7 @@
 Routes pour l'intégration Bedetheque
 """
 from flask import request, jsonify, current_app
+from error_utils import error_message
 from . import bedetheque_bp
 from .parsers import (
     parse_indispensables, parse_pantheon, parse_theme_groups, parse_theme_tiles, parse_theme_page,
@@ -484,7 +485,7 @@ def catalog_index_schedule():
     try:
         config = save_index_refresh_config(request.get_json(silent=True))
     except ValueError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': error_message(exc)}), 400
     except OSError:
         return jsonify({'success': False, 'error': 'Enregistrement impossible'}), 500
     return jsonify({'success': True, **config})

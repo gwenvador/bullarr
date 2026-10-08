@@ -312,3 +312,20 @@ class CompletePackTest(unittest.TestCase):
         self.assertEqual(self.post(download_id=10, archive_paths=[outside])[0].status_code, 403)
         self.assertEqual(self.status(10), "completed")
 
+
+
+class PackageNameSafetyTest(unittest.TestCase):
+    """Le nom d un dossier d archive ne doit jamais faire écrire hors du dossier de sortie."""
+
+    def test_hostile_folder_names_stay_inside_the_output_directory(self):
+        from blueprints.library.zip_converter import package_zip_folders_to_cbz
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = os.path.join(tmp, "evil.zip")
+            make_zip(archive, ["../escape/p1.jpg", "..\\\\other\\\\p1.jpg", "ok/p1.jpg", "../p1.jpg"])
+            out = os.path.join(tmp, "out")
+            created = package_zip_folders_to_cbz(archive, out, ["../escape", "ok"])
+            inside = os.path.realpath(out) + os.sep
+            self.assertTrue(created)
+            for item in created:
+                self.assertTrue(os.path.realpath(item["path"]).startswith(inside), item)
+            self.assertEqual(sorted(os.listdir(tmp)), ["evil.zip", "out"])

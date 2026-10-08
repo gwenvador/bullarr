@@ -43,6 +43,10 @@ Mise à jour directe depuis v5.0, sans migration de base. Les corrections de sui
 - Un nom de fichier qui n'est pas en UTF-8 ne fait plus perdre tout le lot de fichiers découverts : seul ce fichier est ignoré.
 - La suppression, la conversion et l'import d'un CBZ empaqueté n'étaient pas possibles (« Répertoire d'import non autorisé ») : le dossier d'empaquetage fait maintenant partie des dossiers autorisés.
 
+### Sécurité
+
+- Analyse CodeQL : les deux alertes ouvertes sur la première publication de la v6.0 sont corrigées. Le nom du CBZ créé à l'empaquetage, issu d'un nom de dossier de l'archive, est vérifié comme restant dans le dossier de sortie (un nom hostile est refusé). Le message d'erreur du réglage de l'index passe par le même outil que les autres routes.
+
 ### Tests
 
 - Plus de cent tests ajoutés : protection contre les requêtes vers des adresses internes, chiffrement, calcul d'identifiant de torrent, limiteur de requêtes, planificateur d'import, historique et réservations d'import, règles de décision d'import (doublons, tome suivi, archives), index du catalogue et sa mise à jour, archives et empaquetage, validation de pack, annotation RSS, registre d'icônes.

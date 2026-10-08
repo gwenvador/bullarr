@@ -9,9 +9,12 @@ Jamais automatique: appelée uniquement à la demande explicite de l'utilisateur
 blueprints/bedetheque/cbr_converter.convert_cbr_to_cbz.
 """
 import os
+import re
 import shutil
 import tempfile
 import zipfile
+
+from path_safety import UnsafePathError, resolve_within
 
 # Extensions considérées comme des planches de bande dessinée - sert uniquement à
 # vérifier que l'archive n'est pas un zip quelconque (sauvegarde, export d'un autre
@@ -122,11 +125,17 @@ def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None)
             names = [n for n in members if n.startswith(prefix) and '/' not in n[len(prefix):]]
             if not names:
                 continue
-            safe = Path(selected_path).name.replace('/', '_').strip(' .') or 'album'
-            out, suffix = Path(output_dir) / f'{safe}.cbz', 2
-            while str(out) in used or out.exists():
-                out = Path(output_dir) / f'{safe} ({suffix}).cbz'
-                suffix += 1
+            safe = re.sub(r'[\\/\x00]', '_', Path(selected_path).name).strip(' .') or 'album'
+            # Le nom vient de l'archive (donc d'un tiers): le chemin final est vérifié comme
+            # restant dans output_dir avant toute écriture.
+            try:
+                out = Path(resolve_within(os.path.join(output_dir, f'{safe}.cbz'), output_dir))
+                suffix = 2
+                while str(out) in used or out.exists():
+                    out = Path(resolve_within(os.path.join(output_dir, f'{safe} ({suffix}).cbz'), output_dir))
+                    suffix += 1
+            except UnsafePathError:
+                raise ZipConversionError(f'Nom de dossier invalide dans l\'archive: {selected_path}')
             used.add(str(out))
             with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED) as dest:
                 for name in sorted(names):
