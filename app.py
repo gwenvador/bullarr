@@ -161,6 +161,10 @@ def create_app(config_name='default'):
         # sur ce même planning conditionnel.
         library_import_scheduler.add_stalled_telegram_job()
 
+        # Index local du catalogue Bédéthèque: reconstruit chaque nuit s'il est périmé.
+        from blueprints.bedetheque.index_scheduler import catalog_index_scheduler
+        catalog_index_scheduler.start()
+
     # "toujours trop petit. on voit même pas que c'est un cover" - la modification était
     # bien déployée côté serveur (vérifié directement), donc un cache navigateur/proxy
     # côté mobile n'ayant pas revalidé malgré Cache-Control:no-cache est l'explication la

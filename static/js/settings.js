@@ -2640,6 +2640,52 @@ async function buildBedethequeCatalogIndex() {
     }
 }
 
+// Grise la phrase « tous les N jours, à H h » tant que l'interrupteur est éteint.
+function syncBedethequeIndexScheduleState() {
+    const enabled = document.getElementById('bedethequeIndexAutoEnabled');
+    const line = document.getElementById('bedethequeIndexScheduleLine');
+    if (!enabled || !line) return;
+    line.classList.toggle('is-disabled', !enabled.checked);
+}
+
+async function loadBedethequeIndexSchedule() {
+    const enabled = document.getElementById('bedethequeIndexAutoEnabled');
+    if (!enabled) return;
+    try {
+        const data = await (await fetch('/api/bedetheque/catalog-index/schedule')).json();
+        if (!data.success) return;
+        enabled.checked = !!data.enabled;
+        document.getElementById('bedethequeIndexIntervalDays').value = data.interval_days;
+        document.getElementById('bedethequeIndexHour').value = data.hour;
+        syncBedethequeIndexScheduleState();
+    } catch (error) {
+        console.error('Erreur loadBedethequeIndexSchedule:', error);
+    }
+}
+
+async function saveBedethequeIndexSchedule() {
+    const message = document.getElementById('bedethequeIndexScheduleMessage');
+    const body = {
+        enabled: document.getElementById('bedethequeIndexAutoEnabled').checked,
+        interval_days: parseInt(document.getElementById('bedethequeIndexIntervalDays').value, 10),
+        hour: parseInt(document.getElementById('bedethequeIndexHour').value, 10),
+    };
+    try {
+        const response = await fetch('/api/bedetheque/catalog-index/schedule', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible');
+        message.style.color = '#198754';
+        message.textContent = data.enabled
+            ? `✓ Enregistré : tous les ${data.interval_days} jour${data.interval_days > 1 ? 's' : ''}, vers ${String(data.hour).padStart(2, '0')}h`
+            : '✓ Enregistré : mise à jour automatique désactivée';
+    } catch (error) {
+        message.style.color = '#dc3545';
+        message.textContent = '❌ ' + error.message;
+    }
+}
+
 // ===== INIT =====
 window.addEventListener('load', () => {
     // Vérifier si une tab est spécifiée dans l'URL (ex: #monitoring)
@@ -2652,6 +2698,12 @@ window.addEventListener('load', () => {
         loadSettings();
     } catch (e) {
         console.error('Erreur loadSettings:', e);
+    }
+
+    try {
+        loadBedethequeIndexSchedule();
+    } catch (e) {
+        console.error('Erreur loadBedethequeIndexSchedule:', e);
     }
 
     try {

@@ -142,6 +142,90 @@ def get_catalog_status():
     }
 
 
+INDEX_REFRESH_DEFAULTS = {'enabled': True, 'interval_days': 7, 'hour': 4}
+
+
+def _refresh_config_path():
+    return os.path.join(os.path.dirname(CATALOG_DB), 'bedetheque_index_config.json')
+
+
+def _sanitize_refresh_config(raw):
+    config = dict(INDEX_REFRESH_DEFAULTS)
+    raw = raw if isinstance(raw, dict) else {}
+    if isinstance(raw.get('enabled'), bool):
+        config['enabled'] = raw['enabled']
+    try:
+        days = int(raw.get('interval_days', config['interval_days']))
+        if 1 <= days <= 90:
+            config['interval_days'] = days
+    except (TypeError, ValueError):
+        pass
+    try:
+        hour = int(raw.get('hour', config['hour']))
+        if 0 <= hour <= 23:
+            config['hour'] = hour
+    except (TypeError, ValueError):
+        pass
+    return config
+
+
+def load_index_refresh_config():
+    """Réglage de la mise à jour périodique de l'index (activée, tous les N jours, à H heures)."""
+    try:
+        with open(_refresh_config_path(), encoding='utf-8') as handle:
+            return _sanitize_refresh_config(json.load(handle))
+    except (OSError, ValueError):
+        return dict(INDEX_REFRESH_DEFAULTS)
+
+
+def save_index_refresh_config(raw):
+    """Valide puis enregistre le réglage; lève ValueError si une valeur est hors limites."""
+    if not isinstance(raw, dict) or not isinstance(raw.get('enabled'), bool):
+        raise ValueError("« enabled » doit être vrai ou faux")
+    try:
+        days, hour = int(raw.get('interval_days')), int(raw.get('hour'))
+    except (TypeError, ValueError):
+        raise ValueError('Intervalle et heure doivent être des nombres entiers')
+    if not 1 <= days <= 90:
+        raise ValueError("L'intervalle doit être compris entre 1 et 90 jours")
+    if not 0 <= hour <= 23:
+        raise ValueError("L'heure doit être comprise entre 0 et 23")
+    config = {'enabled': raw['enabled'], 'interval_days': days, 'hour': hour}
+    os.makedirs(os.path.dirname(CATALOG_DB), exist_ok=True)
+    with open(_refresh_config_path(), 'w', encoding='utf-8') as handle:
+        json.dump(config, handle, indent=2)
+    return config
+
+
+def refresh_catalog_index_if_stale(max_age_days=7, scraper=None):
+    """Reconstruit l'index du catalogue s'il n'existe pas ou a plus de `max_age_days` jours.
+    Appelée par le planificateur (voir index_scheduler.py). Un verrou de fichier évite que
+    deux processus (workers) reconstruisent en même temps. Retourne True si une
+    reconstruction a eu lieu."""
+    import fcntl
+    status = get_catalog_status()
+    if status['running']:
+        return False
+    if status['built'] and status['built_at']:
+        try:
+            age = time.time() - time.mktime(time.strptime(status['built_at'], '%Y-%m-%d %H:%M:%S'))
+            if age < max_age_days * 86400:
+                return False
+        except ValueError:
+            pass
+    os.makedirs(os.path.dirname(CATALOG_DB), exist_ok=True)
+    with open(CATALOG_DB + '.build.lock', 'w') as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False
+        if scraper is None:
+            from blueprints.bedetheque.scraper import BedethequeScraper
+            scraper = BedethequeScraper()
+        build_bedetheque_catalog_index_sync(scraper)
+    return True
+
+
 def search_catalog_index(query, limit=30):
     """Résultats au même format que _search_series_raw ({'title', 'url', 'genre': None} -
     genre indisponible depuis un simple listing, jamais utilisé par _match_score/

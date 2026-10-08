@@ -475,13 +475,28 @@ def get_catalog_index_status():
     return jsonify({'success': True, **get_catalog_status()})
 
 
+@bedetheque_bp.route('/catalog-index/schedule', methods=['GET', 'POST'])
+def catalog_index_schedule():
+    """Lit / enregistre le réglage de mise à jour périodique de l'index (Paramètres)."""
+    from blueprints.bedetheque.catalog_index import load_index_refresh_config, save_index_refresh_config
+    if request.method == 'GET':
+        return jsonify({'success': True, **load_index_refresh_config()})
+    try:
+        config = save_index_refresh_config(request.get_json(silent=True))
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except OSError:
+        return jsonify({'success': False, 'error': 'Enregistrement impossible'}), 500
+    return jsonify({'success': True, **config})
+
+
 @bedetheque_bp.route('/catalog-index/build', methods=['POST'])
 def build_catalog_index():
     """Lance (en arrière-plan) la (re)construction complète de l'index local du
     catalogue Bédéthèque - "apres ce qu'on pourrait faire c'est telecharger deja en db
     toutes l'index des series et chercher prendrait tres peu de temsp". Manuelle
-    uniquement (sur demande explicite), pas de planification automatique - voir
-    catalog_index.py. ~27 requêtes (une par lettre + chiffres), thread dédié pour ne
+    uniquement sur demande explicite ici - la mise à jour périodique de nuit est dans
+    index_scheduler.py. ~27 requêtes (une par lettre + chiffres), thread dédié pour ne
     pas bloquer la requête HTTP le temps que ça tourne (de l'ordre de la minute)."""
     from blueprints.bedetheque.catalog_index import build_bedetheque_catalog_index_sync, get_catalog_status
     if get_catalog_status()['running']:

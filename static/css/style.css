@@ -2483,11 +2483,11 @@ h2 {
 .import-files-table > thead > tr > th:nth-child(3),
 .import-files-table > tbody > tr > td:nth-child(3) { width: 4%; }
 .import-files-table > thead > tr > th:nth-child(4),
-.import-files-table > tbody > tr > td:nth-child(4) { width: 45%; min-width: 0; }
+.import-files-table > tbody > tr > td:nth-child(4) { width: 41%; min-width: 0; }
 .import-files-table > thead > tr > th:nth-child(5),
 .import-files-table > tbody > tr > td:nth-child(5) { width: 15%; }
 .import-files-table > thead > tr > th:nth-child(6),
-.import-files-table > tbody > tr > td:nth-child(6) { width: 7%; }
+.import-files-table > tbody > tr > td:nth-child(6) { width: 11%; }
 .import-files-table > thead > tr > th:nth-child(7),
 .import-files-table > tbody > tr > td:nth-child(7) { width: 5%; }
 .import-files-table > thead > tr > th:nth-child(8),
@@ -3220,6 +3220,68 @@ table thead th {
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
+}
+
+/* "dans nouveautés actions c'est au dessus de série sur un ecran plus petit" - collée au bord
+   droit, la colonne Actions passait par-dessus Série pendant le défilement horizontal d'un
+   écran étroit. Sous ce seuil elle reste dans le flux du tableau (aucun chevauchement),
+   quitte à défiler pour l'atteindre. */
+@media (max-width: 1100px) {
+    .nouveautes-actions-cell,
+    .nouveautes-table > thead > tr > th:nth-child(6) {
+        position: static;
+        box-shadow: none;
+    }
+    .nouveautes-table { min-width: 0; }
+}
+
+/* "le mieux ce serait quand meme qu'il n'y ait pas de scroller" - sous 900px le tableau à
+   6 colonnes fixes ne tient plus: chaque ligne devient une carte (date/type/origine/série
+   sur une ligne, détails en dessous, actions en bas) et l'en-tête (tris, filtres) passe en
+   barre qui se replie. Plus aucun défilement horizontal. */
+@media (max-width: 900px) {
+    .nouveautes-top-scrollbar { display: none; }
+    #nouveautes-events-wrapper { overflow-x: visible; }
+    .nouveautes-table,
+    .nouveautes-table > thead,
+    .nouveautes-table > tbody { display: block; width: 100%; }
+    .nouveautes-table > thead > tr {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+        padding: 4px 0;
+        background: var(--color-surface-alt);
+        border-bottom: 2px solid var(--color-accent);
+    }
+    .nouveautes-table > thead > tr > th {
+        width: auto !important;
+        flex: 0 0 auto;
+        border-bottom: 0 !important;
+        padding: 4px 6px !important;
+    }
+    .nouveautes-table > thead > tr > th:nth-child(4) { flex: 1 1 140px; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row {
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            "date type origin matched"
+            "details details details details"
+            "actions actions actions actions";
+        align-items: center;
+        column-gap: 8px;
+    }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td {
+        width: auto !important;
+        min-width: 0;
+        padding: 4px 6px !important;
+        border: 0;
+    }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(1) { grid-area: date; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(2) { grid-area: type; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(3) { grid-area: origin; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(4) { grid-area: details; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(5) { grid-area: matched; text-align: right !important; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(6) { grid-area: actions; }
 }
 
 /* La définition de .th-filterable-row/-label/-filter/-icon/-control vivait ici EN DOUBLE

@@ -4,10 +4,11 @@ Routes pour la gestion des bibliothèques
 from flask import render_template, request, jsonify, current_app, redirect, url_for
 from error_utils import error_message
 from path_safety import UnsafePathError, resolve_within, resolve_within_any, configured_root
+from archive_utils import list_archive_members
 from . import library_bp
 from .scanner import LibraryScanner, COMICINFO_FIELDS, scan_import_lock
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
-from .zip_converter import convert_zip_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
+from .zip_converter import convert_zip_to_cbz, package_zip_folders_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
 from .archive_converter import classify_archive, convert_mislabeled_archive_in_place
 from blueprints.bedetheque.comicinfo_writer import write_comicinfo_cbz, build_comicinfo_fields, WRITABLE_FORMATS, derive_author_year_from_comicinfo
 from blueprints.bedetheque.scraper import match_bedetheque_volume
@@ -3919,13 +3920,20 @@ def _zip_is_single_packaged_comic(archive_path):
             names = [n for n in zf.namelist() if not n.endswith('/')]
             if not names:
                 return False
-            return all(os.path.splitext(n)[1].lower() in _ZIP_IMAGE_EXTENSIONS for n in names)
+            if not all(os.path.splitext(n)[1].lower() in _ZIP_IMAGE_EXTENSIONS for n in names):
+                return False
+            # Des images réparties dans PLUSIEURS dossiers = un pack de plusieurs albums
+            # (un dossier par tome, ex. « 01 - … », « 02 - … », « HS - … »), pas un album
+            # unique: le convertir en un seul .cbz importait tout le pack comme un seul tome.
+            return len({os.path.dirname(n) for n in names}) <= 1
     except Exception:
         return False
 
 
 def _extract_archive_containers(import_directories):
     ""
+    from .import_history import get_manual_override_filepaths
+    manual_archives = get_manual_override_filepaths()
     for import_path in import_directories:
         if not os.path.exists(import_path):
             continue
@@ -3941,6 +3949,10 @@ def _extract_archive_containers(import_directories):
                 archive_path = os.path.join(root, filename)
 
                 if ext == '.zip' and _zip_is_single_packaged_comic(archive_path):
+                    continue
+                # Une archive mise en attente manuelle (« Voir le contenu » / empaquetage
+                # dossier par dossier) ne doit pas être extraite et supprimée d'office.
+                if os.path.realpath(archive_path) in manual_archives:
                     continue
 
                 base_name = os.path.splitext(filename)[0]
@@ -4021,6 +4033,36 @@ def _pack_file_matches_destination(parsed, destination):
     return _normalize_title_for_match(parsed_title) == _normalize_title_for_match(series_title)
 
 
+_ARCHIVE_EXTENSIONS = ('.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.7z')
+_VOLUME_IDENTITY_FIELDS = ('volume_id', 'volume_number', 'is_integral', 'integral_number',
+                           'is_hs', 'hs_number', 'is_episode', 'episode_number')
+
+
+def _is_container_archive(filepath, ext, destination):
+    """Une archive qui regroupe plusieurs albums (pack téléchargé comme tel, ou ZIP de
+    pages réparties en un dossier par tome) - jamais un tome unique. Un ZIP/CBZ de pages
+    d'un seul album n'est PAS un conteneur (voir _zip_is_single_packaged_comic)."""
+    if ext not in _ARCHIVE_EXTENSIONS:
+        return False
+    if (destination or {}).get('is_pack'):
+        return True
+    return not (ext == '.zip' and _zip_is_single_packaged_comic(filepath))
+
+
+def _strip_container_identity(parsed, destination):
+    """Un conteneur garde la série connue mais aucun numéro de tome: « 01 à 03 + HS »
+    dans son nom ne désigne pas un hors-série, et il ne doit hériter d'aucun volume suivi
+    ni déclencher de conflit de tome. Retourne la destination épurée (ou None)."""
+    for key in ('volume', 'integral_number', 'hs_number', 'episode_number'):
+        parsed[key] = None
+    for key in ('is_integral', 'is_hs', 'is_episode', 'is_special', 'is_oneshot'):
+        parsed[key] = False
+    parsed['is_pack'] = True
+    if not destination:
+        return None
+    return {key: value for key, value in destination.items() if key not in _VOLUME_IDENTITY_FIELDS}
+
+
 def _append_scanned_file(filepath, import_root, filename, destination, scanner,
                           manual_override_filepaths, import_config, files_found, pack_download_id=None,
                           validate_file=True, manual_destinations=None):
@@ -4052,8 +4094,11 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
     # Copie superficielle: plusieurs fichiers d'un même dossier de téléchargement
     # partagent le même `destination` de départ, jamais le même objet en sortie.
     file_destination = dict(destination) if destination else None
+    is_container = _is_container_archive(filepath, ext, destination)
+    if is_container:
+        file_destination = _strip_container_identity(parsed, file_destination)
     gate_passed = True
-    if file_destination:
+    if file_destination and not is_container:
         gate_passed = apply_tracked_volume_and_gate(parsed, file_destination)
 
     # Le client suivi dans active_downloads est plus fiable qu'une recherche du nom
@@ -4088,9 +4133,14 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
         # automayique" - persisté en base (import_manual_overrides) plutôt qu'un simple
         # état frontend, pour survivre à un rechargement de page.
         'manual_override': filepath in manual_override_filepaths,
+        # Archive regroupant plusieurs albums: affichée comme simple placeholder dépliable
+        # dans /import (jamais importable telle quelle), voir _pendingPackGroupRowHtml.
+        'is_container': is_container,
         'auto_import_skip_reason': (
             "assignation faite à la main - cliquez sur « Importer » pour valider"
             if filepath in manual_override_filepaths
+            else "archive de plusieurs albums (pack) - à extraire puis importer album par album"
+            if is_container
             else _repeated_failure_skip_reason(filepath)
             or ("désactivé dans les paramètres" if not import_config.get('auto_import_enabled', False) else None)
             or (None if gate_passed else _no_volume_skip_reason(parsed, file_destination))
@@ -4354,6 +4404,21 @@ def _scan_tracked_import_files(validate_files=True):
                     validate_file=validate_files, manual_destinations=manual_destinations
                 )
 
+    # CBZ créés depuis « Voir le contenu » (voir package_import_archive_folders): vivent hors
+    # des répertoires d'import et ne sont listés que tant qu'ils attendent une validation
+    # manuelle.
+    if os.path.isdir(_PACKAGE_TEMP_DIR):
+        for entry in os.scandir(_PACKAGE_TEMP_DIR):
+            if (entry.is_file() and os.path.splitext(entry.name)[1].lower() in supported_extensions
+                    and os.path.realpath(entry.path) in manual_override_filepaths):
+                packaged_path = os.path.realpath(entry.path)
+                _append_scanned_file(
+                    packaged_path, _PACKAGE_TEMP_DIR, entry.name, None, scanner,
+                    manual_override_filepaths, import_config, files_found,
+                    pack_download_id=(manual_destinations.get(packaged_path) or {}).get('pack_download_id'),
+                    validate_file=validate_files, manual_destinations=manual_destinations
+                )
+
     files_found = _exclude_terminal_without_manual_override(files_found)
     files_found = _exclude_finalized_import_files(files_found, finalized_source_paths)
     from .import_history import persist_discovered_import_items
@@ -4585,7 +4650,7 @@ def delete_import_file():
     if not import_root or not relative_path:
         return jsonify({'error': 'import_root et relative_path requis'}), 400
 
-    import_directories = current_app.config['IMPORT_DIRECTORIES']
+    import_directories = _allowed_import_roots()
     import_root = configured_root(import_root, import_directories)
     if import_root is None:
         return jsonify({'error': "Répertoire d'import non autorisé"}), 403
@@ -4624,6 +4689,134 @@ def delete_import_file():
         return jsonify({'success': True, 'cancelled_at_client': cancelled_at_client})
     except OSError as e:
         return jsonify({'error': error_message(e)}), 500
+
+
+@library_bp.route('/api/import/archive-content', methods=['GET'])
+def list_import_archive_content():
+    """Liste une archive en lecture seule (bouton « Voir le contenu » de /import), sans
+    extraction ni modification."""
+    import_root = request.args.get('import_root', '')
+    relative_path = request.args.get('relative_path', '')
+    if not import_root or not relative_path:
+        return jsonify({'error': 'import_root et relative_path requis'}), 400
+    roots = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
+    root = configured_root(import_root, roots)
+    if root is None:
+        return jsonify({'error': "Répertoire d'import non autorisé"}), 403
+    try:
+        filepath = resolve_within(os.path.join(root, relative_path), root)
+    except UnsafePathError:
+        return jsonify({'error': 'Chemin de fichier invalide'}), 403
+    if not os.path.isfile(filepath):
+        return jsonify({'error': 'Archive introuvable'}), 404
+    try:
+        result = list_archive_members(filepath)
+    except Exception as exc:
+        return jsonify({'error': error_message(exc)}), 422
+    result['filename'] = os.path.basename(filepath)
+    return jsonify({'success': True, **result})
+
+
+# Dans le volume de données (persistant), hors de tout répertoire d'import: un redéploiement ne doit
+# pas faire perdre les CBZ empaquetés avant leur import.
+_PACKAGE_TEMP_DIR = '/app/data/package-temp'
+
+
+def _allowed_import_roots():
+    """Répertoires d'import configurés + dossier privé des CBZ empaquetés depuis une archive
+    (« Voir le contenu »): ces CBZ s'importent, se convertissent et se suppriment comme
+    n'importe quel fichier d'import."""
+    return list(current_app.config['IMPORT_DIRECTORIES']) + [_PACKAGE_TEMP_DIR]
+
+
+@library_bp.route('/api/import/archive-package-folders', methods=['POST'])
+def package_import_archive_folders():
+    """Empaquette en CBZ les dossiers cochés dans « Voir le contenu ». Les CBZ sont écrits
+    dans le système de fichiers privé du conteneur (jamais dans un répertoire d'import
+    monté), la source reste intacte, et chaque CBZ est enregistré comme fichier à valider
+    à la main - l'utilisateur y assigne ensuite le volume depuis /import."""
+    data = request.get_json(silent=True) or {}
+    roots = [d for d in current_app.config['IMPORT_DIRECTORIES'] if os.path.realpath(d) != '/downloads/torrents']
+    root = configured_root(data.get('import_root', ''), roots)
+    if root is None:
+        return jsonify({'error': "Répertoire d'import non autorisé"}), 403
+    try:
+        filepath = resolve_within(os.path.join(root, data.get('relative_path', '')), root)
+    except UnsafePathError:
+        return jsonify({'error': 'Chemin de fichier invalide'}), 403
+    if not os.path.isfile(filepath):
+        return jsonify({'error': 'Archive introuvable'}), 404
+    os.makedirs(_PACKAGE_TEMP_DIR, exist_ok=True)
+    try:
+        created = package_zip_folders_to_cbz(filepath, _PACKAGE_TEMP_DIR, data.get('folder_paths'))
+    except (ZipConversionError, OSError) as exc:
+        return jsonify({'error': error_message(exc)}), 422
+
+    # La série du pack source est reprise, jamais son volume (le numéro dans le nom de
+    # l'archive n'a aucun rapport avec l'album de chaque dossier).
+    source_destination = None
+    try:
+        from blueprints.missing_monitor.downloader import get_trackable_active_downloads
+        source_destination = find_active_download_destination(
+            os.path.basename(filepath), get_trackable_active_downloads(include_failed=True, include_terminal=True)
+        )
+        if source_destination:
+            # Les CBZ créés s'affichent sous le pack (décalés) sans pour autant en clôturer
+            # le téléchargement quand l'un d'eux est importé: pack_download_id ≠ tracking_id.
+            source_destination['pack_download_id'] = source_destination.get('tracking_id')
+            for key in _VOLUME_IDENTITY_FIELDS + ('tracking_id',):
+                source_destination.pop(key, None)
+            source_destination['is_packaging_source'] = True
+    except Exception as exc:
+        print(f"Erreur matching série source de l'archive {filepath}: {exc}")
+
+    from .import_history import mark_import_file_manual
+    for item in created:
+        mark_import_file_manual(item['path'], source_destination)
+    return jsonify({'success': True, 'created': created, 'source_destination': source_destination})
+
+
+@library_bp.route('/api/import/pack/complete', methods=['POST'])
+def complete_import_pack():
+    """Valide à la main qu'un pack-archive est entièrement traité (ses volumes ont été
+    empaquetés puis importés): le téléchargement passe à « imported » et l'archive
+    n'apparaît plus dans /import. L'archive n'est jamais supprimée du disque."""
+    data = request.get_json(silent=True) or {}
+    try:
+        download_id = int(data.get('download_id'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'download_id requis'}), 400
+    paths = data.get('archive_paths') or []
+    if not isinstance(paths, list):
+        return jsonify({'error': 'archive_paths invalide'}), 400
+    try:
+        safe_paths = [resolve_within_any(path, _allowed_import_roots()) for path in paths]
+    except UnsafePathError:
+        return jsonify({'error': 'Chemin hors des répertoires d\'import autorisés'}), 403
+
+    conn = get_db_connection()
+    row = conn.execute(
+        'SELECT d.is_pack, s.title FROM active_downloads d LEFT JOIN series s ON s.id = d.series_id WHERE d.id = ?',
+        (download_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'Téléchargement introuvable'}), 404
+    if not row[0]:
+        return jsonify({'error': "Ce téléchargement n'est pas un pack"}), 400
+
+    from .import_history import log_import_operation, log_import_file, update_import_operation
+    from blueprints.missing_monitor.downloader import mark_download_imported
+    operation_id = f'pack-validation-{download_id}-{int(time.time())}'
+    log_import_operation(operation_id, 'manual_pack_validation', '', 'completed')
+    for path in safe_paths:
+        # Une entrée « ignoré avec succès » dans l'historique est ce qui masque un fichier
+        # source de la page Import (voir get_finalized_import_source_paths).
+        log_import_file(operation_id, os.path.basename(path), path, '', row[1] or '', 'skipped', 'success',
+                        'Pack validé manuellement (volumes empaquetés puis importés)')
+    # Compteurs de l'opération: sans eux l'historique affiche « Aucun fichier ».
+    update_import_operation(operation_id, 'completed', 0, 0, len(safe_paths), 0)
+    mark_download_imported(download_id)
+    return jsonify({'success': True})
 
 
 @library_bp.route('/api/import/incompatible-folder/files', methods=['GET'])
@@ -5149,7 +5342,7 @@ def _convert_single_import_file(import_root, relative_path, force_mislabeled=Fal
     if not import_root or not relative_path:
         return None, 'import_root et relative_path requis', 400
 
-    import_directories = current_app.config['IMPORT_DIRECTORIES']
+    import_directories = _allowed_import_roots()
     import_root = configured_root(import_root, import_directories)
     if import_root is None:
         return None, "Répertoire d'import non autorisé", 403
@@ -5319,7 +5512,7 @@ def mark_import_file_manual_route():
 
     # Même garde que execute_import: ne marquer que des fichiers réellement dans un
     # répertoire d'import surveillé, pas un chemin arbitraire fourni par le client.
-    import_roots = current_app.config['IMPORT_DIRECTORIES']
+    import_roots = _allowed_import_roots()
     try:
         resolve_within_any(filepath, import_roots)
     except UnsafePathError:
@@ -5339,7 +5532,7 @@ def rescan_import_file_route():
     if not filepath:
         return jsonify({'success': False, 'error': 'filepath manquant'}), 400
 
-    import_roots = current_app.config['IMPORT_DIRECTORIES']
+    import_roots = _allowed_import_roots()
     try:
         safe_filepath = resolve_within_any(filepath, import_roots)
     except UnsafePathError:
@@ -5397,8 +5590,15 @@ def _maybe_complete_tracking_after_move(source_path, destination, outcome='impor
         return
     try:
         from blueprints.missing_monitor.downloader import (
-            mark_download_imported, mark_download_skipped, mark_download_completed
+            mark_download_imported, mark_download_skipped, mark_download_completed,
+            download_still_incomplete, reopen_download,
         )
+        # Le fichier a pu être livré par un autre torrent de la même release (jumeau): si le
+        # téléchargement de CETTE ligne n'est pas terminé chez le client, elle reste affichée
+        # en téléchargement (le jumeau terminé est refermé par finalize_sibling_downloads).
+        if not _is_pack_tracking(tracking_id) and download_still_incomplete(tracking_id):
+            reopen_download(tracking_id)
+            return
         finalize = mark_download_skipped if outcome == 'skipped' else mark_download_imported
 
         # Une source en lecture seule ne peut pas être vidée par l'import. Pour une ligne
@@ -5706,7 +5906,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 try:
                     # Chemin vérifié: seul lui sert aux opérations sur le disque ci-dessous;
                     # original_source_path reste la valeur d'origine (clés de suivi/historique).
-                    safe_source_path = resolve_within_any(source_path, import_roots)
+                    safe_source_path = resolve_within_any(source_path, _allowed_import_roots())
                 except UnsafePathError:
                     raise UnsafePathError(f"Fichier source hors des répertoires d'import autorisés: {source_path}")
 
@@ -6428,6 +6628,15 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 source_path, destination, outcome=outcome,
                 source_was_copied=source_was_copied
             )
+            # Les autres lignes de suivi de la même release ne doivent pas rester en attente.
+            try:
+                from blueprints.missing_monitor.downloader import finalize_sibling_downloads
+                finalize_sibling_downloads(
+                    os.path.basename(source_path or ''), (destination or {}).get('series_id'),
+                    (destination or {}).get('tracking_id'), outcome
+                )
+            except Exception as sibling_error:
+                print(f"⚠️ Fermeture des suivis jumeaux impossible pour {source_path}: {sibling_error}")
 
         # Mettre à jour les statistiques des séries concernées
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)

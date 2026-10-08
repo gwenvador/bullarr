@@ -122,15 +122,20 @@ def persist_discovered_import_items(files, scanned_roots=()):
             item_key = f"{tracking_id}:{source_path}"
             filename = item.get('filename') or os.path.basename(source_path)
             is_auxiliary = int(bool(item.get('is_auxiliary') or item.get('is_image_page')))
-            conn.execute("""INSERT INTO import_items
-                (item_key, tracking_id, source_path, filename, source_available,
-                 state, is_auxiliary, is_directory, is_pack_parent, force_replace, updated_at)
-                VALUES (?, ?, ?, ?, 1, 'waiting', ?, 0, 0, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(item_key) DO UPDATE SET
-                    tracking_id=excluded.tracking_id, filename=excluded.filename,
-                    source_available=1, is_auxiliary=excluded.is_auxiliary,
-                    is_directory=0, is_pack_parent=0, force_replace=excluded.force_replace, updated_at=CURRENT_TIMESTAMP
-            """, (item_key, tracking_id, source_path, filename, is_auxiliary, force_replace))
+            try:
+                conn.execute("""INSERT INTO import_items
+                    (item_key, tracking_id, source_path, filename, source_available,
+                     state, is_auxiliary, is_directory, is_pack_parent, force_replace, updated_at)
+                    VALUES (?, ?, ?, ?, 1, 'waiting', ?, 0, 0, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(item_key) DO UPDATE SET
+                        tracking_id=excluded.tracking_id, filename=excluded.filename,
+                        source_available=1, is_auxiliary=excluded.is_auxiliary,
+                        is_directory=0, is_pack_parent=0, force_replace=excluded.force_replace, updated_at=CURRENT_TIMESTAMP
+                """, (item_key, tracking_id, source_path, filename, is_auxiliary, force_replace))
+            except UnicodeEncodeError:
+                # Nom de fichier en octets invalides (export Latin-1 d'aMule...): SQLite le
+                # refuse. Ce fichier est ignoré, il ne doit pas faire perdre tout le lot.
+                print(f"⚠️ Nom de fichier non UTF-8 ignoré à la découverte: {source_path!r}")
         conn.commit()
     except Exception as exc:
         print(f"Erreur persistance items Import: {exc}")

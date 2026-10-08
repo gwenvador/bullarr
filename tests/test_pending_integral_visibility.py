@@ -1,6 +1,9 @@
 import sqlite3
 import sys
+import tempfile
 import types
+import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from flask import Flask
@@ -53,38 +56,49 @@ def _make_database(path):
     conn.close()
 
 
-def test_pending_integrals_are_compared_by_integral_number(tmp_path):
-    db_path = tmp_path / 'bullarr.db'
-    _make_database(db_path)
-    app = Flask(__name__)
-    app.config['DATABASE'] = str(db_path)
+class PendingIntegralVisibilityTest(unittest.TestCase):
+    """La base fait référence: tout téléchargement en attente est listé, y compris quand le
+    tome est déjà possédé (alors signalé par already_owned, jamais masqué)."""
 
-    fake_scanner = types.ModuleType('blueprints.library.scanner')
+    def test_pending_integrals_are_all_listed_and_owned_ones_are_flagged_by_integral_number(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / 'bullarr.db'
+            _make_database(db_path)
+            app = Flask(__name__)
+            app.config['DATABASE'] = str(db_path)
 
-    class FakeLibraryScanner:
-        @staticmethod
-        def parse_filename(title):
-            number = int(title.split('INT', 1)[1].split()[0])
-            return {
-                'is_integral': True, 'integral_number': number,
-                'is_hs': False, 'hs_number': None,
-                'is_episode': False, 'episode_number': None,
-                'volume': None,
-            }
+            fake_scanner = types.ModuleType('blueprints.library.scanner')
 
-    fake_scanner.LibraryScanner = FakeLibraryScanner
-    fake_library = types.ModuleType('blueprints.library')
-    fake_library.__path__ = []
+            class FakeLibraryScanner:
+                @staticmethod
+                def parse_filename(title):
+                    number = int(title.split('INT', 1)[1].split()[0])
+                    return {
+                        'is_integral': True, 'integral_number': number,
+                        'is_hs': False, 'hs_number': None,
+                        'is_episode': False, 'episode_number': None,
+                        'volume': None,
+                    }
 
-    with patch.dict(sys.modules, {
-        'blueprints.library': fake_library,
-        'blueprints.library.scanner': fake_scanner,
-    }), app.app_context(), patch.object(downloader, '_revert_stale_importing_downloads'), \
-            patch.object(downloader, 'reconcile_stale_active_downloads'), \
-            patch.object(downloader, '_reconcile_stuck_completed_download', return_value=False), \
-            patch.object(downloader, 'remove_completed_pack_if_owned', return_value=False):
-        pending = downloader.get_pending_downloads()
+            fake_scanner.LibraryScanner = FakeLibraryScanner
+            fake_library = types.ModuleType('blueprints.library')
+            fake_library.__path__ = []
 
-    assert [item['id'] for item in pending] == [10]
-    assert pending[0]['is_integral'] is True
-    assert pending[0]['integral_number'] == 2
+            with patch.dict(sys.modules, {
+                'blueprints.library': fake_library,
+                'blueprints.library.scanner': fake_scanner,
+            }), app.app_context(), patch.object(downloader, '_revert_stale_importing_downloads'), \
+                    patch.object(downloader, 'reconcile_stale_active_downloads'), \
+                    patch.object(downloader, '_reconcile_stuck_completed_download', return_value=False), \
+                    patch.object(downloader, 'remove_completed_pack_if_owned', return_value=False):
+                pending = downloader.get_pending_downloads()
+
+        by_id = {item['id']: item for item in pending}
+        self.assertEqual(set(by_id), {10, 11})
+        self.assertEqual((by_id[10]['integral_number'], by_id[10]['already_owned']), (2, False))
+        self.assertEqual((by_id[11]['integral_number'], by_id[11]['already_owned']), (1, True))
+        self.assertTrue(by_id[10]['is_integral'])
+
+
+if __name__ == '__main__':
+    unittest.main()

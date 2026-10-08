@@ -4,9 +4,6 @@ import rarfile
 import os
 import tarfile
 from pathlib import Path
-import os
-import tarfile
-from pathlib import Path
 
 
 def detect_actual_format(filepath, declared_format):

@@ -347,7 +347,9 @@ function _packFolderAllSelected(group) {
 function toggleSubfolderSelection(pendingId, subfolder, checked) {
     const group = _pendingPackGroups().find(g => g.pending.id === pendingId);
     if (!group) return;
-    const bySubfolder = _groupPackMembersBySubfolder(group.fileMatches, group.folderMatches);
+    // Sans le placeholder-archive (is_container): il tombe dans le même groupe racine que
+    // les CBZ empaquetés et était sélectionné avec eux (5 au lieu de 4).
+    const bySubfolder = _groupPackMembersBySubfolder(group.fileMatches.filter(({ file }) => !file.is_container), group.folderMatches);
     const target = bySubfolder.find(([sf]) => sf === subfolder);
     if (!target) return;
     _packFolderSelectableFiles({ files: target[1].files }).forEach(({ file }) => {
@@ -506,6 +508,7 @@ function _pendingDownloadRowHtml(pending) {
             <td>${clientBadgeHtml(pending.client)}</td>
             <td>
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(pending.title)}">${escapeHtml(pending.title)}</div>
+                ${pending.already_owned ? `<div style="font-size:0.78em; color:var(--color-text-muted);" data-tooltip="Ce tome est déjà dans la bibliothèque (autre source) : ce téléchargement le remplacera ou sera ignoré comme doublon.">déjà possédé</div>` : ''}
             </td>
             <td>${pending.series_title ? (pending.series_id ? `<a href="/series/${pending.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(pending.series_title)}</a>` : escapeHtml(pending.series_title)) : '—'}</td>
             <td>${_pendingVolumeLabel(pending)}</td>
@@ -524,7 +527,7 @@ function togglePendingRowSelection(id, checked) {
     if (checked) selectedPendingIds.add(id); else selectedPendingIds.delete(id);
     const group = _pendingPackGroups().find(g => g.pending.id === id);
     if (group) {
-        group.fileMatches.forEach(({ file }) => { file.selected = checked; });
+        group.fileMatches.forEach(({ file }) => { if (!file.is_container) file.selected = checked; });
         displayImportFiles();
         return;
     }
@@ -629,6 +632,38 @@ async function _deleteIncompatibleFolderRequest(importRoot, relativePath) {
         body: JSON.stringify({ import_root: importRoot, relative_path: relativePath })
     });
     return response.json();
+}
+
+// Valide à la main qu'un pack-archive est terminé (volumes empaquetés puis importés): le
+// pack disparaît de /import. L'archive n'est jamais supprimée du disque.
+async function completePackGroup(downloadId, containerIndices, button) {
+    const containers = containerIndices.map(i => importFiles[i]).filter(Boolean);
+    const group = _pendingPackGroups().find(g => g.pending.id === downloadId);
+    const remaining = group ? group.fileMatches.filter(({ file }) => !file.is_container).length : 0;
+    const warning = remaining > 0
+        ? `\n\n⚠️ ${remaining} volume${remaining > 1 ? 's' : ''} empaqueté${remaining > 1 ? 's' : ''} ${remaining > 1 ? 'sont' : 'est'} encore dans la liste, non importé${remaining > 1 ? 's' : ''}.`
+        : '';
+    if (!confirm(`Valider ce pack comme terminé ? Il disparaîtra de la page Import.${warning}`)) return;
+    if (button) button.disabled = true;
+    try {
+        const response = await fetch('/api/import/pack/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ download_id: downloadId, archive_paths: containers.map(f => f.filepath) })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Validation impossible');
+        containers.forEach(file => {
+            const idx = importFiles.indexOf(file);
+            if (idx !== -1) importFiles.splice(idx, 1);
+        });
+        expandedPackIds.delete(downloadId);
+        updateImportStats();
+        await loadActiveDownloads();
+    } catch (error) {
+        alert('❌ Erreur: ' + error.message);
+        if (button) button.disabled = false;
+    }
 }
 
 async function removePendingPack(downloadId, fileIndices, folderIndices, button) {
@@ -1212,7 +1247,8 @@ async function refreshImportFilesQuietly() {
 }
 
 function updateImportStats() {
-    const readyFiles = importFiles.filter(f => f.destination);
+    // L archive-conteneur d un pack n est qu un placeholder: jamais importable ni comptée.
+    const readyFiles = importFiles.filter(f => f.destination && !f.is_container);
     const selectedCount = readyFiles.filter(_isFileSelected).length;
     const importBtn = document.getElementById('import-btn');
     const label = document.getElementById('assign-selected-count');
@@ -1809,7 +1845,6 @@ async function viewArchiveContent(importRoot, relativePath) {
         if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
         summary.textContent = `${data.format.toUpperCase()} · ${data.total_count} entrée(s)${data.truncated ? ' · liste plafonnée' : ''}`;
         if (data.format === 'zip') {
-
             document.getElementById('archive-content-actions').innerHTML = `<button type="button" class="btn btn-sm" id="archive-package-selected" onclick="packageArchiveAsCbz()" disabled>📦 Empaqueter les dossiers cochés (0)</button>`;
         }
         list.innerHTML = renderArchiveEntryTree(data.entries) || '<p>Aucune entrée.</p>';
@@ -1899,6 +1934,16 @@ function _importFileRowHtml(file, index) {
     // Seul un fichier réellement réclamé par l'import verrouille ses actions et porte
     // le badge « Import en cours ». Les autres membres du pack restent visibles.
     const isImportingNow = _isFileImportingNow(file);
+    // « quand il y a Prêt — import automatique on sait pas trop ce qui se passe. il faudrait
+    // que la ligne ne soit pas modifiable » - un fichier que l'import automatique va
+    // reprendre tout seul est verrouillé comme un import en cours (mêmes critères que le
+    // badge « Prêt — import automatique » plus bas). « Reprendre la main » le repasse en
+    // import manuel si besoin.
+    const awaitingAutoImport = !!hasDestination && hasKnownVolume && !hasDatabaseVolume && !isImportingNow
+        && !file.validation_error && file.parsed.tracked_volume_conflict == null
+        && file.destination.download_status === 'completed'
+        && !file.auto_import_skip_reason && !file.manual_override;
+    const isLocked = isImportingNow || awaitingAutoImport;
     const seriesTitleHtml = hasDestination
         ? ((file.destination.series_id && !file.destination.is_new_series)
             ? `<a href="/series/${file.destination.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(file.destination.series_title)}</a>`
@@ -1907,7 +1952,7 @@ function _importFileRowHtml(file, index) {
     const albumHtml = hasDestination
         ? `
             <span>${svgIcon('pin')} ${escapeHtml(file.destination.library_name)} → ${seriesTitleHtml}${file.destination.is_new_series ? ' · nouvelle série' : ''}</span>
-            ${isImportingNow ? '' : `
+            ${isLocked ? '' : `
             <button class="btn-icon-only" onclick="openDestinationModal(${index})" data-tooltip="Modifier">${svgIcon('pencil')}</button>
             <button class="btn-icon-only" onclick="removeDestination(${index})" data-tooltip="Retirer l'assignation">${svgIcon('x')}</button>
             `}
@@ -1969,7 +2014,7 @@ function _importFileRowHtml(file, index) {
         <tr style="border-bottom:1px solid #f0f0f0;">
             <td>${hasDestination ? `
                 <input type="checkbox" class="import-file-select" data-import-file-index="${index}"
-                       ${_isFileSelected(file) ? 'checked' : ''}
+                       ${_isFileSelected(file) ? 'checked' : ''}${awaitingAutoImport ? ' disabled' : ''}
                        onchange="toggleFileSelection(${index}, this.checked)"
                        data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour importer ou assigner plusieurs fichiers à une même série'}">
             ` : `
@@ -1989,14 +2034,35 @@ function _importFileRowHtml(file, index) {
                 ${_archiveContentActionHtml(file)}
             </td>
             <td><div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">${albumHtml}${bedethequeLinkHtml || ''}</div></td>
-            <td>${_volumeCellHtml(file, index, isImportingNow)}</td>
+            <td>${_volumeCellHtml(file, index, isLocked)}</td>
             <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension(file))}</td>
             <td style="text-align:center;">
                 <div>${statusBadge}</div>
-                ${isImportingNow ? '' : `<button class="btn-icon-only" onclick="deleteImportFile(${index})" data-tooltip="Supprimer définitivement ce fichier du disque">${svgIcon('trash-2')}</button>`}
+                ${awaitingAutoImport ? `<button type="button" class="btn-neutral-sm" onclick="takeManualControl(${index})" data-tooltip="Empêche l'import automatique et rend la ligne modifiable">Reprendre la main</button>` : ''}
+                ${isLocked ? '' : `<button class="btn-icon-only" onclick="deleteImportFile(${index})" data-tooltip="Supprimer définitivement ce fichier du disque">${svgIcon('trash-2')}</button>`}
             </td>
         </tr>
     `;
+}
+
+// Repasse une ligne verrouillée (« Prêt — import automatique ») en import manuel: le
+// fichier est marqué côté serveur pour que l'import automatique ne le reprenne plus.
+async function takeManualControl(index) {
+    const file = importFiles[index];
+    if (!file) return;
+    try {
+        const response = await fetch('/api/import/mark-manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath: file.filepath, destination: file.destination })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Impossible de reprendre la main');
+        file.manual_override = true;
+        displayImportFiles();
+    } catch (error) {
+        alert('❌ Erreur: ' + error.message);
+    }
 }
 
 function _visiblePendingDownloads() {
@@ -2044,7 +2110,9 @@ function _pendingPackGroups() {
         .filter(({ fileMatches, folderMatches }) => {
             const totalFiles = fileMatches.length
                 + folderMatches.reduce((sum, { folder }) => sum + (folder.file_count || 1), 0);
-            return totalFiles > 1;
+            // Une archive-conteneur (placeholder « Voir le contenu ») forme déjà un groupe à
+            // elle seule, même avant le premier empaquetage.
+            return totalFiles > 1 || fileMatches.some(({ file }) => file.is_container);
         });
 }
 
@@ -2055,6 +2123,13 @@ function togglePendingPackGroup(pendingId) {
     if (!detailRow) return;
     const isExpanded = expandedPackIds.has(pendingId);
     detailRow.style.display = isExpanded ? 'table-row' : 'none';
+    if (isExpanded) {
+        // Le contenu des archives-conteneurs se charge à la première ouverture.
+        const group = _pendingPackGroups().find(g => g.pending.id === pendingId);
+        if (group && group.fileMatches.some(({ file }) => file.is_container && !archiveContentCache.has(_archiveKey(file)))) {
+            displayImportFiles();
+        }
+    }
     // "0 fichier prêt à importer + 1 dossier incompatible?? why i cannot see the content
     // of the dossier" - un pack qui ne contient qu'un dossier incompatible cachait son
     // contenu derrière un DEUXIÈME dépli imbriqué (l'icône œil de la propre ligne du
@@ -2094,7 +2169,142 @@ function _groupPackMembersBySubfolder(fileMatches, folderMatches) {
     });
 }
 
-function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
+// Contenu d'une archive-conteneur affiché DANS le dépli du pack (pas de modale): liste
+// chargée à la première ouverture, puis gardée en cache (le tableau est reconstruit à
+// chaque rafraîchissement) avec les dossiers cochés.
+const archiveContentCache = new Map();
+const archiveSelectedFolders = new Map();
+// Dossiers repliés par l'utilisateur ("<archive>::<dossier>"): le tableau est reconstruit à
+// chaque rafraîchissement, sans cette mémoire un dossier replié se rouvrirait aussitôt.
+const archiveCollapsedFolders = new Set();
+const archiveExpandedFolders = new Set();
+
+function onInlineArchiveFolderToggle(details) {
+    const container = details.closest('.archive-inline');
+    if (!container) return;
+    const id = `${container.dataset.archiveKey}::${details.dataset.folderPath}`;
+    if (details.open) { archiveCollapsedFolders.delete(id); archiveExpandedFolders.add(id); }
+    else { archiveCollapsedFolders.add(id); archiveExpandedFolders.delete(id); }
+}
+
+function _archiveKey(file) { return `${file.import_root}::${file.relative_path}`; }
+
+async function _loadArchiveContent(file) {
+    const key = _archiveKey(file);
+    if (archiveContentCache.has(key)) return;
+    archiveContentCache.set(key, { loading: true });
+    try {
+        const params = new URLSearchParams({ import_root: file.import_root, relative_path: file.relative_path });
+        const response = await fetch(`/api/import/archive-content?${params}`);
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
+        archiveContentCache.set(key, { data });
+    } catch (error) {
+        archiveContentCache.set(key, { error: error.message });
+    }
+    displayImportFiles();
+}
+
+function _archiveInlineTreeHtml(entries, selected, key) {
+    const root = { dirs: {}, files: [] };
+    for (const entry of entries || []) {
+        if (entry.kind === 'directory') continue;
+        const parts = entry.path.split('/').filter(Boolean);
+        let node = root;
+        parts.forEach((part, i) => {
+            if (i === parts.length - 1) node.files.push({ name: part, entry });
+            else node = node.dirs[part] ||= { dirs: {}, files: [] };
+        });
+    }
+    const renderFiles = (node) => node.files.map(({ name, entry }) =>
+        `<div style="padding:2px 6px; font-size:0.85em; border-bottom:1px solid var(--color-border, #eee); overflow-wrap:anywhere;">📄 ${escapeHtml(name)} <span style="color:var(--color-text-muted);">(${formatBytes(entry.size)})</span></div>`
+    ).join('');
+    const render = (node, prefix = '') => Object.entries(node.dirs).sort().map(([name, child]) => {
+        const path = prefix ? `${prefix}/${name}` : name;
+        const hasFiles = child.files.length > 0;
+        const fileCount = hasFiles ? ` <span style="color:var(--color-text-muted);">(${child.files.length} fichier${child.files.length > 1 ? 's' : ''})</span>` : '';
+        // Seuls les dossiers qui contiennent eux-mêmes des images sont empaquetables. Un
+        // dossier qui ne contient que des sous-dossiers (la racine du pack) offre juste un
+        // « tout cocher » qui coche ses enfants, sans compter lui-même dans la sélection.
+        const checkbox = hasFiles
+            ? `<input type="checkbox" class="archive-inline-folder" data-folder-path="${escapeHtml(path)}"${selected.has(path) ? ' checked' : ''} onchange="toggleInlineArchiveFolder(this)">`
+            : `<input type="checkbox" class="archive-inline-parent" data-tooltip="Cocher tous les dossiers qu'il contient" onchange="toggleInlineArchiveFolder(this)">`;
+        // Un dossier de pages (des centaines de fichiers) démarre replié: la liste serait
+        // interminable. Les dossiers parents restent ouverts pour voir les albums.
+        const defaultOpen = !hasFiles;
+        const id = `${key}::${path}`;
+        const open = archiveCollapsedFolders.has(id) ? '' : (archiveExpandedFolders.has(id) || defaultOpen ? ' open' : '');
+        return `<details${open} data-folder-path="${escapeHtml(path)}" ontoggle="onInlineArchiveFolderToggle(this)"><summary style="cursor:pointer;"><label onclick="event.stopPropagation()">${checkbox} 📁</label> ${escapeHtml(name)}${fileCount}</summary><div style="padding-left:16px;">${render(child, path)}${renderFiles(child)}</div></details>`;
+    }).join('');
+    return render(root) + renderFiles(root) || '<p style="margin:4px 0;">Aucune entrée.</p>';
+}
+
+function _archiveInlineHtml(file) {
+    const key = _archiveKey(file);
+    const entry = archiveContentCache.get(key);
+    if (!entry || entry.loading) return `<div style="padding:6px 0;">${svgIcon('loader-circle', 'icon-spin')} Lecture de l'archive…</div>`;
+    if (entry.error) return `<div style="padding:6px 0; color:#dc3545;">${svgIcon('circle-x')} ${escapeHtml(entry.error)}</div>`;
+    const selected = archiveSelectedFolders.get(key) || new Set();
+    const keyAttr = escapeForAttribute(key);
+    return `
+        <div class="archive-inline" data-archive-key="${escapeHtml(key)}" style="margin-top:6px;">
+            <div style="color:var(--color-text-muted); font-size:0.85em; margin-bottom:4px;">${escapeHtml(entry.data.format.toUpperCase())} · ${entry.data.total_count} entrée(s)${entry.data.truncated ? ' · liste plafonnée' : ''}</div>
+            ${entry.data.format === 'zip' ? `<button type="button" class="btn btn-sm archive-inline-package" ${selected.size ? '' : 'disabled'} data-import-root="${escapeHtml(file.import_root)}" data-relative-path="${escapeHtml(file.relative_path)}" onclick="packageInlineArchive(this)">📦 Empaqueter les dossiers cochés (${selected.size})</button> <span class="archive-inline-message"></span>` : ''}
+            <div style="margin-top:4px; max-height:320px; overflow:auto;">${_archiveInlineTreeHtml(entry.data.entries, selected, key)}</div>
+        </div>`;
+}
+
+function toggleInlineArchiveFolder(checkbox) {
+    const container = checkbox.closest('.archive-inline');
+    const details = checkbox.closest('details');
+    if (details) details.querySelectorAll('.archive-inline-folder, .archive-inline-parent').forEach(cb => { if (cb !== checkbox) cb.checked = checkbox.checked; });
+    const selected = new Set([...container.querySelectorAll('.archive-inline-folder:checked')].map(cb => cb.dataset.folderPath));
+    archiveSelectedFolders.set(container.dataset.archiveKey, selected);
+    const button = container.querySelector('.archive-inline-package');
+    if (button) {
+        button.disabled = selected.size === 0;
+        button.textContent = `📦 Empaqueter les dossiers cochés (${selected.size})`;
+    }
+}
+
+async function packageInlineArchive(button) {
+    const container = button.closest('.archive-inline');
+    const message = container.querySelector('.archive-inline-message');
+    const key = container.dataset.archiveKey;
+    const folderPaths = [...(archiveSelectedFolders.get(key) || [])];
+    try {
+        if (!folderPaths.length) throw new Error('Cochez au moins un dossier à empaqueter');
+        button.disabled = true;
+        button.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} Empaquetage en cours…`;
+        const body = { import_root: button.dataset.importRoot, relative_path: button.dataset.relativePath, folder_paths: folderPaths };
+        const response = await fetch('/api/import/archive-package-folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
+        archiveSelectedFolders.delete(key);
+        await loadActiveDownloads();
+        if (data.source_destination) {
+            const createdPaths = new Set(data.created.map(item => item.path));
+            for (const file of importFiles) {
+                if (createdPaths.has(file.filepath)) {
+                    file.destination = { ...data.source_destination };
+                    file.auto_import_skip_reason = 'fichier empaqueté : import manuel à valider';
+                }
+            }
+        }
+        await autoMatchAll();
+        displayImportFiles();
+    } catch (error) {
+        button.disabled = false;
+        button.textContent = '📦 Empaqueter les dossiers cochés';
+        if (message) message.innerHTML = `<span style="color:#dc3545; font-weight:600;">${svgIcon('circle-x')} ${escapeHtml(error.message)}</span>`;
+    }
+}
+
+function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folderMatches }) {
+    // L'archive-conteneur n'est qu'un placeholder (non importable): elle ne compte ni dans
+    // les « prêts » ni dans les totaux, seuls les CBZ empaquetés depuis elle le font.
+    const containerMatches = allFileMatches.filter(({ file }) => file.is_container);
+    const fileMatches = allFileMatches.filter(({ file }) => !file.is_container);
     const rowId = `pending-pack-${pending.id}`;
     const isExpanded = expandedPackIds.has(pending.id);
     const total = pending.expected_volume_count || fileMatches.length;
@@ -2125,6 +2335,8 @@ function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
             <td style="text-align:center; min-width:110px;">
                 <div>${isImportingNow
                     ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
+                    : containerMatches.length && fileMatches.length === 0 && folderMatches.length === 0
+                    ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Archive de plusieurs albums: dépliez, ouvrez « Voir le contenu » puis empaquetez les dossiers">${svgIcon('package')} À examiner</span>`
                     : total === 0
                     ? `<span style="font-size:0.85em;">${svgIcon('loader-circle', 'icon-spin')} En attente...</span>`
                     : readyCount === total && folderMatches.length === 0
@@ -2132,20 +2344,37 @@ function _pendingPackGroupRowHtml({ pending, fileMatches, folderMatches }) {
                             ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Au moins un fichier de ce pack est bloqué en attente manuelle (skip_reason ou assignation à la main) - dépliez le pack pour voir lequel et cliquer sur « Importer »">${svgIcon('check')} Prêt — import manuel</span>`
                             : `<span style="color:#28a745; font-weight:600;">${svgIcon('check')} Prêt</span>`)
                         : `<span style="color:#e67e22; font-weight:600;">${readyCount}/${total} ${pluralize(readyCount, 'prêt')}</span>`}</div>
-                <button class="btn-icon-only" onclick="removePendingPack(${pending.id}, [${fileMatches.map(fm => fm.index).join(',')}], [${folderMatches.map(fm => fm.index).join(',')}], this)" data-tooltip="Supprimer le pack ET ses fichiers/dossiers déjà arrivés sur disque">${svgIcon('trash-2')}</button>
+                ${containerMatches.length ? `<button class="btn-icon-only" onclick="completePackGroup(${pending.id}, [${containerMatches.map(m => m.index).join(',')}], this)" data-tooltip="Valider ce pack comme terminé (volumes empaquetés puis importés) : il disparaît de la page" aria-label="Valider le pack comme terminé">${svgIcon('check-check')}</button>` : ''}
+                <button class="btn-icon-only" onclick="removePendingPack(${pending.id}, [${allFileMatches.map(fm => fm.index).join(',')}], [${folderMatches.map(fm => fm.index).join(',')}], this)" data-tooltip="Supprimer le pack ET ses fichiers/dossiers déjà arrivés sur disque">${svgIcon('trash-2')}</button>
             </td>
         </tr>
         <tr id="${rowId}-files" style="display:${isExpanded ? 'table-row' : 'none'};">
             <td colspan="8" style="padding:0 10px 10px 30px; background:var(--color-surface-alt);">
                 <table style="width:100%; border-collapse:collapse;">
                     <tbody>
+                        ${containerMatches.map(({ file }) => {
+                            if (isExpanded) _loadArchiveContent(file);
+                            return `
+                            <tr>
+                                <td colspan="8" style="padding:8px 4px; border-bottom:1px solid var(--color-border, #eee);">
+                                    ${svgIcon('package')} <span style="font-weight:600; overflow-wrap:anywhere;">${escapeHtml(file.filename)}</span>
+                                    <span style="color:var(--color-text-muted);">(${formatBytes(file.file_size)})</span>
+                                    <span style="color:var(--color-text-muted); font-size:0.85em; margin-left:6px;">Archive non importable telle quelle : cochez ses dossiers et empaquetez-les, les volumes s'affichent ci-dessous.</span>
+                                    ${isExpanded || archiveContentCache.has(_archiveKey(file)) ? _archiveInlineHtml(file) : ''}
+                                </td>
+                            </tr>`;
+                        }).join('')}
                         ${_groupPackMembersBySubfolder(fileMatches, folderMatches).map(([subfolder, group]) => {
                             const subfolderKey = `${pending.id}::${subfolder || '__root__'}`;
                             const isRootFolder = !subfolder;
                             const isCollapsed = !isRootFolder && !expandedPackSubfolders.has(subfolderKey);
                             const selectableFiles = _packFolderSelectableFiles(group);
                             const allSelected = _packFolderAllSelected(group);
-                            const folderLabel = isRootFolder ? (pending.title || 'Dossier racine') : subfolder;
+                            // Sous une archive-conteneur, le groupe racine ne regroupe pas « le dossier du pack »
+                            // mais les volumes empaquetés depuis elle - ne pas répéter le nom du ZIP.
+                            const folderLabel = isRootFolder
+                                ? (containerMatches.length ? 'Volumes empaquetés' : (pending.title || 'Dossier racine'))
+                                : subfolder;
                             return `
                                 <tr style="cursor:pointer;" onclick="${isRootFolder ? '' : `togglePackSubfolder('${escapeForAttribute(subfolderKey)}')`}">
                                     <td colspan="8" style="padding:6px 4px; font-weight:600; font-size:0.85em; color:var(--color-text-muted);">
@@ -2424,8 +2653,9 @@ function _selectedFileIndicesForBulkAssignment() {
     // réassignés en masse, quelle que soit la raison qui a conduit à la revue manuelle.
     return importFiles
         .map((f, i) => i)
-        .filter(i => (importFiles[i].destination && importFiles[i].selected)
-            || (!importFiles[i].destination && importFiles[i]._bulkSelected));
+        .filter(i => !importFiles[i].is_container
+            && ((importFiles[i].destination && importFiles[i].selected)
+            || (!importFiles[i].destination && importFiles[i]._bulkSelected)));
 }
 
 function _updateImportBulkAssignBar() {
@@ -2512,7 +2742,7 @@ function _hasKnownVolume(file) {
 }
 
 function _isFileSelected(file) {
-    return !!file.selected;
+    return !!file.selected && !file.is_container;
 }
 
 function toggleFileSelection(fileIndex, checked) {

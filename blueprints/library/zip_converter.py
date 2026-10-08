@@ -85,3 +85,53 @@ def convert_zip_to_cbz(filepath):
     return new_cbz_path
 
 
+def package_zip_folders_to_cbz(filepath, output_dir, selected_folder_paths=None):
+    """Empaquette en .cbz les dossiers d'images choisis d'un .zip (un .cbz par dossier,
+    nommé d'après le dossier). Le zip source n'est jamais modifié. Un dossier sélectionné
+    qui ne contient que des sous-dossiers d'images est développé en un .cbz par sous-dossier.
+
+    Returns:
+        list[dict]: {'path', 'folder', 'file_count'} par .cbz créé
+
+    Raises:
+        ZipConversionError: aucun dossier choisi, zip illisible/corrompu, ou aucune image
+    """
+    from pathlib import Path
+    os.makedirs(output_dir, exist_ok=True)
+    selected = {str(Path(x)).replace(chr(92), '/').strip('/') for x in (selected_folder_paths or []) if str(x).strip('/')}
+    if not selected:
+        raise ZipConversionError('Aucun dossier sélectionné')
+    try:
+        zf = zipfile.ZipFile(filepath)
+    except Exception as exc:
+        raise ZipConversionError(f'Archive zip illisible ou corrompue: {exc}')
+    with zf:
+        bad_file = zf.testzip()
+        if bad_file is not None:
+            raise ZipConversionError(f'Archive zip corrompue (membre invalide: {bad_file})')
+        members = [n for n in zf.namelist() if not n.endswith('/') and os.path.splitext(n)[1].lower() in IMAGE_EXTENSIONS]
+        created, used = [], set()
+        expanded = set(selected)
+        for selected_path in list(selected):
+            prefix = selected_path + '/'
+            child_dirs = {n[len(prefix):].split('/', 1)[0] for n in members if n.startswith(prefix) and '/' in n[len(prefix):]}
+            if child_dirs and not any(n.startswith(prefix) and '/' not in n[len(prefix):] for n in members):
+                expanded.update(prefix + child for child in child_dirs)
+        for selected_path in sorted(expanded):
+            prefix = selected_path + '/'
+            names = [n for n in members if n.startswith(prefix) and '/' not in n[len(prefix):]]
+            if not names:
+                continue
+            safe = Path(selected_path).name.replace('/', '_').strip(' .') or 'album'
+            out, suffix = Path(output_dir) / f'{safe}.cbz', 2
+            while str(out) in used or out.exists():
+                out = Path(output_dir) / f'{safe} ({suffix}).cbz'
+                suffix += 1
+            used.add(str(out))
+            with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED) as dest:
+                for name in sorted(names):
+                    dest.writestr(Path(name).name, zf.read(name))
+            created.append({'path': str(out), 'folder': selected_path, 'file_count': len(names)})
+        if not created:
+            raise ZipConversionError('Aucun des dossiers sélectionnés ne contient d’image')
+        return created

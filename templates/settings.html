@@ -1623,14 +1623,43 @@
                         </div>
 
                         <div class="settings-card">
-                            <div id="bedethequeCatalogIndexStatus" style="margin-bottom: 15px; padding:12px; background:var(--color-surface-alt); border-radius:5px; border-left:3px solid var(--color-accent);">
-                                <p style="margin:0;">Chargement du statut...</p>
-                            </div>
-                            <div class="form-actions">
+                            <div class="bdt-index-status-row">
+                                <div id="bedethequeCatalogIndexStatus" class="bdt-index-status">
+                                    <p>Chargement du statut...</p>
+                                </div>
                                 <button class="btn" id="bedethequeCatalogIndexBuildBtn" onclick="buildBedethequeCatalogIndex()">
                                     <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></svg>
                                     <span id="bedethequeCatalogIndexBuildBtnLabel">Construire l'index</span>
                                 </button>
+                            </div>
+
+                            <!-- Mise à jour périodique (voir blueprints/bedetheque/index_scheduler.py) -->
+                            <div class="bdt-index-schedule">
+                                <div class="bdt-index-schedule-head">
+                                    <div>
+                                        <h3>Mise à jour automatique</h3>
+                                        <p class="bdt-index-schedule-desc">Garde l'index à jour pour retrouver les séries récemment ajoutées.</p>
+                                    </div>
+                                    <label class="switch" data-tooltip="Activer la mise à jour automatique">
+                                        <input type="checkbox" id="bedethequeIndexAutoEnabled" aria-label="Activer la mise à jour automatique de l'index" onchange="syncBedethequeIndexScheduleState()">
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="bdt-index-schedule-line" id="bedethequeIndexScheduleLine">
+                                    <span>Vérifier tous les</span>
+                                    <input type="number" class="bdt-index-number" id="bedethequeIndexIntervalDays" min="1" max="90" step="1" value="7" aria-label="Intervalle en jours">
+                                    <span>jours, à</span>
+                                    <input type="number" class="bdt-index-number" id="bedethequeIndexHour" min="0" max="23" step="1" value="4" aria-label="Heure du contrôle">
+                                    <span>h</span>
+                                </div>
+                                <p class="bdt-index-schedule-note">
+                                    À l'heure choisie, l'index n'est reconstruit que s'il a au moins ce nombre de jours.
+                                    Entre deux mises à jour, une série absente de l'index est cherchée en direct sur Bédéthèque.
+                                </p>
+                                <div class="bdt-index-schedule-actions">
+                                    <button class="btn" onclick="saveBedethequeIndexSchedule()">Enregistrer</button>
+                                    <span id="bedethequeIndexScheduleMessage" class="bdt-index-schedule-message"></span>
+                                </div>
                             </div>
                         </div>
                     </div>

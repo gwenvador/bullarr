@@ -661,7 +661,11 @@ function initResizableTableColumns(root) {
         const headerRow = table.querySelector('thead tr');
         if (!headerRow) return;
         const key = _resizableTableKey(table);
-        const savedWidths = _readSavedColumnWidths(key);
+        // Nouveautés doit tenir dans la fenêtre sans défilement horizontal: des largeurs en
+        // pixels enregistrées lors d un ancien redimensionnement (sur un écran plus large)
+        // écrasaient la grille CSS adaptative et faisaient déborder le tableau (Actions par-dessus
+        // Série). Ce tableau repart donc toujours de ses largeurs CSS.
+        const savedWidths = table.classList.contains('nouveautes-table') ? {} : _readSavedColumnWidths(key);
         const ths = Array.from(headerRow.children).filter(el => el.tagName === 'TH');
         // "the cell don't get wrap and extend on the other cells when I resize" - voir
         // .has-resized-columns (style.css): sans elle, un contenu que le CSS propre à

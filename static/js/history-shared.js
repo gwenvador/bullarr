@@ -55,7 +55,7 @@ function historySourceBadgeHtml(source, sourceLink) {
 // Distinction manuel/auto - plus fine que HISTORY_TYPE_ICONS/LABELS ci-dessus (qui ne
 // connaissent que le type générique 'import'), portée par le libellé de la ligne plutôt
 // que par l'icône de colonne Type (partagée avec tous les autres types d'événements).
-const IMPORT_OPERATION_TYPE_LABELS = { manual_import: 'Import manuel', auto_import: 'Import automatique' };
+const IMPORT_OPERATION_TYPE_LABELS = { manual_import: 'Import manuel', auto_import: 'Import automatique', manual_pack_validation: 'Validation de pack' };
 const IMPORT_HISTORY_ACTION_LABELS = {
     imported: '📥 Importé', replaced: '🔄 Remplacé', skipped: '⏭️ Ignoré',
     failed: '❌ Échec', undone: '↩️ Annulé', processing: '⏳ En cours'
@@ -102,6 +102,9 @@ function importHistoryVolumeLabel(f) {
 }
 
 function importHistorySummary(h) {
+    if (h.operation_type === 'manual_pack_validation') {
+        return h.file_names ? `✅ Pack validé comme terminé : ${h.file_names}` : '✅ Pack validé comme terminé';
+    }
     if (h.status === 'started') {
         return h.file_names ? `⏳ Import en cours : ${h.file_names}` : '⏳ Import en cours...';
     }

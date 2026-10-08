@@ -20,6 +20,9 @@ class RssFreshnessTests(unittest.TestCase):
         self.path = str(Path(self.tmp.name) / 'rss_entries_cache.json')
         self.feed = {'name': 'Demo', 'url': 'https://example.test/rss'}
         self.key = rss.feed_cache_key(self.feed)
+        patcher = patch.object(routes, '_rss_library_fingerprint', return_value='fp')
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def seed(self, entries, fetched_at=1):
         routes._update_rss_persistent_cache(self.path, lambda c: c.update({
@@ -42,7 +45,8 @@ class RssFreshnessTests(unittest.TestCase):
     def test_refresh_merges_only_new_entries_and_preserves_old_annotations(self):
         old = {'title': 'Old', 'link': 'https://example.test/old', 'date': '2026-09-28'}
         annotated_old = {**old, 'series_id': 7,
-                         '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION}
+                         '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION,
+                         '_library_fingerprint': 'fp'}
         routes._update_rss_persistent_cache(self.path, lambda c: c.update({
             self.key: {'entries': [old], 'annotated_entries': [annotated_old],
                        'fetched_at': 1}}))
@@ -124,7 +128,8 @@ class RssFreshnessTests(unittest.TestCase):
     def test_only_requested_and_unseen_entries_are_annotated(self):
         old = {'title': 'Old', 'link': 'https://example.test/old', 'date': '2026-09-28'}
         annotated_old = {**old, 'series_id': 7,
-                         '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION}
+                         '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION,
+                         '_library_fingerprint': 'fp'}
         new = {'title': 'New', 'link': 'https://example.test/new', 'date': '2026-09-29'}
         outside_limit = {'title': 'Outside', 'link': 'https://example.test/outside',
                          'date': '2026-09-27'}
@@ -135,7 +140,8 @@ class RssFreshnessTests(unittest.TestCase):
         def annotate(entries):
             annotated_calls.append(entries)
             return [{**entry, 'series_id': 9,
-                     '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION}
+                     '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION,
+                         '_library_fingerprint': 'fp'}
                     for entry in entries]
 
         result = self.call_latest([(self.feed, snapshot, None)], annotate, 'limit=2')

@@ -49,6 +49,18 @@ def _filenames_match(a, b):
     return na == nb or na in nb or nb in na
 
 
+def _same_release_name(a, b, min_length=12):
+    """Même release ? Égalité après normalisation, ou inclusion si le plus court est assez
+    long pour être spécifique (un titre court comme « Thorgal 1 » ne doit pas « contenir »
+    n'importe quel fichier)."""
+    na, nb = _normalize_filename(a or ''), _normalize_filename(b or '')
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    return min(len(na), len(nb)) >= min_length and (na in nb or nb in na)
+
+
 def match_pending_download_by_name(client_pending_rows, item_name):
     """Technical rationale and compatibility constraints for this code path."""
     return next(
@@ -406,10 +418,18 @@ def match_filename_against_trackable_downloads(filename: str, rows: List[Dict]) 
         normalized_title = row.get('_normalized_title')
         if normalized_title is None:
             normalized_title = _normalize_filename(row['title'])
-        if normalized_title and (
-            normalized_title == normalized_filename
-            or normalized_title in normalized_filename
-            or normalized_filename in normalized_title
+        # Le titre suivi est souvent celui du résultat de recherche (« …Int.Integrale.05… »),
+        # différent du nom réel du torrent/fichier : le nom appris du client sert aussi.
+        normalized_client_name = row.get('_normalized_client_item_name')
+        if normalized_client_name is None:
+            normalized_client_name = _normalize_filename(row.get('client_item_name') or '')
+        if any(
+            candidate and (
+                candidate == normalized_filename
+                or candidate in normalized_filename
+                or normalized_filename in candidate
+            )
+            for candidate in (normalized_title, normalized_client_name)
         ):
             return {
                 'tracking_id': row['id'], 'series_id': row['series_id'],
@@ -428,6 +448,7 @@ def prepare_trackable_downloads_for_matching(rows: List[Dict]) -> List[Dict]:
     """
     for row in rows:
         row['_normalized_title'] = _normalize_filename(row['title'])
+        row['_normalized_client_item_name'] = _normalize_filename(row.get('client_item_name') or '')
     return rows
 
 
@@ -1210,6 +1231,142 @@ def _reconcile_stuck_completed_download(download_status, is_pack, series_id, ser
         conn.close()
 
 
+def incomplete_client_item_ids(clients):
+    """{client: ensemble d'ids (minuscules)} des éléments que le client dit ENCORE INCOMPLETS.
+
+    Une erreur réseau donne un ensemble vide pour ce client: on ne bloque jamais une
+    fermeture de ligne sur une panne du client (comportement d'avant)."""
+    result = {client: set() for client in clients}
+    try:
+        from blueprints.activity.routes import _CLIENT_STATUS_FNS
+    except Exception as exc:
+        print(f"Statut des clients indisponible: {exc}")
+        return result
+    for client in result:
+        status_fn = _CLIENT_STATUS_FNS.get(client)
+        if not status_fn:
+            continue
+        try:
+            for item in (status_fn() or {}).get('items', []):
+                progress = item.get('progress')
+                if item.get('id') and progress is not None and progress < 100:
+                    result[client].add(str(item['id']).lower())
+        except Exception as exc:
+            print(f"Lecture de l'avancement impossible ({client}): {exc}")
+    return result
+
+
+def download_still_incomplete(tracking_id):
+    """True si le client dit que le téléchargement de CETTE ligne n'est pas terminé."""
+    db_path = current_app.config.get('DATABASE')
+    if not db_path or tracking_id is None:
+        return False
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            row = conn.execute('SELECT client, client_item_id FROM active_downloads WHERE id = ?', (tracking_id,)).fetchone()
+        finally:
+            conn.close()
+        if not row or not row[0] or not row[1]:
+            return False
+        return str(row[1]).lower() in incomplete_client_item_ids([row[0]]).get(row[0], set())
+    except Exception as exc:
+        # Ce contrôle ne doit jamais empêcher de refermer une ligne: sans réponse, comportement d'avant.
+        print(f"Avancement du téléchargement #{tracking_id} indisponible: {exc}")
+        return False
+
+
+def reopen_download(tracking_id):
+    """Remet une ligne en téléchargement (pending) sans date de fin."""
+    db_path = current_app.config.get('DATABASE')
+    if not db_path or tracking_id is None:
+        return
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        conn.execute("UPDATE active_downloads SET status = 'pending', completed_at = NULL "
+                     "WHERE id = ? AND status IN ('importing', 'completed')", (tracking_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def finalize_sibling_downloads(filename, series_id, tracking_id, outcome='imported'):
+    """Referme les AUTRES lignes de suivi du même fichier, une fois celui-ci importé.
+
+    Une même release peut avoir plusieurs lignes (résultat de recherche ajouté deux fois,
+    deux sources...): l'import n'en referme qu'une, les autres restaient « En attente… »
+    indéfiniment. Comparaison avec le nom réel du torrent (client_item_name) ou un titre
+    identique au fichier, dans la même série, hors packs."""
+    db_path = current_app.config.get('DATABASE')
+    if not db_path or not filename or series_id is None:
+        return 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        rows = conn.execute('''
+            SELECT id, title, client_item_name, client, client_item_id FROM active_downloads
+            WHERE series_id = ? AND id != ? AND is_pack = 0 AND status IN ('pending', 'completed')
+        ''', (series_id, tracking_id if tracking_id is not None else -1)).fetchall()
+    finally:
+        conn.close()
+    normalized_file = _normalize_filename(filename)
+    finalize = mark_download_skipped if outcome == 'skipped' else mark_download_imported
+    matched = [row for row in rows
+               if _same_release_name(filename, row[2]) or (row[1] and _normalize_filename(row[1]) == normalized_file)]
+    if not matched:
+        return 0
+    # Un jumeau dont le torrent n'est pas terminé n'a PAS livré ce fichier: il reste affiché.
+    incomplete = incomplete_client_item_ids({row[3] for row in matched if row[3] and row[4]})
+    closed = 0
+    for row_id, _title, _client_name, client, client_item_id in matched:
+        if client_item_id and str(client_item_id).lower() in incomplete.get(client, set()):
+            continue
+        finalize(row_id)
+        closed += 1
+    return closed
+
+
+def reconcile_pending_downloads_with_imports():
+    """Referme les lignes « en attente » dont le fichier a déjà été importé.
+
+    Filet de sécurité pour les lignes laissées ouvertes (voir finalize_sibling_downloads):
+    un import réussi (importé, remplacé ou doublon écarté) du même nom de release, dans la
+    même série, APRÈS la création de la ligne, prouve que ce téléchargement est traité."""
+    db_path = current_app.config.get('DATABASE')
+    if not db_path:
+        return 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        rows = conn.execute('''
+            SELECT id, series_id, created_at, client_item_name, client, client_item_id FROM active_downloads
+            WHERE status IN ('pending', 'completed') AND is_pack = 0 AND series_id IS NOT NULL
+              AND client_item_name IS NOT NULL AND client_item_name != ''
+        ''').fetchall()
+        matches = []
+        for row_id, series_id, created_at, client_name, client, client_item_id in rows:
+            history = conn.execute('''
+                SELECT filename, action FROM import_history_files
+                WHERE series_id = ? AND status = 'success'
+                  AND action IN ('imported', 'replaced', 'skipped') AND created_at >= ?
+            ''', (series_id, created_at)).fetchall()
+            actions = [action for filename, action in history if _same_release_name(filename, client_name)]
+            if actions:
+                matches.append((row_id, 'skipped' if all(a == 'skipped' for a in actions) else 'imported',
+                                client, client_item_id))
+    finally:
+        conn.close()
+    if not matches:
+        return 0
+    # Jamais refermer une ligne dont le propre téléchargement est encore en cours chez le client.
+    incomplete = incomplete_client_item_ids({client for _, _, client, item_id in matches if client and item_id})
+    closed = 0
+    for row_id, outcome, client, client_item_id in matches:
+        if client_item_id and str(client_item_id).lower() in incomplete.get(client, set()):
+            continue
+        (mark_download_skipped if outcome == 'skipped' else mark_download_imported)(row_id)
+        closed += 1
+    return closed
+
+
 def reconcile_completed_download_files():
     """Repair old completed rows in the background, never during an Import page read."""
     db_path = current_app.config.get('DATABASE')
@@ -1229,7 +1386,7 @@ def reconcile_completed_download_files():
         if _reconcile_stuck_completed_download(status, is_pack, series_id, series_path, title, db_path):
             mark_download_imported(download_id)
             repaired += 1
-    return repaired + reconcile_completed_packs()
+    return repaired + reconcile_pending_downloads_with_imports() + reconcile_completed_packs()
 
 
 def reconcile_completed_packs():
@@ -1319,12 +1476,7 @@ def get_pending_downloads() -> List[Dict]:
             "FROM active_downloads ad "
             "LEFT JOIN series s ON s.id = ad.series_id "
             "WHERE ad.status IN ('pending', 'completed', 'importing') "
-            "AND NOT (EXISTS ("
-            "SELECT 1 FROM volumes v WHERE (v.id = ad.volume_id "
-            "OR (v.series_id = ad.series_id AND (v.volume_number = ad.volume_number "
-            "OR (ad.volume_number IS NULL AND s.is_oneshot = 1)))) "
-            "AND v.filepath IS NOT NULL AND v.filepath != ''"
-            ")) ORDER BY ad.created_at DESC"
+            "ORDER BY ad.created_at DESC"
         )
         rows = cursor.fetchall()
 
@@ -1427,6 +1579,10 @@ def get_pending_downloads() -> List[Dict]:
                     'is_episode': stored_is_episode, 'episode_number': row['episode_number'],
                 }
                 resolved_volume_number = None
+            # La base fait référence: une ligne encore en téléchargement ou en attente d'import
+            # reste visible même si ce tome est déjà possédé (autre source, doublon...); le
+            # drapeau already_owned permet seulement de l'indiquer à l'écran.
+            already_owned_flag = False
             if series_id is not None and not is_pack:
                 if parsed_type.get('is_integral'):
                     already_owned = (
@@ -1445,11 +1601,10 @@ def get_pending_downloads() -> List[Dict]:
                         resolved_volume_number is not None
                         and (series_id, resolved_volume_number) in owned_volumes
                     )
-                if (
+                already_owned_flag = bool(
                     already_owned
                     or (resolved_volume_number is None and series_id in owned_oneshot_series_ids)
-                ):
-                    continue
+                )
             exhausted = (
                 client == 'telegram' and bytes_downloaded is not None
                 and (retry_count or 0) >= TELEGRAM_MAX_RETRY_ATTEMPTS
@@ -1478,6 +1633,7 @@ def get_pending_downloads() -> List[Dict]:
                 'status': download_status,
                 'needs_volume_correction': needs_volume_correction,
                 'needs_series_correction': needs_series_correction,
+                'already_owned': already_owned_flag,
                 **parsed_type,
             })
         return pending

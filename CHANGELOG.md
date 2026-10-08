@@ -1,5 +1,60 @@
 # Changements
 
+## v6.0 — 2026-10-08
+
+[Comparer v5.0 et v6.0](https://github.com/gwenvador/bullarr/compare/v5.0...v6.0)
+
+Mise à jour directe depuis v5.0, sans migration de base. Les corrections de suivi des téléchargements rassemblées ici n'étaient pas dans la v5.0. Les packs livrés sous forme d'archive (ZIP) ont désormais un vrai parcours dans la page Import.
+
+### Import : la base de données fait référence
+
+- Tout téléchargement encore en attente, en cours ou en attente d'import reste affiché sur la page Import, y compris lorsque le tome est déjà possédé (une mention « déjà possédé » l'indique). Une ligne ne disparaît plus tant que la base ne la considère pas comme terminée.
+- Une ligne n'est plus close tant que le client de téléchargement signale la release comme inachevée ; les lignes closes à tort sont rouvertes.
+- Les lignes jumelles d'une même release (même téléchargement ajouté plusieurs fois) sont finalisées ensemble.
+- Les lignes restées « En attente… » alors que leurs fichiers ont déjà été importés, et les packs terminés dont il ne reste que des fichiers traités, sont réconciliés automatiquement.
+- Les lignes « Prêt — import automatique » sont verrouillées (destination, volume, sélection et suppression), comme un import en cours. Le bouton « Reprendre la main » les repasse en import manuel.
+- Le menu déroulant de volume reste dans sa colonne au lieu de déborder sur la colonne voisine.
+
+### Packs livrés en archive (ZIP)
+
+- Un ZIP dont les images sont réparties en plusieurs dossiers (un dossier par tome) est reconnu comme un pack. Il n'est plus converti en un seul CBZ importé comme un tome unique (un pack « 01 à 03 + HS » avait été importé comme un seul hors-série).
+- Dans la page Import, le pack est une ligne repliable qui sert de simple repère, non importable. Son contenu s'affiche dans le dépli : dossiers, fichiers, cases à cocher. Seuls les dossiers qui contiennent des images sont empaquetables.
+- « Empaqueter les dossiers cochés » crée un CBZ par dossier ; l'archive source n'est jamais modifiée. Les CBZ créés apparaissent dessous, décalés, avec leur menu de volume, et s'importent, se convertissent ou se suppriment comme les autres fichiers. Ils sont conservés dans le volume de données (`data/package-temp`) et survivent à un redéploiement.
+- Le bouton « Valider le pack comme terminé » clôt le téléchargement et retire le pack de la page ; l'historique l'indique (« Validation de pack »). L'archive n'est jamais supprimée du disque.
+- Une archive mise en attente manuelle n'est plus extraite puis supprimée d'office au chargement de la page Import.
+- Le bouton « Voir le contenu » fonctionne de nouveau : la route serveur correspondante manquait et le navigateur recevait une page HTML à la place de la réponse attendue.
+- Le placeholder du pack n'est plus compté dans les fichiers sélectionnés ni dans la sélection groupée.
+
+### Nouveautés
+
+- Les annotations des entrées RSS suivent maintenant l'état de la bibliothèque : une release annotée avant l'ajout de sa série (ou avant l'import de son tome) est recalculée, au lieu de rester « absente de la bibliothèque ».
+- Le calcul d'annotation passe de 13 s à moins d'une seconde pour 100 releases : les noms des téléchargements actifs ne sont plus relus pour chaque release.
+- Le premier affichage se limite aux 100 entrées les plus récentes ; le reste de la fenêtre n'est chargé qu'avec « Charger plus ». Elle n'est plus rechargée en entier d'office en arrière-plan.
+- L'icône « ouvrir le lien » des entrées RSS s'affiche de nouveau, ainsi que deux autres icônes qui manquaient au registre (`alert-triangle`, `folder-open`).
+- Le tableau tient dans la fenêtre sans défilement horizontal : sous 900 px, chaque ligne devient une carte, et la colonne Actions ne passe plus par-dessus la colonne Série. Les largeurs de colonnes mémorisées d'un ancien redimensionnement ne s'appliquent plus à ce tableau.
+
+### Bédéthèque
+
+- Quand l'index local ne contient aucun candidat fiable, la recherche de série interroge Bédéthèque en direct, au lieu de s'arrêter sur des séries sans rapport qui partagent seulement un mot. Une série récente absente de l'index est de nouveau trouvée.
+- Mise à jour périodique de l'index : nouveau réglage dans Paramètres → Bédéthèque (activée, tous les N jours, à l'heure choisie ; 7 jours et 4 h par défaut). Un contrôle horaire relit le réglage et ne reconstruit l'index que s'il a au moins l'âge demandé ; un verrou évite une reconstruction simultanée par deux processus. La carte du réglage a été refaite.
+
+### Correctifs
+
+- Un nom de fichier qui n'est pas en UTF-8 ne fait plus perdre tout le lot de fichiers découverts : seul ce fichier est ignoré.
+- La suppression, la conversion et l'import d'un CBZ empaqueté n'étaient pas possibles (« Répertoire d'import non autorisé ») : le dossier d'empaquetage fait maintenant partie des dossiers autorisés.
+
+### Tests
+
+- Plus de cent tests ajoutés : protection contre les requêtes vers des adresses internes, chiffrement, calcul d'identifiant de torrent, limiteur de requêtes, planificateur d'import, historique et réservations d'import, règles de décision d'import (doublons, tome suivi, archives), index du catalogue et sa mise à jour, archives et empaquetage, validation de pack, annotation RSS, registre d'icônes.
+- La suite compte 375 tests ; la couverture mesurée sous pytest passe de 28 % à 41 %.
+
+### Points d'attention
+
+- Les dossiers d'import montés en lecture seule le restent : l'application n'y supprime aucune archive.
+- Un doublon est jugé sur la taille (marge de 5 %) sans tenir compte du format.
+
+Image : `ghcr.io/gwenvador/bullarr:v6.0` (`latest` pointe également vers cette version).
+
 ## v5.0 — 2026-10-06
 
 [Comparer v4.4 et v5.0](https://github.com/gwenvador/bullarr/compare/v4.4...v5.0)

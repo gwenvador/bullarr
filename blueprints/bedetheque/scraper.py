@@ -436,16 +436,22 @@ class BedethequeScraper:
         for candidate in candidates + ([parsed_title] if parsed_title else []):
             variants.extend(matching_query_variants(candidate))
 
-        def _try_all(search_fn):
+        def _try_all(search_fn, accept=None):
             seen = set()
             for candidate in variants:
                 if not candidate or candidate.lower() in seen:
                     continue
                 seen.add(candidate.lower())
                 results = search_fn(candidate, limit)
-                if results:
+                if results and (accept is None or accept(candidate, results)):
                     return results
             return []
+
+        def _has_confident_match(candidate, results):
+            return any(
+                self._is_confident_series_match(candidate, r['title'], self._match_score(candidate, r['title']))
+                for r in results
+            )
 
         # "apres ce qu'on pourrait faire c'est telecharger deja en db toutes l'index des
         # series et chercher prendrait tres peu de temsp" - l'index local (voir
@@ -455,8 +461,13 @@ class BedethequeScraper:
         # jamais été construit - _try_all le traite alors comme "rien trouvé" pour
         # chaque variante et retombe naturellement sur la recherche live juste après,
         # exactement comme si cet essai local n'avait pas eu lieu.
+        # Un résultat local n'est retenu que s'il contient un vrai candidat pour la requête:
+        # l'index (reconstruit seulement de temps en temps) peut ne pas connaître une série
+        # récente tout en renvoyant des dizaines de séries sans rapport qui partagent un mot
+        # (« gang », « clef »...). Les accepter empêchait de tomber sur la recherche live, et
+        # une série pourtant présente sur Bédéthèque finissait en « Série non trouvée ».
         from blueprints.bedetheque.catalog_index import search_catalog_index
-        local_results = _try_all(search_catalog_index)
+        local_results = _try_all(search_catalog_index, accept=_has_confident_match)
         if local_results:
             return local_results
 

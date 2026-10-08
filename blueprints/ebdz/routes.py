@@ -662,6 +662,21 @@ def auto_scrape_status():
     except Exception as e:
         return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
+def _rss_library_fingerprint():
+    """Empreinte de l'état de la bibliothèque dont dépendent les annotations RSS
+    (série reconnue, tome possédé, téléchargement actif). Une annotation persistée avec une
+    autre empreinte est périmée et recalculée - sinon une release annotée avant l'ajout de
+    sa série (ou l'import de son tome) restait « absente » indéfiniment."""
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    try:
+        series = conn.execute('SELECT COUNT(*), COALESCE(MAX(id), 0) FROM series').fetchone()
+        owned = conn.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM volumes WHERE filepath IS NOT NULL AND filepath != ''").fetchone()
+        active = conn.execute('SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(LENGTH(status)), 0) FROM active_downloads').fetchone()
+        return '|'.join(str(v) for v in (*series, *owned, *active))
+    finally:
+        conn.close()
+
+
 def _annotate_rss_entries(events):
     """Ajoute aux entrées RSS les mêmes repères locaux que Nouveautés EBDZ/Telegram.
 
@@ -738,6 +753,9 @@ def _annotate_rss_entries(events):
     downloaded_links = {link for _title, link in successful if link}
     downloaded_titles = set().union(*(exact_keys(title) for title, _link in successful)) if successful else set()
     active_records = list(active)
+    # Clés exactes des téléchargements actifs calculées UNE fois (parse_filename est coûteux):
+    # les recalculer pour chaque release RSS donnait ~100 000 appels par affichage.
+    active_exact_keys = [exact_keys(row[0]) for row in active_records]
 
     def volume_signature(parsed):
         if parsed.get('is_integral'):
@@ -808,6 +826,7 @@ def _annotate_rss_entries(events):
                 return sorted(confident, key=lambda candidate: BedethequeScraper._match_score(query, candidate['title']), reverse=True)[0]
         return None
 
+    fingerprint = _rss_library_fingerprint()
     annotated = []
     for event in events:
         event_keys = keys(event.get('title'))
@@ -830,9 +849,9 @@ def _annotate_rss_entries(events):
             or bool(exact_event_keys & downloaded_titles)
             or already_owned is True
             or any(
-                bool(exact_event_keys & exact_keys(row[0]))
+                bool(exact_event_keys & row_keys)
                 or (match and match[0] == row[1] and is_active_volume_download(event, match[0]))
-                for row in active_records
+                for row, row_keys in zip(active_records, active_exact_keys)
             )
         )
         annotated.append({
@@ -846,6 +865,7 @@ def _annotate_rss_entries(events):
             'bedetheque_url': match[2] if match else (catalog.get('url') if catalog else None),
             'downloaded': downloaded,
             '_rss_annotation_version': RSS_ANNOTATION_VERSION,
+            '_library_fingerprint': fingerprint,
         })
     _annotate_rss_entries._catalog_cache = catalog_cache
     return annotated
@@ -1072,11 +1092,13 @@ def rss_latest():
         requested_entries = sorted(_visible_rss_entries(cached.get('entries') or [], blocked_extensions),
                                    key=lambda item: item.get('date', ''),
                                    reverse=True)[:limit]
+        fingerprint = _rss_library_fingerprint()
         annotated_by_key = {
             _rss_entry_key(item): item
             for item in cached.get('annotated_entries') or []
             if isinstance(item, dict)
             and item.get('_rss_annotation_version') == RSS_ANNOTATION_VERSION
+            and item.get('_library_fingerprint') == fingerprint
         }
         missing = [entry for entry in requested_entries
                    if _rss_entry_key(entry) not in annotated_by_key]
@@ -1095,6 +1117,7 @@ def rss_latest():
                         for item in current.get('annotated_entries') or []
                         if isinstance(item, dict)
                         and item.get('_rss_annotation_version') == RSS_ANNOTATION_VERSION
+                        and item.get('_library_fingerprint') == fingerprint
                     }
                     combined.update({_rss_entry_key(item): item for item in new_annotations})
                     current['annotated_entries'] = [

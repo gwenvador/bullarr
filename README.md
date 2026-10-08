@@ -93,6 +93,16 @@ python app.py   # mode production
 
 ---
 
+### Lancer les tests
+
+```bash
+pip3 install -r requirements.txt -r requirements-dev.txt
+python3 -m pytest tests
+```
+
+Utilisez `pytest` : une partie des tests sont de simples fonctions `test_…` que
+`python3 -m unittest` ne découvre pas.
+
 ## 📋 Prérequis
 
 ### Docker (recommandé)

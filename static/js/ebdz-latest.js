@@ -342,6 +342,9 @@ const NOUVEAUTES_WINDOW_STEP = 60;
 let nouveautesHasMoreEbdz = false;
 let nouveautesLoadingOlder = false;
 let nouveautesLoadingInitial = false;
+// Faux tant que seuls les NOUVEAUTES_INITIAL_LIMIT premiers éléments sont chargés: le reste
+// de la fenêtre n'est récupéré qu'à la demande (« Charger plus »), pas automatiquement.
+let nouveautesFullWindowLoaded = false;
 let nouveautesDisplayedCount = 0;
 const NOUVEAUTES_PAGE_SIZE = 30;
 
@@ -1008,6 +1011,9 @@ function _renderNouveautesLoadMoreButton(loadMoreDiv, remaining) {
     } else if (remaining > 0) {
         loadMoreDiv.style.display = 'block';
         loadMoreDiv.innerHTML = `<button class="btn" onclick="loadMoreNouveautesEvents()">${svgIcon('chevron-down')} Charger plus (${remaining} restant${remaining > 1 ? 's' : ''})</button>`;
+    } else if (!nouveautesFullWindowLoaded) {
+        loadMoreDiv.style.display = 'block';
+        loadMoreDiv.innerHTML = `<button class="btn" onclick="loadMoreNouveautesEvents()">${svgIcon('chevron-down')} Charger plus</button>`;
     } else if (nouveautesHasMoreEbdz && currentNouveautesFilter !== 'rss') {
         loadMoreDiv.style.display = 'block';
         loadMoreDiv.innerHTML = `<button class="btn" onclick="loadOlderNouveautesEvents()">${svgIcon('chevron-down')} Charger une période plus ancienne</button>`;
@@ -1016,7 +1022,21 @@ function _renderNouveautesLoadMoreButton(loadMoreDiv, remaining) {
     }
 }
 
-function loadMoreNouveautesEvents() {
+async function loadMoreNouveautesEvents() {
+    if (!nouveautesFullWindowLoaded && nouveautesDisplayedCount >= allNouveautesEvents.length) {
+        // Lot initial épuisé: récupérer maintenant le reste de la fenêtre.
+        const loadMoreDiv = document.getElementById('nouveautes-events-load-more');
+        nouveautesLoadingOlder = true;
+        _renderNouveautesLoadMoreButton(loadMoreDiv, 0);
+        try {
+            await _loadNouveautesBatch(null, nouveautesLoadGeneration, false);
+            nouveautesFullWindowLoaded = true;
+        } catch (e) {
+            console.error('Chargement complet des nouveautés impossible', e);
+        } finally {
+            nouveautesLoadingOlder = false;
+        }
+    }
     nouveautesDisplayedCount += NOUVEAUTES_PAGE_SIZE;
     renderNouveautesEvents(false);
 }
@@ -1041,11 +1061,12 @@ async function loadOlderNouveautesEvents() {
     }
 }
 
-// "dans nouveauté ne charge pas tout en meme temps. limite toi à 100 articles pour
-// l'instant et charge en background apres" - le premier lot (le plus récent, annotation
-// comprise) s'affiche vite; la fenêtre complète (nouveautesDaysWindow jours, potentiellement
-// des milliers d'items) se recharge ensuite silencieusement en tâche de fond et remplace
-// ce premier jeu une fois prête (voir _loadNouveautesBatch).
+// "dans nouveauté il n'y a que 100 entrées pour le premier affichage ca devrait suffire" -
+// seul le premier lot (le plus récent, annotation comprise) est chargé; la fenêtre complète
+// (nouveautesDaysWindow jours, potentiellement des milliers d'items) n'est récupérée que
+// quand l'utilisateur clique « Charger plus » après avoir épuisé ce lot (voir
+// loadMoreNouveautesEvents). Elle était auparavant rechargée d'office en arrière-plan, ce
+// qui rendait la page très lente (annotation de toute la fenêtre à chaque ouverture).
 const NOUVEAUTES_INITIAL_LIMIT = 100;
 const NOUVEAUTES_CACHE_KEY = 'bullarr:nouveautes:v1';
 const NOUVEAUTES_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -1159,21 +1180,20 @@ async function loadNouveautesEvents(forceScrape, resetPage = true, olderThanDays
         }
 
         if (resetPage) {
+            nouveautesFullWindowLoaded = false;
             await _loadNouveautesBatch(NOUVEAUTES_INITIAL_LIMIT, generation, true, null, false, !!forceScrape);
             loading.style.display = 'none';
-
-            // Charge le reste de la fenêtre sans bloquer l'affichage déjà visible.
-            _loadNouveautesBatch(null, generation, false).catch(() => {}).finally(() => {
-                if (generation !== nouveautesLoadGeneration) return;
+            if (generation === nouveautesLoadGeneration) {
                 nouveautesLoadingInitial = false;
                 renderNouveautesEvents(false);
-            });
+            }
         } else {
             // Pour une période plus ancienne, le lot limité aux 100 éléments les plus
             // récents ne contient pas les nouveaux éléments demandés. Charger directement
             // la fenêtre complète évite que le bouton semble ne rien faire avant le rendu
             // du second appel en arrière-plan.
             await _loadNouveautesBatch(null, generation, false, olderThanDays, true);
+            nouveautesFullWindowLoaded = true;
             loading.style.display = 'none';
         }
     } catch (error) {
