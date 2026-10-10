@@ -102,6 +102,48 @@ COMICINFO_FIELDS = [
 ]
 
 
+def _leading_volume(name):
+    """« Série - 26 - Album… », « Série - T26 - Album… » ou « Série - Tome 26 - Album… »:
+    retourne (titre de tête, numéro) pour le premier numéro encadré par « - », ou None.
+    Découpage linéaire (pas d'expression régulière à retour arrière sur le nom entier)."""
+    parts = ' '.join(name.split()).split(' - ')
+    for index in range(1, len(parts) - 1):
+        match = re.fullmatch(r'(?:t|tome ?)?(\d{1,3})', parts[index].lower())
+        if match and parts[index + 1].strip():
+            title = ' - '.join(parts[:index]).strip()
+            if title:
+                return title, int(match.group(1))
+    return None
+
+
+def _split_on_empty_dash_segments(text):
+    """« Titre - - Album » -> [« Titre », « Album »]: coupe aux segments vides entre deux
+    tirets (laissés par le retrait d'un tag HS/INT/OS), sans toucher « Spider-Man »."""
+    pieces = text.split('-')
+    segments, current = [], []
+    for index, piece in enumerate(pieces):
+        if 0 < index < len(pieces) - 1 and not piece.strip():
+            segments.append('-'.join(current))
+            current = []
+        else:
+            current.append(piece)
+    segments.append('-'.join(current))
+    return segments
+
+
+def _words_outside_parentheses(text):
+    """Ensemble des mots (minuscules) hors des groupes entre parenthèses."""
+    kept, depth = [], 0
+    for char in text:
+        if char == '(':
+            depth += 1
+        elif char == ')' and depth:
+            depth -= 1
+        elif not depth:
+            kept.append(char)
+    return set(re.findall(r'[^\W_]+', ''.join(kept).lower()))
+
+
 class LibraryScanner:
     def __init__(self, db_path=None):
         if db_path is None:
@@ -479,7 +521,7 @@ class LibraryScanner:
         name_without_ext = re.sub(r'(?<=[^\W\d_])-(\d{1,3})-(?=[^\W\d_])', r' - \1 - ', name_without_ext)
         # « Série - 26 - Album - T2 - Sous-titre »: le numéro placé juste après le titre de la
         # série est le tome; un « T2 »/« Tome 2 » plus loin appartient au titre de l'album.
-        leading_volume = re.match(r'^\s*(.+?)\s+-\s+(?:T|Tome\s*)?(\d{1,3})\s+-\s+\S', name_without_ext, re.IGNORECASE)
+        leading_volume = _leading_volume(name_without_ext)
 
         name_without_ext = LibraryScanner.unscramble_trailing_article(name_without_ext)
 
@@ -838,7 +880,7 @@ class LibraryScanner:
         # un segment vide « - - »; tout ce qui suit est le titre de l'album, pas de la série.
         # Un préfixe parasite trop court avant le vide (« FT- -Valhardi-T08... ») n'est pas le
         # titre: on garde alors le premier morceau significatif.
-        segments = [seg.strip() for seg in re.split(r'\s*-\s*-\s*', info['title']) if seg.strip()]
+        segments = [seg.strip() for seg in _split_on_empty_dash_segments(info['title']) if seg.strip()]
         meaningful = [seg for seg in segments if len(re.sub(r'\W', '', seg)) >= 3]
         if meaningful:
             info['title'] = meaningful[0]
@@ -864,10 +906,9 @@ class LibraryScanner:
             info['title'] = re.sub(rf'\s+{info["year"]}\s*$', '', info['title']).strip()
 
         if (leading_volume and info['volume'] is not None and not info['is_hs'] and not info['is_integral']
-                and not info['is_episode'] and int(leading_volume.group(2)) != info['volume']
-                and set(re.sub(r'\W+', ' ', re.sub(r'\([^)]*\)', ' ', leading_volume.group(1))).lower().split())
-                == set(re.sub(r'\W+', ' ', re.sub(r'\([^)]*\)', ' ', info['title'])).lower().split())):
-            info['volume'] = int(leading_volume.group(2))
+                and not info['is_episode'] and leading_volume[1] != info['volume']
+                and _words_outside_parentheses(leading_volume[0]) == _words_outside_parentheses(info['title'])):
+            info['volume'] = leading_volume[1]
 
         # Extraire la résolution (1920x1080, etc.)
         # Ne pas écraser la résolution déjà extraite depuis les crochets
