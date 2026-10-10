@@ -1,5 +1,42 @@
 # Changements
 
+## v6.1 — 2026-10-10
+
+[Comparer v6.0 et v6.1](https://github.com/gwenvador/bullarr/compare/v6.0...v6.1)
+
+Mise à jour directe depuis v6.0, sans migration de base.
+
+### Import : lecture du numéro de tome
+
+- Un numéro en tête de nom (« Série - 12 - Titre », « Série-12-Titre », « Série - T12 - Titre ») l'emporte sur un « Tome 2 » ou « T2 » plus loin dans le nom, quand la partie de tête est bien le titre de la série. « Blake Et Mortimer-26-La Vallée Des Immortels - T2 » était importé comme tome 2.
+- Les titres d'album Bédéthèque valident le numéro : un nom qui contient le titre complet d'un album est rangé dans cet album. Si le nom ne partage aucun mot avec l'album du tome lu, mais contient une partie du titre d'un autre album, c'est ce dernier qui est retenu (« T1 » ou « T2 » départage deux parties d'un même cycle).
+- Les hors-séries, intégrales et épisodes sans numéro sont rapprochés par leur titre au lieu d'être écartés comme doublons.
+- La fenêtre de recherche d'un tome applique la même lecture à chaque résultat et met à jour la mention « tome non confirmé ».
+
+### Import : packs et téléchargements
+
+- Une archive est classée pack ou album unique d'après son contenu ; une archive qui ne contient que des images n'est plus extraite.
+- Un téléchargement multi-fichiers reste ouvert tant que ses fichiers arrivent ; la page Import indique l'état de la copie locale (absente, en cours, terminée).
+- Un fichier déjà importé puis téléchargé de nouveau est de nouveau importable.
+- Un pack est retrouvé par le nom de son dossier, même sans identifiant de torrent.
+- Au démarrage, les imports interrompus par un redémarrage sont libérés.
+- L'import automatique ne tourne que lorsque des fichiers sont prêts ; l'état des clients de téléchargement est relevé chaque minute. Les fichiers sont importés par ordre de format préféré.
+- Les entrées de suivi d'import terminées sont purgées.
+- Libellés plus clairs sur la page Import (« Import automatique en attente », « Import manuel à valider », « N sur M fichiers importables ») ; les tomes déjà possédés sont signalés.
+
+### Surveillance
+
+- Nouvelle surveillance des flux RSS : les nouveautés des séries suivies sont téléchargées automatiquement, avec plusieurs tentatives si le fichier n'est pas encore trouvé.
+- L'index local Bédéthèque peut être rafraîchi automatiquement (vérification toutes les heures).
+- Dans Nouveautés, l'éclair ajoute directement la série reconnue et télécharge le fichier de la ligne, quelle que soit la source ; sans correspondance, il passe en validation.
+
+### Interface
+
+- Le tableau des tomes d'une série tient dans la largeur de la page, sans défilement horizontal.
+- La fenêtre de recherche ne se rafraîchit plus de façon intempestive (défilement et focus conservés).
+- Les cases à cocher de la configuration sont remplacées par des interrupteurs.
+- Nouveautés : colonnes Type et Origine, liste des séries et filtre des détails élargis sur grand écran.
+
 ## v6.0 — 2026-10-08
 
 [Comparer v5.0 et v6.0](https://github.com/gwenvador/bullarr/compare/v5.0...v6.0)

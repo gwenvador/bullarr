@@ -1386,7 +1386,146 @@ def reconcile_completed_download_files():
         if _reconcile_stuck_completed_download(status, is_pack, series_id, series_path, title, db_path):
             mark_download_imported(download_id)
             repaired += 1
-    return repaired + reconcile_pending_downloads_with_imports() + reconcile_completed_packs()
+    repaired += reconcile_pending_downloads_with_imports() + reconcile_completed_packs()
+    from blueprints.library.import_history import purge_finished_import_items
+    purge_finished_import_items()
+    return repaired
+
+
+def _folder_has_successful_imports(db_path, folder_name):
+    """True si l'historique contient un import réussi d'un fichier de ce dossier."""
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM import_history_files WHERE status = 'success' "
+            "AND action IN ('imported', 'replaced', 'skipped') "
+            "AND instr(source_path, '/' || ? || '/') > 0 LIMIT 1",
+            (folder_name,)
+        ).fetchone()
+        return row is not None
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
+
+
+_LOCAL_COPY_EXTENSIONS = ('.cbz', '.cbr', '.zip', '.rar', '.pdf', '.tar')
+
+
+def local_copy_state(folder_name, import_roots):
+    """État de la copie locale d'un téléchargement terminé chez son client (fichiers qui
+    arrivent par Syncthing/NFS...): 'absent' (rien n'est encore arrivé), 'copying' (fichiers
+    temporaires de transfert présents), 'settling' (plus rien n'arrive mais la copie est trop
+    récente: un pack attend PACK_TRANSFER_QUIET_SECONDS avant son import) ou 'present'.
+    Retourne {'state', 'files'} (files = nombre de fichiers BD arrivés)."""
+    from blueprints.library.routes import _PACK_TRANSFER_TEMP_SUFFIXES, _pack_transfer_in_progress
+    from path_safety import UnsafePathError, resolve_within
+
+    if not folder_name or os.sep in folder_name or folder_name in ('.', '..'):
+        return {'state': 'absent', 'files': 0}
+    for import_root in import_roots:
+        try:
+            path = resolve_within(os.path.join(import_root, folder_name), import_root)
+        except UnsafePathError:
+            continue
+        if path == os.path.realpath(import_root):
+            continue
+        if os.path.isfile(path):
+            return {'state': 'present', 'files': 1}
+        if not os.path.isdir(path):
+            continue
+        files, temp = 0, 0
+        for _root, _dirs, names in os.walk(path):
+            for name in names:
+                lowered = name.lower()
+                if lowered.endswith(_PACK_TRANSFER_TEMP_SUFFIXES):
+                    temp += 1
+                elif os.path.splitext(lowered)[1] in _LOCAL_COPY_EXTENSIONS:
+                    files += 1
+        if temp:
+            return {'state': 'copying', 'files': files}
+        if not files:
+            # Dossier vide: rien n'est en copie (déjà importé et déplacé, ou pas encore arrivé).
+            return {'state': 'empty', 'files': 0}
+        if _pack_transfer_in_progress(path):
+            return {'state': 'settling', 'files': files}
+        return {'state': 'present' if files else 'absent', 'files': files}
+    return {'state': 'absent', 'files': 0}
+
+
+def _download_local_copy_state(download_id, db_path):
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            row = conn.execute('SELECT client_item_name, title FROM active_downloads WHERE id = ?', (download_id,)).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        import_roots = current_app.config.get('IMPORT_DIRECTORIES', [])
+        state = local_copy_state((row[0] or '').strip(), import_roots)
+        if state['state'] == 'absent' and row[1] and row[1] != row[0]:
+            state = local_copy_state(row[1].strip(), import_roots)
+        return state
+    except Exception:
+        return None
+
+
+def _pack_awaiting_closure(download_id, db_path):
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            row = conn.execute('SELECT client_item_name, title FROM active_downloads WHERE id = ?', (download_id,)).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return False
+        return pack_is_finished((row[0] or row[1] or '').strip(), db_path, current_app.config.get('IMPORT_DIRECTORIES', []))
+    except Exception:
+        return False
+
+
+def _pack_transfer_in_progress_temp(path):
+    from blueprints.library.routes import _PACK_TRANSFER_TEMP_SUFFIXES
+    return any(name.lower().endswith(_PACK_TRANSFER_TEMP_SUFFIXES) for _r, _d, names in os.walk(path) for name in names)
+
+
+def pack_is_finished(folder_name, db_path, import_roots):
+    """True quand un pack 'completed' n'a plus rien à importer et peut être clos.
+
+    - Dossier présent: plus aucun fichier sans résultat d'import, et pas de transfert en cours.
+    - Pack livré en archive (un fichier, ex. un ZIP validé depuis /import): l'archive a un
+      résultat d'import.
+    - Ni l'un ni l'autre (torrent retiré du client, ménage côté seedbox): au moins un fichier
+      du dossier a été importé ; sinon le pack attend toujours l'arrivée de ses fichiers.
+    """
+    from blueprints.library.routes import _pack_has_unfinalized_files, _pack_transfer_in_progress
+    from blueprints.library.import_history import get_finalized_import_source_paths
+    from path_safety import UnsafePathError, resolve_within
+
+    if not folder_name or os.sep in folder_name or folder_name in ('.', '..'):
+        return False
+    for import_root in import_roots:
+        try:
+            path = resolve_within(os.path.join(import_root, folder_name), import_root)
+        except UnsafePathError:
+            continue
+        if path == os.path.realpath(import_root):
+            continue
+        if os.path.isdir(path):
+            if _pack_has_unfinalized_files(path):
+                return False
+            if not any(os.path.splitext(name)[1].lower() in _LOCAL_COPY_EXTENSIONS
+                       for _r, _d, names in os.walk(path) for name in names) \
+                    and not _pack_transfer_in_progress_temp(path):
+                # Dossier vidé par l'import: terminé tout de suite s'il a déjà donné des
+                # imports (sinon c'est une copie qui n'a pas encore commencé).
+                return _folder_has_successful_imports(db_path, folder_name)
+            return not _pack_transfer_in_progress(path)
+        if os.path.isfile(path):
+            finalized = {os.path.realpath(p) for p in get_finalized_import_source_paths() if p}
+            return path in finalized
+    return _folder_has_successful_imports(db_path, folder_name)
 
 
 def reconcile_completed_packs():
@@ -1397,10 +1536,8 @@ def reconcile_completed_packs():
     sources en lecture seule...), plus aucun passage ne le clôturait et /import l'affichait
     indéfiniment « Prêt - scan automatique sous peu ». Un pack encore en cours de transfert
     (fichier récent ou temporaire, voir _pack_transfer_in_progress) n'est jamais clos ici.
+    Règle détaillée: voir pack_is_finished.
     """
-    from blueprints.library.routes import _pack_has_unfinalized_files, _pack_transfer_in_progress
-    from path_safety import UnsafePathError, resolve_within
-
     db_path = current_app.config.get('DATABASE')
     import_roots = current_app.config.get('IMPORT_DIRECTORIES', [])
     if not db_path or not import_roots:
@@ -1415,21 +1552,9 @@ def reconcile_completed_packs():
         conn.close()
     repaired = 0
     for download_id, client_item_name, title in rows:
-        folder_name = (client_item_name or title or '').strip()
-        if not folder_name or os.sep in folder_name or folder_name in ('.', '..'):
-            continue
-        for import_root in import_roots:
-            try:
-                folder = resolve_within(os.path.join(import_root, folder_name), import_root)
-            except UnsafePathError:
-                continue
-            if folder == os.path.realpath(import_root) or not os.path.isdir(folder):
-                continue
-            if _pack_transfer_in_progress(folder) or _pack_has_unfinalized_files(folder):
-                break
+        if pack_is_finished((client_item_name or title or '').strip(), db_path, import_roots):
             mark_download_imported(download_id)
             repaired += 1
-            break
     return repaired
 
 
@@ -1634,6 +1759,12 @@ def get_pending_downloads() -> List[Dict]:
                 'needs_volume_correction': needs_volume_correction,
                 'needs_series_correction': needs_series_correction,
                 'already_owned': already_owned_flag,
+                # Pack terminé dont la clôture automatique n'est pas encore passée: rien à faire.
+                'awaiting_closure': bool(is_pack) and download_status == 'completed'
+                    and _pack_awaiting_closure(download_id, db_path),
+                # Fichiers d'un téléchargement terminé chez son client: encore en route vers
+                # ce serveur (copie Syncthing...) ou déjà là - voir local_copy_state.
+                'local_copy': _download_local_copy_state(download_id, db_path) if download_status == 'completed' else None,
                 **parsed_type,
             })
         return pending

@@ -80,8 +80,58 @@ class CompletedPackReconcileTest(unittest.TestCase):
         self.touch('.syncthing.T05.cbr.tmp')
         self.assertEqual(downloader.reconcile_completed_packs(), 0)
 
-    def test_missing_folder_is_never_closed(self):
+    def test_missing_folder_without_any_import_is_not_closed(self):
         shutil.rmtree(self.folder)
+        self.assertEqual(downloader.reconcile_completed_packs(), 0)
+        self.assertEqual(self.status(), 'completed')
+
+    def test_folder_removed_after_its_files_were_imported_closes_the_pack(self):
+        # Cas « Les Innommables »: tous les tomes importés, puis le torrent retiré du client
+        # (le dossier disparaît). Le pack ne doit pas rester « Prêt - scan automatique sous peu ».
+        self.finalize(self.touch('T01.cbz'), action='imported')
+        shutil.rmtree(self.folder)
+        self.assertEqual(downloader.reconcile_completed_packs(), 1)
+        self.assertEqual(self.status(), 'imported')
+
+    def test_an_import_from_another_folder_does_not_close_the_pack(self):
+        other = os.path.join(self.root, 'NOOB - Integrale bis')
+        os.mkdir(other)
+        self.finalize(os.path.join(other, 'T01.cbz'), action='imported')
+        shutil.rmtree(self.folder)
+        self.assertEqual(downloader.reconcile_completed_packs(), 0)
+        self.assertEqual(self.status(), 'completed')
+
+    def test_archive_pack_closes_once_the_archive_has_a_result(self):
+        # Pack livré en archive (cas « L'âge de Bronze ») : validé depuis /import.
+        conn = sqlite3.connect(self.db.name)
+        conn.execute("UPDATE active_downloads SET client_item_name = NULL, title = 'Bronze.BDPACK.zip' WHERE id = 1")
+        conn.commit()
+        conn.close()
+        shutil.rmtree(self.folder)
+        archive = os.path.join(self.root, 'Bronze.BDPACK.zip')
+        open(archive, 'w').close()
+        self.assertEqual(downloader.reconcile_completed_packs(), 0)
+        self.finalize(archive)
+        self.assertEqual(downloader.reconcile_completed_packs(), 1)
+        self.assertEqual(self.status(), 'imported')
+
+    def test_pack_is_finished_drives_the_awaiting_closure_flag(self):
+        roots = [self.root]
+        self.touch('T01.cbz')
+        self.assertFalse(downloader.pack_is_finished('00   NOOB - Integrale', self.db.name, roots))
+        self.finalize(os.path.join(self.folder, 'T01.cbz'), action='imported')
+        self.assertTrue(downloader.pack_is_finished('00   NOOB - Integrale', self.db.name, roots))
+        self.assertTrue(downloader._pack_awaiting_closure(1, self.db.name))
+        self.assertFalse(downloader.pack_is_finished('../etc', self.db.name, roots))
+
+    def test_folder_emptied_by_the_import_closes_right_away(self):
+        imported = os.path.join(self.folder, 'T01.cbz')
+        self.finalize(imported, action='imported')                         # importé puis déplacé: dossier vide
+        routes.note_pack_transfer_activity(self.root, imported)            # activité toute récente
+        self.assertEqual(downloader.reconcile_completed_packs(), 1)
+        self.assertEqual(self.status(), 'imported')
+
+    def test_empty_folder_without_any_import_waits(self):
         self.assertEqual(downloader.reconcile_completed_packs(), 0)
         self.assertEqual(self.status(), 'completed')
 
@@ -99,3 +149,50 @@ class CompletedPackReconcileTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LocalCopyStateTest(unittest.TestCase):
+    """Cas Blake et Mortimer T01-T31: terminé sur la seedbox, fichiers encore en copie."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.app = Flask(__name__)
+        self.app.config["IMPORT_DIRECTORIES"] = [self.root]
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        self.addCleanup(self.ctx.pop)
+        routes._pack_transfer_activity.clear()
+        self.addCleanup(routes._pack_transfer_activity.clear)
+        self.name = "Blake et Mortimer - T01 a 31"
+        self.folder = os.path.join(self.root, self.name)
+
+    def state(self):
+        return downloader.local_copy_state(self.name, [self.root])
+
+    def touch(self, name):
+        os.makedirs(self.folder, exist_ok=True)
+        open(os.path.join(self.folder, name), "w").close()
+
+    def test_absent_then_copying_then_settling_then_present(self):
+        self.assertEqual(self.state(), {"state": "absent", "files": 0})
+        self.touch("T01.cbz")
+        self.touch(".syncthing.T02.cbz.tmp")
+        self.assertEqual(self.state(), {"state": "copying", "files": 1})
+        os.rename(os.path.join(self.folder, ".syncthing.T02.cbz.tmp"), os.path.join(self.folder, "T02.cbz"))
+        routes.note_pack_transfer_activity(self.root, os.path.join(self.folder, "T02.cbz"))
+        self.assertEqual(self.state(), {"state": "settling", "files": 2})
+        routes._pack_transfer_activity.clear()
+        self.assertEqual(self.state(), {"state": "present", "files": 2})
+
+    def test_single_file_download_and_unsafe_names(self):
+        open(os.path.join(self.root, "Album.cbz"), "w").close()
+        self.assertEqual(downloader.local_copy_state("Album.cbz", [self.root]), {"state": "present", "files": 1})
+        self.assertEqual(downloader.local_copy_state("../etc", [self.root])["state"], "absent")
+
+    def test_emptied_folder_is_not_shown_as_a_copy(self):
+        os.makedirs(self.folder)
+        self.assertEqual(self.state(), {"state": "empty", "files": 0})
+
+    def test_quiet_period_is_two_minutes(self):
+        self.assertEqual(routes.PACK_TRANSFER_QUIET_SECONDS, 120)

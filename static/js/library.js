@@ -4530,6 +4530,11 @@ function _renderNoSearchResults(seriesTitle, displayLabel, hasNumber, options, v
     customInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') retryCustom(); });
 }
 
+// Numéro de la recherche affichée dans la fenêtre: les réponses tardives d'une recherche
+// précédente (fenêtre fermée, autre tome, autre terme) sont ignorées au lieu de réécrire
+// la fenêtre de la recherche en cours.
+let _searchModalGeneration = 0;
+
 async function searchMissingVolume(seriesTitle, volumeNumber, options = {}) {
     const { seriesId = null, isIntegral = false, isHs = false, isEpisode = false, currentVolumeId = null } = options;
 
@@ -4569,8 +4574,10 @@ async function searchMissingVolume(seriesTitle, volumeNumber, options = {}) {
     let fourtouticiDone = false;
     let annasArchiveDone = false;
     let renderedOnce = false;
+    const generation = ++_searchModalGeneration;
     const allSlowSourcesDone = () => prowlarrDone && telegramDone && fourtouticiDone && annasArchiveDone;
     const render = () => {
+        if (generation !== _searchModalGeneration) return;
         if (combined.length > 0) {
             // seriesId/currentVolumeId: connus dès qu'on arrive ici depuis une fiche série
             // (voir CLAUDE.md "le volume/album doit être matché si le clic vient d'une
@@ -6636,8 +6643,26 @@ function displaySearchResults(seriesTitle, volumeNumber, results, displayLabel, 
     // fixed markup deliberately contains inline controls (filter onchange, row downloads,
     // retry and close). The generic sanitizer removes every on* attribute, leaving the
     // modal visually rendered but all controls inert.
+    // Chaque source qui répond reconstruit la fenêtre: garder la position de défilement et
+    // le champ en cours de saisie (et son curseur), sinon la fenêtre « saute » en haut et le
+    // filtre perd le focus à chaque arrivée de résultats.
+    const scrollers = [searchModalBody, searchModalBody.closest('.modal-content')].filter(Boolean);
+    const scrollPositions = scrollers.map(el => el.scrollTop);
+    const active = document.activeElement;
+    const focusKey = active && searchModalBody.contains(active)
+        ? (active.id ? `#${CSS.escape(active.id)}` : (active.getAttribute('aria-label') ? `[aria-label="${CSS.escape(active.getAttribute('aria-label'))}"]` : null))
+        : null;
+    const selection = focusKey && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
     searchModalBody.innerHTML = html;
     initClearableSearchInputs(searchModalBody);
+    scrollers.forEach((el, i) => { el.scrollTop = scrollPositions[i]; });
+    if (focusKey) {
+        const again = searchModalBody.querySelector(focusKey);
+        if (again) {
+            again.focus({ preventScroll: true });
+            if (selection && typeof again.setSelectionRange === 'function') again.setSelectionRange(selection[0], selection[1]);
+        }
+    }
 
     // Vérifier si aMule est activé pour afficher/cacher les boutons "Ajouter à eMule"
     checkEmuleStatus();
@@ -6760,6 +6785,7 @@ function closeModal() {
 }
 
 function closeSearchModal() {
+    _searchModalGeneration++;
     document.getElementById('search-ed2k-modal').classList.remove('active');
 }
 

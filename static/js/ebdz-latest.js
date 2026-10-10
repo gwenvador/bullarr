@@ -146,26 +146,7 @@ async function replaceNouveautesRssFile(eventIndex, button) {
     button.disabled = true;
     button.innerHTML = svgIcon('loader-circle', 'icon-spin');
     try {
-        const direct = (event.download_links || []).find(item => {
-            const url = String(item.url || '').toLowerCase();
-            return url.startsWith('magnet:') ||
-                (url.startsWith('http') && (/\.torrent(?:[?#]|$)/.test(url) || url.includes('/download')));
-        });
-        let torrentUrl = direct?.url;
-        if (!torrentUrl && event.prowlarr_indexer_id) {
-            // Le flux RSS retire les liens Prowlarr contenant une clé API. Retrouver
-            // cette release exacte au clic, puis utiliser son URL de téléchargement.
-            const query = event.series_title || event.title;
-            const response = await fetch('/api/search/prowlarr?q=' + encodeURIComponent(query));
-            const data = await response.json();
-            if (!response.ok || !data.success) throw new Error('Recherche Prowlarr indisponible');
-            const exact = (data.results || []).filter(result =>
-                String(result.title || '').toLowerCase() === String(event.title || '').toLowerCase());
-            const release = event.link
-                ? exact.find(result => result.info_url === event.link)
-                : exact.length === 1 ? exact[0] : null;
-            torrentUrl = release?.download_url;
-        }
+        const torrentUrl = await _resolveRssTorrentUrl(event);
         if (!torrentUrl) throw new Error('Lien de téléchargement introuvable pour cette release');
         button.disabled = false;
         button.innerHTML = original;
@@ -176,6 +157,155 @@ async function replaceNouveautesRssFile(eventIndex, button) {
         button.innerHTML = original;
         showToast('nouveautes-replace-error', error.message,
             { icon: 'circle-x', autoHideMs: 6000 });
+    }
+}
+
+// Lien de téléchargement d'une release RSS: lien direct du flux s'il y en a un, sinon la release
+// exacte est retrouvée chez Prowlarr au clic (le flux RSS retire les liens contenant une clé API).
+async function _resolveRssTorrentUrl(event) {
+    const direct = (event.download_links || []).find(item => {
+        const url = String(item.url || '').toLowerCase();
+        return url.startsWith('magnet:') ||
+            (url.startsWith('http') && (/\.torrent(?:[?#]|$)/.test(url) || url.includes('/download')));
+    });
+    let torrentUrl = direct?.url;
+    if (!torrentUrl && event.prowlarr_indexer_id) {
+        const query = event.series_title || event.title;
+        const response = await fetch('/api/search/prowlarr?q=' + encodeURIComponent(query));
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error('Recherche Prowlarr indisponible');
+        const exact = (data.results || []).filter(result =>
+            String(result.title || '').toLowerCase() === String(event.title || '').toLowerCase());
+        const release = event.link
+            ? exact.find(result => result.info_url === event.link)
+            : exact.length === 1 ? exact[0] : null;
+        torrentUrl = release?.download_url;
+    }
+    if (!torrentUrl) throw new Error('Lien de téléchargement introuvable pour cette release');
+    return torrentUrl;
+}
+
+// Envoie un lien torrent au premier client activé (qBittorrent, puis rTorrent, puis Deluge),
+// en rattachant le téléchargement à la série. Sans alerte ni fenêtre: l'erreur remonte à l'appelant.
+async function _sendRssTorrentToClient(torrentUrl, event, seriesId) {
+    const clients = typeof enabledDownloadClients === 'undefined' ? {} : enabledDownloadClients;
+    const client = ['qbittorrent', 'rtorrent', 'deluge'].find(name => clients[name]);
+    if (!client) throw new Error('Aucun client torrent activé');
+    const payload = {
+        torrent_url: torrentUrl, title: event.title, series_id: seriesId,
+        volume_id: null, volume_number: null, source: 'prowlarr', source_link: event.link || '', force_replace: false,
+    };
+    if (client === 'qbittorrent') {
+        try {
+            const config = await (await fetch('/api/qbittorrent/config')).json();
+            if (config.default_category) payload.category = config.default_category;
+        } catch (e) { /* catégorie par défaut optionnelle */ }
+    }
+    const response = await fetch(`/api/${client}/add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || `Ajout à ${client} impossible`);
+    return client;
+}
+
+// Télécharge le(s) fichier(s) de la ligne (et uniquement ceux-là, sans recherche) vers le client
+// adapté à sa source. Retourne le libellé de la destination pour le message affiché.
+async function _downloadNouveautesRelease(ev, seriesId) {
+    if (ev.type === 'telegram') {
+        const response = await fetch('/api/telegram-channels/download', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                channel: ev.channel, message_id: ev.message_id, channel_title: ev.channel_title || '',
+                filename: ev.filename || '', series_id: seriesId, volume_id: null, volume_number: ev.volume ?? null,
+                source: 'telegram', source_link: `https://t.me/${String(ev.channel || '').replace(/^@/, '')}/${ev.message_id}`,
+                force_replace: false
+            })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Téléchargement Telegram impossible');
+        return 'Telegram';
+    }
+    if (ev.type === 'ebdz') {
+        // Un sujet EBDZ peut regrouper plusieurs fichiers: seuls ceux qui ne sont pas déjà
+        // possédés partent, un seul par tome quand plusieurs liens portent le même numéro.
+        const seen = new Set();
+        const links = (ev.links || []).filter(link => {
+            if (link.already_owned === true) return false;
+            const key = link.parsed_volume || link.volume;
+            if (key != null && key !== '') {
+                if (seen.has(String(key))) return false;
+                seen.add(String(key));
+            }
+            return true;
+        });
+        if (!links.length) throw new Error('Aucun fichier à télécharger : tout est déjà possédé');
+        for (const link of links) {
+            const response = await fetch('/api/emule/add', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    link: link.link, title: decodeFilename(link.filename), series_id: seriesId, volume_id: null,
+                    volume_number: link.volume ?? null, source: 'ebdz', source_link: ev.url || '', force_replace: false
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'Ajout à aMule impossible');
+        }
+        return links.length > 1 ? `aMule (${links.length} fichiers)` : 'aMule';
+    }
+    const torrentUrl = await _resolveRssTorrentUrl(ev);
+    return await _sendRssTorrentToClient(torrentUrl, ev, seriesId);
+}
+
+// Éclair de Nouveautés (EBDZ, Telegram et RSS): ajoute la série déjà matchée (sans lancer la
+// recherche de tous ses tomes) puis télécharge le fichier de CETTE ligne. Sans fiche
+// Bédéthèque confirmée, la ligne est envoyée en validation.
+async function addSeriesAndDownloadNouveautes(index, button) {
+    const ev = allNouveautesEvents[index];
+    if (!ev || ev._autoAddTriggered) return;
+    const title = ev.type === 'telegram'
+        ? (ev.series_title || ev.parsed_title || ev.filename)
+        : (ev.series_title || ev.matched_series_title || ev.bedetheque_title || ev.title);
+    const rawHint = ev.type === 'telegram' ? ev.filename
+        : ev.type === 'ebdz' ? (ev.links?.[0]?.filename ? decodeFilename(ev.links[0].filename) : ev.title)
+        : ev.title;
+    const bedethequeUrl = ev.type === 'ebdz' ? ev.matched_bedetheque_url : ev.bedetheque_url;
+    let seriesId = ev.type === 'ebdz' ? ev.matched_series_id : ev.series_id;
+    const seriesWasKnown = !!seriesId;
+    const original = button.innerHTML;
+    ev._autoAddTriggered = true;
+    button.disabled = true;
+    button.innerHTML = svgIcon('loader-circle', 'icon-spin');
+    showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'envoi du téléchargement' : 'ajout de la série et téléchargement'} en cours…`, { icon: 'loader-circle' });
+    const restore = () => { ev._autoAddTriggered = false; button.disabled = false; button.innerHTML = original; };
+    if (!seriesId) {
+        try {
+            seriesId = (await _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl, true)).seriesId;
+        } catch (error) {
+            let reviewQueued = false;
+            try {
+                await _queueNouveautesSeriesReview(ev, title, bedethequeUrl, error.message);
+                reviewQueued = true;
+            } catch (reviewError) {
+                console.error('Validation de série impossible', reviewError);
+            }
+            showToast('nouveautes-auto-add', `« ${title} » : ${error.message}${reviewQueued ? ' Envoyé en validation.' : ''}`,
+                { icon: 'circle-x', autoHideMs: 9000, ...(reviewQueued ? { href: '/validation' } : {}) });
+            restore();
+            return;
+        }
+    }
+    try {
+        const destination = await _downloadNouveautesRelease(ev, seriesId);
+        showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'téléchargement envoyé à ' : 'série ajoutée, téléchargement envoyé à '}${destination}.`,
+            { icon: 'check', autoHideMs: 6000, href: `/series/${seriesId}` });
+        button.innerHTML = svgIcon('check');
+        button.style.color = 'var(--color-accent)';
+    } catch (error) {
+        // La série reste ajoutée: seul le téléchargement est à relancer.
+        showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? '' : 'série ajoutée, mais '}${error.message}`,
+            { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
+        restore();
     }
 }
 
@@ -192,59 +322,6 @@ async function _attachSeriesToPendingDownload(client, seriesId, identity) {
         } catch (e) { /* best-effort */ }
     }
     return false;
-}
-
-// L'éclair ajoute la série si nécessaire, puis lance la recherche automatique de
-// tous ses tomes manquants. Le téléchargement d'un fichier précis garde son bouton.
-async function autoAddAndSearchNouveautesSeries(index, button) {
-    const ev = allNouveautesEvents[index];
-    if (!ev || ev._autoAddTriggered) return;
-    const title = ev.type === 'telegram'
-        ? (ev.series_title || ev.parsed_title || ev.filename)
-        : (ev.series_title || ev.matched_series_title || ev.bedetheque_title || ev.title);
-    const rawHint = ev.type === 'telegram' ? ev.filename
-        : ev.type === 'ebdz' ? (ev.links?.[0]?.filename ? decodeFilename(ev.links[0].filename) : ev.title)
-        : ev.title;
-    const bedethequeUrl = ev.type === 'ebdz' ? ev.matched_bedetheque_url : ev.bedetheque_url;
-    let seriesId = ev.type === 'ebdz' ? ev.matched_series_id : ev.series_id;
-    const original = button.innerHTML;
-    ev._autoAddTriggered = true;
-    button.disabled = true;
-    button.innerHTML = svgIcon('loader-circle', 'icon-spin');
-    showToast('nouveautes-auto-add', `« ${title} » : ajout et recherche automatique en cours…`, { icon: 'loader-circle' });
-    try {
-        if (!seriesId) {
-            const resolved = await _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl, true);
-            seriesId = resolved.seriesId;
-        }
-        const response = await fetch('/api/bedetheque/auto-acquire/run', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ series_id: seriesId })
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.error || 'Recherche automatique impossible');
-        showToast('nouveautes-auto-add', result.started
-            ? `« ${title} » : recherche automatique lancée pour ${result.count} ${pluralize(result.count, 'tome')}.`
-            : `« ${title} » : aucun tome manquant à rechercher.`,
-            { icon: result.started ? 'search' : 'info', autoHideMs: 6000, href: `/series/${seriesId}` });
-        button.innerHTML = svgIcon('check');
-        button.style.color = 'var(--color-accent)';
-    } catch (error) {
-        ev._autoAddTriggered = false;
-        let reviewQueued = false;
-        if (!seriesId) {
-            try {
-                await _queueNouveautesSeriesReview(ev, title, bedethequeUrl, error.message);
-                reviewQueued = true;
-            } catch (reviewError) {
-                console.error('Validation de série impossible', reviewError);
-            }
-        }
-        showToast('nouveautes-auto-add', `« ${title} » : ${error.message}${reviewQueued ? ' Ajouté à Validation.' : ''}`,
-            { icon: 'circle-x', autoHideMs: 9000, ...(reviewQueued ? { href: '/validation' } : seriesId ? { href: `/series/${seriesId}` } : {}) });
-        button.disabled = false;
-        button.innerHTML = original;
-    }
 }
 
 let allNouveautesEvents = [];
@@ -710,7 +787,7 @@ function _nouveautesEbdzRowHtml(event, index) {
         (!seriesMatched || (event.links || []).some(link => link.already_owned !== true));
     const addToLibraryHtml = `
         ${allOwned ? `<button class="btn-icon-only" onclick="event.stopPropagation(); ${replaceLinkIndex >= 0 ? `replaceNouveautesEbdzLink(${event._index}, ${replaceLinkIndex}, this)` : `toggleNouveautesFiles('nouveautes-row-${event._index}', allNouveautesEvents[${event._index}], ${event._index})`}" data-tooltip="${replaceLinkIndex >= 0 ? 'Télécharger et remplacer ce fichier' : 'Choisir le fichier à remplacer'}" aria-label="${replaceLinkIndex >= 0 ? 'Télécharger et remplacer ce fichier' : 'Choisir le fichier à remplacer'}">${svgIcon('file-replace')}</button>` : ''}
-        ${showAutoSearch ? `<button class="btn-icon-only" onclick="event.stopPropagation(); autoAddAndSearchNouveautesSeries(${event._index}, this)" data-tooltip="Ajouter si nécessaire, puis rechercher automatiquement les tomes manquants">${svgIcon('zap')}</button>` : ''}
+        ${showAutoSearch ? `<button class="btn-icon-only" onclick="event.stopPropagation(); addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger ce fichier">${svgIcon('zap')}</button>` : ''}
         ${seriesMatched ? '' : `<button class="btn-icon-only" onclick="event.stopPropagation(); window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir">${svgIcon('plus')}</button>`}
     `;
     const statusHtml = `
@@ -785,7 +862,7 @@ function _nouveautesRssRowHtml(event) {
     const replaceOwned = event.already_owned === true && !!event.series_id;
     const addButton = event.title ? (replaceOwned
         ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesRssFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
-        : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="autoAddAndSearchNouveautesSeries(${event._index}, this)" data-tooltip="Ajouter si nécessaire, puis rechercher automatiquement les tomes manquants" aria-label="Ajouter et rechercher automatiquement">${svgIcon('zap')}</button>`}${_nouveautesMatched(event) ? '' : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
+        : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger cette release" aria-label="Ajouter la série et télécharger cette release">${svgIcon('zap')}</button>`}${_nouveautesMatched(event) ? '' : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
     const matchedSeriesHtml = _nouveautesSeriesHtml(event);
     const downloadButtons = (event.download_links || []).map(item => `<a class="btn-icon-only" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" data-tooltip="${escapeHtml(item.label || 'Télécharger')}" aria-label="${escapeHtml(item.label || 'Télécharger')}" onclick="event.stopPropagation()">${svgIcon('download')}</a>`).join('');
     const torrentClientButtons = (event.download_links || []).map((item, itemIndex) => _nouveautesRssTorrentClientButtons(event, item, itemIndex)).join('');
@@ -808,7 +885,7 @@ function _nouveautesTelegramRowHtml(event) {
     const seriesMatched = _nouveautesMatched(event);
     const showReplace = !!event.series_id && event.already_owned === true;
     const addToLibraryHtml = `
-        ${showReplace ? `<button class="btn-icon-only" onclick="replaceNouveautesTelegramFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>` : event._autoAddTriggered ? '' : `<button class="btn-icon-only" onclick="autoAddAndSearchNouveautesSeries(${event._index}, this)" data-tooltip="Ajouter si nécessaire, puis rechercher automatiquement les tomes manquants">${svgIcon('zap')}</button>`}
+        ${showReplace ? `<button class="btn-icon-only" onclick="replaceNouveautesTelegramFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>` : event._autoAddTriggered ? '' : `<button class="btn-icon-only" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger ce fichier">${svgIcon('zap')}</button>`}
         ${seriesMatched ? '' : `<button class="btn-icon-only" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(addToLibraryQuery)}')" data-tooltip="Ajouter la série dans Découvrir">${svgIcon('plus')}</button>`}
     `;
     return `

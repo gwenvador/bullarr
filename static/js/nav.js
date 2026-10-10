@@ -665,7 +665,7 @@ function initResizableTableColumns(root) {
         // pixels enregistrées lors d un ancien redimensionnement (sur un écran plus large)
         // écrasaient la grille CSS adaptative et faisaient déborder le tableau (Actions par-dessus
         // Série). Ce tableau repart donc toujours de ses largeurs CSS.
-        const savedWidths = table.classList.contains('nouveautes-table') ? {} : _readSavedColumnWidths(key);
+        const savedWidths = (table.classList.contains('nouveautes-table') || table.classList.contains('volumes-table')) ? {} : _readSavedColumnWidths(key);
         const ths = Array.from(headerRow.children).filter(el => el.tagName === 'TH');
         // "the cell don't get wrap and extend on the other cells when I resize" - voir
         // .has-resized-columns (style.css): sans elle, un contenu que le CSS propre à

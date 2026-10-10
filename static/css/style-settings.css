@@ -1119,3 +1119,56 @@
 }
 .bdt-index-schedule-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .bdt-index-schedule-message { font-size: 0.9em; }
+
+/* « change les checkbox en switch comme pour l'index local Bédéthèque » - chaque réglage
+   marche/arrêt de la configuration (blocs .checkbox-group, et .switch-input ailleurs) prend
+   l'apparence de l'interrupteur de l'index Bédéthèque (.switch), sans changer le balisage ni
+   le comportement: c'est toujours une case à cocher (checked, onchange, label for...). Les
+   listes de sélection multiple (forums, indexeurs, catégories) gardent leurs cases. */
+.checkbox-group input[type="checkbox"],
+input[type="checkbox"].switch-input {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 24px;
+    margin: 0;
+    border: none;
+    border-radius: 24px;
+    background: var(--color-border);
+    cursor: pointer;
+    vertical-align: middle;
+    transition: background 0.2s;
+}
+.checkbox-group input[type="checkbox"]::before,
+input[type="checkbox"].switch-input::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s;
+}
+.checkbox-group input[type="checkbox"]:checked,
+input[type="checkbox"].switch-input:checked {
+    background: var(--color-accent);
+}
+.checkbox-group input[type="checkbox"]:checked::before,
+input[type="checkbox"].switch-input:checked::before {
+    transform: translateX(20px);
+}
+.checkbox-group input[type="checkbox"]:focus-visible,
+input[type="checkbox"].switch-input:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+.checkbox-group input[type="checkbox"]:disabled,
+input[type="checkbox"].switch-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

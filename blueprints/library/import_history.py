@@ -4,6 +4,7 @@ Historique des imports de fichiers
 import sqlite3
 import json
 import os
+import time
 from flask import current_app
 
 
@@ -188,6 +189,33 @@ def get_waiting_import_snapshot():
             conn.close()
 
 
+def purge_finished_import_items():
+    """Supprime les fichiers repérés par la page Import qui ne servent plus à rien: absents du
+    disque ET rattachés à un téléchargement terminé (importé, ignoré, annulé) ou disparu. Ils
+    n'entrent dans aucun compteur (voir get_waiting_import_snapshot), seulement dans le volume
+    de la table. Retourne le nombre de lignes supprimées."""
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        cursor = conn.execute("""
+            DELETE FROM import_items
+            WHERE source_available = 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM active_downloads d
+                  WHERE d.id = import_items.tracking_id
+                    AND d.status NOT IN ('imported', 'skipped', 'cancelled')
+              )
+        """)
+        conn.commit()
+        return cursor.rowcount or 0
+    except sqlite3.Error as exc:
+        print(f"Erreur purge items Import: {exc}")
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
+
 def mark_import_item_unavailable(source_path):
     if not source_path:
         return
@@ -206,6 +234,35 @@ def cleanup_stale_operations():
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+
+        # Au démarrage aucun import ne peut encore tourner (un seul processus, planificateur pas
+        # encore lancé): toute réservation de fichier et tout téléchargement « importing »
+        # viennent d'un import interrompu (redémarrage, redéploiement) et sont libérés tout de
+        # suite au lieu d'attendre l'expiration de 30 minutes.
+        cursor.execute('DELETE FROM import_in_progress')
+        released_claims = cursor.rowcount or 0
+        try:
+            cursor.execute("UPDATE active_downloads SET status = 'completed' WHERE status = 'importing'")
+            reverted_downloads = cursor.rowcount or 0
+        except sqlite3.Error:
+            reverted_downloads = 0
+        if released_claims or reverted_downloads:
+            conn.commit()
+            print(f"✓ Import interrompu repris: {released_claims} réservation(s) de fichier libérée(s), "
+                  f"{reverted_downloads} téléchargement(s) repassé(s) en attente d'import")
+
+        # Une ligne de fichier restée « en cours » depuis plus d'un jour appartient à une
+        # opération déjà close (interrompue avant la mise à jour de cette ligne): elle ne
+        # serait jamais nettoyée par la reprise des opérations « started » ci-dessous.
+        cursor.execute('''
+            UPDATE import_history_files
+            SET status = 'error', action = 'error',
+                message = 'Traitement interrompu, sans résultat enregistré'
+            WHERE status = 'processing' AND created_at < datetime('now', '-1 day')
+        ''')
+        if cursor.rowcount:
+            conn.commit()
+            print(f"✓ {cursor.rowcount} ligne(s) d'historique restée(s) « en cours » depuis plus d'un jour clôturée(s)")
 
         cursor.execute('''
             SELECT operation_id FROM import_history
@@ -786,16 +843,50 @@ def mark_import_file_manual(filepath, destination=None):
 
 
 def get_finalized_import_source_paths():
+    return set(get_finalized_import_source_times())
+
+
+def get_finalized_import_source_times():
+    """{chemin source: horodatage UTC (secondes) de son dernier résultat d'import réussi
+    (importé, remplacé ou ignoré)} - voir routes.download_created_after pour l'exception des
+    fichiers retéléchargés sous le même nom."""
+    import calendar
     conn = None
     try:
         conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
-        rows = conn.execute("SELECT DISTINCT source_path FROM import_history_files WHERE source_path IS NOT NULL AND source_path != '' AND action IN ('imported','replaced','skipped') AND status = 'success'").fetchall()
-        return {row[0] for row in rows}
+        rows = conn.execute(
+            "SELECT source_path, MAX(created_at) FROM import_history_files "
+            "WHERE source_path IS NOT NULL AND source_path != '' "
+            "AND action IN ('imported','replaced','skipped') AND status = 'success' "
+            "GROUP BY source_path"
+        ).fetchall()
     except Exception as e:
         print(f'Erreur lecture des imports finalisés: {e}')
-        return set()
+        return {}
     finally:
         if conn: conn.close()
+    times = {}
+    for path, finished_at in rows:
+        try:
+            times[path] = calendar.timegm(time.strptime(finished_at, '%Y-%m-%d %H:%M:%S'))
+        except (TypeError, ValueError):
+            times[path] = 0
+    return times
+
+
+def unmark_import_file_manual(filepath):
+    """Retire la mise de côté d'un fichier (voir mark_import_file_manual)."""
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=120.0, check_same_thread=False)
+        conn.execute('DELETE FROM import_manual_overrides WHERE filepath = ?', (filepath,))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Erreur lors du retrait de la mise de côté de {filepath}: {e}")
+    finally:
+        if conn:
+            conn.close()
+
 
 def get_manual_override_destinations():
     """Return persisted manual destinations keyed by source filepath."""

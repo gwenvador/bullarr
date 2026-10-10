@@ -99,7 +99,8 @@ class ContainerArchiveIdentityTest(unittest.TestCase):
             make_zip(album, ["p1.jpg", "p2.jpg"])
             self.assertTrue(routes._is_container_archive(pack, ".zip", None))
             self.assertFalse(routes._is_container_archive(album, ".zip", None))
-            self.assertTrue(routes._is_container_archive(album, ".zip", {"is_pack": True}))
+            # Une archive d un seul album reste un album, même dans un téléchargement-pack.
+            self.assertFalse(routes._is_container_archive(album, ".zip", {"is_pack_download": True}))
             self.assertTrue(routes._is_container_archive("x.rar", ".rar", None))
             self.assertFalse(routes._is_container_archive("x.cbz", ".cbz", {"is_pack": True}))
 
@@ -329,3 +330,69 @@ class PackageNameSafetyTest(unittest.TestCase):
             for item in created:
                 self.assertTrue(os.path.realpath(item["path"]).startswith(inside), item)
             self.assertEqual(sorted(os.listdir(tmp)), ["evil.zip", "out"])
+
+
+class ArchiveKindTest(unittest.TestCase):
+    """Album unique ou pack, quel que soit le format d archive (régression .rar d un seul album)."""
+
+    def make_tar(self, path, names):
+        import io
+        import tarfile
+        with tarfile.open(path, "w") as tar:
+            for name in names:
+                info = tarfile.TarInfo(name)
+                info.size = 1
+                tar.addfile(info, io.BytesIO(b"x"))
+
+    def test_single_album_archives_are_volumes_whatever_their_format(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            single = os.path.join(tmp, "Thorgal T01.tar")
+            self.make_tar(single, ["T01/p1.jpg", "T01/p2.jpg"])
+            multi = os.path.join(tmp, "Pack.tar")
+            self.make_tar(multi, ["01/p1.jpg", "02/p1.jpg"])
+            files = os.path.join(tmp, "Albums.tar")
+            self.make_tar(files, ["Thorgal T01.cbz", "Thorgal T02.cbz"])
+            self.assertFalse(routes._is_container_archive(single, ".tar", None))
+            self.assertTrue(routes._is_container_archive(multi, ".tar", None))
+            self.assertTrue(routes._is_container_archive(files, ".tar", None))
+            self.assertTrue(routes._archive_contains_only_images(multi))
+            self.assertFalse(routes._archive_contains_only_images(files))
+
+
+class ArchiveListingCacheTest(unittest.TestCase):
+    def test_listing_is_cached_until_the_archive_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "a.zip")
+            make_zip(path, ["p1.jpg"])
+            from unittest import mock
+            with mock.patch.object(routes, "list_archive_members", wraps=routes.list_archive_members) as listing:
+                routes._archive_listing_cache.clear()
+                self.assertTrue(routes._archive_is_single_album(path))
+                self.assertTrue(routes._archive_is_single_album(path))
+                self.assertEqual(listing.call_count, 1)
+                make_zip(path, ["01/p1.jpg", "02/p1.jpg", "02/p2.jpg"])
+                os.utime(path, (1, 1))
+                self.assertFalse(routes._archive_is_single_album(path))
+                self.assertEqual(listing.call_count, 2)
+
+
+class ArchiveExtractionTest(unittest.TestCase):
+    """Les archives de pages ne sont plus extraites (mises à plat) d office."""
+
+    def test_only_archives_of_comic_files_are_extracted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "imports")
+            os.makedirs(root)
+            pages = os.path.join(root, "Pack pages.zip")
+            make_zip(pages, ["01/001.jpg", "02/001.jpg"])
+            albums = os.path.join(root, "Pack albums.zip")
+            make_zip(albums, ["A/Thorgal T01.cbz", "A/Thorgal T02.cbz"])
+            app = Flask(__name__)
+            app.config["DATABASE"] = os.path.join(tmp, "x.db")
+            app.config["IMPORT_DIRECTORIES"] = [root]
+            with app.app_context():
+                routes._extract_archive_containers([root])
+            self.assertTrue(os.path.exists(pages))
+            self.assertFalse(os.path.exists(os.path.join(root, "Pack pages")))
+            self.assertFalse(os.path.exists(albums))
+            self.assertEqual(sorted(os.listdir(os.path.join(root, "Pack albums"))), ["Thorgal T01.cbz", "Thorgal T02.cbz"])

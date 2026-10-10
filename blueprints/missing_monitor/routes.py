@@ -341,6 +341,37 @@ def configure_series_monitor(series_id):
         return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
+def _refine_search_results_volumes(results, series_id, requested_volume, typed_search):
+    """Même lecture du tome que l'import: parseur actuel (le tome stocké pour un résultat EBDZ
+    date de sa récupération) et titre d'album Bédéthèque contenu dans le nom (« … - T12 - Les 3
+    Formules du Professeur Satô - Tome 2 » est le tome 12, pas le 2). Met à jour le tome et la
+    mention « tome non confirmé » de chaque résultat."""
+    from urllib.parse import unquote
+    from blueprints.library.routes import refine_volume_from_album_title
+    from blueprints.library.scanner import LibraryScanner
+    conn = get_db_connection()
+    row = conn.execute('SELECT title FROM series WHERE id = ?', (series_id,)).fetchone()
+    conn.close()
+    series_title = row['title'] if row else None
+    for result in results:
+        name = unquote(str(result.get('filename') or result.get('title') or ''))
+        parsed = LibraryScanner.parse_filename(name)
+        if parsed.get('is_hs') or parsed.get('is_integral') or parsed.get('is_episode'):
+            continue
+        refine_volume_from_album_title(parsed, series_id, name, series_title)
+        volume = parsed.get('volume')
+        if volume is None or volume == result.get('volume'):
+            continue
+        result['volume'] = volume
+        result['parsed_volume'] = f'Tome {volume}'
+        if not typed_search and requested_volume is not None:
+            result['unconfirmed_volume'] = volume != requested_volume
+            if result['unconfirmed_volume']:
+                result['unconfirmed_reason'] = f"Ce fichier est le tome {volume}, pas le tome {requested_volume}"
+            else:
+                result.pop('unconfirmed_reason', None)
+
+
 @missing_monitor_bp.route('/search', methods=['POST'])
 def search_volume():
     """Recherche un volume spécifique
@@ -394,6 +425,9 @@ def search_volume():
         # sinon buté sur ce second plafond juste en dessous. Chaque source se limite
         # déjà elle-même à une taille raisonnable (30 pour Prowlarr/Telegram, 10/100
         # pour EBDZ selon le cas) - pas besoin d'un plafond combiné en plus.
+        if series_id and results:
+            _refine_search_results_volumes(results, int(series_id), volume_num, bool(label))
+
         query_suffix = label or (f'Vol {volume_num}' if volume_num is not None else '')
         return jsonify({
             'success': True,

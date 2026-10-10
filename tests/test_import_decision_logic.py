@@ -1,4 +1,6 @@
+import os
 import sqlite3
+import json
 import unittest
 from unittest import mock
 
@@ -183,3 +185,175 @@ class DestinationFromTrackedDownloadTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AutomaticHoldTest(unittest.TestCase):
+    """Cas Blake et Mortimer: mis de côté à tort, avec un motif « assignation faite à la main »."""
+
+    def test_bedetheque_inverted_titles_match_the_file_title(self):
+        dest = {"series_title": "Blake et Mortimer (Les Aventures de)"}
+        self.assertTrue(routes._pack_file_matches_destination({"title": "Les aventures de Blake et Mortimer"}, dest))
+        self.assertTrue(routes._pack_file_matches_destination({"title": "Blake et Mortimer"}, dest))
+        self.assertTrue(routes._pack_file_matches_destination({"title": "Le Gang"}, {"series_title": "Gang (Le)"}))
+        self.assertFalse(routes._pack_file_matches_destination({"title": "Les aventures de Tintin"}, dest))
+
+    def test_reason_explains_why_the_import_held_the_file(self):
+        dest = {"series_title": "Thorgal"}
+        reason = routes._automatic_hold_reason("/downloads/torrents/p/x.cbz", {"title": "Aldebaran"}, dest)
+        self.assertIn("Aldebaran", reason)
+        self.assertIn("Thorgal", reason)
+        self.assertIn("sous-dossiers", routes._automatic_hold_reason("/downloads/torrents/p/x.cbz", {"title": "Thorgal"}, dest))
+        packaged = os.path.join(routes._PACKAGE_TEMP_DIR, "01.cbz")
+        self.assertIn("empaqueté", routes._automatic_hold_reason(packaged, {"title": "x"}, None))
+
+
+class GluedSeparatorAndAlbumTitleTest(unittest.TestCase):
+    """Cas Blake et Mortimer « -12- »: n importe quel numéro entre deux tirets collés."""
+
+    def test_any_number_between_glued_dashes_is_the_volume(self):
+        from blueprints.library.scanner import LibraryScanner
+        for name, title, volume in (("Blake et Mortimer-8-Le Piege diabolique.cbz", "Blake et Mortimer", 8),
+                                    ("Blake Et Mortimer-11-Les 3 Formules.cbz", "Blake Et Mortimer", 11),
+                                    ("Blake et Mortimer-21-Le serment des cinq lords.cbz", "Blake et Mortimer", 21),
+                                    ("Okko-09-Le cycle du vide I.cbr", "Okko", 9),
+                                    ("Spider-Man - 03.cbz", "Spider-Man", 3)):
+            parsed = LibraryScanner.parse_filename(name)
+            self.assertEqual((parsed["title"], parsed["volume"]), (title, volume), name)
+
+    def test_album_title_in_the_name_gives_the_volume_number(self):
+        import json, sqlite3, tempfile
+        from flask import Flask
+        from blueprints.library.scanner import LibraryScanner
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "b.db")
+            conn = sqlite3.connect(db)
+            conn.execute("CREATE TABLE volumes (id INTEGER PRIMARY KEY, series_id INTEGER, volume_number INTEGER, is_bis INTEGER DEFAULT 0, comicinfo TEXT)")
+            for number, title in ((2, "Le Secret de l\x27Espadon - Tome 2"), (11, "Les 3 Formules du Professeur Satô - Tome 1"),
+                                  (12, "Les 3 Formules du Professeur Satô - Tome 2")):
+                conn.execute("INSERT INTO volumes (series_id, volume_number, comicinfo) VALUES (715, ?, ?)", (number, json.dumps({"title": title})))
+            conn.commit()
+            conn.close()
+            app = Flask(__name__)
+            app.config["DATABASE"] = db
+            with app.app_context():
+                name = "Blake Et Mortimer-12-Les 3 Formules Du Professeur Sato - Tome 2.cbz"
+                parsed = LibraryScanner.parse_filename(name)
+                routes.refine_volume_from_album_title(parsed, 715, name, "Blake et Mortimer (Les Aventures de)")
+                self.assertEqual(parsed["volume"], 12)
+                other = LibraryScanner.parse_filename("Blake et Mortimer-21-Le serment des cinq lords.cbz")
+                routes.refine_volume_from_album_title(other, 715, "Blake et Mortimer-21-Le serment des cinq lords.cbz", "Blake et Mortimer")
+                self.assertEqual(other["volume"], 21)                                   # aucun titre reconnu: inchangé
+
+
+class AlreadyInLibraryTest(unittest.TestCase):
+    def test_owned_volume_is_reported_with_the_import_decision(self):
+        from unittest import mock
+        dest = {"series_id": 1, "series_title": "Thorgal"}
+        with mock.patch.object(routes, "get_db_connection") as conn, \
+                mock.patch.object(routes, "_find_existing_volume_for_import", return_value=(5, "/BD/T01.cbz", 100, "cbz")):
+            self.assertEqual(routes._existing_volume_info(dest, {"volume": 1}, "T01.cbz", 104),
+                             {"size": 100, "format": "cbz", "will_replace": False})           # doublon: ignoré
+            self.assertTrue(routes._existing_volume_info(dest, {"volume": 1}, "T01.cbz", 200)["will_replace"])
+        with mock.patch.object(routes, "get_db_connection"), \
+                mock.patch.object(routes, "_find_existing_volume_for_import", return_value=(5, None, None, None)):
+            self.assertIsNone(routes._existing_volume_info(dest, {"volume": 1}, "T01.cbz", 100))   # placeholder sans fichier
+        self.assertIsNone(routes._existing_volume_info({"series_id": 1, "is_new_series": True}, {}, "x", 1))
+
+
+class SpecialTagTitleTest(unittest.TestCase):
+    """« Titre-HS-Album »: le titre de la série s arrête au marqueur retiré."""
+
+    def test_title_stops_at_the_removed_tag(self):
+        from blueprints.library.scanner import LibraryScanner
+        for name, title, hs in (("Blake Et Mortimer-HS-Le Rayon U.cbz", "Blake Et Mortimer", None),
+                                ("Blake Et Mortimer - HS - Le Rayon U.cbz", "Blake Et Mortimer", None),
+                                ("Thorgal-HS2-La saga.cbz", "Thorgal", 2),
+                                ("Ivor - HS 03 - Le retour du roi (Zoran).cbr", "Ivor", 3)):
+            parsed = LibraryScanner.parse_filename(name)
+            self.assertEqual((parsed["title"], parsed["is_hs"], parsed["hs_number"]), (title, True, hs), name)
+
+    def test_a_too_short_prefix_is_not_taken_as_the_title(self):
+        from blueprints.library.scanner import LibraryScanner
+        parsed = LibraryScanner.parse_filename("FT-[BD.FR].[Jije]-Valhardi-T08-L.affaire.Barnes.zip")
+        self.assertIn("Valhardi", parsed["title"])
+
+
+class LeadingVolumeNumberTest(unittest.TestCase):
+    """Cas Blake et Mortimer T26 importé en tome 2: le numéro qui suit le titre l emporte."""
+
+    def test_number_right_after_the_series_title_wins_over_a_subtitle_tome(self):
+        from blueprints.library.scanner import LibraryScanner
+        for name, volume in (("Blake Et Mortimer-26-La Vallée Des Immortels - T2 - Le Millième Bras Du Mékong (Edition Bibliophile).cbz", 26),
+                             ("Blake Et Mortimer-20-La Malédiction Des Trente Deniers - Tome 02 - La Porte D Or.cbz", 20),
+                             ("X-13 Agent Secret - 187 - (1968-08) (Guymauve).cbr", 187),
+                             ("14-18 - Corbeyran-Le Roux - 05 - Le colosse d ébène.cbr", 5),
+                             ("Tanguy et Laverdure - 03 - Le Vol 501.cbr", 3),
+                             ("Blake Et Mortimer-02-Le Secret De L Espadon 2.cbz", 2),
+                             ("Thorgal - Tome 03.cbz", 3)):
+            self.assertEqual(LibraryScanner.parse_filename(name)["volume"], volume, name)
+
+    def test_t2_and_tome_2_are_the_same_in_album_titles(self):
+        self.assertEqual(routes._album_words("La Vallée des Immortels - Tome 2 - Le Millième Bras du Mékong"),
+                         routes._album_words("La Vallee Des Immortels - T2 - Le Millieme Bras Du Mekong"))
+
+
+class UnnumberedSpecialAlbumsTest(unittest.TestCase):
+    """Cas Blake et Mortimer: 4 hors-séries sans numéro ignorés comme « doublons » du premier."""
+
+    def setUp(self):
+        import sqlite3
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.executescript("""
+            CREATE TABLE series (id INTEGER PRIMARY KEY, title TEXT);
+            CREATE TABLE volumes (id INTEGER PRIMARY KEY, series_id INTEGER, volume_number INTEGER, is_bis INTEGER DEFAULT 0,
+                is_integral INTEGER DEFAULT 0, integral_number INTEGER, is_hs INTEGER DEFAULT 0, hs_number INTEGER,
+                is_episode INTEGER DEFAULT 0, episode_number INTEGER, is_special INTEGER DEFAULT 0, special_label TEXT,
+                filename TEXT, filepath TEXT, file_size INTEGER, format TEXT, comicinfo TEXT);
+            INSERT INTO series VALUES (715, \x27Blake et Mortimer (Les Aventures de)\x27);
+            INSERT INTO volumes (id, series_id, is_hs, filename, filepath, file_size, format)
+                VALUES (1, 715, 1, \x27Blake Et Mortimer-HS-Le Rayon U.cbz\x27, \x27/BD/hs-rayon.cbz\x27, 100, \x27cbz\x27);
+        """)
+        self.addCleanup(self.conn.close)
+
+    def find(self, name):
+        return routes._find_existing_volume_for_import(self.conn.cursor(), 715, {"is_hs": True, "hs_number": None}, source_name=name)
+
+    def test_another_unnumbered_special_is_a_new_album(self):
+        self.assertIsNone(self.find("Blake Et Mortimer-HS-Le Théâtre Du Mystère.pdf")[0])
+        self.assertIsNone(self.find("Blake Et Mortimer-HS-L Aventure Immobile.pdf")[0])
+
+    def test_the_same_special_is_still_recognised(self):
+        self.assertEqual(self.find("Blake et Mortimer - HS - Le Rayon U (édition 2020).cbz")[0], 1)
+
+
+class LeadingTomePrefixTest(unittest.TestCase):
+    def test_t_prefixed_leading_number_with_inverted_series_title(self):
+        from blueprints.library.scanner import LibraryScanner
+        name = "Blake Et Mortimer (Les Aventures De) - T12 - Les 3 Formules Du Professeur Satô - Tome 2 (Edgar Pierre Jacobs) (1990) (TONER 3199px).cbz"
+        self.assertEqual(LibraryScanner.parse_filename(name)["volume"], 12)
+        self.assertEqual(LibraryScanner.parse_filename("Empire USA - T07 - Saison 2 - Tome 1.cbz")["volume"], 7)
+
+
+class MainAlbumTitleFallbackTest(unittest.TestCase):
+    ROWS = [
+        (1, json.dumps({"title": "Le Secret de l\x27Espadon - Tome 1"})),
+        (2, json.dumps({"title": "Le Secret de l\x27Espadon - Tome 2"})),
+        (25, json.dumps({"title": "La Vallée des Immortels - Tome 1 - Menace sur Hong Kong"})),
+        (26, json.dumps({"title": "La Vallée des Immortels - Tome 2 - Le Millième Bras du Mékong"})),
+        (27, json.dumps({"title": "Le Cri du Moloch"})),
+    ]
+
+    def _pick(self, volume, name):
+        from blueprints.library import routes
+        common = routes._album_words("Blake et Mortimer") | routes._ALBUM_TITLE_STOPWORDS
+        return routes._volume_from_main_album_title(volume, self.ROWS, routes._album_words(name), common)
+
+    def test_other_album_title_with_tome_tiebreak(self):
+        self.assertEqual(self._pick(1, "Blake et Mortimer - T1 - La vallée des Immortels"), 25)
+        self.assertEqual(self._pick(2, "Blake et Mortimer - T2 - La vallée des Immortels"), 26)
+        self.assertEqual(self._pick(1, "Blake.et.Mortimer.T01.Menace.sur.Hong.Kong"), 25)
+
+    def test_keeps_volume_when_name_matches_its_album_or_has_no_title(self):
+        self.assertIsNone(self._pick(1, "Blake et Mortimer - T1 - Le Secret de l Espadon"))
+        self.assertIsNone(self._pick(3, "Blake et Mortimer T03"))
+        self.assertIsNone(self._pick(None, "Le Cri du Moloch"))

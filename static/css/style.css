@@ -3196,7 +3196,28 @@ table thead th {
     word-break: normal;
 }
 .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-control {
-    width: min(130px, 100%);
+    width: min(240px, 100%);
+}
+/* Le filtre Série (« Pas en bibliothèque ») prend toute la largeur de sa colonne. */
+.nouveautes-table > thead > tr > th:nth-child(5) .th-filterable-control {
+    width: 100%;
+}
+
+/* « sur un écran large type et origine sont très petits » - au-delà de 1400px, la place
+   gagnée va aussi aux colonnes compactes (Type, Origine, Série, Actions) au lieu d'aller
+   entièrement à Détails. */
+@media (min-width: 1400px) {
+    .nouveautes-table > thead > tr > th:nth-child(1),
+    .nouveautes-table > tbody > tr > td:nth-child(1) { width: 96px; }
+    .nouveautes-table > thead > tr > th:nth-child(2),
+    .nouveautes-table > tbody > tr > td:nth-child(2) { width: 64px; }
+    .nouveautes-table > thead > tr > th:nth-child(3),
+    .nouveautes-table > tbody > tr > td:nth-child(3) { width: 170px; }
+    .nouveautes-table > thead > tr > th:nth-child(5),
+    .nouveautes-table > tbody > tr > td:nth-child(5) { width: 180px; }
+    .nouveautes-table > thead > tr > th:nth-child(6),
+    .nouveautes-table > tbody > tr > td:nth-child(6) { width: 150px; }
+    .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-control { width: min(320px, 100%); }
 }
 .nouveautes-actions-cell,
 .nouveautes-table > thead > tr > th:nth-child(6) {
@@ -4056,4 +4077,40 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
 .nouveautes-matched-series a:focus-visible {
     color: var(--color-accent-hover);
     text-decoration: underline;
+}
+
+/* « dans un album j'ai la scrollbar latérale » - le tableau des tomes de la fiche série
+   tient dans la largeur disponible: grille fixe, colonnes courtes à largeur fixe, Nom et
+   Chemin se partagent le reste et sont tronqués (texte complet au survol, attribut title).
+   Plus de largeur minimale de 900 px qui forçait un défilement horizontal. */
+.volumes-table {
+    min-width: 0 !important;
+    width: 100%;
+    table-layout: fixed;
+}
+.volumes-table > thead > tr > th:first-child,
+.volumes-table > tbody > tr > td:first-child { width: 34px; }
+.volumes-table > thead > tr > th:nth-child(2),
+.volumes-table > tbody > tr > td:nth-child(2) { width: 72px; }
+.volumes-table > thead > tr > th:nth-child(4),
+.volumes-table > tbody > tr > td:nth-child(4) { width: 96px; }
+.volumes-table > thead > tr > th:nth-child(5),
+.volumes-table > tbody > tr > td:nth-child(5) { width: 70px; }
+.volumes-table > thead > tr > th:nth-child(6),
+.volumes-table > tbody > tr > td:nth-child(6) { width: 88px; }
+.volumes-table > thead > tr > th:last-child,
+.volumes-table > tbody > tr > td:last-child { width: 132px; }
+.volumes-table .volume-table-name,
+.volumes-table .volume-table-path {
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.volumes-table > thead > tr > th {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.volumes-table .volume-table-actions-inner {
+    flex-wrap: wrap;
 }

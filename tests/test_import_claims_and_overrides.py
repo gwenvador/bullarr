@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import tempfile
+import time
 import unittest
 
 from flask import Flask
@@ -87,6 +88,55 @@ class ImportClaimsAndOverridesTest(unittest.TestCase):
         self.assertEqual(import_history.get_manual_override_filepaths(), {kept})
         self.assertEqual(self.query('SELECT filepath FROM import_manual_overrides'), [(kept,)])
 
+    # --- re-downloaded file at an already imported path
+    def test_only_a_later_download_makes_an_imported_path_new_again(self):
+        from blueprints.library import routes
+        path = self.make_file("Thorgal T01.cbz")
+        import_history.log_import_file("op", "Thorgal T01.cbz", path, "/BD/x.cbz", "", "imported", "success", "", None)
+        times = import_history.get_finalized_import_source_times()
+        self.assertIn(path, times)
+        conn = sqlite3.connect(self.db)
+        conn.execute("CREATE TABLE IF NOT EXISTS active_downloads (id INTEGER PRIMARY KEY, created_at TEXT)")
+        conn.execute("INSERT INTO active_downloads VALUES (1, datetime('now', '-1 day'))")   # avant l'import
+        conn.execute("INSERT INTO active_downloads VALUES (2, datetime('now', '+1 hour'))")  # retéléchargement
+        conn.commit()
+        conn.close()
+        item = lambda tid: {"filepath": path, "destination": {"tracking_id": tid}}
+        self.assertEqual(routes._exclude_finalized_import_files([item(1)], times), [])          # copie revenue: écartée
+        self.assertEqual(len(routes._exclude_finalized_import_files([item(2)], times)), 1)     # retéléchargé: repris
+        self.assertEqual(len(routes._exclude_finalized_import_files([item(None)], times)), 0)
+        pending = [{"title": "Thorgal T01.cbz", "created_at": "2000-01-01 00:00:00"},
+                   {"title": "Thorgal T01.cbz", "created_at": "2999-01-01 00:00:00"}]
+        kept = routes._exclude_finalized_pending_downloads(pending, times)
+        self.assertEqual([p["created_at"] for p in kept], ["2999-01-01 00:00:00"])
+
+    # --- stale history rows
+    def test_file_rows_stuck_in_processing_for_a_day_are_closed_at_startup(self):
+        # Ligne sans opération parente (cas réel du 1er août): la purge des orphelines, qui
+        # passe par l opération parente, ne la voit jamais. Seule l ancienneté la rattrape.
+        conn = sqlite3.connect(self.db)
+        conn.execute("INSERT INTO import_history_files (operation_id, filename, source_path, destination_path, series_title, action, status, message, created_at) "
+                     "VALUES ('old-op', 'a.cbz', '/x/a.cbz', '', '', 'processing', 'processing', '', datetime('now', '-3 days'))")
+        conn.execute("INSERT INTO import_history_files (operation_id, filename, source_path, destination_path, series_title, action, status, message, created_at) "
+                     "VALUES ('old-op', 'b.cbz', '/x/b.cbz', '', '', 'processing', 'processing', '', datetime('now'))")
+        conn.commit()
+        conn.close()
+        import_history.cleanup_stale_operations()
+        rows = dict(self.query('SELECT filename, status FROM import_history_files'))
+        self.assertEqual(rows, {'a.cbz': 'error', 'b.cbz': 'processing'})
+
+    def test_startup_releases_claims_and_downloads_left_by_an_interrupted_import(self):
+        a = self.make_file('a.cbz')
+        import_history.claim_import_files([a], 'interrupted-op')
+        conn = sqlite3.connect(self.db)
+        conn.execute("CREATE TABLE IF NOT EXISTS active_downloads (id INTEGER PRIMARY KEY, status TEXT)")
+        conn.execute("INSERT INTO active_downloads (id, status) VALUES (1, 'importing'), (2, 'pending')")
+        conn.commit()
+        conn.close()
+        import_history.cleanup_stale_operations()
+        self.assertEqual(import_history.get_in_progress_filepaths(), set())
+        self.assertEqual(self.query('SELECT id, status FROM active_downloads ORDER BY id'), [(1, 'completed'), (2, 'pending')])
+
     # --- small helpers
     def test_delete_import_operation_removes_only_that_operation(self):
         import_history.log_import_operation('op-a', 'auto_import', '/x', 'completed')
@@ -139,6 +189,21 @@ class DiscoveredItemsPersistenceTest(unittest.TestCase):
             [self.item('first.cbz'), self.item(bad), self.item('last.cbz')], scanned_roots=[self.root])
         names = [os.path.basename(path) for path, _, _ in self.rows()]
         self.assertEqual(names, ['first.cbz', 'last.cbz'])
+
+    def test_purge_removes_only_unavailable_files_of_finished_or_vanished_downloads(self):
+        conn = sqlite3.connect(self.db)
+        conn.execute("CREATE TABLE active_downloads (id INTEGER PRIMARY KEY, status TEXT)")
+        conn.executemany("INSERT INTO active_downloads VALUES (?, ?)",
+                         [(1, 'imported'), (2, 'skipped'), (3, 'cancelled'), (4, 'completed'), (5, 'failed'), (6, 'pending')])
+        conn.commit()
+        conn.close()
+        items = [self.item(f'{n}.cbz', tracking_id=n) for n in (1, 2, 3, 4, 5, 6, 7)]   # 7: téléchargement disparu
+        import_history.persist_discovered_import_items(items, scanned_roots=[self.root])
+        import_history.persist_discovered_import_items([self.item('1-on-disk.cbz', tracking_id=1)], scanned_roots=[self.root])
+        self.assertEqual(import_history.purge_finished_import_items(), 4)            # 1, 2, 3 et 7, absents du disque
+        remaining = sorted(os.path.basename(path) for path, _, _ in self.rows())
+        self.assertEqual(remaining, ['1-on-disk.cbz', '4.cbz', '5.cbz', '6.cbz'])
+        self.assertEqual(import_history.purge_finished_import_items(), 0)
 
     def test_unavailable_marker_targets_the_resolved_path(self):
         import_history.persist_discovered_import_items([self.item('a.cbz')], scanned_roots=[])

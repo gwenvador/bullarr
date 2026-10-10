@@ -1056,21 +1056,96 @@ def rss_match_override():
     return jsonify({'success': True})
 
 
-@ebdz_bp.route('/rss/latest', methods=['GET'])
-def rss_latest():
-    from blueprints.library.routes import load_library_import_config
-
-    blocked_extensions = load_library_import_config().get('blocked_search_extensions', [])
-    feeds = [feed for feed in load_feeds(current_app.config['RSS_CONFIG_FILE']) if feed.get('enabled', True)]
+def _prepared_rss_feeds():
+    """Flux RSS activés, avec les indexeurs Prowlarr configurés appliqués."""
     prepared_feeds = []
-    for feed in feeds:
+    for feed in load_feeds(current_app.config['RSS_CONFIG_FILE']):
+        if not feed.get('enabled', True):
+            continue
         if feed.get('provider') == 'prowlarr' and feed.get('indexer_ids') is None:
             configured = load_prowlarr_config()
             configured_ids = configured.get('rss_indexers')
             if configured_ids is not None:
                 feed = {**feed, 'indexer_ids': configured_ids, 'category_ids': configured.get('selected_categories') or {}}
         prepared_feeds.append(feed)
-    feeds = prepared_feeds
+    return prepared_feeds
+
+
+RSS_MONITOR_FIRST_RUN_DAYS = 2
+RSS_MONITOR_SEEN_MAX = 5000
+# Une release dont le téléchargement a échoué (lien introuvable, client injoignable...) est
+# retentée aux passages suivants, au plus ce nombre de fois.
+RSS_MONITOR_MAX_RETRIES = 4
+
+
+def poll_rss_for_monitoring():
+    """Lit les flux RSS (en respectant le cache de RSS_PERSISTENT_CACHE_TTL_SECONDS) et passe
+    les releases jamais vues à la surveillance des séries (même traitement que les nouveautés
+    EBDZ et Telegram: tome manquant d'une série surveillée -> téléchargement automatique).
+    Au tout premier passage, seules les releases des RSS_MONITOR_FIRST_RUN_DAYS derniers jours
+    sont prises en compte. Retourne les statistiques de la surveillance (ou None)."""
+    from datetime import datetime as _dt
+    from blueprints.missing_monitor.new_file_handler import process_new_monitor_files
+
+    cache_path = _rss_persistent_cache_path()
+    state_path = os.path.join(os.path.dirname(cache_path), 'rss_monitor_seen.json')
+    try:
+        with open(state_path, encoding='utf-8') as handle:
+            state = json.load(handle)
+        seen, retries = list(state['seen']), dict(state.get('retries') or {})
+        first_run = False
+    except (OSError, ValueError, TypeError, KeyError):
+        seen, retries, first_run = [], {}, True
+    seen_set = set(seen)
+    cutoff = time.time() - RSS_MONITOR_FIRST_RUN_DAYS * 86400
+    new_items = []
+    for feed in _prepared_rss_feeds():
+        _feed, cached, _error = _read_rss_feed(feed, cache_path)
+        for entry in cached.get('entries') or []:
+            key = _rss_entry_key(entry)
+            if not key or key in seen_set:
+                continue
+            seen_set.add(key)
+            if first_run and key not in retries:
+                try:
+                    published = _dt.fromisoformat(str(entry.get('date') or '').replace('Z', '+00:00')).timestamp()
+                except ValueError:
+                    published = 0
+                if published < cutoff:
+                    seen.append(key)
+                    continue
+            new_items.append((key, {
+                'filename': entry.get('title') or '', 'title': entry.get('title') or '',
+                'link': entry.get('link') or entry.get('page_link') or '',
+                'download_links': entry.get('download_links') or [],
+                'prowlarr_indexer_id': entry.get('prowlarr_indexer_id'),
+            }))
+    totals = None
+    # Une release à la fois: on sait ainsi laquelle a échoué, pour la retenter plus tard.
+    for key, item in new_items:
+        stats = process_new_monitor_files('rss', [item]) or {}
+        if stats.get('errors') and retries.get(key, 0) + 1 < RSS_MONITOR_MAX_RETRIES:
+            retries[key] = retries.get(key, 0) + 1
+        else:
+            retries.pop(key, None)
+            seen.append(key)
+        totals = totals or {'downloads_sent': 0, 'queued_for_review': 0, 'errors': []}
+        totals['downloads_sent'] += stats.get('downloads_sent', 0)
+        totals['queued_for_review'] += stats.get('queued_for_review', 0)
+        totals['errors'] += stats.get('errors') or []
+    temp_path = state_path + '.tmp'
+    with open(temp_path, 'w', encoding='utf-8') as handle:
+        json.dump({'seen': seen[-RSS_MONITOR_SEEN_MAX:], 'retries': retries}, handle)
+    os.replace(temp_path, state_path)
+    return totals
+
+
+@ebdz_bp.route('/rss/latest', methods=['GET'])
+def rss_latest():
+    from blueprints.library.routes import load_library_import_config
+
+    blocked_extensions = load_library_import_config().get('blocked_search_extensions', [])
+    feeds = _prepared_rss_feeds()
     cache_path = _rss_persistent_cache_path()
     force_refresh = request.args.get('refresh') == '1'
     limit = min(max(request.args.get('limit', default=100, type=int), 1), 500)

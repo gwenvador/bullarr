@@ -47,6 +47,50 @@ def _should_skip_auto_import_path(filepath, manual_override_filepaths, in_progre
     )
 
 
+PART_CLEANUP_INTERVAL_SECONDS = 600
+
+
+CLIENT_SYNC_INTERVAL_SECONDS = 60
+# Filet de sécurité: si un client ne signale jamais la fin d'un téléchargement, ses fichiers
+# sont tout de même cherchés sur le disque, mais seulement toutes les 10 minutes.
+PENDING_FALLBACK_WALK_SECONDS = 600
+
+
+def _sync_download_clients():
+    """Interroge les clients qui ont des téléchargements en attente et enregistre ceux qui
+    sont terminés (même logique que le suivi d'activité affiché dans /import)."""
+    try:
+        from blueprints.missing_monitor.downloader import get_trackable_active_downloads, mark_download_completed
+        if not any(r.get('download_status') == 'pending' and r.get('client') in ('amule', 'qbittorrent', 'rtorrent', 'deluge')
+                   for r in get_trackable_active_downloads()):
+            return
+        from blueprints.activity.routes import activity_status
+        data = activity_status().get_json() or {}
+        for tracking_id in data.get('completed_pending_ids') or []:
+            mark_download_completed(tracking_id)
+    except Exception as exc:
+        print(f"Erreur vérification des clients de téléchargement: {exc}")
+
+
+def _auto_import_has_work(include_pending=True):
+    """True s'il y a un fichier susceptible d'être importé: un téléchargement suivi terminé
+    ou en cours d'import, ou (include_pending, filet de sécurité) encore en attente. Aussi True
+    si la notification Telegram « nouveau fichier disponible » est active (elle surveille tous
+    les fichiers)."""
+    from blueprints.missing_monitor.downloader import get_trackable_active_downloads
+    rows = get_trackable_active_downloads()
+    if any(r.get('download_status') in ('completed', 'importing') for r in rows):
+        return True
+    if include_pending and rows:
+        return True
+    try:
+        from blueprints.telegram.routes import load_telegram_config
+        telegram_config = load_telegram_config()
+        return bool(telegram_config.get('enabled') and telegram_config.get('notify_import_available', True))
+    except Exception:
+        return False
+
+
 def _cleanup_stale_part_files(import_directories):
     """Supprime tout fichier .part dont la dernière écriture remonte à plus de
     STALE_PART_FILE_MINUTES - voir la constante ci-dessus pour le raisonnement complet.
@@ -101,6 +145,9 @@ class LibraryImportScheduler:
         self.stalled_telegram_job_id = 'retry_stalled_telegram'
         self.completed_reconcile_job_id = 'reconcile_completed_imports'
         self._file_size_history = {}
+        self._last_part_cleanup_at = 0.0
+        self._last_client_sync_at = 0.0
+        self._last_pending_walk_at = 0.0
         self._failure_counts = {}
         # Dernier message d'erreur ('Erreur interne' côté _execute_import_batch) par fichier -
         # "l'échec n'est pas expliqué": le compteur seul ne dit pas POURQUOI ça échoue,
@@ -244,13 +291,14 @@ class LibraryImportScheduler:
 
         with self.app.app_context():
             try:
-                print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 📦 Import automatique en cours...")
-
-
-                try:
-                    _cleanup_stale_part_files(current_app.config['IMPORT_DIRECTORIES'])
-                except Exception as e:
-                    print(f"Erreur lors du nettoyage des fichiers .part abandonnés: {e}")
+                # Le nettoyage des .part abandonnés parcourt tous les dossiers d'import: au
+                # plus une fois toutes les PART_CLEANUP_INTERVAL_SECONDS, pas à chaque passage.
+                if time.time() - self._last_part_cleanup_at >= PART_CLEANUP_INTERVAL_SECONDS:
+                    self._last_part_cleanup_at = time.time()
+                    try:
+                        _cleanup_stale_part_files(current_app.config['IMPORT_DIRECTORIES'])
+                    except Exception as e:
+                        print(f"Erreur lors du nettoyage des fichiers .part abandonnés: {e}")
 
                 # Import local pour éviter les boucles circulaires (current_app est déjà
                 # importé au niveau du module, voir le haut de ce fichier - une seconde
@@ -270,6 +318,24 @@ class LibraryImportScheduler:
 
                 # Clôtures de packs différées parce qu'ils recevaient encore des fichiers
                 routes.retry_deferred_pack_finalizations()
+
+                # « l'import automatique devrait être fait uniquement quand il y a des fichiers
+                # prêts à importer » - seuls les fichiers d'un téléchargement suivi peuvent être
+                # importés automatiquement. Sans aucun téléchargement suivi en cours (et sans la
+                # notification « nouveau fichier disponible », qui a besoin du parcours), il n'y a
+                # rien à chercher: on ne parcourt pas les dossiers.
+                # Les clients (aMule, qBittorrent...) disent quand un téléchargement est fini:
+                # vérifiés en tâche de fond (et plus seulement quand une page est ouverte).
+                if time.time() - self._last_client_sync_at >= CLIENT_SYNC_INTERVAL_SECONDS:
+                    self._last_client_sync_at = time.time()
+                    _sync_download_clients()
+                walk_pending = time.time() - self._last_pending_walk_at >= PENDING_FALLBACK_WALK_SECONDS
+                if not _auto_import_has_work(include_pending=walk_pending):
+                    self._file_size_history = {}
+                    return
+                if walk_pending:
+                    self._last_pending_walk_at = time.time()
+                print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 📦 Import automatique en cours...")
 
                 # Scanner les fichiers à importer
                 scanner = LibraryScanner()
@@ -323,13 +389,16 @@ class LibraryImportScheduler:
                 # repris par CE scheduler automatique, seul un clic explicite sur
                 # "Importer" doit les finaliser avec la correction humaine.
                 from .import_history import (
-                    get_finalized_import_source_paths,
+                    get_finalized_import_source_times,
                     get_manual_override_filepaths,
                     get_in_progress_filepaths,
                 )
                 manual_override_filepaths = get_manual_override_filepaths()
+                from .import_history import get_manual_override_destinations
+                user_manual_filepaths = set(get_manual_override_destinations())
+                auto_held_filepaths = manual_override_filepaths - user_manual_filepaths
                 in_progress_filepaths = get_in_progress_filepaths()
-                finalized_import_filepaths = get_finalized_import_source_paths()
+                finalized_import_times = get_finalized_import_source_times()
 
                 for import_path in import_directories:
                     if not os.path.exists(import_path):
@@ -363,9 +432,12 @@ class LibraryImportScheduler:
                                 # haut). La notification "nouveau fichier disponible" reste
                                 # inchangée (all_relpaths déjà mis à jour ci-dessus), seule
                                 # l'éligibilité à l'import AUTOMATIQUE est court-circuitée ici.
+                                # Seules les assignations faites à la main (qui enregistrent leur
+                                # destination) bloquent définitivement: une mise de côté décidée
+                                # par ce planificateur lui-même est réévaluée à chaque passage.
                                 if _should_skip_auto_import_path(
-                                    filepath, manual_override_filepaths,
-                                    in_progress_filepaths, finalized_import_filepaths
+                                    filepath, user_manual_filepaths,
+                                    in_progress_filepaths, set()
                                 ):
                                     continue
 
@@ -408,8 +480,9 @@ class LibraryImportScheduler:
                                         or normalized_root_base in tracked_download_folder_names
                                     )
                                     if tracked_pack and routes._folder_has_subdirectories(root_folder_path):
-                                        from .import_history import mark_import_file_manual
-                                        mark_import_file_manual(filepath)
+                                        if filepath not in auto_held_filepaths:
+                                            from .import_history import mark_import_file_manual
+                                            mark_import_file_manual(filepath)
                                         continue
 
                                 # Priorité à la série connue au moment du téléchargement
@@ -461,9 +534,15 @@ class LibraryImportScheduler:
                                 # prove that its parsed series title is the tracked series. A
                                 # download association establishes provenance, never identity.
                                 if matched_by_torrent_container and destination and not routes._pack_file_matches_destination(parsed, destination):
-                                    from .import_history import mark_import_file_manual
-                                    mark_import_file_manual(filepath)
+                                    if filepath not in auto_held_filepaths:
+                                        from .import_history import mark_import_file_manual
+                                        mark_import_file_manual(filepath)
                                     destination = None
+                                elif destination and filepath in auto_held_filepaths:
+                                    # La raison de la mise de côté ne tient plus (règle corrigée,
+                                    # série renommée...): le fichier redevient importable.
+                                    from .import_history import unmark_import_file_manual
+                                    unmark_import_file_manual(filepath)
                                 # Sécurité : l’auto-import ne devine jamais une série à
                                 # partir d’un titre ou d’un dossier local. Seuls les fichiers
                                 # rattachés à un téléchargement suivi (nom de fichier ou nom
@@ -496,6 +575,23 @@ class LibraryImportScheduler:
                                             destination = None
                                 elif failure_count >= MAX_AUTO_IMPORT_FAILURES:
                                     destination = None
+
+                                # Une archive qui regroupe plusieurs albums n'est jamais un tome:
+                                # elle attend l'empaquetage par dossier depuis /import (même
+                                # règle que l'affichage, voir routes._is_container_archive).
+                                if destination and routes._is_container_archive(filepath, ext, destination):
+                                    destination = None
+                                # Le titre d'album (Bédéthèque) contenu dans le nom donne le bon
+                                # numéro quand le téléchargement ne fixe pas déjà le tome.
+                                if destination and destination.get('volume_number') is None and destination.get('series_id'):
+                                    routes.refine_volume_from_album_title(
+                                        parsed, destination['series_id'], filename, destination.get('series_title'))
+                                # Déjà importé/ignoré: seulement repris s'il s'agit d'un
+                                # retéléchargement (téléchargement lancé après cet import).
+                                finished_at = finalized_import_times.get(filepath)
+                                if finished_at is not None and not (
+                                        destination and routes.download_created_after(destination.get('tracking_id'), finished_at)):
+                                    continue
 
                                 if destination:
                                     files_to_import.append({

@@ -140,7 +140,10 @@ def _check_import_file_validity_cached(filepath, fmt):
 # est retentée à chaque tick du scheduler (retry_deferred_pack_finalizations).
 # En mémoire seulement: après un redémarrage le scheduler revoit tous les fichiers comme
 # nouveaux, ce qui relance simplement la période de calme.
-PACK_TRANSFER_QUIET_SECONDS = 600
+# Silence demandé après la dernière arrivée de fichier avant de clore/importer un pack. Les
+# fichiers en cours de copie sont déjà repérés par leurs fichiers temporaires (.tmp, .part...):
+# ce délai ne couvre que les courtes pauses entre deux fichiers.
+PACK_TRANSFER_QUIET_SECONDS = 120
 _PACK_TRANSFER_TEMP_SUFFIXES = ('.tmp', '.part', '.partial', '.!qb', '.crdownload', '.filepart')
 _pack_transfer_activity = {}
 _deferred_pack_finalizations = {}
@@ -189,6 +192,39 @@ def _is_pack_tracking(tracking_id):
         return bool(row and row[0])
     except Exception:
         return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def _download_top_level_dir(source_path):
+    """Dossier propre au téléchargement (premier niveau sous un répertoire d'import), ou None
+    pour un fichier posé directement à la racine d'un répertoire d'import."""
+    for import_root in current_app.config.get('IMPORT_DIRECTORIES', []):
+        rel = os.path.relpath(source_path, import_root)
+        if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+            continue
+        parts = rel.split(os.sep)
+        if len(parts) < 2:
+            return None
+        try:
+            folder = resolve_within(os.path.join(import_root, parts[0]), import_root)
+        except UnsafePathError:
+            return None
+        return folder if os.path.isdir(folder) else None
+    return None
+
+
+def _promote_download_to_pack(tracking_id):
+    """Marque comme pack un téléchargement qui s'avère contenir plusieurs fichiers: regroupé
+    sous une ligne repliable dans /import et clos seulement une fois tous ses fichiers traités."""
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        conn.execute('UPDATE active_downloads SET is_pack = 1 WHERE id = ? AND is_pack = 0', (tracking_id,))
+        conn.commit()
+    except Exception as exc:
+        print(f"Erreur passage en pack du téléchargement #{tracking_id}: {exc}")
     finally:
         if conn:
             conn.close()
@@ -363,7 +399,58 @@ def is_better_volume(new_size, existing_size):
     return new_size > existing_size * (1 + MIN_REPLACE_SIZE_MARGIN)
 
 
-def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=False):
+def _title_words(text):
+    return {w for w in _normalize_title_for_match(text or '').split() if len(w) >= 3}
+
+
+def _volume_matching_title(cursor, volume_ids, source_name):
+    """Album (parmi volume_ids) dont le titre - Bédéthèque, ou à défaut le nom du fichier
+    déjà importé - recoupe le nom source par au moins un mot distinctif, de façon unique.
+    None si aucun ne correspond."""
+    source_words = _title_words(source_name)
+    if not source_words:
+        return None
+    placeholders = ','.join('?' for _ in volume_ids)
+    rows = cursor.execute(
+        f'SELECT v.id, v.comicinfo, v.filename, s.title FROM volumes v LEFT JOIN series s ON s.id = v.series_id '
+        f'WHERE v.id IN ({placeholders})', list(volume_ids)).fetchall()
+    scored = []
+    for volume_id, comicinfo, filename, series_title in rows:
+        try:
+            title = (json.loads(comicinfo or '{}') or {}).get('title') or ''
+        except (TypeError, ValueError):
+            title = ''
+        words = _title_words(title or os.path.splitext(filename or '')[0]) - _title_words(series_title) - {'hors', 'serie', 'int', 'integrale'}
+        scored.append((len(source_words & words), volume_id))
+    scored.sort(reverse=True)
+    if not scored or scored[0][0] == 0 or (len(scored) > 1 and scored[0][0] == scored[1][0]):
+        return None
+    return scored[0][1]
+
+
+def pick_volume_by_title(cursor, volume_ids, source_name):
+    """Parmi plusieurs albums qui partagent un même numéro (ex. hors-séries numérotés par
+    année: « HS2020 . Fais ta BD » et « HS2020/10 . La galaxie des Bizarres »), retourne l'id
+    de celui dont le titre recoupe le plus le nom du fichier, ou None si aucun ne se détache."""
+    source_words = _title_words(source_name)
+    if not source_words or len(volume_ids) < 2:
+        return None
+    placeholders = ','.join('?' for _ in volume_ids)
+    scored = []
+    for volume_id, comicinfo in cursor.execute(
+            f'SELECT id, comicinfo FROM volumes WHERE id IN ({placeholders})', list(volume_ids)).fetchall():
+        try:
+            title = (json.loads(comicinfo or '{}') or {}).get('title') or ''
+        except (TypeError, ValueError):
+            title = ''
+        scored.append((len(source_words & _title_words(title)), volume_id))
+    scored.sort(reverse=True)
+    if not scored or scored[0][0] == 0 or (len(scored) > 1 and scored[0][0] == scored[1][0]):
+        return None
+    return scored[0][1]
+
+
+def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=False, source_name=None):
     """Technical rationale and compatibility constraints for this code path."""
     if single_album:
         cursor.execute("SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? ORDER BY (filepath IS NOT NULL), id DESC LIMIT 1", (series_id,))
@@ -427,8 +514,24 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
     if query is None:
         existing_volume = None
     else:
-        cursor.execute(query + ' ORDER BY id DESC LIMIT 1', params)
-        existing_volume = cursor.fetchone()
+        cursor.execute(query + ' ORDER BY id DESC', params)
+        candidates = cursor.fetchall()
+        existing_volume = candidates[0] if candidates else None
+        # Hors-série / intégrale / épisode SANS numéro: « HS - Le Rayon U » et « HS - Le Théâtre
+        # du Mystère » ne sont pas le même album. Seul un titre qui correspond désigne l'album
+        # existant; sinon c'est un nouvel album (et non un doublon à ignorer).
+        unnumbered_typed = (
+            (is_hs and hs_number is None) or (is_integral and integral_number is None)
+            or (is_episode and episode_number is None)
+        )
+        if unnumbered_typed and candidates and source_name:
+            chosen = _volume_matching_title(cursor, [row[0] for row in candidates], source_name)
+            existing_volume = next((row for row in candidates if row[0] == chosen), None)
+        # Plusieurs albums sous le même numéro: le titre du fichier départage.
+        if len(candidates) > 1 and source_name:
+            chosen = pick_volume_by_title(cursor, [row[0] for row in candidates], source_name)
+            if chosen is not None:
+                existing_volume = next(row for row in candidates if row[0] == chosen)
 
     if not existing_volume and not is_episode and volume_number is not None:
         # "Bellatrix - 02 - ...cbr": un fichier dont le NOM ne dit pas "Épisode" (donc
@@ -3948,7 +4051,14 @@ def _extract_archive_containers(import_directories):
 
                 archive_path = os.path.join(root, filename)
 
-                if ext == '.zip' and _zip_is_single_packaged_comic(archive_path):
+                # Une archive de pages (un ou plusieurs albums) n'est jamais extraite d'office:
+                # l'extraction met tous les fichiers à plat et mélangerait les pages de
+                # plusieurs tomes. Elle passe par « Voir le contenu » / empaquetage par dossier
+                # (ZIP), comme dans un dossier en lecture seule. Seules les archives qui
+                # contiennent des fichiers BD (CBZ, CBR, PDF...) sont extraites ici.
+                if _archive_contains_only_images(archive_path):
+                    continue
+                if not os.access(root, os.W_OK):
                     continue
                 # Une archive mise en attente manuelle (« Voir le contenu » / empaquetage
                 # dossier par dossier) ne doit pas être extraite et supprimée d'office.
@@ -4024,13 +4134,149 @@ def _folder_has_subdirectories(folder_path):
     return False
 
 
+def _series_title_forms(series_title):
+    """Formes normalisées d'un titre de série, y compris la forme Bédéthèque inversée
+    « Blake et Mortimer (Les Aventures de) » remise dans l'ordre « Les Aventures de Blake et
+    Mortimer » (ou « Gang (Le) » -> « Le Gang »)."""
+    forms = {_normalize_title_for_match(series_title)}
+    match = re.match(r'^\s*(.+?)\s*\(([^()]+)\)\s*$', series_title or '')
+    if match:
+        forms.add(_normalize_title_for_match(f"{match.group(2)} {match.group(1)}"))
+    return {form for form in forms if form}
+
+
 def _pack_file_matches_destination(parsed, destination):
     """Only auto-import a pack member when its parsed series is exact."""
     parsed_title = (parsed or {}).get('title')
     series_title = (destination or {}).get('series_title')
     if not parsed_title or not series_title:
         return False
-    return _normalize_title_for_match(parsed_title) == _normalize_title_for_match(series_title)
+    return _normalize_title_for_match(parsed_title) in _series_title_forms(series_title)
+
+
+_ALBUM_TITLE_STOPWORDS = {'le', 'la', 'les', 'l', 'de', 'du', 'des', 'd', 'et', 'un', 'une', 'a', 'au', 'aux', 'en'}
+
+
+def _album_words(text):
+    # « Tome 2 » et « T2 » désignent la même chose dans un titre d'album.
+    normalized = re.sub(r'\btome\s+(\d+)', r't\1', _normalize_title_for_match(text or ''))
+    return set(normalized.split())
+
+
+def refine_volume_from_album_title(parsed, series_id, filename, series_title=None):
+    """Corrige le numéro de tome quand le nom du fichier contient en entier le titre d'un
+    album de la série (titres Bédéthèque): « Blake Et Mortimer-12-Les 3 Formules Du Professeur
+    Sato - Tome 2 » est le tome 12 (« Les 3 Formules du Professeur Satô - Tome 2 »), pas le 2.
+    Seul un album dont le titre a au moins deux mots distinctifs, tous présents dans le nom,
+    et qui est le seul à ce niveau de correspondance, est retenu. Modifie et retourne parsed."""
+    if not series_id or not filename or parsed.get('is_integral') or parsed.get('is_hs') or parsed.get('is_episode'):
+        return parsed
+    file_words = _album_words(os.path.splitext(filename)[0])
+    common = _album_words(series_title) | _ALBUM_TITLE_STOPWORDS
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        rows = conn.execute(
+            "SELECT volume_number, comicinfo FROM volumes WHERE series_id = ? AND volume_number IS NOT NULL "
+            "AND COALESCE(is_bis, 0) = 0", (series_id,)).fetchall()
+    except sqlite3.Error:
+        return parsed
+    finally:
+        if conn:
+            conn.close()
+    candidates = []
+    for volume_number, comicinfo in rows:
+        try:
+            title = (json.loads(comicinfo or '{}') or {}).get('title') or ''
+        except (TypeError, ValueError):
+            continue
+        words = _album_words(title)
+        if len(words - common) >= 2 and words <= file_words:
+            candidates.append((len(words), volume_number))
+    if not candidates:
+        number = _volume_from_main_album_title(parsed.get('volume'), rows, file_words, common)
+        if number is not None and parsed.get('volume') != number:
+            parsed['volume_from_album_title_replaced'] = parsed.get('volume')
+            parsed['volume'] = number
+        return parsed
+    best = max(length for length, _ in candidates)
+    numbers = {number for length, number in candidates if length == best}
+    if len(numbers) == 1:
+        number = numbers.pop()
+        if parsed.get('volume') != number:
+            parsed['volume_from_album_title_replaced'] = parsed.get('volume')
+            parsed['volume'] = number
+    return parsed
+
+
+def _volume_from_main_album_title(volume, rows, file_words, common):
+    """Repli de refine_volume_from_album_title quand aucun titre d'album n'est contenu en
+    entier dans le nom: « Blake et Mortimer-25-La vallée des Immortels - T1 » (titre
+    Bédéthèque « La Vallée des Immortels - Tome 1 - Menace sur Hong Kong ») avait été lu
+    tome 1. Ne s'applique que si le nom ne partage AUCUN mot distinctif avec l'album du tome
+    lu, et qu'un seul autre album a une partie de son titre (découpé sur « - ») d'au moins
+    deux mots distinctifs entièrement présente dans le nom; « T1 »/« Tome 1 » départage deux
+    parties d'un même cycle. Retourne le numéro retenu ou None."""
+    def is_tome(word):
+        return re.fullmatch(r't\d+', word) is not None
+    titles = {}
+    for volume_number, comicinfo in rows:
+        try:
+            titles[volume_number] = (json.loads(comicinfo or '{}') or {}).get('title') or ''
+        except (TypeError, ValueError):
+            titles[volume_number] = ''
+    current = {w for w in _album_words(titles.get(volume)) - common if not is_tome(w)}
+    if volume is None or not current or current & file_words:
+        return None
+    file_tomes = {w for w in file_words if is_tome(w)}
+    scored = []
+    for volume_number, title in titles.items():
+        if volume_number == volume or not title:
+            continue
+        segments = [{w for w in _album_words(part) - common if not is_tome(w)}
+                    for part in re.split(r'\s+-\s+', title)]
+        if not any(len(part) >= 2 and part <= file_words for part in segments):
+            continue
+        distinctive = {w for w in _album_words(title) - common if not is_tome(w)}
+        tomes = {w for w in _album_words(title) if is_tome(w)}
+        scored.append(((len(distinctive & file_words), len(tomes & file_tomes)), volume_number))
+    if not scored:
+        return None
+    best = max(score for score, _ in scored)
+    numbers = {number for score, number in scored if score == best}
+    return numbers.pop() if len(numbers) == 1 else None
+
+
+def _existing_volume_info(destination, parsed, filename, file_size):
+    """Tome visé déjà présent (avec un fichier) dans la bibliothèque: {'size', 'format',
+    'will_replace'} - will_replace suit la règle de l'import (remplacement forcé, ou fichier
+    plus gros de plus de 5 %), sinon le fichier sera ignoré comme doublon. None sinon."""
+    if not destination or not destination.get('series_id') or destination.get('is_new_series'):
+        return None
+    conn = get_db_connection()
+    try:
+        volume_id, path, size, fmt = _find_existing_volume_for_import(
+            conn.cursor(), destination['series_id'], parsed,
+            single_album=bool(destination.get('is_single_album')), source_name=filename)
+    except Exception:
+        return None
+    finally:
+        conn.close()
+    if not volume_id or not path:
+        return None
+    return {'size': size or 0, 'format': fmt,
+            'will_replace': bool(destination.get('force_replace')) or is_better_volume(file_size or 0, size or 0)}
+
+
+def _automatic_hold_reason(filepath, parsed, destination):
+    """Motif d'un fichier mis de côté par l'import automatique lui-même (et non par une
+    assignation faite à la main, qui enregistre toujours sa destination)."""
+    if os.path.realpath(filepath).startswith(os.path.realpath(_PACKAGE_TEMP_DIR) + os.sep):
+        return "fichier empaqueté depuis une archive : import manuel à valider"
+    if destination and not _pack_file_matches_destination(parsed, destination):
+        return (f"titre lu dans le fichier « {(parsed or {}).get('title') or '?'} » différent de la série "
+                f"« {destination.get('series_title')} » - vérifiez puis cliquez sur « Importer »")
+    return "fichier d'un pack à sous-dossiers, mis de côté par prudence - vérifiez puis cliquez sur « Importer »"
 
 
 _ARCHIVE_EXTENSIONS = ('.zip', '.rar', '.tar', '.gz', '.bz2', '.xz', '.7z')
@@ -4038,15 +4284,59 @@ _VOLUME_IDENTITY_FIELDS = ('volume_id', 'volume_number', 'is_integral', 'integra
                            'is_hs', 'hs_number', 'is_episode', 'episode_number')
 
 
+_archive_listing_cache = {}
+_ARCHIVE_LISTING_CACHE_MAX = 512
+
+
+def _archive_files_cached(filepath):
+    """Fichiers (chemins internes) d'une archive, mis en cache tant que sa taille et sa date
+    ne changent pas: la détection album/pack est appelée à chaque passage de l'import
+    automatique et à chaque ouverture de /import, relire un gros RAR sur un montage réseau à
+    chaque fois coûterait cher. None si l'archive est illisible."""
+    try:
+        stat = os.stat(filepath)
+    except OSError:
+        return None
+    key = (os.path.realpath(filepath), stat.st_size, stat.st_mtime)
+    if key in _archive_listing_cache:
+        return _archive_listing_cache[key]
+    try:
+        listing = list_archive_members(filepath, limit=20000)
+        files = None if listing.get('truncated') else [e['path'] for e in listing['entries'] if e['kind'] == 'file']
+    except Exception:
+        files = None
+    if len(_archive_listing_cache) >= _ARCHIVE_LISTING_CACHE_MAX:
+        _archive_listing_cache.clear()
+    _archive_listing_cache[key] = files
+    return files
+
+
+def _archive_is_single_album(filepath):
+    """True pour une archive (ZIP, RAR, TAR...) qui ne contient que les pages d'un seul album:
+    uniquement des images, toutes dans le même dossier. Illisible ou vide: False."""
+    files = _archive_files_cached(filepath)
+    if not files:
+        return False
+    if not all(os.path.splitext(name)[1].lower() in _ZIP_IMAGE_EXTENSIONS for name in files):
+        return False
+    return len({os.path.dirname(name) for name in files}) <= 1
+
+
+def _archive_contains_only_images(filepath):
+    """True pour une archive de pages (un ou plusieurs dossiers d'images, aucun fichier BD)."""
+    files = _archive_files_cached(filepath)
+    return bool(files) and all(os.path.splitext(n)[1].lower() in _ZIP_IMAGE_EXTENSIONS for n in files)
+
+
 def _is_container_archive(filepath, ext, destination):
-    """Une archive qui regroupe plusieurs albums (pack téléchargé comme tel, ou ZIP de
-    pages réparties en un dossier par tome) - jamais un tome unique. Un ZIP/CBZ de pages
-    d'un seul album n'est PAS un conteneur (voir _zip_is_single_packaged_comic)."""
+    """Une archive qui regroupe plusieurs albums (pack téléchargé comme tel, pages réparties
+    en un dossier par tome, ou archive de fichiers BD) - jamais un tome unique. Une archive
+    qui ne contient que les pages d'un seul album n'est PAS un conteneur, quel que soit son
+    format (ZIP, RAR...): elle s'importe comme un tome, y compris quand elle fait partie d'un
+    pack (un dossier qui contient une archive par album). Seul le contenu décide."""
     if ext not in _ARCHIVE_EXTENSIONS:
         return False
-    if (destination or {}).get('is_pack'):
-        return True
-    return not (ext == '.zip' and _zip_is_single_packaged_comic(filepath))
+    return not _archive_is_single_album(filepath)
 
 
 def _strip_container_identity(parsed, destination):
@@ -4097,6 +4387,10 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
     is_container = _is_container_archive(filepath, ext, destination)
     if is_container:
         file_destination = _strip_container_identity(parsed, file_destination)
+    if (file_destination and not is_container and file_destination.get('series_id')
+            and not file_destination.get('is_new_series') and file_destination.get('volume_number') is None):
+        refine_volume_from_album_title(parsed, file_destination['series_id'], filename,
+                                       file_destination.get('series_title'))
     gate_passed = True
     if file_destination and not is_container:
         gate_passed = apply_tracked_volume_and_gate(parsed, file_destination)
@@ -4136,8 +4430,13 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
         # Archive regroupant plusieurs albums: affichée comme simple placeholder dépliable
         # dans /import (jamais importable telle quelle), voir _pendingPackGroupRowHtml.
         'is_container': is_container,
+        # « si le tome est déjà existant il faudrait que ça se voie visuellement »
+        'already_in_library': None if is_container else _existing_volume_info(
+            file_destination, parsed, filename, os.path.getsize(filepath)),
         'auto_import_skip_reason': (
-            "assignation faite à la main - cliquez sur « Importer » pour valider"
+            _automatic_hold_reason(filepath, parsed, file_destination)
+            if filepath in manual_override_filepaths and filepath not in manual_destinations
+            else "assignation faite à la main - cliquez sur « Importer » pour valider"
             if filepath in manual_override_filepaths
             else "archive de plusieurs albums (pack) - à extraire puis importer album par album"
             if is_container
@@ -4240,24 +4539,73 @@ def _exclude_terminal_without_manual_override(files_found):
     ]
 
 
-def _exclude_finalized_import_files(files_found, finalized_source_paths):
-    'Hide files already recorded as successfully imported or skipped.'
-    return [
-        item for item in files_found
-        if item.get('filepath') not in finalized_source_paths
-    ]
+def download_created_after(tracking_id, timestamp):
+    """True si le téléchargement suivi a été lancé après `timestamp` (UTC, secondes): un
+    fichier déjà traité qui revient sous le même nom dans un téléchargement plus récent est
+    un retéléchargement (remplacement d'un fichier corrompu, album supprimé puis repris...),
+    donc un nouveau fichier à importer - pas une copie revenue d'un import passé."""
+    import calendar
+    if tracking_id is None or timestamp is None:
+        return False
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        row = conn.execute('SELECT created_at FROM active_downloads WHERE id = ?', (tracking_id,)).fetchone()
+        if not row or not row[0]:
+            return False
+        return calendar.timegm(time.strptime(str(row[0])[:19], '%Y-%m-%d %H:%M:%S')) > timestamp
+    except (sqlite3.Error, ValueError, TypeError):
+        return False
+    finally:
+        if conn:
+            conn.close()
 
 
-def _exclude_finalized_pending_downloads(pending_downloads, finalized_source_paths):
+def _finalized_times(finalized):
+    """Accepte un ensemble de chemins (date inconnue: toujours considéré traité) ou un
+    dictionnaire {chemin: horodatage} (voir get_finalized_import_source_times)."""
+    return finalized if isinstance(finalized, dict) else {path: None for path in finalized or ()}
+
+
+def _exclude_finalized_import_files(files_found, finalized):
+    'Hide files already recorded as successfully imported or skipped (except re-downloads).'
+    times = _finalized_times(finalized)
+    kept = []
+    for item in files_found:
+        path = item.get('filepath')
+        if path in times:
+            destination = item.get('destination') or {}
+            tracking_id = destination.get('tracking_id') or item.get('pack_download_id')
+            if not download_created_after(tracking_id, times[path]):
+                continue
+        kept.append(item)
+    return kept
+
+
+def _exclude_finalized_pending_downloads(pending_downloads, finalized):
     'Hide pending rows whose source filename has a terminal import-history result.'
-    finalized_names = {
-        os.path.basename(path) for path in finalized_source_paths
-        if path
-    }
-    return [
-        item for item in pending_downloads
-        if os.path.basename(str(item.get('title') or '')) not in finalized_names
-    ]
+    import calendar
+    latest_by_name = {}
+    for path, finished_at in _finalized_times(finalized).items():
+        if not path:
+            continue
+        name = os.path.basename(path)
+        previous = latest_by_name.get(name, 0)
+        latest_by_name[name] = None if finished_at is None or previous is None else max(previous, finished_at)
+    kept = []
+    for item in pending_downloads:
+        name = os.path.basename(str(item.get('title') or ''))
+        if name in latest_by_name:
+            finished_at = latest_by_name[name]
+            # Un téléchargement lancé après cet import est un retéléchargement: il reste visible.
+            try:
+                created = calendar.timegm(time.strptime(str(item.get('created_at') or '')[:19], '%Y-%m-%d %H:%M:%S'))
+            except (TypeError, ValueError):
+                created = None
+            if finished_at is None or created is None or created <= finished_at:
+                continue
+        kept.append(item)
+    return kept
 
 
 def _terminal_download_has_finalized_sibling(path, finalized_source_paths):
@@ -4420,7 +4768,8 @@ def _scan_tracked_import_files(validate_files=True):
                 )
 
     files_found = _exclude_terminal_without_manual_override(files_found)
-    files_found = _exclude_finalized_import_files(files_found, finalized_source_paths)
+    from .import_history import get_finalized_import_source_times
+    files_found = _exclude_finalized_import_files(files_found, get_finalized_import_source_times())
     from .import_history import persist_discovered_import_items
     persist_discovered_import_items(files_found, scanned_roots=scanned_roots)
     return files_found, incompatible_folders
@@ -4602,7 +4951,8 @@ def import_state_snapshot():
         waiting_snapshot = get_waiting_import_snapshot()
 
         from .import_history import get_finalized_import_source_paths
-        finalized_source_paths = get_finalized_import_source_paths()
+        from .import_history import get_finalized_import_source_times
+        finalized_source_paths = get_finalized_import_source_times()
         pending = _exclude_finalized_pending_downloads(
             activity_data.get('pending', []), finalized_source_paths
         )
@@ -5482,7 +5832,7 @@ def import_replacement_required_route():
             ).fetchone()
             row = _find_existing_volume_for_import(
                 cursor, series_id, parsed,
-                single_album=bool(single and single[0] == 1)
+                single_album=bool(single and single[0] == 1), source_name=data.get('title')
             )
         return jsonify({
             'success': True,
@@ -5600,6 +5950,16 @@ def _maybe_complete_tracking_after_move(source_path, destination, outcome='impor
             reopen_download(tracking_id)
             return
         finalize = mark_download_skipped if outcome == 'skipped' else mark_download_imported
+
+        # Un téléchargement qui contient encore d'autres fichiers à traiter (ex. le même
+        # album livré en CBZ et en PDF) ne doit pas être clos au premier import: il passe
+        # en pack, reste ouvert et sera clos quand tous ses fichiers auront un résultat.
+        if not _is_pack_tracking(tracking_id):
+            sibling_dir = _download_top_level_dir(source_path)
+            if sibling_dir and _pack_has_unfinalized_files(sibling_dir):
+                _promote_download_to_pack(tracking_id)
+                mark_download_completed(tracking_id)
+                return
 
         # Une source en lecture seule ne peut pas être vidée par l'import. Pour une ligne
         # de suivi représentant un seul fichier, le volume enregistré dans la bibliothèque
@@ -5918,7 +6278,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                     try:
                         early_existing = _find_existing_volume_for_import(
                             early_conn.cursor(), destination['series_id'], file_data['parsed'],
-                            single_album=bool(destination.get('is_single_album'))
+                            single_album=bool(destination.get('is_single_album')),
+                            source_name=file_data.get('filename')
                         )
                     finally:
                         early_conn.close()
@@ -6084,7 +6445,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
 
                 # Vérifier si un fichier/placeholder existe déjà pour ce même tome
                 existing_volume_id, existing_file_path, existing_file_size, existing_format = \
-                    _find_existing_volume_for_import(cursor, series_id, file_data['parsed'], single_album=bool(destination.get('is_single_album')))
+                    _find_existing_volume_for_import(cursor, series_id, file_data['parsed'], single_album=bool(destination.get('is_single_album')),
+                                                     source_name=file_data.get('filename'))
 
                 action_taken = None
                 placeholder_volume_id = None
@@ -7694,14 +8056,17 @@ def find_active_download_destination_by_torrent_name(folder_name, trackable_down
     torrent_names_by_hash: dict hash (minuscule) -> nom de torrent, voir
     get_qbittorrent_torrent_names (qbittorrent/routes.py) - à construire UNE SEULE FOIS par
     scan (scan_import_directory), pas par fichier, même raisonnement que trackable_downloads."""
-    if not folder_name or not torrent_names_by_hash:
+    if not folder_name:
         return None
 
     folder_name_lower = folder_name.strip().lower()
     for download in trackable_downloads:
-        if download.get('client') != 'qbittorrent' or not download.get('client_item_id'):
+        if download.get('client') != 'qbittorrent':
             continue
-        torrent_name = torrent_names_by_hash.get(download['client_item_id'].lower())
+        # Nom réel du torrent via l'API (par hash), à défaut celui déjà enregistré pour ce
+        # suivi (client_item_name) - un suivi sans hash restait sinon introuvable.
+        torrent_name = (torrent_names_by_hash or {}).get((download.get('client_item_id') or '').lower()) \
+            or download.get('client_item_name')
         if torrent_name and torrent_name.strip().lower() == folder_name_lower:
             return _build_active_download_destination(
                 download['series_id'], download.get('volume_number'), download['id'],
@@ -8054,6 +8419,12 @@ def execute_auto_import(files_to_import):
     Returns:
         Tuple (success: bool, stats: dict) avec les statistiques d'import
     """
+    # Le même album livré dans plusieurs formats: le meilleur (CBZ, puis CBR, puis PDF) passe en
+    # premier, les autres deviennent des doublons au lieu de le remplacer par une conversion.
+    files_to_import = sorted(
+        files_to_import,
+        key=lambda f: get_format_priority(os.path.splitext(f.get('filename') or f.get('filepath') or '')[1].lstrip('.'))
+    )
     lock_acquired, operation_id, stats = _execute_import_batch(
         files_to_import, operation_type='auto_import', lock_timeout=60,
         strict_missing_file=False, notify_source='automatique'

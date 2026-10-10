@@ -1849,7 +1849,7 @@ function renderSearchFormatPriorityList() {
         <li class="format-priority-item${entry.enabled ? '' : ' disabled'}">
             <span class="format-priority-rank">${i + 1}</span>
             <label style="display:flex; align-items:center; gap:8px; flex:1; cursor:pointer;">
-                <input type="checkbox" ${entry.enabled ? 'checked' : ''} onchange="toggleSearchFormatEnabled(${i})">
+                <input type="checkbox" class="switch-input" ${entry.enabled ? 'checked' : ''} onchange="toggleSearchFormatEnabled(${i})">
                 <span class="format-priority-name">${entry.format}</span>
             </label>
             <div class="format-priority-controls">

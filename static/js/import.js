@@ -471,6 +471,24 @@ function _pendingProgressLabelHtml(pending) {
     return `${progressPct.toFixed(0)}% · ${formatBytes(downloaded)} / ${formatBytes(pending.bytes_total)}`;
 }
 
+// État de la copie locale d'un téléchargement terminé chez son client (voir local_copy_state,
+// downloader.py): libellé explicite au lieu d'un « Prêt » qui ne disait pas ce qu'on attend.
+function _localCopyStatusHtml(pending) {
+    const copy = pending.local_copy;
+    if (!copy || pending.status !== 'completed') return null;
+    const arrived = `${copy.files} ${pluralize(copy.files, 'fichier')} ${pluralize(copy.files, 'arrivé')}`;
+    if (copy.state === 'absent') {
+        return `<span style="color:#6c757d; font-weight:600;" data-tooltip="Le téléchargement est terminé chez le client (seedbox), mais ses fichiers n'ont pas encore commencé à arriver sur ce serveur (synchronisation)">${svgIcon('history')} Terminé — en attente de copie</span>`;
+    }
+    if (copy.state === 'copying') {
+        return `<span style="color:#e67e22; font-weight:600;" data-tooltip="Les fichiers arrivent sur ce serveur (synchronisation en cours). L'import démarre une fois la copie terminée">${svgIcon('loader-circle', 'icon-spin')} Copie en cours — ${arrived}</span>`;
+    }
+    if (copy.state === 'settling') {
+        return `<span style="color:#e67e22; font-weight:600;" data-tooltip="Plus aucun fichier n'arrive, mais la copie est très récente : l'import d'un pack attend 2 minutes sans nouvelle arrivée pour ne pas le clore avant ses derniers fichiers">${svgIcon('history')} Copie terminée — import dans quelques minutes (${arrived})</span>`;
+    }
+    return null;
+}
+
 function _pendingDownloadRowHtml(pending) {
     const hasProgress = !!pending.bytes_total;
     const progressPct = hasProgress ? Math.min(100, Math.max(0, (pending.bytes_downloaded || 0) * 100 / pending.bytes_total)) : 0;
@@ -487,8 +505,12 @@ function _pendingDownloadRowHtml(pending) {
             ? `<span class="import-download-error" data-tooltip="Le numéro de tome n'a pas pu être identifié - correction manuelle nécessaire (crayon)">${svgIcon('alert-triangle')} Tome à préciser</span>`
             : pending.status === 'completed' && pending.needs_series_correction
             ? `<span class="import-download-error" data-tooltip="Aucune série identifiée pour ce téléchargement - le scan automatique ne peut pas le reprendre, rattachement manuel nécessaire (crayon)">${svgIcon('alert-triangle')} Série à préciser</span>`
+            : _localCopyStatusHtml(pending) && !pending.awaiting_closure
+            ? _localCopyStatusHtml(pending)
+            : pending.status === 'completed' && pending.awaiting_closure
+            ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Tous les fichiers de ce pack ont été traités - il disparaîtra au prochain passage de la clôture automatique (quelques minutes)">${svgIcon('check-check')} Traité — clôture automatique</span>`
             : pending.status === 'completed'
-            ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Téléchargement terminé - repris automatiquement au prochain scan (quelques secondes), ou cliquez sur ✓ pour ne pas attendre">${svgIcon('check')} Prêt — scan automatique sous peu</span>`
+            ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Téléchargement terminé - repris automatiquement au prochain passage de l'import (quelques secondes)">${svgIcon('check')} Téléchargé — import automatique sous peu</span>`
             : pending.exhausted
                 ? `<span class="import-download-error">${svgIcon('alert-triangle')} Échec — relance manuelle</span>`
             : hasProgress
@@ -1941,7 +1963,7 @@ function _importFileRowHtml(file, index) {
     // import manuel si besoin.
     const awaitingAutoImport = !!hasDestination && hasKnownVolume && !hasDatabaseVolume && !isImportingNow
         && !file.validation_error && file.parsed.tracked_volume_conflict == null
-        && file.destination.download_status === 'completed'
+        && ['completed', 'importing'].includes(file.destination.download_status)
         && !file.auto_import_skip_reason && !file.manual_override;
     const isLocked = isImportingNow || awaitingAutoImport;
     const seriesTitleHtml = hasDestination
@@ -1986,12 +2008,18 @@ function _importFileRowHtml(file, index) {
             ? `<span style="color:#6c757d; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Téléchargement...</span>`
         : hasDatabaseVolume
             ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Cet album existe déjà dans la base Bullarr. Choisissez explicitement si le nouveau fichier doit le remplacer.">${svgIcon('triangle-alert')} Fichier existant — choix manuel</span>`
+        // Un autre fichier du même téléchargement est en cours d'import: celui-ci attend son tour.
+        : awaitingAutoImport && file.destination.download_status === 'importing'
+            ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Un autre fichier de ce téléchargement est en cours d'import - celui-ci suit automatiquement">${svgIcon('history')} En file d'attente — import automatique</span>`
+        // Sans numéro de tome, rien ne peut être importé (ni automatiquement ni à la main).
+        : hasDestination && !hasKnownVolume
+            ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Choisissez le tome dans la colonne Volume avant d'importer">${svgIcon('triangle-alert')} Tome manquant</span>`
         : file.destination?.download_status === 'completed'
             ? (file.auto_import_skip_reason
-                ? `<span style="color:#28a745; font-weight:600;" data-tooltip="L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement">${svgIcon('check')} Prêt — import manuel</span>`
+                ? `<span style="color:#28a745; font-weight:600;" data-tooltip="L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement">${svgIcon('check')} Import manuel à valider</span>`
                 : file.manual_override
-                    ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Assignation faite à la main - cliquez sur « Importer » pour valider, l'import automatique ne le reprendra pas tout seul">${svgIcon('check')} Prêt — import manuel</span>`
-                    : `<span style="color:#28a745; font-weight:600;" data-tooltip="Aucune action nécessaire - importé automatiquement dans les secondes qui suivent">${svgIcon('check')} Prêt — import automatique</span>`)
+                    ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Assignation faite à la main - cliquez sur « Importer » pour valider, l'import automatique ne le reprendra pas tout seul">${svgIcon('check')} Import manuel à valider</span>`
+                    : `<span style="color:#28a745; font-weight:600;" data-tooltip="Aucune action nécessaire - importé automatiquement dans les secondes qui suivent">${svgIcon('check')} Import automatique en attente</span>`)
         // "au lieu de Pret met une information sur ce qu'il faut faire. attente
             // d'import manuelle, etc..." - cette branche n'est atteinte QUE quand
             // isImportingNow est false alors que hasDestination && hasKnownVolume sont
@@ -2005,16 +2033,22 @@ function _importFileRowHtml(file, index) {
             // clic sur "Importer" (ou la sélection groupée) est la SEULE façon de le
             // finaliser.
             : hasDestination && hasKnownVolume
-                ? `<span style="color:#28a745; font-weight:600;" data-tooltip="${file.auto_import_skip_reason ? "L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement" : 'Assignation faite à la main - cliquez sur « Importer » pour valider, l\'import automatique ne le reprendra pas tout seul'}">${svgIcon('check')} Prêt — import manuel</span>`
+                ? `<span style="color:#28a745; font-weight:600;" data-tooltip="${file.auto_import_skip_reason ? "L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement" : 'Assignation faite à la main - cliquez sur « Importer » pour valider, l\'import automatique ne le reprendra pas tout seul'}">${svgIcon('check')} Import manuel à valider</span>`
                 : hasDestination
                     ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('triangle-alert')} Tome manquant</span>`
                     : `<span style="color:#dc3545; font-weight:600;">${svgIcon('triangle-alert')} Action requise</span>`;
 
+    const owned = file.already_in_library;
+    const ownedHtml = owned
+        ? `<div class="import-auto-skip-explanation" data-tooltip="Ce tome a déjà un fichier dans la bibliothèque (${escapeHtml((owned.format || '').toUpperCase())}, ${formatBytes(owned.size)})">${owned.will_replace
+            ? `${svgIcon('file-replace')} Déjà en bibliothèque (${formatBytes(owned.size)}) — ce fichier plus gros le remplacera`
+            : `${svgIcon('check')} Déjà en bibliothèque (${formatBytes(owned.size)}) — ce fichier sera ignoré (doublon)`}</div>`
+        : '';
     return `
-        <tr style="border-bottom:1px solid #f0f0f0;">
+        <tr class="${owned ? 'volume-table-row-owned' : ''}" style="border-bottom:1px solid #f0f0f0;">
             <td>${hasDestination ? `
                 <input type="checkbox" class="import-file-select" data-import-file-index="${index}"
-                       ${_isFileSelected(file) ? 'checked' : ''}${awaitingAutoImport ? ' disabled' : ''}
+                       ${_isFileSelected(file) ? 'checked' : ''}${isLocked ? ' disabled' : ''}
                        onchange="toggleFileSelection(${index}, this.checked)"
                        data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour importer ou assigner plusieurs fichiers à une même série'}">
             ` : `
@@ -2028,6 +2062,7 @@ function _importFileRowHtml(file, index) {
             <td class="import-files-table-filename">
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(file.filename)}">${escapeHtml(file.filename)}</div>
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
+                ${ownedHtml}
                 ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}</div>` : ''}
                 ${_convertActionHtml(file)}
                 ${hasDatabaseVolume ? `<div class="import-auto-skip-explanation">⚠️ Album déjà enregistré dans Bullarr.<button type="button" class="btn-neutral-sm" style="margin-left:6px;" onclick="openDestinationModal(${index})">Remplacer le fichier existant</button></div>` : ''}
@@ -2307,7 +2342,10 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
     const fileMatches = allFileMatches.filter(({ file }) => !file.is_container);
     const rowId = `pending-pack-${pending.id}`;
     const isExpanded = expandedPackIds.has(pending.id);
-    const total = pending.expected_volume_count || fileMatches.length;
+    // Nombre de FICHIERS du pack sur le disque (et non de tomes annoncés dans le titre du
+    // torrent: « 36/31 » mélangeait les deux - 31 tomes + 5 hors-séries = 36 fichiers).
+    const total = fileMatches.length;
+    const ownedCount = fileMatches.filter(({ file }) => file.already_in_library).length;
     const readyFileMatches = fileMatches.filter(({ file }) => file.destination && _hasKnownVolume(file));
     const readyCount = readyFileMatches.length;
     const autoReadyCount = readyFileMatches.filter(({ file }) => !file.auto_import_skip_reason && !file.manual_override).length;
@@ -2327,7 +2365,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
                 <span style="font-weight:600;" data-tooltip="${escapeHtml(pending.title)}">${svgIcon('package')} ${escapeHtml(pending.series_title || pending.title)}</span>
                 <div style="font-size:0.9em;">${isImportingNow
                     ? `${fileMatches.length} ${pluralize(fileMatches.length, 'fichier')} détecté${fileMatches.length > 1 ? 's' : ''} · import en cours`
-                    : `${readyCount} ${pluralize(readyCount, 'fichier')} ${pluralize(readyCount, 'prêt')} à importer${fileMatches.length !== readyCount ? ` (${fileMatches.length} au total)` : ''}`}${folderMatches.length ? ` + ${folderMatches.length} ${pluralize(folderMatches.length, 'dossier incompatible', 'dossiers incompatibles')}` : ''}</div>
+                    : `${readyCount} ${pluralize(readyCount, 'fichier')} à importer${fileMatches.length !== readyCount ? ` (${fileMatches.length} au total)` : ''}${pending.expected_volume_count ? ` · ${pending.expected_volume_count} tomes annoncés` : ''}${ownedCount ? ` · ${ownedCount} déjà en bibliothèque` : ''}`}${folderMatches.length ? ` + ${folderMatches.length} ${pluralize(folderMatches.length, 'dossier incompatible', 'dossiers incompatibles')}` : ''}</div>
             </td>
             <td>${seriesLabel}</td>
             <td>—</td>
@@ -2335,15 +2373,17 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
             <td style="text-align:center; min-width:110px;">
                 <div>${isImportingNow
                     ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`
+                    : _localCopyStatusHtml(pending) && !pending.awaiting_closure
+                    ? _localCopyStatusHtml(pending)
                     : containerMatches.length && fileMatches.length === 0 && folderMatches.length === 0
                     ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Archive de plusieurs albums: dépliez, ouvrez « Voir le contenu » puis empaquetez les dossiers">${svgIcon('package')} À examiner</span>`
                     : total === 0
                     ? `<span style="font-size:0.85em;">${svgIcon('loader-circle', 'icon-spin')} En attente...</span>`
                     : readyCount === total && folderMatches.length === 0
                         ? (packNeedsManualAction
-                            ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Au moins un fichier de ce pack est bloqué en attente manuelle (skip_reason ou assignation à la main) - dépliez le pack pour voir lequel et cliquer sur « Importer »">${svgIcon('check')} Prêt — import manuel</span>`
-                            : `<span style="color:#28a745; font-weight:600;">${svgIcon('check')} Prêt</span>`)
-                        : `<span style="color:#e67e22; font-weight:600;">${readyCount}/${total} ${pluralize(readyCount, 'prêt')}</span>`}</div>
+                            ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Au moins un fichier de ce pack est bloqué en attente manuelle (skip_reason ou assignation à la main) - dépliez le pack pour voir lequel et cliquer sur « Importer »">${svgIcon('check')} Import manuel à valider</span>`
+                            : `<span style="color:#28a745; font-weight:600;" data-tooltip="Tous les fichiers de ce pack seront importés automatiquement">${svgIcon('check')} Import automatique en attente</span>`)
+                        : `<span style="color:#e67e22; font-weight:600;" data-tooltip="Fichiers dont la série et le tome sont identifiés, sur le nombre de fichiers du pack">${readyCount} sur ${total} ${pluralize(total, 'fichier')} importables</span>`}</div>
                 ${containerMatches.length ? `<button class="btn-icon-only" onclick="completePackGroup(${pending.id}, [${containerMatches.map(m => m.index).join(',')}], this)" data-tooltip="Valider ce pack comme terminé (volumes empaquetés puis importés) : il disparaît de la page" aria-label="Valider le pack comme terminé">${svgIcon('check-check')}</button>` : ''}
                 <button class="btn-icon-only" onclick="removePendingPack(${pending.id}, [${allFileMatches.map(fm => fm.index).join(',')}], [${folderMatches.map(fm => fm.index).join(',')}], this)" data-tooltip="Supprimer le pack ET ses fichiers/dossiers déjà arrivés sur disque">${svgIcon('trash-2')}</button>
             </td>

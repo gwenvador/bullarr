@@ -474,6 +474,13 @@ class LibraryScanner:
         # comme n'importe quelle autre annotation entre parenthèses/crochets par le
         # nettoyage plus bas (extraction de l'auteur, retrait inconditionnel des groupes
         # crochets restants), perdant l'article purement et simplement.
+        # « Blake Et Mortimer-12-Les 3 Formules... »: numéro de tome entre deux tirets collés
+        # au titre - même séparateur que « Titre - 12 - Album ».
+        name_without_ext = re.sub(r'(?<=[^\W\d_])-(\d{1,3})-(?=[^\W\d_])', r' - \1 - ', name_without_ext)
+        # « Série - 26 - Album - T2 - Sous-titre »: le numéro placé juste après le titre de la
+        # série est le tome; un « T2 »/« Tome 2 » plus loin appartient au titre de l'album.
+        leading_volume = re.match(r'^\s*(.+?)\s+-\s+(?:T|Tome\s*)?(\d{1,3})\s+-\s+\S', name_without_ext, re.IGNORECASE)
+
         name_without_ext = LibraryScanner.unscramble_trailing_article(name_without_ext)
 
         # AVANT la normalisation: Extraire les résolutions depuis les crochets
@@ -827,6 +834,14 @@ class LibraryScanner:
         # lgtm [py/redos] input is bounded before this intentional filename parser regex.
         info['title'] = re.sub(r'(?:\s*-\s*)+$', '', info['title'])
         info['title'] = re.sub(r'\s+', ' ', info['title']).strip()
+        # « Titre - HS - Album » ou « Titre-HS-Album »: le retrait du tag (HS, INT, OS...) laisse
+        # un segment vide « - - »; tout ce qui suit est le titre de l'album, pas de la série.
+        # Un préfixe parasite trop court avant le vide (« FT- -Valhardi-T08... ») n'est pas le
+        # titre: on garde alors le premier morceau significatif.
+        segments = [seg.strip() for seg in re.split(r'\s*-\s*-\s*', info['title']) if seg.strip()]
+        meaningful = [seg for seg in segments if len(re.sub(r'\W', '', seg)) >= 3]
+        if meaningful:
+            info['title'] = meaningful[0]
 
         # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
         info['title'] = re.sub(r'\s*@[\w-]+\s*$', '', info['title']).strip()
@@ -847,6 +862,12 @@ class LibraryScanner:
         if year_match and int(year_match.group(1)) not in excluded_numbers:
             info['year'] = int(year_match.group(1))
             info['title'] = re.sub(rf'\s+{info["year"]}\s*$', '', info['title']).strip()
+
+        if (leading_volume and info['volume'] is not None and not info['is_hs'] and not info['is_integral']
+                and not info['is_episode'] and int(leading_volume.group(2)) != info['volume']
+                and set(re.sub(r'\W+', ' ', re.sub(r'\([^)]*\)', ' ', leading_volume.group(1))).lower().split())
+                == set(re.sub(r'\W+', ' ', re.sub(r'\([^)]*\)', ' ', info['title'])).lower().split())):
+            info['volume'] = int(leading_volume.group(2))
 
         # Extraire la résolution (1920x1080, etc.)
         # Ne pas écraser la résolution déjà extraite depuis les crochets

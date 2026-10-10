@@ -96,6 +96,167 @@ def _resolve_ebdz_thread_series(item, monitored_series, identities_by_series):
     return None, 'unmatched'
 
 
+def _typed_identity(parsed):
+    """Hors-série, intégrale ou épisode reconnu dans le nom: (colonne type, colonne numéro,
+    numéro, libellé). None pour un tome classique ou un fichier sans type reconnu."""
+    for flag, column, label in (('is_hs', 'hs_number', 'HS'), ('is_integral', 'integral_number', 'Intégrale'),
+                                ('is_episode', 'episode_number', 'Épisode')):
+        if parsed.get(flag):
+            number = parsed.get(column)
+            return flag, column, number, f"{label} {number}" if number is not None else label
+    return None
+
+
+def _missing_typed_volume(cursor, series_id, typed, filename):
+    """Album manquant (sans fichier) qui correspond à ce hors-série/intégrale/épisode.
+    Retourne (volume_id, ambigu): plusieurs albums manquants partagent parfois le même numéro
+    (hors-séries numérotés par année) - le titre du fichier les départage, sinon ambigu."""
+    from blueprints.library.routes import pick_volume_by_title
+    flag, column, number, _label = typed
+    if number is None:
+        rows = cursor.execute(
+            f"SELECT id FROM volumes WHERE series_id = ? AND {flag} = 1 AND {column} IS NULL "
+            "AND (filepath IS NULL OR filepath = '')", (series_id,)).fetchall()
+    else:
+        rows = cursor.execute(
+            f"SELECT id FROM volumes WHERE series_id = ? AND {flag} = 1 AND {column} = ? "
+            "AND (filepath IS NULL OR filepath = '')", (series_id, number)).fetchall()
+    ids = [row[0] for row in rows]
+    if len(ids) <= 1:
+        return (ids[0] if ids else None), False
+    chosen = pick_volume_by_title(cursor, ids, filename)
+    return chosen, chosen is None
+
+
+def _rss_torrent_url(item, series_title=None):
+    """Lien de téléchargement d'une release RSS: lien direct du flux, sinon la release exacte
+    retrouvée chez Prowlarr (le flux retire les liens qui contiennent une clé API). Prowlarr ne
+    retrouve pas une release par son nom complet: on cherche par nom de série (lu dans le nom
+    du fichier, puis celui de la bibliothèque sans sa parenthèse) et on garde le titre exact."""
+    for link in item.get('download_links') or []:
+        url = str(link.get('url') or '')
+        probe = url.lower()
+        if probe.startswith('magnet:') or (probe.startswith('http') and ('.torrent' in probe or '/download' in probe)):
+            return url
+    if not item.get('prowlarr_indexer_id'):
+        return None
+    import re
+    from blueprints.library.scanner import LibraryScanner
+    from blueprints.prowlarr.search import search_prowlarr_raw
+    title = str(item.get('filename') or '')
+    page = item.get('link')
+    queries = []
+    for query in (LibraryScanner.parse_filename(title).get('title'),
+                  re.sub(r'\s*\([^)]*\)\s*$', '', series_title or '').strip(), series_title, title):
+        if query and query.lower() not in (q.lower() for q in queries):
+            queries.append(query)
+    for query in queries:
+        results = search_prowlarr_raw(query) or []
+        exact = [r for r in results if str(r.get('title') or '').lower() == title.lower()]
+        release = next((r for r in exact if r.get('info_url') == page), None) if page else (exact[0] if len(exact) == 1 else None)
+        if release and release.get('download_url'):
+            return release['download_url']
+    return None
+
+
+def _send_monitor_download(source, item, downloader, series_title, volume_number, series_id, filename, volume_id=None):
+    """Envoie le fichier d'une nouveauté au client adapté à sa source. Retourne (succès, message)."""
+    if source == 'ebdz':
+        return downloader.send_torrent_download(
+            item.get('link'), series_title, volume_number, series_id=series_id,
+            filename=filename, source='ebdz', source_link=item.get('thread_url'))
+    if source == 'rss':
+        url = _rss_torrent_url(item, series_title)
+        if not url:
+            return False, f'Lien de téléchargement introuvable pour {filename}'
+        return downloader.send_torrent_download(
+            url, series_title, volume_number, series_id=series_id,
+            filename=filename, source='prowlarr', source_link=item.get('link'))
+    if source == 'telegram':
+        from blueprints.telegram_channels.routes import _require_connected_config
+        from blueprints.telegram_channels.scraper import download_channel_file_background
+        config = _require_connected_config()
+        target_dir = current_app.config.get('TELEGRAM_IMPORT_DIRECTORY')
+        if not config or not target_dir:
+            raise RuntimeError('Telegram non connecté ou répertoire non configuré')
+        download_channel_file_background(
+            config['api_id'], config['api_hash_decrypted'], config['session_decrypted'],
+            item['channel'], item['message_id'], target_dir,
+            channel_title=item.get('channel_title'), app=current_app._get_current_object(),
+            pending_title=filename, series_id=series_id, volume_number=volume_number, volume_id=volume_id)
+        return True, f'{filename} envoyé à Telegram'
+    raise ValueError(f'Source non prise en charge: {source}')
+
+
+def _process_typed_monitor_file(source, item, filename, parsed, typed, match, series_id, thread_match, hint,
+                                bedetheque_url_by_series, action, downloader, stats, log_action):
+    """Nouveau fichier hors-série/intégrale/épisode d'une série surveillée: téléchargé s'il
+    correspond à un album manquant identifié sans ambiguïté, sinon envoyé en validation."""
+    from blueprints.library.routes import _normalize_title_for_match, get_db_connection
+    from blueprints.bedetheque.auto_acquire import queue_manual_review
+
+    label = typed[3]
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        volume_id, ambiguous = _missing_typed_volume(cursor, series_id, typed, filename)
+        pending = cursor.execute(
+            f"SELECT 1 FROM active_downloads WHERE series_id = ? AND status IN ('pending', 'completed', 'importing') "
+            f"AND {typed[0]} = 1 AND {typed[1]} IS ?", (series_id, typed[2])).fetchone()
+    finally:
+        conn.close()
+    candidate = {
+        'source': source, 'filename': item.get('filename'), 'link': item.get('link'),
+        'thread_url': item.get('thread_url'), 'channel': item.get('channel'),
+        'message_id': item.get('message_id'), 'channel_title': item.get('channel_title'),
+    }
+    if ambiguous:
+        queue_manual_review(series_id, match[3], None, label, [candidate],
+                            f"Plusieurs albums manquants portent le numéro « {label} » - le titre du fichier "
+                            f"ne permet pas de choisir lequel, à valider.", force_candidates=True)
+        stats['queued_for_review'] += 1
+        return
+    if volume_id is None:
+        return
+    if pending:
+        stats['skipped_pending'] += 1
+        return
+
+    normalized_parsed_title = _normalize_title_for_match(parsed.get('title', ''))
+    is_exact_title_match = _normalize_title_for_match(match[3]) == normalized_parsed_title
+    is_hint_confirmed = bool(hint) and (bedetheque_url_by_series.get(series_id) or '').strip().rstrip('/') == hint
+    is_thread_confirmed = bool(thread_match) and thread_match[0] == series_id
+    if not (is_exact_title_match or is_hint_confirmed or is_thread_confirmed):
+        queue_manual_review(series_id, match[3], None, label, [candidate],
+                            f"Titre détecté « {parsed.get('title')} » proche mais pas identique à « {match[3]} » - "
+                            f"correspondance de série non confirmée, à valider.", force_candidates=True)
+        stats['queued_for_review'] += 1
+        return
+
+    stats['matched_missing'] += 1
+    if action == 'notify':
+        from blueprints.telegram.routes import send_telegram_notification
+        success, error = send_telegram_notification(
+            f"📚 Nouvel album surveillé\nSérie : {match[3]}\nAlbum : {label}\nFichier : {filename}")
+        if success:
+            stats['notifications_sent'] += 1
+        else:
+            stats['errors'].append(error or 'Échec notification Telegram')
+        return
+
+    success, message = _send_monitor_download(source, item, downloader, match[3], None, series_id, filename, volume_id=volume_id)
+
+    if success:
+        stats['downloads_sent'] += 1
+    else:
+        stats['errors'].append(message)
+    log_action('missing_volume_match', series_id, match[3],
+               f"{label} : nouveau fichier « {filename} » détecté, correspond à un album manquant d'une série "
+               f"surveillée - téléchargement automatique " + ("déclenché." if success else f"en échec : {message}"),
+               success=success, error=None if success else message)
+    print(f"  {'✓' if success else '✗'} {message}")
+
+
 def process_new_monitor_files(source, items):
     """Télécharge les nouveaux fichiers qui correspondent à un tome manquant surveillé -
     ou, si l'option "upgrade qualité" est activée, à un tome DÉJÀ possédé d'une série
@@ -193,7 +354,10 @@ def process_new_monitor_files(source, items):
             filename = html_module.unescape(unquote(item.get('filename') or ''))
             parsed = scanner.parse_filename(filename)
             volume_number = parsed.get('volume')
-            if volume_number is None:
+            # Hors-séries, intégrales et épisodes: ils n'ont pas de numéro de tome classique
+            # mais restent des albums manquants à surveiller (ils étaient ignorés jusqu'ici).
+            typed = _typed_identity(parsed) if volume_number is None else None
+            if volume_number is None and typed is None:
                 continue
 
             normalized_parsed_title = _normalize_title_for_match(parsed.get('title', ''))
@@ -214,6 +378,15 @@ def process_new_monitor_files(source, items):
                 continue
 
             series_id = match[0]
+            if typed is not None:
+                handled_key = (series_id, typed[0], typed[2], filename)
+                if handled_key in handled:
+                    continue
+                handled.add(handled_key)
+                _process_typed_monitor_file(source, item, filename, parsed, typed, match, series_id,
+                                            thread_match, hint, bedetheque_url_by_series, action,
+                                            downloader, stats, log_action)
+                continue
             is_missing = volume_number in missing_by_series.get(series_id, set())
             quality_increase_percent = None
             if not is_missing:
@@ -270,8 +443,8 @@ def process_new_monitor_files(source, items):
             # de _quality_upgrade_match passent (voir sa docstring).
             if is_missing and action == "notify":
                 from blueprints.telegram.routes import send_telegram_notification
-                source_label = "EBDZ" if source == "ebdz" else "Telegram"
-                source_url = (item.get("thread_url") if source == "ebdz" else
+                source_label = {"ebdz": "EBDZ", "rss": "RSS"}.get(source, "Telegram")
+                source_url = (item.get("thread_url") if source == "ebdz" else item.get("link") if source == "rss" else
                               f"https://t.me/{item.get("channel", "").lstrip("@")}/{item.get("message_id")}")
                 message = (f"📚 Nouveau tome surveillé\n"
                            f"Série : {match[3]}\n"
@@ -288,29 +461,7 @@ def process_new_monitor_files(source, items):
                     print(f"  ✗ Notification Telegram: {error}")
                 continue
 
-            if source == 'ebdz':
-                success, message = downloader.send_torrent_download(
-                    item.get('link'), match[3], volume_number, series_id=series_id,
-                    filename=filename, source='ebdz', source_link=item.get('thread_url')
-                )
-            elif source == 'telegram':
-                from blueprints.telegram_channels.routes import _require_connected_config
-                from blueprints.telegram_channels.scraper import download_channel_file_background
-
-                config = _require_connected_config()
-                target_dir = current_app.config.get('TELEGRAM_IMPORT_DIRECTORY')
-                if not config or not target_dir:
-                    raise RuntimeError('Telegram non connecté ou répertoire non configuré')
-                download_channel_file_background(
-                    config['api_id'], config['api_hash_decrypted'], config['session_decrypted'],
-                    item['channel'], item['message_id'], target_dir,
-                    channel_title=item.get('channel_title'),
-                    app=current_app._get_current_object(), pending_title=filename,
-                    series_id=series_id, volume_number=volume_number
-                )
-                success, message = True, f'{filename} envoyé à Telegram'
-            else:
-                raise ValueError(f'Source non prise en charge: {source}')
+            success, message = _send_monitor_download(source, item, downloader, match[3], volume_number, series_id, filename)
 
             if success:
                 stats['downloads_sent'] += 1
