@@ -1,8 +1,8 @@
 # Changements
 
-## v6.1.1 — 2026-10-11
+## v6.2 — 2026-10-11
 
-[Comparer v6.1 et v6.1.1](https://github.com/gwenvador/bullarr/compare/v6.1...v6.1.1)
+[Comparer v6.1 et v6.2](https://github.com/gwenvador/bullarr/compare/v6.1...v6.2)
 
 Mise à jour directe depuis v6.1, sans migration de base.
 
