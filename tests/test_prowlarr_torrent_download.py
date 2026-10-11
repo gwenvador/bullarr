@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 from blueprints.qbittorrent.routes import (
+    _configured_prowlarr_download_url,
     _download_torrent_bytes,
     _is_configured_prowlarr_download,
 )
@@ -21,6 +22,12 @@ class ProwlarrTorrentDownloadTests(unittest.TestCase):
         valid = 'https://prowlarr.example.test/17/download?apikey=test-key&link=release'
         self.assertTrue(_is_configured_prowlarr_download(valid))
         self.assertFalse(_is_configured_prowlarr_download(valid.replace('test-key', 'wrong')))
+        # Lien de flux RSS sans clé: la clé configurée est ajoutée.
+        keyless = valid.replace('apikey=test-key&', '').replace('?apikey=test-key', '?')
+        self.assertNotIn('apikey', keyless)
+        rebuilt = _configured_prowlarr_download_url(keyless)
+        self.assertIsNotNone(rebuilt)
+        self.assertIn('apikey=test-key', rebuilt)
         self.assertFalse(_is_configured_prowlarr_download(valid.replace('/17/download', '/api/v1/system/status')))
         self.assertFalse(_is_configured_prowlarr_download(valid.replace('prowlarr.example.test', 'other.example.test')))
 

@@ -224,8 +224,11 @@ def sanitize_prowlarr_entries(entries, source_url, api_key):
             item[field] = value
         clean_downloads = []
         for download in item.get('download_links') or []:
+            # Lien de téléchargement Prowlarr: gardé SANS sa clé API (rajoutée côté serveur au
+            # moment de l'envoi au client, voir _configured_prowlarr_download_url), pour que le
+            # téléchargement d'une ligne RSS ne dépende pas d'une recherche Prowlarr.
             value, had_key = _redact_prowlarr_url(download.get('url'), source_url, api_key)
-            if had_key and urlparse(value).netloc == prowlarr_host:
+            if '[REDACTED]' in value:
                 continue
             clean_downloads.append({**download, 'url': value})
         item['download_links'] = clean_downloads[:10]

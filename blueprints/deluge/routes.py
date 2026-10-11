@@ -191,7 +191,11 @@ def add_torrent():
         force_replace = bool(data.get('force_replace'))
 
         session, base_url = _deluge_login(config)
-        result = _deluge_rpc(session, base_url, 'core.add_torrent_url', [torrent_url, {}])
+        # Lien Prowlarr sans clé (flux RSS): la clé configurée est ajoutée ici seulement, pour
+        # le client; titre, suivi et historique gardent le lien sans clé.
+        from blueprints.qbittorrent.routes import _configured_prowlarr_download_url
+        client_url = (_configured_prowlarr_download_url(torrent_url) if source == 'prowlarr' else None) or torrent_url
+        result = _deluge_rpc(session, base_url, 'core.add_torrent_url', [client_url, {}])
 
         if not result:
             return jsonify({'success': False, 'error': 'Deluge a refusé le torrent (déjà présent ?)'}), 400

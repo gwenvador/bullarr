@@ -172,7 +172,11 @@ def add_torrent():
         force_replace = bool(data.get('force_replace'))
 
         proxy = _rtorrent_proxy(config)
-        proxy.load.start('', torrent_url)
+        # Lien Prowlarr sans clé (flux RSS): la clé configurée est ajoutée ici seulement, pour
+        # le client; titre, suivi et historique gardent le lien sans clé.
+        from blueprints.qbittorrent.routes import _configured_prowlarr_download_url
+        client_url = (_configured_prowlarr_download_url(torrent_url) if source == 'prowlarr' else None) or torrent_url
+        proxy.load.start('', client_url)
 
         from torrent_hash import extract_magnet_btih
         computed_client_item_id = extract_magnet_btih(torrent_url) if torrent_url.startswith('magnet:') else None

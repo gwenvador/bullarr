@@ -1,5 +1,15 @@
 # Changements
 
+## v6.1.1 — 2026-10-11
+
+[Comparer v6.1 et v6.1.1](https://github.com/gwenvador/bullarr/compare/v6.1...v6.1.1)
+
+Mise à jour directe depuis v6.1, sans migration de base.
+
+- Flux RSS Prowlarr : le lien de téléchargement de chaque entrée est conservé, sans la clé API. Le serveur ajoute la clé configurée au moment d'envoyer le torrent à qBittorrent, rTorrent ou Deluge. L'éclair de Nouveautés et la surveillance RSS téléchargent ainsi le fichier du flux, sans dépendre d'une recherche Prowlarr (qui pouvait échouer sur un délai dépassé).
+- Nouveautés : un pack de plusieurs tomes (« T01-T03 », « [T01.T31] », « T1 à T5 ») est marqué possédé lorsque tous ses tomes le sont, au lieu d'être lu comme une intégrale manquante.
+- Nouveautés : une « Intégrale » sans numéro d'une série dont le catalogue ne contient aucune intégrale est marquée possédée lorsque la série est complète.
+
 ## v6.1 — 2026-10-10
 
 [Comparer v6.0 et v6.1](https://github.com/gwenvador/bullarr/compare/v6.0...v6.1)

@@ -24,7 +24,9 @@ def _configured_prowlarr_download_url(url):
     Schéma, hôte et préfixe viennent de la configuration de l'administrateur (jamais d'une
     valeur fournie par la requête), ce qui garantit que la requête sortante ne peut viser
     que son Prowlarr; seuls l'identifiant numérique et les paramètres de requête (apikey
-    vérifiée, link, file...) sont repris de `url`.
+    vérifiée, link, file...) sont repris de `url`. Un lien sans clé (lien d'un flux RSS
+    Prowlarr, dont la clé est retirée avant d'atteindre le navigateur) reçoit la clé
+    configurée; une clé fournie doit être exactement celle-ci.
     """
     from blueprints.prowlarr.config_store import load_prowlarr_config
     from encryption import decrypt
@@ -45,12 +47,15 @@ def _configured_prowlarr_download_url(url):
         return None
     configured_key = config.get('api_key_decrypted') or decrypt(config.get('api_key', ''))
     supplied_keys = parse_qs(candidate.query).get('apikey', [])
-    if not (configured_key and len(supplied_keys) == 1
-            and hmac.compare_digest(configured_key, supplied_keys[0])):
+    if not configured_key or len(supplied_keys) > 1:
+        return None
+    if supplied_keys and not hmac.compare_digest(configured_key, supplied_keys[0]):
         return None
     # Les autres paramètres (link, file...) sont repris tels quels: ils ne changent pas la
     # destination, fixée ci-dessus par la configuration.
-    query = urlencode(parse_qsl(candidate.query, keep_blank_values=True))
+    params = [(key, value) for key, value in parse_qsl(candidate.query, keep_blank_values=True)
+              if key != 'apikey']
+    query = urlencode([('apikey', configured_key)] + params)
     return f"{expected.scheme}://{expected.netloc}{prefix}/{int(match.group(1))}/download?{query}"
 
 

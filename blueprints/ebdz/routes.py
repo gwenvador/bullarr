@@ -718,8 +718,15 @@ def _annotate_rss_entries(events):
         "SELECT title, series_id, volume_number, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number FROM active_downloads WHERE status NOT IN ('failed', 'cancelled')"
     ).fetchall()
     series_meta = {
-        int(series_id): {'is_oneshot': bool(is_oneshot)}
-        for series_id, is_oneshot in conn.execute('SELECT id, is_oneshot FROM series').fetchall()
+        int(series_id): {'is_oneshot': bool(is_oneshot),
+                         'total': max(int(total or 0), int(bedetheque_total or 0)) or None}
+        for series_id, is_oneshot, total, bedetheque_total in conn.execute(
+            'SELECT id, is_oneshot, total_volumes, bedetheque_total_volumes FROM series').fetchall()
+    }
+    # Séries dont le catalogue (Bédéthèque, placeholders compris) contient une intégrale.
+    series_with_integrals = {
+        int(row[0]) for row in conn.execute(
+            'SELECT DISTINCT series_id FROM volumes WHERE COALESCE(is_integral, 0) = 1').fetchall()
     }
     owned_volume_rows = conn.execute(
         'SELECT series_id, volume_number, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number '
@@ -786,7 +793,15 @@ def _annotate_rss_entries(events):
     def event_volume_signature(event, series_id):
         if series_id is None:
             return None
-        signature = volume_signature(LibraryScanner.parse_filename(str(event.get('title') or '')))
+        title = str(event.get('title') or '')
+        parsed = LibraryScanner.parse_filename(title)
+        signature = volume_signature(parsed)
+        if signature is None or signature == ('integral', None):
+            # Pack « Europa (T01-T03) », « [T01.T31] », « T1 à T5 » (lu comme intégrale sans
+            # numéro): possédé si tous ses tomes le sont.
+            tome_range = LibraryScanner._parse_integral_tome_range(title)
+            if tome_range:
+                return ('range', tome_range)
         if signature is None and series_meta.get(int(series_id), {}).get('is_oneshot'):
             return ('oneshot', None)
         return signature
@@ -840,10 +855,20 @@ def _annotate_rss_entries(events):
         catalog = catalog_match(event.get('title')) if match is None else None
         exact_event_keys = exact_keys(event.get('title'))
         signature = event_volume_signature(event, match[0]) if match else None
-        already_owned = (
-            signature in owned_by_series.get(int(match[0]), set())
-            if signature is not None else None
-        )
+        owned_signatures = owned_by_series.get(int(match[0]), set()) if match else set()
+        if signature is not None and signature[0] == 'range':
+            start, end = signature[1]
+            already_owned = all(('volume', number) in owned_signatures for number in range(start, end + 1))
+        elif (signature == ('integral', None) and match
+              and int(match[0]) not in series_with_integrals
+              and series_meta.get(int(match[0]), {}).get('total')):
+            # « Intégrale » sans numéro d'une série sans intégrale au catalogue: c'est le
+            # regroupement de ses tomes, possédé si la série est complète
+            # (« La.Derniere.Ombre…Integrale » = tomes 1 et 2).
+            total = series_meta[int(match[0])]['total']
+            already_owned = all(('volume', number) in owned_signatures for number in range(1, total + 1))
+        else:
+            already_owned = signature in owned_signatures if signature is not None else None
         downloaded = (
             event.get('link') in downloaded_links
             or bool(exact_event_keys & downloaded_titles)
@@ -874,7 +899,7 @@ def _annotate_rss_entries(events):
 _rss_persistent_cache_lock = threading.Lock()
 RSS_PERSISTENT_CACHE_TTL_SECONDS = 300
 RSS_PERSISTENT_CACHE_MAX_ENTRIES = 500
-RSS_ANNOTATION_VERSION = 3
+RSS_ANNOTATION_VERSION = 6
 
 
 def _rss_persistent_cache_path():

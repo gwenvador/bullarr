@@ -84,7 +84,7 @@ class RssParserTests(unittest.TestCase):
         self.assertEqual(feeds, [{'name': 'Prowlarr', 'provider': 'prowlarr', 'enabled': True}])
 
         entries = sanitize_prowlarr_entries([{'title': 'X', 'link': 'http://prowlarr/17/download?apikey=secret', 'description': 'apikey=secret', 'download_links': [{'url': 'http://prowlarr/17/download?apikey=secret', 'label': 'Torrent'}]}], 'http://prowlarr/17/newznab', 'secret')
-        self.assertEqual(entries[0]['download_links'], [])
+        self.assertEqual(entries[0]['download_links'], [{'url': 'http://prowlarr/17/download', 'label': 'Torrent'}])
         self.assertNotIn('secret', entries[0]['description'])
         self.assertNotIn('apikey=', entries[0]['link'])
 
