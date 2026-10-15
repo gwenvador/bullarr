@@ -4059,7 +4059,7 @@ async function renderSeriesDetail(seriesId) {
                     <button class="toolbar-btn" onclick="openSeriesHistoryModal(${seriesId}, '${escapeForAttribute(data.title)}')" data-tooltip="Historique de cette série: imports, téléchargements, renommages, suppressions">
                         <span class="toolbar-btn-icon">${svgIcon('history')}</span><span class="toolbar-btn-label">Historique</span>
                     </button>
-                    ${_seriesBuyVolume(data) ? buildVolumeBuyItemsHtml(_seriesBuyVolume(data), true) : ''}
+                    <span id="series-buy-slot"></span>
                 </div>
             </div>
         `;
@@ -4073,6 +4073,11 @@ async function renderSeriesDetail(seriesId) {
                 ${buildVolumesSectionHtml(data)}
             </div>
         `;
+        // Panier inséré après coup, hors du gabarit de l'en-tête (qui contient des
+        // gestionnaires onclick): ses liens échappés n'y transitent plus.
+        const buyVolume = _seriesBuyVolume(data);
+        const buySlot = document.getElementById('series-buy-slot');
+        if (buyVolume && buySlot) buySlot.outerHTML = buildVolumeBuyItemsHtml(buyVolume, true);
         const detailCover = modalBody.querySelector('.series-detail-cover.clickable-cover');
         if (detailCover) {
             const showDetailCover = event => {
