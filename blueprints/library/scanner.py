@@ -26,6 +26,28 @@ logger = logging.getLogger(__name__)
 
 # Mention de format seule (« PDF », « CBR.CBZ », « CBZ & PDF »): jamais un releaser.
 _FORMAT_WORD = r'(?:CB[ZRT7]|PDF|EPUB|ZIP|RAR|JPE?G|WEBP|PNG)'
+def _enclosed_segments(text):
+    r"""Contenus non vides entre [] ou (), de gauche à droite, avec True pour les crochets.
+
+    Même résultat que re.finditer(r'\[([^\]]+?)\]|\(([^)]+?)\)', text), en un seul
+    parcours linéaire (l'expression était signalée par CodeQL comme ReDoS polynomial).
+    """
+    segments = []
+    i = 0
+    length = len(text)
+    while i < length:
+        opener = text[i]
+        if opener in '[(':
+            closer = ']' if opener == '[' else ')'
+            j = text.find(closer, i + 1)
+            if j > i + 1:
+                segments.append((text[i + 1:j], opener == '['))
+                i = j + 1
+                continue
+        i += 1
+    return segments
+
+
 # Nettoyage des releasers « format » déjà en base: une fois par base et par processus.
 _FORMAT_RELEASER_CLEANED = set()
 FORMAT_TAG_RE = re.compile(_FORMAT_WORD + r'(?:\s*(?:[&+,/.-]|et)\s*' + _FORMAT_WORD + r')*', re.IGNORECASE)
@@ -633,9 +655,7 @@ class LibraryScanner:
         )
 
         combined_matches = [
-            ((m.group(1) if m.group(1) is not None else m.group(2)).strip(), m.group(1) is not None)
-            # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
-            for m in re.finditer(r'\[([^\]]+?)\]|\(([^)]+?)\)', name_without_ext)
+            (text.strip(), is_bracket) for text, is_bracket in _enclosed_segments(name_without_ext)
         ]
         # « [PDF] », « [CBR].[CBZ] », « (CBZ & PDF) »: simple mention du format, jamais un
         # releaser ni un auteur.
@@ -705,7 +725,7 @@ class LibraryScanner:
             # « T01 à 15 et 2 HS »: les HS font partie d'un pack de tomes, ce n'est pas
             # un hors-série seul - la plage est traitée plus bas comme un pack.
             hs_match = None
-            normalized_name = re.sub(r'(?:\bet|\+|&)\s*\d*\s*HS\b', ' ', normalized_name, flags=re.IGNORECASE)
+            normalized_name = re.sub(r'(?:\bet|\+|&)\s*(?:\d+\s*)?HS\b', ' ', normalized_name, flags=re.IGNORECASE)
             normalized_name = re.sub(r'\s+', ' ', normalized_name).strip()
         if hs_match:
             info['is_hs'] = True

@@ -13,6 +13,7 @@ import re
 from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlparse
 from encryption import decrypt, load_encrypted_json_config, save_encrypted_json_config
 from network_safety import safe_external_get
+from error_utils import error_message
 
 
 _MAX_TORRENT_BYTES = 10 * 1024 * 1024
@@ -109,8 +110,7 @@ def download_prowlarr_torrent_file():
                 return redirect(location)
         data = _download_torrent_bytes(url, 'prowlarr')
     except Exception as e:
-        current_app.logger.warning(f"Téléchargement du fichier torrent Prowlarr impossible: {e}")
-        return jsonify({'success': False, 'error': f'Téléchargement impossible: {e}'}), 502
+        return jsonify({'success': False, 'error': error_message(e, 'Téléchargement impossible')}), 502
     return Response(data, mimetype='application/x-bittorrent', headers={
         'Content-Disposition': f'attachment; filename="{name}.torrent"',
     })

@@ -2210,8 +2210,8 @@ function buildVolumeBuyItemsHtml(v, toolbar = false) {
     // sur une ligne, chacun lien direct vers la recherche de l'album.
     const menuId = `${toolbar ? 'series' : 'volume'}-buy-menu-${v.id}`;
     const buttonHtml = toolbar
-        ? `<button type="button" class="toolbar-btn" onclick="toggleToolbarDropdown('${menuId}', this)" data-tooltip="Acheter ${currentSeriesDetail?.is_oneshot ? 'cet album' : 'le premier album'}${how}"><span class="toolbar-btn-icon">${svgIcon('shopping-cart')}</span><span class="toolbar-btn-label">Acheter</span></button>`
-        : `<button type="button" class="volume-link-icon" onclick="toggleToolbarDropdown('${menuId}', this)" title="Acheter cet album${how}">${svgIcon('shopping-cart')}</button>`;
+        ? `<button type="button" class="toolbar-btn" data-menu="${escapeHtml(menuId)}" onclick="toggleToolbarDropdown(this.dataset.menu, this)" data-tooltip="Acheter ${currentSeriesDetail?.is_oneshot ? 'cet album' : 'le premier album'}${how}"><span class="toolbar-btn-icon">${svgIcon('shopping-cart')}</span><span class="toolbar-btn-label">Acheter</span></button>`
+        : `<button type="button" class="volume-link-icon" data-menu="${escapeHtml(menuId)}" onclick="toggleToolbarDropdown(this.dataset.menu, this)" title="Acheter cet album${how}">${svgIcon('shopping-cart')}</button>`;
     return `
         <div class="toolbar-dropdown">
             ${buttonHtml}
