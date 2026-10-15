@@ -3288,3 +3288,70 @@ a.result-title:hover {
     display: inline-flex;
     margin: 0 1px;
 }
+
+/* Liens « Acheter » des menus d'album: un <a> rendu comme les boutons du menu. */
+a.toolbar-dropdown-item { text-decoration: none; box-sizing: border-box; }
+
+/* Bulle du caddie d'un album: logos des magasins (Fnac, Amazon, BDfugue) sur une ligne. */
+.toolbar-dropdown-menu.volume-shop-popover {
+    min-width: 0;
+    padding: 8px 10px;
+    gap: 12px;
+    align-items: center;
+}
+.toolbar-dropdown-menu.volume-shop-popover[style*="block"] { display: flex !important; }
+.volume-shop-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 6px;
+}
+.volume-shop-link:hover { background: var(--color-bg); }
+.volume-shop-link img {
+    width: 22px;
+    height: 22px;
+    display: block;
+    border-radius: 4px;
+}
+
+
+/* ===== Accessibilité : affiches cliquables, focus clavier, cibles tactiles ===== */
+/* Lien couvrant toute l'affiche (ouverture native, nouvel onglet, focus clavier). Sous les
+   actions et la case à cocher (z-index 2), au-dessus de la couverture. */
+.poster-link {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+}
+.poster-link:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: -3px;
+}
+/* Les actions n'apparaissent qu'au survol : le focus clavier doit les révéler aussi. */
+.poster-card:focus-within .poster-actions {
+    opacity: 1;
+}
+.poster-action-btn:focus-visible,
+.series-select-checkbox:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--color-accent);
+}
+.series-title-link {
+    color: inherit;
+    text-decoration: none;
+}
+.series-title-link:hover {
+    text-decoration: underline;
+}
+.series-title-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+}
+@media (pointer: coarse) {
+    .poster-action-btn { width: 36px; height: 36px; }
+    .series-select-checkbox { width: 24px !important; height: 24px !important; }
+}

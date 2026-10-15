@@ -232,3 +232,22 @@ def parse_bdgest_top(soup):
             'summary': '',
         })
     return items
+
+
+def parse_related_series(soup):
+    """« Séries liées » d'une fiche série: [{'title', 'url'}] dans l'ordre d'apparition,
+    dédupliqué par URL. Nouvelle mise en page (bloc .bdt-box-liees, octobre 2026) et ancienne
+    (onglet .serie-liee) reconnues toutes les deux."""
+    links = soup.select('.bdt-box-liees .bdt-related a[href]') \
+        or soup.select('div.tab_content.serie-liee div.description ul li a[href]')
+    related, seen = [], set()
+    for a in links:
+        url = a.get('href')
+        if not url or url in seen or '/serie-' not in url:
+            continue
+        title = (a.get('title') or a.get_text(strip=True).lstrip('••').strip())
+        if not title:
+            continue
+        seen.add(url)
+        related.append({'title': title, 'url': url})
+    return related

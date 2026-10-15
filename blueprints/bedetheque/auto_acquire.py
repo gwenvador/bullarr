@@ -370,6 +370,29 @@ def _manual_match_target_from_info(info, selected_url):
     return {'url': selected_url, 'number': None, 'title': None}
 
 
+def _create_series_for_review(conn, bedetheque_url, library_id=None):
+    """Crée la série Bédéthèque dans la bibliothèque (sans auto-acquisition). Retourne (id, erreur)."""
+    from flask import current_app
+    if not library_id:
+        libraries = conn.execute('SELECT id, name FROM libraries ORDER BY id').fetchall()
+        if len(libraries) == 1:
+            library_id = libraries[0]['id']
+        else:
+            comics = [row for row in libraries if 'band' in (row['name'] or '').lower() or 'bd' in (row['name'] or '').lower().split()]
+            if len(comics) != 1:
+                return None, 'Choisissez une bibliothèque pour créer cette série'
+            library_id = comics[0]['id']
+    from blueprints.bedetheque.routes import add_series_from_bedetheque
+    with current_app.test_request_context('/api/bedetheque/add-series', method='POST',
+                                          json={'url': bedetheque_url, 'library_id': library_id, 'skip_auto_acquire': True}):
+        result = add_series_from_bedetheque()
+    response = result[0] if isinstance(result, tuple) else result
+    payload = response.get_json() or {}
+    if not payload.get('success') or not payload.get('series_id'):
+        return None, payload.get('error') or 'Création de la série impossible'
+    return payload['series_id'], None
+
+
 def match_manual_review_series(review_id, bedetheque_url, library_id=None):
     """Persist the selected series/album and keep the review downloadable.
 
@@ -404,8 +427,13 @@ def match_manual_review_series(review_id, bedetheque_url, library_id=None):
             (info.get('url'), info.get('title')),
         ).fetchone()
         if not series:
-            return False, 'Série locale introuvable : choisissez d’abord une bibliothèque/série', None
-        series_id = series['id']
+            # Série absente de la bibliothèque: créée ici, sans lancer la recherche ni le
+            # téléchargement de ses tomes (seule la release de cette ligne sera téléchargée).
+            series_id, error = _create_series_for_review(conn, info.get('url') or selected_url, library_id)
+            if error:
+                return False, error, None
+        else:
+            series_id = series['id']
 
         # Persist the selected catalogue cache, but do not rewrite every local volume.
         BedethequeDatabase(current_app.config['DATABASE']).update_series_bedetheque_info(series_id, info)
@@ -531,6 +559,12 @@ def _download_result(app, result, series_id, title, vol_num):
         return True, f"{filename or title} : téléchargement fourtoutici démarré"
 
     link = result.get('link') or result.get('download_url')
+    if not link and source == 'prowlarr':
+        # Entrée de flux RSS mise en validation sans lien: la release exacte est retrouvée chez Prowlarr.
+        from blueprints.missing_monitor.new_file_handler import _rss_torrent_url
+        with app.app_context():
+            link = _rss_torrent_url({'filename': filename or title, 'link': result.get('info_url'),
+                                     'prowlarr_indexer_id': True, 'download_links': []}, title)
     if not link:
         return False, "Aucun lien de téléchargement"
     from blueprints.missing_monitor.downloader import MissingVolumeDownloader

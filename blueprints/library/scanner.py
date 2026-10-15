@@ -24,6 +24,12 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Mention de format seule (« PDF », « CBR.CBZ », « CBZ & PDF »): jamais un releaser.
+_FORMAT_WORD = r'(?:CB[ZRT7]|PDF|EPUB|ZIP|RAR|JPE?G|WEBP|PNG)'
+# Nettoyage des releasers « format » déjà en base: une fois par base et par processus.
+_FORMAT_RELEASER_CLEANED = set()
+FORMAT_TAG_RE = re.compile(_FORMAT_WORD + r'(?:\s*(?:[&+,/.-]|et)\s*' + _FORMAT_WORD + r')*', re.IGNORECASE)
+
 
 class SeriesDirectoryMissingError(Exception):
     """Levée quand le répertoire d'une série n'existe plus sur le disque: la série
@@ -360,6 +366,22 @@ class LibraryScanner:
                 except sqlite3.OperationalError as e:
                     logger.warning(f"Impossible d'ajouter la colonne {col_name}: {e}")
 
+        # Un format (« [PDF] », « [CBZ] ») a longtemps été lu comme releaser: le retirer
+        # des tomes déjà enregistrés, sinon un rescan le conserve (le releaser en base
+        # prime sur le nom de fichier).
+        format_tag_ids = []
+        if self.db_path not in _FORMAT_RELEASER_CLEANED:
+            _FORMAT_RELEASER_CLEANED.add(self.db_path)
+            format_tag_ids = [
+                row[0] for row in cursor.execute(
+                    'SELECT id, release_group FROM volumes WHERE release_group IS NOT NULL').fetchall()
+                if FORMAT_TAG_RE.fullmatch((row[1] or '').strip())
+            ]
+        if format_tag_ids:
+            cursor.executemany('UPDATE volumes SET release_group = NULL WHERE id = ?',
+                               [(volume_id,) for volume_id in format_tag_ids])
+            logger.info(f"Format retiré du releaser de {len(format_tag_ids)} tome(s)")
+
         conn.commit()
 
     def _add_ebdz_columns(self, conn):
@@ -615,6 +637,12 @@ class LibraryScanner:
             # lgtm [py/polynomial-redos] input is bounded before this intentional filename parser regex.
             for m in re.finditer(r'\[([^\]]+?)\]|\(([^)]+?)\)', name_without_ext)
         ]
+        # « [PDF] », « [CBR].[CBZ] », « (CBZ & PDF) »: simple mention du format, jamais un
+        # releaser ni un auteur.
+        combined_matches = [
+            (text, is_bracket) for text, is_bracket in combined_matches
+            if not FORMAT_TAG_RE.fullmatch(text)
+        ]
         group_matches = [
             (text, is_bracket) for text, is_bracket in combined_matches
             if not (re.fullmatch(r'\d{4}', text) and 1900 <= int(text) <= 2035)
@@ -672,6 +700,13 @@ class LibraryScanner:
             info['is_integral'] = True
 
         hs_match = re.search(r'\bHS(?:[\s-]*(\d+))?\b', normalized_name, re.IGNORECASE)
+        pack_range = LibraryScanner._parse_integral_tome_range(normalized_name) if hs_match else None
+        if pack_range and pack_range[1] > pack_range[0]:
+            # « T01 à 15 et 2 HS »: les HS font partie d'un pack de tomes, ce n'est pas
+            # un hors-série seul - la plage est traitée plus bas comme un pack.
+            hs_match = None
+            normalized_name = re.sub(r'(?:\bet|\+|&)\s*\d*\s*HS\b', ' ', normalized_name, flags=re.IGNORECASE)
+            normalized_name = re.sub(r'\s+', ' ', normalized_name).strip()
         if hs_match:
             info['is_hs'] = True
             if hs_match.group(1):

@@ -27,9 +27,10 @@ class CompletedPackReconcileTest(unittest.TestCase):
         conn.execute('CREATE TABLE series (id INTEGER PRIMARY KEY, title TEXT)')
         conn.execute("INSERT INTO series VALUES (10, 'NOOB')")
         conn.execute('CREATE TABLE active_downloads (id INTEGER PRIMARY KEY, status TEXT, is_pack INTEGER, '
-                     'series_id INTEGER, client_item_name TEXT, title TEXT, completed_at TEXT)')
-        conn.execute("INSERT INTO active_downloads VALUES (1, 'completed', 1, 10, '00   NOOB - Integrale', 'NOOB - Integrale', NULL)")
-        conn.execute("INSERT INTO active_downloads VALUES (2, 'completed', 0, 10, 'single.cbz', 'single.cbz', NULL)")
+                     'series_id INTEGER, client_item_name TEXT, title TEXT, completed_at TEXT, '
+                     'client_item_id TEXT, created_at TEXT)')
+        conn.execute("INSERT INTO active_downloads (id, status, is_pack, series_id, client_item_name, title, completed_at) VALUES (1, 'completed', 1, 10, '00   NOOB - Integrale', 'NOOB - Integrale', NULL)")
+        conn.execute("INSERT INTO active_downloads (id, status, is_pack, series_id, client_item_name, title, completed_at) VALUES (2, 'completed', 0, 10, 'single.cbz', 'single.cbz', NULL)")
         conn.commit()
         conn.close()
         self.folder = os.path.join(self.root, '00   NOOB - Integrale')
@@ -130,6 +131,20 @@ class CompletedPackReconcileTest(unittest.TestCase):
         routes.note_pack_transfer_activity(self.root, imported)            # activité toute récente
         self.assertEqual(downloader.reconcile_completed_packs(), 1)
         self.assertEqual(self.status(), 'imported')
+
+    def test_pack_waits_for_the_file_count_announced_by_the_torrent(self):
+        conn = sqlite3.connect(self.db.name)
+        conn.execute("UPDATE active_downloads SET client_item_id = 'abc', created_at = '2000-01-01 00:00:00' WHERE id = 1")
+        conn.commit()
+        conn.close()
+        with mock.patch("blueprints.qbittorrent.routes.get_qbittorrent_torrent_file_count", return_value=3):
+            self.finalize(os.path.join(self.folder, "T01.cbz"), action="imported")  # 1 fichier sur 3 arrivé et importé
+            self.assertEqual(downloader.reconcile_completed_packs(), 0)
+            self.assertEqual(self.status(), "completed")
+            self.finalize(os.path.join(self.folder, "T02.cbz"), action="imported")
+            self.finalize(os.path.join(self.folder, "T03.cbz"), action="skipped")
+            self.assertEqual(downloader.reconcile_completed_packs(), 1)
+            self.assertEqual(self.status(), "imported")
 
     def test_empty_folder_without_any_import_waits(self):
         self.assertEqual(downloader.reconcile_completed_packs(), 0)

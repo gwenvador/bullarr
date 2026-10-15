@@ -371,6 +371,7 @@ let pendingDownloads = [];
 let anyImportInProgress = false;
 
 let currentlyProcessingFile = null;
+let importPaused = false;
 let importingFilepaths = new Set();
 
 async function loadActiveDownloads() {
@@ -407,6 +408,7 @@ async function loadActiveDownloads() {
             });
             incompatibleFolders = data.incompatible_folders || [];
             currentlyProcessingFile = data.currently_processing || null;
+            importPaused = !!data.import_paused;
             importingFilepaths = new Set(data.importing_filepaths || []);
             window.importWaitingFileCount = data.waiting_file_count;
             window.importAwaitingDiscoveryCount = data.awaiting_discovery_count || 0;
@@ -428,6 +430,42 @@ async function loadActiveDownloads() {
     if (volumesToRefresh.length) {
         _ensureVolumesLoadedForFiles(volumesToRefresh).then(() => displayImportFiles());
     }
+}
+
+function _renderImportPausedBanner() {
+    const banner = document.getElementById('import-paused-banner');
+    if (!banner) return;
+    if (!importPaused) {
+        banner.style.display = 'none';
+        banner.innerHTML = '';
+        return;
+    }
+    banner.innerHTML = `${svgIcon('alert-triangle')} <span class="import-banner-text">Import automatique en pause : aucun fichier n'est importé tant que vous ne le reprenez pas (l'import manuel reste possible).</span>
+        <button type="button" class="btn-neutral-sm import-banner-action" onclick="resumeImport(this)">Reprendre l'import</button>`;
+    banner.style.display = 'flex';
+}
+
+async function _postImportControl(url, button) {
+    if (button) button.disabled = true;
+    try {
+        const response = await fetch(url, { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Action impossible');
+        importPaused = !!data.paused;
+        _renderImportPausedBanner();
+        if (typeof displayImportFiles === 'function') displayImportFiles();
+    } catch (error) {
+        if (button) button.disabled = false;
+        alert('❌ Erreur: ' + error.message);
+    }
+}
+
+function stopImport(button) {
+    return _postImportControl('/api/import/stop', button);
+}
+
+function resumeImport(button) {
+    return _postImportControl('/api/import/resume', button);
 }
 
 function renderCurrentlyProcessingBanner() {
@@ -489,10 +527,17 @@ function _localCopyStatusHtml(pending) {
     return null;
 }
 
+// Le statut « importing » d'un téléchargement est posé au début de chaque fichier et ne
+// revient à « completed » qu'à la fin du lot: il restait affiché (« Import en cours ») alors que
+// plus rien ne tournait. Un import est réellement en cours seulement si un fichier est réclamé.
+function _pendingImportingNow(pending) {
+    return pending.status === 'importing' && (importingFilepaths.size > 0 || !!currentlyProcessingFile);
+}
+
 function _pendingDownloadRowHtml(pending) {
     const hasProgress = !!pending.bytes_total;
     const progressPct = hasProgress ? Math.min(100, Math.max(0, (pending.bytes_downloaded || 0) * 100 / pending.bytes_total)) : 0;
-    const statusHtml = pending.status === 'importing'
+    const statusHtml = _pendingImportingNow(pending)
             ? `<div style="font-size:0.85em;">${svgIcon('loader-circle', 'icon-spin')} Import en cours...</div>`
             // "completed currently appears as Prêt even when not actually importable
             // automatically" - needs_volume_correction (get_pending_downloads,
@@ -508,9 +553,9 @@ function _pendingDownloadRowHtml(pending) {
             : _localCopyStatusHtml(pending) && !pending.awaiting_closure
             ? _localCopyStatusHtml(pending)
             : pending.status === 'completed' && pending.awaiting_closure
-            ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Tous les fichiers de ce pack ont été traités - il disparaîtra au prochain passage de la clôture automatique (quelques minutes)">${svgIcon('check-check')} Traité — clôture automatique</span>`
+            ? `<span style="color:var(--color-success); font-weight:600;" data-tooltip="Tous les fichiers de ce pack ont été traités - il disparaîtra au prochain passage de la clôture automatique (quelques minutes)">${svgIcon('check-check')} Traité — clôture automatique</span>`
             : pending.status === 'completed'
-            ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Téléchargement terminé - repris automatiquement au prochain passage de l'import (quelques secondes)">${svgIcon('check')} Téléchargé — import automatique sous peu</span>`
+            ? `<span style="color:var(--color-success); font-weight:600;" data-tooltip="Téléchargement terminé - repris automatiquement au prochain passage de l'import (quelques secondes)">${svgIcon('check')} Téléchargé — import automatique sous peu</span>`
             : pending.exhausted
                 ? `<span class="import-download-error">${svgIcon('alert-triangle')} Échec — relance manuelle</span>`
             : hasProgress
@@ -2016,10 +2061,10 @@ function _importFileRowHtml(file, index) {
             ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Choisissez le tome dans la colonne Volume avant d'importer">${svgIcon('triangle-alert')} Tome manquant</span>`
         : file.destination?.download_status === 'completed'
             ? (file.auto_import_skip_reason
-                ? `<span style="color:#28a745; font-weight:600;" data-tooltip="L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement">${svgIcon('check')} Import manuel à valider</span>`
+                ? `<span style="color:var(--color-success); font-weight:600;" data-tooltip="L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement">${svgIcon('check')} Import manuel à valider</span>`
                 : file.manual_override
-                    ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Assignation faite à la main - cliquez sur « Importer » pour valider, l'import automatique ne le reprendra pas tout seul">${svgIcon('check')} Import manuel à valider</span>`
-                    : `<span style="color:#28a745; font-weight:600;" data-tooltip="Aucune action nécessaire - importé automatiquement dans les secondes qui suivent">${svgIcon('check')} Import automatique en attente</span>`)
+                    ? `<span style="color:var(--color-success); font-weight:600;" data-tooltip="Assignation faite à la main - cliquez sur « Importer » pour valider, l'import automatique ne le reprendra pas tout seul">${svgIcon('check')} Import manuel à valider</span>`
+                    : `<span style="color:var(--color-success); font-weight:600;" data-tooltip="Aucune action nécessaire - importé automatiquement dans les secondes qui suivent">${svgIcon('check')} Import automatique en attente</span>`)
         // "au lieu de Pret met une information sur ce qu'il faut faire. attente
             // d'import manuelle, etc..." - cette branche n'est atteinte QUE quand
             // isImportingNow est false alors que hasDestination && hasKnownVolume sont
@@ -2033,7 +2078,7 @@ function _importFileRowHtml(file, index) {
             // clic sur "Importer" (ou la sélection groupée) est la SEULE façon de le
             // finaliser.
             : hasDestination && hasKnownVolume
-                ? `<span style="color:#28a745; font-weight:600;" data-tooltip="${file.auto_import_skip_reason ? "L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement" : 'Assignation faite à la main - cliquez sur « Importer » pour valider, l\'import automatique ne le reprendra pas tout seul'}">${svgIcon('check')} Import manuel à valider</span>`
+                ? `<span style="color:var(--color-success); font-weight:600;" data-tooltip="${file.auto_import_skip_reason ? "L'import automatique ne prendra pas ce fichier (voir raison ci-dessus) - cliquez sur « Importer » pour le valider manuellement" : 'Assignation faite à la main - cliquez sur « Importer » pour valider, l\'import automatique ne le reprendra pas tout seul'}">${svgIcon('check')} Import manuel à valider</span>`
                 : hasDestination
                     ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('triangle-alert')} Tome manquant</span>`
                     : `<span style="color:#dc3545; font-weight:600;">${svgIcon('triangle-alert')} Action requise</span>`;
@@ -2085,6 +2130,11 @@ function _importFileRowHtml(file, index) {
 async function takeManualControl(index) {
     const file = importFiles[index];
     if (!file) return;
+    // La ligne se déverrouille tout de suite; l'enregistrement côté serveur suit, et la ligne
+    // est reverrouillée avec un message si il échoue.
+    const previous = file.manual_override;
+    file.manual_override = true;
+    displayImportFiles();
     try {
         const response = await fetch('/api/import/mark-manual', {
             method: 'POST',
@@ -2093,9 +2143,9 @@ async function takeManualControl(index) {
         });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Impossible de reprendre la main');
-        file.manual_override = true;
-        displayImportFiles();
     } catch (error) {
+        file.manual_override = previous;
+        displayImportFiles();
         alert('❌ Erreur: ' + error.message);
     }
 }
@@ -2142,9 +2192,13 @@ function _pendingPackGroups() {
         // compte pour un seul élément dans folderMatches mais peut contenir des centaines
         // Technical rationale retained for maintainability.
         // sans folder.file_count ici, ce cas ne dépassait jamais le seuil de 1.
-        .filter(({ fileMatches, folderMatches }) => {
+        .filter(({ pending, fileMatches, folderMatches }) => {
             const totalFiles = fileMatches.length
                 + folderMatches.reduce((sum, { folder }) => sum + (folder.file_count || 1), 0);
+            // Un torrent à plusieurs fichiers est marqué pack par le serveur dès qu'il est
+            // terminé chez le client: son groupe s'affiche dès le premier fichier arrivé, pas
+            // seulement quand deux fichiers sont déjà là.
+            if (pending.is_pack && totalFiles >= 1) return true;
             // Une archive-conteneur (placeholder « Voir le contenu ») forme déjà un groupe à
             // elle seule, même avant le premier empaquetage.
             return totalFiles > 1 || fileMatches.some(({ file }) => file.is_container);
@@ -2350,7 +2404,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
     const readyCount = readyFileMatches.length;
     const autoReadyCount = readyFileMatches.filter(({ file }) => !file.auto_import_skip_reason && !file.manual_override).length;
     const packNeedsManualAction = readyCount > 0 && autoReadyCount < readyCount;
-    const isImportingNow = pending.status === 'importing'
+    const isImportingNow = _pendingImportingNow(pending)
         || fileMatches.some(({ file }) => _isFileImportingNow(file));
     const seriesLabel = pending.series_title
         ? (pending.series_id ? `<a href="/series/${pending.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(pending.series_title)}</a>` : escapeHtml(pending.series_title))
@@ -2381,8 +2435,8 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
                     ? `<span style="font-size:0.85em;">${svgIcon('loader-circle', 'icon-spin')} En attente...</span>`
                     : readyCount === total && folderMatches.length === 0
                         ? (packNeedsManualAction
-                            ? `<span style="color:#28a745; font-weight:600;" data-tooltip="Au moins un fichier de ce pack est bloqué en attente manuelle (skip_reason ou assignation à la main) - dépliez le pack pour voir lequel et cliquer sur « Importer »">${svgIcon('check')} Import manuel à valider</span>`
-                            : `<span style="color:#28a745; font-weight:600;" data-tooltip="Tous les fichiers de ce pack seront importés automatiquement">${svgIcon('check')} Import automatique en attente</span>`)
+                            ? `<span style="color:var(--color-success); font-weight:600;" data-tooltip="Au moins un fichier de ce pack est bloqué en attente manuelle (skip_reason ou assignation à la main) - dépliez le pack pour voir lequel et cliquer sur « Importer »">${svgIcon('check')} Import manuel à valider</span>`
+                            : `<span style="color:var(--color-success); font-weight:600;" data-tooltip="Tous les fichiers de ce pack seront importés automatiquement">${svgIcon('check')} Import automatique en attente</span>`)
                         : `<span style="color:#e67e22; font-weight:600;" data-tooltip="Fichiers dont la série et le tome sont identifiés, sur le nombre de fichiers du pack">${readyCount} sur ${total} ${pluralize(total, 'fichier')} importables</span>`}</div>
                 ${containerMatches.length ? `<button class="btn-icon-only" onclick="completePackGroup(${pending.id}, [${containerMatches.map(m => m.index).join(',')}], this)" data-tooltip="Valider ce pack comme terminé (volumes empaquetés puis importés) : il disparaît de la page" aria-label="Valider le pack comme terminé">${svgIcon('check-check')}</button>` : ''}
                 <button class="btn-icon-only" onclick="removePendingPack(${pending.id}, [${allFileMatches.map(fm => fm.index).join(',')}], [${folderMatches.map(fm => fm.index).join(',')}], this)" data-tooltip="Supprimer le pack ET ses fichiers/dossiers déjà arrivés sur disque">${svgIcon('trash-2')}</button>
@@ -2441,7 +2495,7 @@ function _importingBannerLabels(importingFiles, pendingPackGroups) {
     // l'import se fait à partir d'une intégrale ou répète le nom de la série.
     const labels = importingFiles.map(file => fileGroupTitle(file));
     for (const { pending, fileMatches } of pendingPackGroups) {
-        if (pending.status === 'importing' || fileMatches.some(({ file }) => _isFileImportingNow(file))) {
+        if (_pendingImportingNow(pending) || fileMatches.some(({ file }) => _isFileImportingNow(file))) {
             labels.push(pending.series_title || pending.title);
         }
     }
@@ -2623,12 +2677,14 @@ function displayImportFiles() {
         if (labels.length > 0) {
             const names = labels.slice(0, 5).map(escapeHtml).join(', ');
             const extra = labels.length > 5 ? ` et ${labels.length - 5} ${pluralize(labels.length - 5, 'autre')}` : '';
-            importBanner.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} ${labels.length} ${pluralize(labels.length, 'import')} en cours : ${names}${extra}`;
+            importBanner.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} <span class="import-banner-text">${labels.length} ${pluralize(labels.length, 'import')} en cours : ${names}${extra}</span>
+                <button type="button" class="btn-danger-sm import-banner-action" onclick="stopImport(this)" data-tooltip="Termine le fichier en cours, ne prend pas les suivants et met l'import automatique en pause">${svgIcon('circle-x')} Arrêter l'import</button>`;
             importBanner.style.display = 'flex';
         } else {
             importBanner.style.display = 'none';
         }
     }
+    _renderImportPausedBanner();
 
     const existingScroll = container.querySelector('.import-files-scroll');
     const savedScrollLeft = existingScroll ? existingScroll.scrollLeft : 0;
@@ -3261,6 +3317,7 @@ function closeDestinationModal() {
     document.getElementById('volume-override-group').style.display = 'none';
     document.getElementById('volume-override-manual-group').style.display = 'none';
     document.getElementById('volume-override-number').value = '';
+    document.getElementById('volume-override-slot').value = 'auto';
     document.getElementById('force-replace-existing').checked = false;
     volumeOverrideSlots = [];
     currentFileIndices = [];
@@ -3576,6 +3633,10 @@ function updateVolumeOverrideFields() {
 // correction à envoyer - le fichier garde ce que parse_filename a détecté, comportement
 // inchangé pour le cas courant)
 function buildVolumeOverride() {
+    // Assignation groupée: un même tome ne peut pas valoir pour tous les fichiers, et la liste
+    // « Tome » (masquée) peut garder la valeur d'une modification précédente - lue ici, elle
+    // plantait « Valider » sans aucun message.
+    if (currentFileIndices.length > 1) return undefined;
     const slot = document.getElementById('volume-override-slot').value;
     if (slot === 'auto') return undefined;
 
@@ -3606,6 +3667,7 @@ function buildVolumeOverride() {
     // Un tome précis de la liste: on reprend tel quel son propre numéro/type (aucune
     // ambiguïté possible, contrairement à la saisie manuelle)
     const v = volumeOverrideSlots[parseInt(slot, 10)];
+    if (!v) return undefined;
     return {
         volume: v.volume_number != null ? v.volume_number : null,
         is_integral: !!v.is_integral,
@@ -3620,6 +3682,39 @@ function buildVolumeOverride() {
         is_special: !!v.is_special,
         special_label: v.special_label ?? null
     };
+}
+
+// Crée la série dans la bibliothèque depuis sa fiche Bédéthèque (fiches des albums comprises) et
+// la déclare dans la liste des séries de la page. Null si la création échoue: la série sera alors
+// créée à l'import, comme avant.
+async function _createSeriesFromBedetheque(url, libraryId) {
+    const button = document.querySelector('#select-destination-modal .btn-success');
+    const label = button ? button.textContent : '';
+    if (button) { button.disabled = true; button.textContent = 'Création de la série…'; }
+    try {
+        const response = await fetch('/api/bedetheque/add-series', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            // skip_auto_acquire: créer la série ne doit lancer aucune recherche ni aucun téléchargement
+            // des tomes qui lui manquent.
+            body: JSON.stringify({ url, library_id: libraryId, skip_auto_acquire: true })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success || !data.series_id) throw new Error(data.error || 'Création impossible');
+        const detail = await (await fetch(`/api/series/${data.series_id}`)).json();
+        const created = {
+            id: data.series_id, title: detail.title, is_oneshot: detail.is_oneshot,
+            bedetheque_total_volumes: detail.bedetheque_total_volumes
+        };
+        const list = librariesSeriesMap[libraryId] || librariesSeriesMap[String(libraryId)] || [];
+        if (!list.some(item => parseInt(item.id) === created.id)) list.push({ ...detail, ...created });
+        librariesSeriesMap[libraryId] = list;
+        return created;
+    } catch (error) {
+        alert(`⚠️ La série n'a pas pu être créée maintenant (${error.message}) : elle sera créée à l'import.`);
+        return null;
+    } finally {
+        if (button) { button.disabled = false; button.textContent = label; }
+    }
 }
 
 async function assignDestination() {
@@ -3647,16 +3742,35 @@ async function assignDestination() {
             return;
         }
 
-        destination = {
-            library_id: libraryId,
-            library_name: library.name,
-            library_path: library.path,
-            series_id: null,
-            series_title: newSeriesName,
-            is_new_series: true,
-            force_replace: document.getElementById('force-replace-existing').checked,
-            bedetheque_url: getBedethequeMatchForTitle(newSeriesName)
-        };
+        const bedethequeUrl = getBedethequeMatchForTitle(newSeriesName);
+        // Une série reconnue sur Bédéthèque est créée tout de suite dans la bibliothèque (fiches de
+        // tous ses albums comprises): la liste des tomes est alors disponible pour choisir le
+        // numéro de chaque fichier, au lieu d'attendre l'import pour que la série existe.
+        const created = bedethequeUrl ? await _createSeriesFromBedetheque(bedethequeUrl, libraryId) : null;
+        if (created) {
+            destination = {
+                library_id: libraryId,
+                library_name: library.name,
+                library_path: library.path,
+                series_id: created.id,
+                series_title: created.title,
+                is_new_series: false,
+                is_oneshot: !!created.is_oneshot,
+                is_single_album: Number(created.bedetheque_total_volumes) === 1,
+                force_replace: document.getElementById('force-replace-existing').checked
+            };
+        } else {
+            destination = {
+                library_id: libraryId,
+                library_name: library.name,
+                library_path: library.path,
+                series_id: null,
+                series_title: newSeriesName,
+                is_new_series: true,
+                force_replace: document.getElementById('force-replace-existing').checked,
+                bedetheque_url: bedethequeUrl
+            };
+        }
     } else if (seriesValue.startsWith(PENDING_SERIES_PREFIX)) {
         // Rattache CE fichier à une "nouvelle série" déjà posée par un autre fichier de ce
         // lot (voir loadLibrarySeries) - même forme de destination que "__new__" (rien

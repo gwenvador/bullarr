@@ -244,6 +244,12 @@ class LibraryImportScheduler:
                 id=self.completed_reconcile_job_id,
                 name='Reconcile completed imports',
                 replace_existing=True,
+                # Sans délai de grâce (1 s par défaut), un déclenchement tombé pendant qu'un import
+                # occupait le planificateur était simplement sauté: un pack terminé restait affiché
+                # « Traité — clôture automatique » pendant des heures.
+                misfire_grace_time=240,
+                coalesce=True,
+                max_instances=1,
             )
 
     def _check_new_files_available(self, all_relpaths):
@@ -311,6 +317,8 @@ class LibraryImportScheduler:
                 # Charger la configuration d'import
                 config = routes.load_library_import_config()
                 auto_import_enabled = config.get('auto_import_enabled', False)
+                if routes.import_control.is_paused():
+                    return
 
 
                 # Répertoires d'import surveillés (toujours scannés ensemble)
@@ -399,6 +407,10 @@ class LibraryImportScheduler:
                 auto_held_filepaths = manual_override_filepaths - user_manual_filepaths
                 in_progress_filepaths = get_in_progress_filepaths()
                 finalized_import_times = get_finalized_import_source_times()
+
+                routes.add_missing_download_extensions(
+                    import_directories, trackable_downloads, supported_extensions
+                )
 
                 for import_path in import_directories:
                     if not os.path.exists(import_path):
@@ -533,7 +545,19 @@ class LibraryImportScheduler:
                                 # found by a direct filename or a torrent-folder fallback, must
                                 # prove that its parsed series title is the tracked series. A
                                 # download association establishes provenance, never identity.
-                                if matched_by_torrent_container and destination and not routes._pack_file_matches_destination(parsed, destination):
+                                # Le titre d'album (Bédéthèque) contenu dans le nom donne le bon
+                                # numéro quand le téléchargement ne fixe pas déjà le tome.
+                                if destination and destination.get('volume_number') is None and destination.get('series_id'):
+                                    routes.refine_volume_from_album_title(
+                                        parsed, destination['series_id'], filename, destination.get('series_title'))
+                                # Un numéro de tome qui n'existe pas dans la série n'est jamais
+                                # importé automatiquement: la personne le vérifie à la main.
+                                if destination and routes._unknown_volume_hold_reason(parsed, destination):
+                                    if filepath not in auto_held_filepaths:
+                                        from .import_history import mark_import_file_manual
+                                        mark_import_file_manual(filepath)
+                                    destination = None
+                                elif matched_by_torrent_container and destination and not routes._pack_file_matches_destination(parsed, destination):
                                     if filepath not in auto_held_filepaths:
                                         from .import_history import mark_import_file_manual
                                         mark_import_file_manual(filepath)
@@ -581,11 +605,6 @@ class LibraryImportScheduler:
                                 # règle que l'affichage, voir routes._is_container_archive).
                                 if destination and routes._is_container_archive(filepath, ext, destination):
                                     destination = None
-                                # Le titre d'album (Bédéthèque) contenu dans le nom donne le bon
-                                # numéro quand le téléchargement ne fixe pas déjà le tome.
-                                if destination and destination.get('volume_number') is None and destination.get('series_id'):
-                                    routes.refine_volume_from_album_title(
-                                        parsed, destination['series_id'], filename, destination.get('series_title'))
                                 # Déjà importé/ignoré: seulement repris s'il s'agit d'un
                                 # retéléchargement (téléchargement lancé après cet import).
                                 finished_at = finalized_import_times.get(filepath)

@@ -23,7 +23,7 @@ import unicodedata
 from pathlib import Path
 import hashlib
 
-from .parsers import parse_search_links, parse_album_reviews
+from .parsers import parse_search_links, parse_album_reviews, parse_related_series
 
 logger = logging.getLogger(__name__)
 _ALLOWED_HOSTS = {'www.bedetheque.com', 'bedetheque.com'}
@@ -840,16 +840,7 @@ class BedethequeScraper:
             # identifié par sa classe `serie-liee` plutôt que le texte du h3 (compteur
             # variable, "5 Séries liées"). Chaque lien répète le href de la miniature -
             # dédupliqué par URL, dans l'ordre d'apparition.
-            seen_related_urls = set()
-            for a in soup.select('div.tab_content.serie-liee div.description ul li a'):
-                related_url = a.get('href')
-                if not related_url or related_url in seen_related_urls:
-                    continue
-                related_title = (a.get('title') or a.get_text(strip=True).lstrip('••').strip())
-                if not related_title:
-                    continue
-                seen_related_urls.add(related_url)
-                info['related_series'].append({'title': related_title, 'url': related_url})
+            info['related_series'].extend(parse_related_series(soup))
 
             # « A lire aussi » apparaît dans le bloc `.alire` sous l'ancre `aussi`.
             # Les recommandations sont des liens de fiches série avec le titre dans

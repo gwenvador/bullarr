@@ -59,7 +59,7 @@ async function _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl = null, re
     }
 }
 
-async function _queueNouveautesSeriesReview(ev, title, bedethequeUrl, reason) {
+async function _queueNouveautesSeriesReview(ev, title, bedethequeUrl, reason, linkIndex = null) {
     const candidate = {
         source: ev.type === 'rss' ? 'prowlarr' : ev.type,
         title: ev.title || ev.filename || title,
@@ -67,6 +67,20 @@ async function _queueNouveautesSeriesReview(ev, title, bedethequeUrl, reason) {
         info_url: ev.link || ev.url || '',
         bedetheque_url: /^https:\/\/www\.bedetheque\.com\//i.test(bedethequeUrl || '') ? bedethequeUrl : null,
     };
+    // De quoi télécharger plus tard, depuis la page de validation, sans repartir d'une recherche.
+    if (ev.type === 'rss') {
+        const direct = (ev.download_links || []).find(item => item.url);
+        if (direct) candidate.link = direct.url;
+    } else if (ev.type === 'telegram') {
+        Object.assign(candidate, { channel: ev.channel, message_id: ev.message_id, channel_title: ev.channel_title || '' });
+    } else if (ev.type === 'ebdz') {
+        const first = linkIndex != null ? ev.links?.[linkIndex]
+            : (ev.links || []).find(item => item.already_owned !== true && item.link);
+        if (first?.link) {
+            candidate.link = first.link;
+            candidate.filename = decodeFilename(first.filename) || candidate.filename;
+        }
+    }
     const response = await fetch('/api/auto-acquire/reviews/series-match', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ series_title: title, candidates: [candidate], reason })
@@ -211,7 +225,7 @@ async function _sendRssTorrentToClient(torrentUrl, event, seriesId) {
 
 // Télécharge le(s) fichier(s) de la ligne (et uniquement ceux-là, sans recherche) vers le client
 // adapté à sa source. Retourne le libellé de la destination pour le message affiché.
-async function _downloadNouveautesRelease(ev, seriesId) {
+async function _downloadNouveautesRelease(ev, seriesId, linkIndex = null) {
     if (ev.type === 'telegram') {
         const response = await fetch('/api/telegram-channels/download', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -230,7 +244,8 @@ async function _downloadNouveautesRelease(ev, seriesId) {
         // Un sujet EBDZ peut regrouper plusieurs fichiers: seuls ceux qui ne sont pas déjà
         // possédés partent, un seul par tome quand plusieurs liens portent le même numéro.
         const seen = new Set();
-        const links = (ev.links || []).filter(link => {
+        const pool = linkIndex != null ? [ev.links[linkIndex]].filter(Boolean) : (ev.links || []);
+        const links = pool.filter(link => {
             if (link.already_owned === true) return false;
             const key = link.parsed_volume || link.volume;
             if (key != null && key !== '') {
@@ -260,31 +275,33 @@ async function _downloadNouveautesRelease(ev, seriesId) {
 // Éclair de Nouveautés (EBDZ, Telegram et RSS): ajoute la série déjà matchée (sans lancer la
 // recherche de tous ses tomes) puis télécharge le fichier de CETTE ligne. Sans fiche
 // Bédéthèque confirmée, la ligne est envoyée en validation.
-async function addSeriesAndDownloadNouveautes(index, button) {
+async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null) {
     const ev = allNouveautesEvents[index];
-    if (!ev || ev._autoAddTriggered) return;
+    // Ligne EBDZ = un fichier du sujet: l'éclair ne concerne que ce fichier.
+    const target = linkIndex != null ? ev?.links?.[linkIndex] : ev;
+    if (!ev || !target || target._autoAddTriggered) return;
     const title = ev.type === 'telegram'
         ? (ev.series_title || ev.parsed_title || ev.filename)
         : (ev.series_title || ev.matched_series_title || ev.bedetheque_title || ev.title);
     const rawHint = ev.type === 'telegram' ? ev.filename
-        : ev.type === 'ebdz' ? (ev.links?.[0]?.filename ? decodeFilename(ev.links[0].filename) : ev.title)
+        : ev.type === 'ebdz' ? ((linkIndex != null ? target : ev.links?.[0])?.filename ? decodeFilename((linkIndex != null ? target : ev.links[0]).filename) : ev.title)
         : ev.title;
     const bedethequeUrl = ev.type === 'ebdz' ? ev.matched_bedetheque_url : ev.bedetheque_url;
     let seriesId = ev.type === 'ebdz' ? ev.matched_series_id : ev.series_id;
     const seriesWasKnown = !!seriesId;
     const original = button.innerHTML;
-    ev._autoAddTriggered = true;
+    target._autoAddTriggered = true;
     button.disabled = true;
     button.innerHTML = svgIcon('loader-circle', 'icon-spin');
     showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'envoi du téléchargement' : 'ajout de la série et téléchargement'} en cours…`, { icon: 'loader-circle' });
-    const restore = () => { ev._autoAddTriggered = false; button.disabled = false; button.innerHTML = original; };
+    const restore = () => { target._autoAddTriggered = false; button.disabled = false; button.innerHTML = original; };
     if (!seriesId) {
         try {
             seriesId = (await _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl, true)).seriesId;
         } catch (error) {
             let reviewQueued = false;
             try {
-                await _queueNouveautesSeriesReview(ev, title, bedethequeUrl, error.message);
+                await _queueNouveautesSeriesReview(ev, title, bedethequeUrl, error.message, linkIndex);
                 reviewQueued = true;
             } catch (reviewError) {
                 console.error('Validation de série impossible', reviewError);
@@ -296,7 +313,7 @@ async function addSeriesAndDownloadNouveautes(index, button) {
         }
     }
     try {
-        const destination = await _downloadNouveautesRelease(ev, seriesId);
+        const destination = await _downloadNouveautesRelease(ev, seriesId, linkIndex);
         showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'téléchargement envoyé à ' : 'série ajoutée, téléchargement envoyé à '}${destination}.`,
             { icon: 'check', autoHideMs: 6000, href: `/series/${seriesId}` });
         button.innerHTML = svgIcon('check');
@@ -434,10 +451,30 @@ function _nouveautesImportStatus(event) {
     return null;
 }
 
+// Crayon « choisir ou changer le match » à côté du nom de la série (colonne Détails),
+// matchée ou non - plus dans la colonne de la coche.
+function _nouveautesMatchPencilHtml(event) {
+    const seriesId = event.type === 'ebdz' ? event.matched_series_id : event.series_id;
+    const idArg = seriesId == null ? 'null' : seriesId;
+    if (event.type === 'ebdz') {
+        return `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match EBDZ" onclick="event.stopPropagation(); event.preventDefault(); openEbdzThreadMatchModal('${escapeForAttribute(event.thread_id)}', '${escapeForAttribute(event.title || '')}', ${idArg})">${svgIcon('pencil')}</a>`;
+    }
+    if (event.type === 'rss') {
+        return `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match RSS" onclick="event.stopPropagation(); event.preventDefault(); openTelegramMatchOverrideModal('${escapeForAttribute(event.title || '')}', ${idArg}, 'rss', '${escapeForAttribute(event.link || '')}')">${svgIcon('pencil')}</a>`;
+    }
+    if (event.type === 'telegram') {
+        return `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match Telegram" onclick="event.stopPropagation(); event.preventDefault(); openTelegramMatchOverrideModal('${escapeForAttribute(event.filename || '')}', ${idArg})">${svgIcon('pencil')}</a>`;
+    }
+    return '';
+}
+
 function _nouveautesSeriesHtml(event) {
     const seriesTitle = event.type === 'ebdz' ? event.matched_series_title : event.series_title;
     const bedethequeUrl = event.type === 'ebdz' ? event.matched_bedetheque_url : event.bedetheque_url;
-    if (!seriesTitle && !bedethequeUrl) return '';
+    const pencilHtml = _nouveautesMatchPencilHtml(event);
+    if (!seriesTitle && !bedethequeUrl) {
+        return pencilHtml ? `<div class="nouveautes-matched-series">${pencilHtml}</div>` : '';
+    }
 
     // Le lien et son logo restent ensemble dans Détails, y compris lorsqu'une source
     // fournit une fiche Bédéthèque avant le rattachement à une série locale.
@@ -445,24 +482,12 @@ function _nouveautesSeriesHtml(event) {
     const content = bedethequeUrl
         ? `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir la série sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="" style="width:14px; height:14px; vertical-align:-2px; margin-right:4px;">${escapeHtml(label)}</a>`
         : escapeHtml(label);
-    return `<div class="nouveautes-matched-series">${content}</div>`;
+    return `<div class="nouveautes-matched-series" style="display:flex; align-items:center; gap:6px;">${content}${pencilHtml}</div>`;
 }
 
 function _nouveautesMatchedHtml(event) {
     const seriesId = event.type === 'ebdz' ? event.matched_series_id : event.series_id;
-    // Chaque sujet EBDZ peut être rattaché depuis Nouveautés : matché ou non. Le clic
-    // ouvre directement la modale de choix, sans naviguer vers la fiche de la série.
-    const ebdzMatchHtml = event.type === 'ebdz'
-        ? `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match EBDZ" onclick="event.stopPropagation(); event.preventDefault(); openEbdzThreadMatchModal('${escapeForAttribute(event.thread_id)}', '${escapeForAttribute(event.title || '')}', ${seriesId == null ? 'null' : seriesId})">${svgIcon('pencil')}</a>`
-        : '';
-    const sourceMatchHtml = event.type === 'rss'
-        ? `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match RSS" onclick="event.stopPropagation(); event.preventDefault(); openTelegramMatchOverrideModal('${escapeForAttribute(event.title || '')}', ${seriesId == null ? 'null' : seriesId}, 'rss', '${escapeForAttribute(event.link || '')}')">${svgIcon('pencil')}</a>`
-        : event.type === 'telegram'
-        ? `<a href="#" class="icon-owned" data-tooltip="Choisir ou changer le match Telegram" onclick="event.stopPropagation(); event.preventDefault(); openTelegramMatchOverrideModal('${escapeForAttribute(event.filename || '')}', ${seriesId == null ? 'null' : seriesId})">${svgIcon('pencil')}</a>`
-        : '';
-    if (!_nouveautesMatched(event)) {
-        return ebdzMatchHtml || sourceMatchHtml;
-    }
+    if (!_nouveautesMatched(event)) return '';
     const matchedSeriesTitle = event.type === 'ebdz' ? event.matched_series_title : event.series_title;
     const checkTooltip = matchedSeriesTitle
         ? `Déjà dans votre bibliothèque : ${escapeForAttribute(matchedSeriesTitle)}`
@@ -470,18 +495,17 @@ function _nouveautesMatchedHtml(event) {
     const checkHtml = seriesId
         ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${checkTooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${svgIcon('check')}</a>`
         : `<span class="icon-owned" data-tooltip="${checkTooltip}">${svgIcon('check')}</span>`;
-    const changeMatchHtml = event.type === 'ebdz' ? ebdzMatchHtml : sourceMatchHtml;
     if (event.type === 'ebdz') {
         const missing = event.missing_links_count || 0;
         if (missing > 0) {
-            return `${checkHtml} ${changeMatchHtml} <span class="badge-missing" data-tooltip="${missing} fichier${missing > 1 ? 's' : ''} de ce sujet manquant${missing > 1 ? 's' : ''} dans votre bibliothèque">${missing}</span>`;
+            return `${checkHtml} <span class="badge-missing" data-tooltip="${missing} fichier${missing > 1 ? 's' : ''} de ce sujet manquant${missing > 1 ? 's' : ''} dans votre bibliothèque">${missing}</span>`;
         }
-        return `${checkHtml} ${changeMatchHtml}`;
+        return checkHtml;
     }
     if (event.already_owned === false) {
-        return `${checkHtml} ${changeMatchHtml} <span class="badge-missing" data-tooltip="Ce fichier n'est pas encore dans votre bibliothèque">manquant</span>`;
+        return `${checkHtml} <span class="badge-missing" data-tooltip="Ce fichier n'est pas encore dans votre bibliothèque">manquant</span>`;
     }
-    return `${checkHtml} ${changeMatchHtml}`;
+    return checkHtml;
 }
 
 // "dans nouveautés ca a match une mauvaise serie... changer ca et selectionner
@@ -662,21 +686,6 @@ async function confirmEbdzThreadMatch(threadId, seriesId) {
     }
 }
 
-// Icône/texte par fichier dans le détail déplié d'un sujet EBDZ (voir toggleNouveautesFiles)
-// - already_owned est calculé par fichier (un même thread peut mélanger des tomes déjà
-// possédés et d'autres manquants), contrairement au badge de la colonne Série qui ne
-// résume qu'un COMPTE au niveau du thread.
-function _nouveautesLinkOwnedHtml(link) {
-    if (link.already_owned === true) {
-        const tooltip = `En bibliothèque · ${link.filename ? decodeFilename(link.filename) : 'fichier inconnu'} · ${formatBytes(link.filesize)}`;
-        return `<span class="icon-owned" data-tooltip="${escapeHtml(tooltip)}">${svgIcon('check')}</span>`;
-    }
-    if (link.already_owned === false) {
-        return `<span class="badge-missing" data-tooltip="Manquant dans votre bibliothèque">Manquant</span>`;
-    }
-    return '<span style="color:var(--color-text-muted);">—</span>';
-}
-
 function _nouveautesImportStatusHtml(event) {
     const status = _nouveautesImportStatus(event);
     if (status === 'pending') {
@@ -720,98 +729,62 @@ function filterNouveautesEvents(type) {
 // Sujet EBDZ déplié/replié (données déjà en mémoire dans l'événement lui-même, voir
 // loadNouveautesEvents) - même principe que toggleImportFiles côté Historique mais sans
 // fetch, la liste des fichiers d'un sujet est déjà connue dès le scrape.
-function toggleNouveautesFiles(rowId, event, index) {
-    const detailRow = document.getElementById(`${rowId}-files`);
-    if (!detailRow) return;
-    const showing = detailRow.style.display !== 'none';
-    if (showing) {
-        detailRow.style.display = 'none';
-        return;
-    }
-    detailRow.style.display = 'table-row';
-    const cell = detailRow.querySelector('td');
-    if (cell.dataset.built) return;
-    cell.dataset.built = '1';
-
-    cell.innerHTML = `
-        <div style="padding:4px 8px 8px; display:flex; align-items:center; gap:8px; font-size:12px;">
-            <span style="color:var(--color-text-muted); white-space:nowrap;">📅 ${formatSessionDate(event.date)}</span>
-            <strong>${escapeHtml(event.title)}</strong>
-        </div>
-        <table style="width:100%; border-collapse:collapse; font-size:13px;">
-            <tbody>
-                ${event.links.map((link, linkIndex) => {
-                    const decodedFilename = decodeFilename(link.filename);
-                    // "déjà possédé met une couleur différente au fichier comme ça je
-                    // peux voir visuellement" - réutilise .volume-table-row-owned (même
-                    // vert clair/sombre selon le thème que le tableau des tomes d'une
-                    // fiche série, voir style-library-search.css) plutôt qu'une nouvelle
-                    // teinte: l'icône ✓ seule (_nouveautesLinkOwnedHtml) demandait de
-                    // regarder chaque ligne une à une pour repérer ce qui manque encore.
-                    const ownedRowClass = link.already_owned === true ? ' volume-table-row-owned' : '';
-                    return `
-                        <tr class="${ownedRowClass.trim()}" style="border-top:1px solid var(--color-border);">
-                            <td style="padding:6px 8px; color:var(--color-text-muted);">${escapeHtml(decodedFilename)}</td>
-                            <td style="padding:6px 8px; white-space:nowrap;">${link.parsed_volume ? escapeHtml(String(link.parsed_volume).replace(/^Tome\s+(\d+)$/i, '$1')) : '—'}</td>
-                            <td style="padding:6px 8px; white-space:nowrap; text-align:center;">${_nouveautesLinkOwnedHtml(link)}</td>
-                            <td style="padding:6px 8px; white-space:nowrap;">${formatBytes(link.filesize)}</td>
-                            <td style="padding:6px 8px; text-align:right; white-space:nowrap;">
-                                <button class="btn-icon-only" onclick="copyLink('${escapeForAttribute(link.link)}', this)" data-tooltip="Copier le lien ed2k">${svgIcon('copy')}</button>
-                                ${event.matched_series_id && link.already_owned === true
-                                    ? `<button class="btn-icon-only" onclick="replaceNouveautesEbdzLink(${index}, ${linkIndex}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
-                                    : `<button class="btn-icon-only result-action-emule" onclick="addToEmuleFromNouveautesLink('${escapeForAttribute(link.link)}', this, '${escapeForAttribute(decodedFilename)}', allNouveautesEvents[${index}])" data-tooltip="Ajouter à eMule/aMule"><img src="/static/img/emule-logo.svg" alt="" class="torrent-client-logo"></button>`}
-                            </td>
-                        </tr>
-                    `;
-                }).join('')}
-            </tbody>
-        </table>
-    `;
-    checkEmuleStatus();
+// Colonne « Match » d'une ligne EBDZ (un fichier du sujet): même rendu que RSS, avec la
+// mention « manquant » propre à CE fichier.
+function _nouveautesEbdzLinkMatchedHtml(event, link) {
+    const seriesId = event.matched_series_id;
+    if (!_nouveautesMatched(event)) return '';
+    const tooltip = event.matched_series_title
+        ? `Déjà dans votre bibliothèque : ${escapeForAttribute(event.matched_series_title)}`
+        : 'Déjà dans votre bibliothèque';
+    const checkHtml = seriesId
+        ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${tooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${svgIcon('check')}</a>`
+        : `<span class="icon-owned" data-tooltip="${tooltip}">${svgIcon('check')}</span>`;
+    const missingHtml = link.already_owned === false
+        ? ` <span class="badge-missing" data-tooltip="Ce fichier n'est pas encore dans votre bibliothèque">manquant</span>`
+        : '';
+    return `${checkHtml}${missingHtml}`;
 }
 
+// « que ce soit rss, telegram ou ebdz je voudrais que les lignes soient identiques » - un
+// sujet EBDZ n'est plus une ligne repliable: chacun de ses fichiers a sa propre ligne, mise
+// en page comme une ligne RSS (titre, série Bédéthèque, taille/tome, actions du fichier).
 function _nouveautesEbdzRowHtml(event, index) {
-    const rowId = `nouveautes-row-${index}`;
-    const safeTitle = escapeHtml(event.title);
+    const safeThreadTitle = escapeHtml(event.title || '');
     const typeIconHtml = event.url
-        ? `<a href="${escapeHtml(event.url)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir « ${safeTitle} » sur EBDZ" onclick="event.stopPropagation()"><img src="/static/img/ebdz-logo.png" alt="EBDZ" style="width:16px; height:16px; vertical-align:-3px;"></a>`
-        : `<span data-tooltip="EBDZ"><img src="/static/img/ebdz-logo.png" alt="EBDZ" style="width:16px; height:16px; vertical-align:-3px;"></span>`;
-    const threadStatusTooltip = event.is_new_thread ? 'Nouveau sujet, jamais vu avant' : 'Sujet déjà connu, nouveau tome ajouté';
-    const threadStatusDotClass = event.is_new_thread ? 'thread-status-dot-new' : 'thread-status-dot-existing';
+        ? `<a href="${escapeHtml(event.url)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir « ${safeThreadTitle} » sur EBDZ" onclick="event.stopPropagation()"><img src="/static/img/ebdz-logo.png" alt="EBDZ" class="nouveautes-source-icon"></a>`
+        : `<span data-tooltip="EBDZ"><img src="/static/img/ebdz-logo.png" alt="EBDZ" class="nouveautes-source-icon"></span>`;
     const seriesMatched = _nouveautesMatched(event);
-    const ownedLinks = (event.links || []).filter(link => link.already_owned === true);
-    const allOwned = !!event.matched_series_id && ownedLinks.length > 0 &&
-        ownedLinks.length === event.links.length;
-    const replaceLinkIndex = allOwned && ownedLinks.length === 1 ? event.links.indexOf(ownedLinks[0]) : -1;
-    const showAutoSearch = !event._autoAddTriggered && !allOwned &&
-        (!seriesMatched || (event.links || []).some(link => link.already_owned !== true));
-    const addToLibraryHtml = `
-        ${allOwned ? `<button class="btn-icon-only" onclick="event.stopPropagation(); ${replaceLinkIndex >= 0 ? `replaceNouveautesEbdzLink(${event._index}, ${replaceLinkIndex}, this)` : `toggleNouveautesFiles('nouveautes-row-${event._index}', allNouveautesEvents[${event._index}], ${event._index})`}" data-tooltip="${replaceLinkIndex >= 0 ? 'Télécharger et remplacer ce fichier' : 'Choisir le fichier à remplacer'}" aria-label="${replaceLinkIndex >= 0 ? 'Télécharger et remplacer ce fichier' : 'Choisir le fichier à remplacer'}">${svgIcon('file-replace')}</button>` : ''}
-        ${showAutoSearch ? `<button class="btn-icon-only" onclick="event.stopPropagation(); addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger ce fichier">${svgIcon('zap')}</button>` : ''}
-        ${seriesMatched ? '' : `<button class="btn-icon-only" onclick="event.stopPropagation(); window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir">${svgIcon('plus')}</button>`}
-    `;
-    const statusHtml = `
-        <span class="thread-status-dot ${threadStatusDotClass}" data-tooltip="${threadStatusTooltip}" style="display:inline-block;"></span>
-        ${event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : ''}
-        ${_nouveautesImportStatusHtml(event)}
-        ${addToLibraryHtml}
-    `;
-
-    return `
-        <tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border); cursor:pointer;" onclick="toggleNouveautesFiles('${rowId}', allNouveautesEvents[${index}], ${index})">
+    const newRowClass = _nouveautesIsNew(event) ? ' nouveautes-row-new' : '';
+    const monitoredHtml = event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : '';
+    return (event.links || []).map((link, linkIndex) => {
+        const filename = decodeFilename(link.filename) || event.title || '';
+        const owned = link.already_owned === true;
+        const ownedRowClass = owned ? ' volume-table-row-owned' : '';
+        const volumeLabel = link.parsed_volume ? String(link.parsed_volume) : '';
+        const pendingHtml = nouveautesPendingFilenames.has(link.filename)
+            ? `<span class="icon-owned" style="background:var(--color-accent); color:#fff;" data-tooltip="Déjà téléchargé, en attente d'import">${svgIcon('history')}</span>`
+            : '';
+        const downloadHtml = event.matched_series_id && owned
+            ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesEbdzLink(${index}, ${linkIndex}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
+            : `<button class="btn-icon-only result-action-emule" type="button" onclick="addToEmuleFromNouveautesLink('${escapeForAttribute(link.link)}', this, '${escapeForAttribute(filename)}', allNouveautesEvents[${index}])" data-tooltip="Ajouter à eMule/aMule" aria-label="Ajouter à eMule/aMule"><img src="/static/img/emule-logo.svg" alt="" class="torrent-client-logo"></button>`;
+        const zapHtml = owned || link._autoAddTriggered ? ''
+            : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${index}, this, ${linkIndex})" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger ce fichier" aria-label="Ajouter la série et télécharger ce fichier">${svgIcon('zap')}</button>`;
+        const discoverHtml = seriesMatched ? ''
+            : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`;
+        return `<tr class="nouveautes-event-row${(ownedRowClass + newRowClass)}" style="border-bottom:1px solid var(--color-border);">
             <td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td>
-            <td style="padding:10px; white-space:nowrap; text-align:center;">${typeIconHtml}</td>
+            <td style="padding:10px; text-align:center;">${typeIconHtml}</td>
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
-                <div style="font-weight:600; display:flex; align-items:center; gap:6px;">▸ ${safeTitle}</div>
+                <div style="font-weight:600; display:flex; align-items:center; gap:6px;">${escapeHtml(filename)}</div>
                 ${_nouveautesSeriesHtml(event)}
-                <div style="color:var(--color-text-muted); font-size:0.9em;">${event.links.length} fichier${event.links.length > 1 ? 's' : ''}</div>
+                <div style="color:var(--color-text-muted); font-size:0.9em;">${safeThreadTitle} · ${formatBytes(link.filesize)}${volumeLabel ? ` · ${escapeHtml(volumeLabel)}` : ''}</div>
             </td>
-            <td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td>
-            <td class="nouveautes-actions-cell" style="padding:10px; text-align:left;">${statusHtml}</td>
-        </tr>
-        <tr id="${rowId}-files" class="nouveautes-files-row" style="display:none;"><td colspan="6" style="padding:0 10px 10px 30px; background:var(--color-surface-alt);"></td></tr>
-    `;
+            <td style="padding:10px; text-align:center;">${_nouveautesEbdzLinkMatchedHtml(event, link)}</td>
+            <td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${monitoredHtml}${pendingHtml}<button class="btn-icon-only" type="button" onclick="copyLink('${escapeForAttribute(link.link)}', this)" data-tooltip="Copier le lien ed2k" aria-label="Copier le lien ed2k">${svgIcon('copy')}</button>${downloadHtml}${zapHtml}${discoverHtml}</div></td>
+        </tr>`;
+    }).join('');
 }
 
 async function _addNouveautesRssTorrentToQbittorrent(torrentUrl, button, title, eventIndex, itemIndex, sourceLink) {
@@ -850,6 +823,19 @@ function _nouveautesRssTorrentClientButtons(event, item, itemIndex) {
     return buttons.join('');
 }
 
+// Lien Prowlarr (/<indexeur>/download) gardé sans clé API: passé par le serveur, qui
+// ajoute la clé configurée (sinon 401). Les autres liens restent directs.
+function _nouveautesRssDownloadLink(item, title) {
+    const url = item.url || '';
+    if (url.startsWith('magnet:')) return { href: url, label: 'Ouvrir le lien magnet' };
+    if (url.startsWith('ed2k://')) return { href: url, label: 'Ouvrir le lien ed2k' };
+    const label = 'Télécharger le fichier torrent';
+    if (/\/\d+\/download(?:\?|$)/.test(url.split('#')[0])) {
+        return { href: `/api/qbittorrent/torrent-file?url=${encodeURIComponent(url)}&name=${encodeURIComponent(title || '')}`, label };
+    }
+    return { href: url, label };
+}
+
 function _nouveautesRssRowHtml(event) {
     const escapedTitle = escapeHtml(event.title || 'Sans titre');
     const title = event.link
@@ -864,7 +850,10 @@ function _nouveautesRssRowHtml(event) {
         ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesRssFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
         : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger cette release" aria-label="Ajouter la série et télécharger cette release">${svgIcon('zap')}</button>`}${_nouveautesMatched(event) ? '' : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
     const matchedSeriesHtml = _nouveautesSeriesHtml(event);
-    const downloadButtons = (event.download_links || []).map(item => `<a class="btn-icon-only" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" data-tooltip="${escapeHtml(item.label || 'Télécharger')}" aria-label="${escapeHtml(item.label || 'Télécharger')}" onclick="event.stopPropagation()">${svgIcon('download')}</a>`).join('');
+    const downloadButtons = (event.download_links || []).map(item => {
+        const link = _nouveautesRssDownloadLink(item, event.title);
+        return `<a class="btn-icon-only" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer" data-tooltip="${escapeHtml(link.label)}" aria-label="${escapeHtml(link.label)}" onclick="event.stopPropagation()">${svgIcon('download')}</a>`;
+    }).join('');
     const torrentClientButtons = (event.download_links || []).map((item, itemIndex) => _nouveautesRssTorrentClientButtons(event, item, itemIndex)).join('');
     const rssMonitoredHtml = event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : '';
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
@@ -1048,7 +1037,7 @@ function renderNouveautesEvents(resetPage = true) {
         const haystack = navNormalizeSearch(e.type === 'ebdz' || e.type === 'rss' ? e.title : e.filename);
         return haystack.includes(query);
     });
-    // e._index (position dans allNouveautesEvents, utilisé par toggleNouveautesFiles) reste
+    // e._index (position dans allNouveautesEvents, utilisé par les boutons de chaque ligne) reste
     // valide après un tri: c'est une propriété posée sur l'objet lui-même pendant le
     // filter() ci-dessus, pas une position recalculée - un sort() qui ne fait que
     // réordonner le tableau filtré ne la casse pas.

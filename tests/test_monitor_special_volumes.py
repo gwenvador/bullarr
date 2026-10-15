@@ -98,5 +98,19 @@ class SpecialVolumesTest(unittest.TestCase):
         self.assertEqual(stats["skipped_pending"], 1)
 
 
+class PlaceholderMissingVolumesTest(unittest.TestCase):
+    """« Chroniques Diplomatiques » T03: fiche sans fichier, absente de la colonne missing_volumes."""
+
+    def test_placeholder_without_file_counts_as_missing(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE volumes (id INTEGER PRIMARY KEY, series_id INTEGER, volume_number INTEGER, "
+                     "is_integral INTEGER DEFAULT 0, is_hs INTEGER DEFAULT 0, is_episode INTEGER DEFAULT 0, filepath TEXT)")
+        conn.executemany("INSERT INTO volumes (series_id, volume_number, filepath, is_hs) VALUES (?, ?, ?, ?)", [
+            (1223, 1, "/BD/a.cbz", 0), (1223, 2, "/BD/b.cbz", 0), (1223, 3, None, 0), (1223, 4, "", 0),
+            (1223, 5, None, 1), (9, 1, None, 0)])
+        self.assertEqual(handler._placeholder_missing_volumes(conn.cursor(), [1223]), {1223: {3, 4}})
+        self.assertEqual(handler._placeholder_missing_volumes(conn.cursor(), []), {})
+
+
 if __name__ == "__main__":
     unittest.main()

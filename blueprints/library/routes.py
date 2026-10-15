@@ -5,7 +5,7 @@ from flask import render_template, request, jsonify, current_app, redirect, url_
 from error_utils import error_message
 from path_safety import UnsafePathError, resolve_within, resolve_within_any, configured_root
 from archive_utils import list_archive_members
-from . import library_bp
+from . import library_bp, import_control
 from .scanner import LibraryScanner, COMICINFO_FIELDS, scan_import_lock
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
 from .zip_converter import convert_zip_to_cbz, package_zip_folders_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
@@ -1518,6 +1518,108 @@ def _normalize_title_for_match(title):
     return re.sub(r'\s+', ' ', normalized).strip()
 
 
+_EXTENSION_BY_SIGNATURE = (
+    (b'%PDF', '.pdf'),
+    (b'PK\x03\x04', '.cbz'),
+    (b'Rar!\x1a\x07', '.cbr'),
+)
+
+
+def add_missing_download_extensions(import_directories, downloads, supported_extensions):
+    """Add the real extension to a tracked download saved without one.
+
+    A single-file torrent can name its file after the release with no extension
+    (« Chagrin…[PDF]-NOTAG », a PDF): every import step filters on the extension, so it
+    stayed « Téléchargé — import automatique sous peu » forever. Only a file whose name
+    is exactly a tracked download's name is touched, and the format comes from its
+    content, never from the name.
+    """
+    names = set()
+    for download in downloads or []:
+        for key in ('client_item_name', 'title'):
+            value = (download.get(key) or '').strip()
+            if value and os.path.basename(value) == value:
+                names.add(value)
+    renamed = []
+    for import_path in import_directories or []:
+        for name in names:
+            filepath = os.path.join(import_path, name)
+            if os.path.splitext(name)[1].lower() in supported_extensions or not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, 'rb') as handle:
+                    head = handle.read(8)
+            except OSError:
+                continue
+            extension = next((ext for signature, ext in _EXTENSION_BY_SIGNATURE if head.startswith(signature)), None)
+            target = filepath + extension if extension else None
+            if not target or extension not in supported_extensions or os.path.exists(target):
+                continue
+            try:
+                os.rename(filepath, target)
+            except OSError as e:
+                print(f"⚠️ Extension non ajoutée à {filepath}: {e}")
+                continue
+            print(f"📎 Extension ajoutée (format lu dans le fichier): {name} → {os.path.basename(target)}")
+            renamed.append(target)
+    return renamed
+
+
+def _fill_missing_album_summaries(db_path, volume_ids):
+    """Complete the Summary of freshly imported volumes from their Bédéthèque album page.
+
+    The cached series catalogue (series.bedetheque_albums) has no per-album summary,
+    so an imported file without its own <Summary> stayed without one until a manual
+    "MAJ métadonnées". One request per volume (anti-bot delay), hence a background thread.
+    """
+    from blueprints.bedetheque.scraper import BedethequeScraper
+    from blueprints.bedetheque.comicinfo_writer import apply_volume_comicinfo, UnsupportedFormatError
+
+    ids = sorted({volume_id for volume_id in volume_ids if volume_id is not None})
+    if not ids:
+        return 0
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    placeholders = ','.join('?' * len(ids))
+    rows = conn.execute(
+        f'SELECT id, filepath, format, comicinfo FROM volumes WHERE id IN ({placeholders})', ids
+    ).fetchall()
+    conn.close()
+
+    scraper = None
+    filled = 0
+    for volume_id, filepath, file_format, comicinfo in rows:
+        try:
+            info = json.loads(comicinfo) if comicinfo else {}
+        except (TypeError, ValueError):
+            info = {}
+        album_url = info.get('web') or ''
+        if (info.get('summary') or '').strip() or 'bedetheque.com' not in album_url:
+            continue
+        if scraper is None:
+            scraper = BedethequeScraper()
+        summary = scraper.fetch_album_description(album_url)
+        if not summary:
+            continue
+        try:
+            apply_volume_comicinfo(db_path, volume_id, filepath, file_format, {'Summary': summary})
+        except UnsupportedFormatError:
+            pass  # DB already updated, only the file projection is impossible
+        except Exception as e:
+            print(f"⚠️ Résumé d'album non écrit pour le volume #{volume_id}: {e}")
+            continue
+        filled += 1
+    return filled
+
+
+def _start_missing_album_summaries_fill(db_path, volume_ids):
+    ids = [volume_id for volume_id in volume_ids if volume_id is not None]
+    if not ids:
+        return
+    threading.Thread(
+        target=_fill_missing_album_summaries, args=(db_path, ids), daemon=True
+    ).start()
+
+
 def _mark_imported_volumes_present(conn, volume_ids):
     # Import has already completed its file transfer before this is called;
     # recording presence prevents a pre-import verification result from hiding it.
@@ -1586,6 +1688,17 @@ def get_owned_volume_signatures(series_ids, conn=None):
             sig['episodes'].add(episode_number)
         elif volume_number is not None:
             sig['volumes'].add(volume_number)
+    # 'complete': every regular album of the catalogue (no intégrale/HS/special) is owned,
+    # so an intégrale of this series brings nothing missing.
+    cursor.execute(f'''
+        SELECT series_id FROM volumes
+        WHERE series_id IN ({placeholders})
+          AND COALESCE(is_integral, 0) = 0 AND COALESCE(is_hs, 0) = 0 AND COALESCE(is_special, 0) = 0
+        GROUP BY series_id
+        HAVING SUM(CASE WHEN filepath IS NULL OR filepath = '' THEN 1 ELSE 0 END) = 0
+    ''', list(series_ids))
+    for (series_id,) in cursor.fetchall():
+        result[series_id]['complete'] = True
     if close_conn:
         conn.close()
     return result
@@ -1599,7 +1712,7 @@ def volume_possession_status(owned, volume=None, is_integral=False, integral_num
     get_owned_volume_signatures), False si un numéro est connu mais absent de `owned`,
     None si aucun numéro n'a pu être déterminé (rien à comparer - ne pas deviner)."""
     if is_integral and integral_number is not None:
-        return integral_number in owned['integrals']
+        return integral_number in owned['integrals'] or bool(owned.get('complete'))
     if is_hs and hs_number is not None:
         return hs_number in owned['hs']
     if is_episode and episode_number is not None:
@@ -2702,6 +2815,19 @@ def get_series_details(series_id):
                 'bis_suffix': vol['bis_suffix']
             })
 
+        # ISBN de chaque album, lu dans le catalogue Bédéthèque déjà en cache (aucune requête):
+        # sert aux liens « Acheter » de la fiche série.
+        cursor.execute('SELECT bedetheque_albums FROM series WHERE id = ?', (series_id,))
+        albums_row = cursor.fetchone()
+        try:
+            albums = json.loads(albums_row[0]) if albums_row and albums_row[0] else []
+        except (TypeError, ValueError):
+            albums = []
+        isbn_by_url = {str(a.get('url') or '').rstrip('/'): a.get('isbn') for a in albums if a.get('isbn')}
+        for volume in volumes:
+            web = str((volume['comicinfo'] or {}).get('web') or '').rstrip('/')
+            volume['isbn'] = isbn_by_url.get(web)
+
         # Les recommandations « À lire aussi » sont mises en cache lors du dernier
         # scraping Bédéthèque, mais l'état « déjà en bibliothèque » se vérifie à chaque
         # affichage car une série peut avoir été ajoutée depuis.
@@ -3006,7 +3132,7 @@ def update_volume_manual_metadata(volume_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, series_id, filepath, format FROM volumes WHERE id = ?', (volume_id,))
+        cursor.execute('SELECT id, series_id, filepath, format, resolution, release_group FROM volumes WHERE id = ?', (volume_id,))
         vol = cursor.fetchone()
         conn.close()
 
@@ -3043,13 +3169,22 @@ def update_volume_manual_metadata(volume_id):
             conn.commit()
             conn.close()
 
+        # Qualité et releaser font partie du nom de fichier standard: le renommer dès
+        # qu'ils changent, comme le ferait « Renommer ce fichier ».
+        new_filename = None
+        if vol['filepath'] and any(vol[col] != value for col, value in db_updates.items()):
+            _rename_single_volume(vol['series_id'], volume_id, 'édition qualité/releaser')
+            conn = get_db_connection()
+            new_filename = conn.execute('SELECT filename FROM volumes WHERE id = ?', (volume_id,)).fetchone()['filename']
+            conn.close()
+
         scanner = LibraryScanner()
         scanner.update_series_stats(vol['series_id'])
 
         from blueprints.komga.client import trigger_scan_async
         trigger_scan_async()
 
-        return jsonify({'success': True, 'comicinfo': new_comicinfo, **db_updates})
+        return jsonify({'success': True, 'comicinfo': new_comicinfo, 'filename': new_filename, **db_updates})
 
     except UnsupportedFormatError as e:
         return jsonify({'success': False, 'error': error_message(e)}), 400
@@ -3076,6 +3211,7 @@ def move_volume_to_series(volume_id):
     if not target_series_id:
         return jsonify({'success': False, 'error': 'target_series_id requis'}), 400
     target_series_id = int(target_series_id)
+    target_volume = data.get('target_volume')
 
     try:
         conn = get_db_connection()
@@ -3089,6 +3225,25 @@ def move_volume_to_series(volume_id):
         if not vol:
             conn.close()
             return jsonify({'success': False, 'error': 'Volume introuvable'}), 404
+        retarget = None
+        if isinstance(target_volume, dict):
+            # « Déplacer un album vers une autre série »: l'album prend la place d'un tome
+            # précis de la série cible (numéro, intégrale, hors-série ou épisode), pas
+            # forcément son propre numéro. Même forme que volume_override à l'import.
+            def _num(key):
+                value = target_volume.get(key)
+                try:
+                    return int(value) if value not in (None, '') else None
+                except (TypeError, ValueError):
+                    return None
+            retarget = {
+                'volume_number': _num('volume_number'),
+                'is_integral': int(bool(target_volume.get('is_integral'))), 'integral_number': _num('integral_number'),
+                'is_hs': int(bool(target_volume.get('is_hs'))), 'hs_number': _num('hs_number'),
+                'is_episode': int(bool(target_volume.get('is_episode'))), 'episode_number': _num('episode_number'),
+                'is_special': 0, 'special_label': None,
+            }
+            vol = {**dict(vol), **retarget}
 
         source_series_id = vol['series_id']
         if target_series_id == source_series_id:
@@ -3157,6 +3312,15 @@ def move_volume_to_series(volume_id):
             shutil.move(vol['filepath'], new_path)
             cursor.execute('UPDATE volumes SET series_id = ?, filepath = ? WHERE id = ?',
                            (target_series_id, new_path, volume_id))
+            if retarget:
+                cursor.execute('''
+                    UPDATE volumes SET volume_number = ?, is_integral = ?, integral_number = ?,
+                                       is_hs = ?, hs_number = ?, is_episode = ?, episode_number = ?,
+                                       is_special = ?, special_label = ?
+                    WHERE id = ?
+                ''', (retarget['volume_number'], retarget['is_integral'], retarget['integral_number'],
+                      retarget['is_hs'], retarget['hs_number'], retarget['is_episode'],
+                      retarget['episode_number'], retarget['is_special'], retarget['special_label'], volume_id))
         elif target_match:
             # Placeholder source pour un tome déjà représenté côté cible - rien à
             # apporter en plus, retiré plutôt que dupliqué.
@@ -3174,6 +3338,9 @@ def move_volume_to_series(volume_id):
         scanner = LibraryScanner()
         scanner.update_series_stats(source_series_id)
         scanner.update_series_stats(target_series_id)
+
+        if retarget and vol['filepath']:
+            _realign_volume_after_renumber(volume_id, target_series_id, new_path, None, 'déplacement de tome')
 
         from blueprints.komga.client import trigger_scan_async
         trigger_scan_async()
@@ -3225,6 +3392,73 @@ def _volume_row_identity(row):
     if row.get('is_hs'):
         return ('hs', row.get('hs_number'))
     return None
+
+
+def _realign_volume_after_renumber(volume_id, series_id, filepath, file_format, caller):
+    """Aligne le fichier d'un tome dont le numéro/type vient de changer sur le VRAI album
+    Bédéthèque correspondant (ComicInfo, couverture), puis le renomme au format standard.
+    Best-effort: un échec ici ne remet pas en cause le changement déjà enregistré."""
+    if file_format is None:
+        conn0 = get_db_connection()
+        row0 = conn0.execute('SELECT format FROM volumes WHERE id = ?', (volume_id,)).fetchone()
+        conn0.close()
+        file_format = row0['format'] if row0 else None
+    try:
+        conn3 = get_db_connection()
+        cursor3 = conn3.cursor()
+        cursor3.execute('''
+            SELECT v.*, s.title AS series_title, s.bedetheque_url
+            FROM volumes v JOIN series s ON v.series_id = s.id
+            WHERE v.id = ?
+        ''', (volume_id,))
+        vol_for_bd = cursor3.fetchone()
+        from blueprints.bedetheque.routes import _resolve_volume_bedetheque_fields, _refresh_volume_cover
+        fields, _bd_error, bd_volume = _resolve_volume_bedetheque_fields(cursor3, vol_for_bd)
+        conn3.close()
+        if fields:
+            from blueprints.bedetheque.comicinfo_writer import apply_volume_comicinfo, UnsupportedFormatError
+            try:
+                apply_volume_comicinfo(current_app.config['DATABASE'], volume_id, filepath, file_format, fields)
+            except UnsupportedFormatError:
+                pass
+        _refresh_volume_cover(volume_id, bd_volume)
+    except Exception as e:
+        print(f"MAJ ComicInfo après {caller} #{volume_id} échouée (non bloquant): {e}")
+
+    # Renomme CE fichier au format standard configuré: le template de renommage utilise
+    # le Titre officiel fraîchement aligné ci-dessus.
+    _rename_single_volume(series_id, volume_id, caller)
+
+
+def _rename_single_volume(series_id, volume_id, caller):
+    """Renomme UN tome au format standard configuré - même mécanisme que "Renommer ce
+    fichier" (execute_rename, volume_id) mais appelé directement. Non bloquant."""
+    try:
+        conn4 = get_db_connection()
+        cursor4 = conn4.cursor()
+        series_for_rename = _fetch_series_for_rename(cursor4, series_id)
+        if series_for_rename:
+            from blueprints.settings.rename_config_store import load_rename_config
+            from rename_handler import FileRenamer
+            rename_cfg = load_rename_config()
+            volumes_for_rename = _fetch_volumes_for_rename(cursor4, series_id, volume_id)
+            if volumes_for_rename:
+                file_plan = FileRenamer.build_rename_plan(
+                    series_for_rename['title'], volumes_for_rename, bool(series_for_rename['is_oneshot']),
+                    rename_cfg['volume_template'], series_for_rename['universe_name'],
+                    rename_cfg['oneshot_template']
+                )
+                file_results = FileRenamer.execute_rename_plan(series_for_rename['path'], file_plan)
+                for r in file_results:
+                    if r.get('success') and not r.get('skipped'):
+                        new_path = os.path.join(series_for_rename['path'], r['new_name'])
+                        cursor4.execute('UPDATE volumes SET filename = ?, filepath = ? WHERE id = ?',
+                                        (r['new_name'], new_path, r['volume_id']))
+                conn4.commit()
+                _log_rename_action(series_id, series_for_rename['title'], file_results, None)
+        conn4.close()
+    except Exception as e:
+        print(f"Renommage après {caller} #{volume_id} échoué (non bloquant): {e}")
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/renumber', methods=['PUT'])
@@ -3335,58 +3569,7 @@ def renumber_volume(volume_id):
     # CLAUDE.md), ne remet pas en cause le changement de type/numéro lui-même (déjà
     # committé ci-dessus).
     if vol['filepath']:
-        try:
-            conn3 = get_db_connection()
-            cursor3 = conn3.cursor()
-            cursor3.execute('''
-                SELECT v.*, s.title AS series_title, s.bedetheque_url
-                FROM volumes v JOIN series s ON v.series_id = s.id
-                WHERE v.id = ?
-            ''', (volume_id,))
-            vol_for_bd = cursor3.fetchone()
-            from blueprints.bedetheque.routes import _resolve_volume_bedetheque_fields, _refresh_volume_cover
-            fields, _bd_error, bd_volume = _resolve_volume_bedetheque_fields(cursor3, vol_for_bd)
-            conn3.close()
-            if fields:
-                from blueprints.bedetheque.comicinfo_writer import apply_volume_comicinfo, UnsupportedFormatError
-                try:
-                    apply_volume_comicinfo(current_app.config['DATABASE'], volume_id, vol['filepath'], vol['format'], fields)
-                except UnsupportedFormatError:
-                    pass
-            _refresh_volume_cover(volume_id, bd_volume)
-        except Exception as e:
-            print(f"MAJ ComicInfo après renumber_volume #{volume_id} échouée (non bloquant): {e}")
-
-        # Renomme CE fichier au format standard configuré - même mécanisme que "Renommer
-        # ce fichier" (execute_rename, volume_id) mais appelé directement plutôt que via
-        # une seconde requête HTTP. Relit volumes_for_rename APRÈS la MAJ ComicInfo
-        # ci-dessus: le template de renommage utilise le Titre officiel fraîchement aligné.
-        try:
-            conn4 = get_db_connection()
-            cursor4 = conn4.cursor()
-            series_for_rename = _fetch_series_for_rename(cursor4, series_id)
-            if series_for_rename:
-                from blueprints.settings.rename_config_store import load_rename_config
-                from rename_handler import FileRenamer
-                rename_cfg = load_rename_config()
-                volumes_for_rename = _fetch_volumes_for_rename(cursor4, series_id, volume_id)
-                if volumes_for_rename:
-                    file_plan = FileRenamer.build_rename_plan(
-                        series_for_rename['title'], volumes_for_rename, bool(series_for_rename['is_oneshot']),
-                        rename_cfg['volume_template'], series_for_rename['universe_name'],
-                        rename_cfg['oneshot_template']
-                    )
-                    file_results = FileRenamer.execute_rename_plan(series_for_rename['path'], file_plan)
-                    for r in file_results:
-                        if r.get('success') and not r.get('skipped'):
-                            new_path = os.path.join(series_for_rename['path'], r['new_name'])
-                            cursor4.execute('UPDATE volumes SET filename = ?, filepath = ? WHERE id = ?',
-                                            (r['new_name'], new_path, r['volume_id']))
-                    conn4.commit()
-                    _log_rename_action(series_id, series_for_rename['title'], file_results, None)
-            conn4.close()
-        except Exception as e:
-            print(f"Renommage après renumber_volume #{volume_id} échoué (non bloquant): {e}")
+        _realign_volume_after_renumber(volume_id, series_id, vol['filepath'], vol['format'], 'renumber_volume')
 
     from blueprints.komga.client import trigger_scan_async
     trigger_scan_async()
@@ -4268,11 +4451,55 @@ def _existing_volume_info(destination, parsed, filename, file_size):
             'will_replace': bool(destination.get('force_replace')) or is_better_volume(file_size or 0, size or 0)}
 
 
+def _known_catalog_volume_numbers(series_id):
+    """Numéros de tomes que la série connaît: albums du catalogue Bédéthèque et fiches
+    sans fichier. None si la série n'a aucun catalogue (rien ne permet alors de juger)."""
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        row = conn.execute('SELECT bedetheque_albums FROM series WHERE id = ?', (series_id,)).fetchone()
+        albums = json.loads(row[0]) if row and row[0] else []
+        if not albums:
+            return None
+        from blueprints.bedetheque.scraper import _index_bedetheque_volumes
+        known = {number for number in _index_bedetheque_volumes(albums)[0] if number is not None}
+        known.update(number for (number,) in conn.execute(
+            "SELECT volume_number FROM volumes WHERE series_id = ? AND volume_number IS NOT NULL "
+            "AND COALESCE(filepath, '') = ''", (series_id,)))
+        return known
+    except (sqlite3.Error, ValueError, TypeError):
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def _unknown_volume_hold_reason(parsed, destination):
+    """Motif de mise de côté d'un tome dont le numéro n'existe pas dans la série (« Sambre
+    1-17 » alors que la série en compte 8): l'import automatique ne le prend pas, la personne
+    vérifie à la main. None si le numéro existe ou si rien ne permet de juger."""
+    parsed = parsed or {}
+    series_id = (destination or {}).get('series_id')
+    volume = parsed.get('volume')
+    if (not series_id or volume is None or destination.get('is_new_series') or destination.get('is_oneshot')
+            or any(parsed.get(key) for key in ('is_hs', 'is_integral', 'is_episode', 'is_special'))):
+        return None
+    known = _known_catalog_volume_numbers(series_id)
+    if known is None or volume in known:
+        return None
+    return (f"le tome {volume} n'existe pas dans la série « {destination.get('series_title')} » "
+            f"(tomes connus : {', '.join(str(n) for n in sorted(known)) or 'aucun'}) - "
+            "vérifiez puis cliquez sur « Importer »")
+
+
 def _automatic_hold_reason(filepath, parsed, destination):
     """Motif d'un fichier mis de côté par l'import automatique lui-même (et non par une
     assignation faite à la main, qui enregistre toujours sa destination)."""
     if os.path.realpath(filepath).startswith(os.path.realpath(_PACKAGE_TEMP_DIR) + os.sep):
         return "fichier empaqueté depuis une archive : import manuel à valider"
+    unknown_volume = _unknown_volume_hold_reason(parsed, destination)
+    if unknown_volume:
+        return unknown_volume
     if destination and not _pack_file_matches_destination(parsed, destination):
         return (f"titre lu dans le fichier « {(parsed or {}).get('title') or '?'} » différent de la série "
                 f"« {destination.get('series_title')} » - vérifiez puis cliquez sur « Importer »")
@@ -4442,6 +4669,7 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
             if is_container
             else _repeated_failure_skip_reason(filepath)
             or ("désactivé dans les paramètres" if not import_config.get('auto_import_enabled', False) else None)
+            or _unknown_volume_hold_reason(parsed, file_destination)
             or (None if gate_passed else _no_volume_skip_reason(parsed, file_destination))
         ),
         # Format réel de l'archive, indépendant de l'extension annoncée. Un .cbz
@@ -4971,6 +5199,7 @@ def import_state_snapshot():
             'files': files,
             'incompatible_folders': incompatible_folders,
             'currently_processing': currently_processing,
+            'import_paused': import_control.is_paused(),
             'importing_filepaths': importing_filepaths,
             'waiting_file_count': waiting_snapshot['waiting_file_count'],
             'awaiting_discovery_count': waiting_snapshot['awaiting_discovery_count'],
@@ -5846,6 +6075,20 @@ def import_replacement_required_route():
         conn.close()
 
 
+@library_bp.route('/api/import/stop', methods=['POST'])
+def stop_import_route():
+    """« Arrêter l'import »: le fichier en cours finit, les suivants ne sont pas pris, et
+    l'import automatique reste en pause jusqu'à /api/import/resume."""
+    import_control.request_stop()
+    return jsonify({'success': True, 'paused': True})
+
+
+@library_bp.route('/api/import/resume', methods=['POST'])
+def resume_import_route():
+    import_control.resume()
+    return jsonify({'success': True, 'paused': False})
+
+
 @library_bp.route('/api/import/mark-manual', methods=['POST'])
 def mark_import_file_manual_route():
     """Marque un fichier de /import comme assigné/corrigé manuellement ("si jai a faire
@@ -6164,6 +6407,9 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
 
         # Traiter chaque fichier
         for file_data in files_to_import:
+            if import_control.should_stop(operation_type == 'manual_import'):
+                print("⏹️ Import arrêté à la demande de l'utilisateur, fichiers restants laissés en place")
+                break
             file_id = None  # défini par log_import_file_started plus bas - None si l'exception (bloc except) survient avant cette ligne
             conn = None  # ouverte plus bas (série existante/nouvelle) - voir le bloc except: fermeture/rollback garantis même si l'exception survient après le déplacement du fichier mais avant le commit
             rollback_source_path = None
@@ -7022,6 +7268,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         _rename_new_volumes_after_import(conn, new_volume_ids)
         _mark_imported_volumes_present(conn, new_volume_ids)
         conn.commit()
+        _start_missing_album_summaries_fill(current_app.config['DATABASE'], new_volume_ids)
 
         # Séries importées pas encore matchées à Komga - liste récupérée maintenant (avant
         # de fermer la connexion), mais le matching lui-même n'est tenté qu'à la toute fin
@@ -7155,6 +7402,7 @@ def execute_import():
     files_to_import = data.get('files', [])
     if not files_to_import:
         return jsonify({'error': 'Aucun fichier à importer'}), 400
+    import_control.clear_stop()
 
     lock_acquired, operation_id, stats = _execute_import_batch(
         files_to_import, operation_type='manual_import', lock_timeout=180,

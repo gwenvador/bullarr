@@ -78,7 +78,9 @@ function _updateHeaderThemeToggle(mode) {
     const btn = document.querySelector('.header-theme-toggle');
     if (!btn) return;
     btn.innerHTML = svgIcon(mode === 'dark' ? 'sun' : 'moon');
-    btn.setAttribute('data-tooltip', mode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre');
+    const themeLabel = mode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre';
+    btn.setAttribute('data-tooltip', themeLabel);
+    btn.setAttribute('aria-label', themeLabel);
 }
 
 // Cache global "quel client de téléchargement est activé" (aMule, qBittorrent, rTorrent,
@@ -995,6 +997,7 @@ function initManualReviewBadge() {
     btn.type = 'button';
     btn.className = 'header-search-btn header-review-btn';
     btn.setAttribute('data-tooltip', 'Recherches automatiques à valider');
+    btn.setAttribute('aria-label', 'Recherches automatiques à valider');
     btn.innerHTML = `${svgIcon('bell')}<span class="header-review-count" aria-label="0"></span>`;
     btn.addEventListener('click', () => { window.location.href = '/validation'; });
     headerContent.appendChild(btn);
@@ -1033,6 +1036,21 @@ async function initUserBadge() {
             <a href="/logout" class="header-user-logout">Déconnexion</a>
         `;
         headerContent.appendChild(badge);
+
+        // En mobile, la barre du haut n'a pas la place du badge: la déconnexion est aussi
+        // proposée en bas du tiroir de navigation.
+        const sidebar = document.querySelector('.sidebar-nav');
+        if (sidebar && !sidebar.querySelector('.sidebar-logout')) {
+            const who = document.createElement('div');
+            who.className = 'sidebar-user';
+            who.textContent = `👤 ${user.name || user.email || ''}`;
+            sidebar.appendChild(who);
+            const logout = document.createElement('a');
+            logout.href = '/logout';
+            logout.className = 'nav-link sidebar-logout';
+            logout.textContent = '🚪 Déconnexion';
+            sidebar.appendChild(logout);
+        }
     } catch (error) {
         // Ignorer silencieusement : l'absence de badge n'empêche pas d'utiliser l'app
     }
@@ -1437,8 +1455,8 @@ function initHeaderSearch() {
     wrapper.className = 'header-right';
     wrapper.innerHTML = `
         <div class="header-search">
-            <input type="text" id="header-search-input" class="header-search-inline-input" placeholder="Chercher une série...">
-            <button type="button" class="header-search-btn">${svgIcon('search')}</button>
+            <input type="text" id="header-search-input" class="header-search-inline-input" placeholder="Chercher une série..." aria-label="Chercher une série">
+            <button type="button" class="header-search-btn" aria-label="Lancer la recherche" data-tooltip="Chercher une série">${svgIcon('search')}</button>
         </div>
     `;
     headerContent.appendChild(wrapper);
@@ -2119,5 +2137,42 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
         scan();
         new MutationObserver(() => { if (!applying) scan(); }).observe(document.body, { childList: true, subtree: true });
     };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+
+
+// ===== Noms accessibles de repli =====
+// Les boutons/liens "icône seule" rendus par les templates JS portent déjà un data-tooltip ou
+// un title qui les décrit pour la souris; sans aria-label, un lecteur d'écran n'annonce que
+// "bouton". On recopie ce texte comme nom accessible sur tout contrôle sans texte visible,
+// y compris ceux injectés plus tard (listes, modales). Les champs sans étiquette reprennent
+// leur placeholder. Un aria-label posé à la source l'emporte toujours (on ne l'écrase pas).
+(function () {
+    function nameControls(root) {
+        if (!root || root.nodeType !== 1) return;
+        const nodes = root.matches('button, a[href], input, select') ? [root] : [];
+        root.querySelectorAll('button:not([aria-label]):not([aria-labelledby]), a[href]:not([aria-label]):not([aria-labelledby]), input:not([type=hidden]):not([aria-label]):not([aria-labelledby]), select:not([aria-label]):not([aria-labelledby])')
+            .forEach(el => nodes.push(el));
+        nodes.forEach(el => {
+            if (el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby')) return;
+            const tag = el.tagName;
+            if (tag === 'INPUT' || tag === 'SELECT') {
+                if (el.id && document.querySelector('label[for="' + el.id + '"]')) return;
+                if (el.closest('label')) return;
+                const text = el.getAttribute('title') || el.getAttribute('placeholder');
+                if (text) el.setAttribute('aria-label', text.trim());
+                return;
+            }
+            if ((el.textContent || '').trim()) return;
+            const text = el.getAttribute('data-tooltip') || el.getAttribute('title');
+            if (text && text.trim()) el.setAttribute('aria-label', text.trim());
+        });
+    }
+    function start() {
+        nameControls(document.body);
+        new MutationObserver(mutations => {
+            for (const m of mutations) m.addedNodes.forEach(nameControls);
+        }).observe(document.body, { childList: true, subtree: true });
+    }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();

@@ -1016,3 +1016,14 @@
 .result-title-row .badges { align-self: center; }
 .result-detail-text .result-description { margin: 0 0 12px; }
 .result-detail-text .series-authors { margin: 0; line-height: 1.5; }
+
+/* « Dans découvrir, résultats des sources ça dépasse »: le tableau des sources (au moins
+   1100 px) élargissait toute l'étape au lieu de défiler dans son propre cadre - un enfant
+   de flex garde par défaut la largeur minimale de son contenu. */
+.discover-container,
+.discover-container > .step,
+.results-box,
+#sources-results-list {
+    min-width: 0;
+    max-width: 100%;
+}

@@ -1,7 +1,7 @@
 """
 Routes pour l'intégration qBittorrent
 """
-from flask import request, jsonify, current_app
+from flask import request, jsonify, current_app, redirect, Response
 from . import qbittorrent_bp
 import os
 import sqlite3
@@ -88,6 +88,32 @@ def _download_torrent_bytes(url, source):
             if len(data) > _MAX_TORRENT_BYTES:
                 raise ValueError('Fichier torrent trop volumineux')
         return bytes(data)
+
+
+@qbittorrent_bp.route('/torrent-file', methods=['GET'])
+def download_prowlarr_torrent_file():
+    """Fichier .torrent d'un lien Prowlarr (ligne RSS de Nouveautés), récupéré côté serveur.
+
+    Les liens RSS Prowlarr sont gardés sans clé API: ouverts tels quels dans le navigateur,
+    Prowlarr répondait 401. La clé configurée est ajoutée ici, sans jamais quitter le serveur.
+    """
+    url = request.args.get('url', '')
+    prowlarr_url = _configured_prowlarr_download_url(url)
+    if prowlarr_url is None:
+        return jsonify({'success': False, 'error': 'Lien Prowlarr non reconnu'}), 400
+    name = re.sub(r'[^\w .()\[\]-]+', '_', request.args.get('name', '')).strip(' ._')[:150] or 'release'
+    try:
+        with requests.get(prowlarr_url, timeout=30, verify=False, stream=True, allow_redirects=False) as response:
+            location = response.headers.get('Location') or ''
+            if response.is_redirect and location.startswith('magnet:'):
+                return redirect(location)
+        data = _download_torrent_bytes(url, 'prowlarr')
+    except Exception as e:
+        current_app.logger.warning(f"Téléchargement du fichier torrent Prowlarr impossible: {e}")
+        return jsonify({'success': False, 'error': f'Téléchargement impossible: {e}'}), 502
+    return Response(data, mimetype='application/x-bittorrent', headers={
+        'Content-Disposition': f'attachment; filename="{name}.torrent"',
+    })
 
 
 def load_qbittorrent_config():
@@ -399,6 +425,29 @@ def create_qbittorrent_session(config, for_test=False):
 
     except Exception as e:
         return None, None, 'Erreur interne'
+
+
+def get_qbittorrent_torrent_file_count(client_item_id):
+    """Nombre de fichiers du torrent (API torrents/files), ou None si qBittorrent n'est pas
+    joignable ou ne connaît pas ce hash. Sert à reconnaître un pack (torrent à plusieurs
+    fichiers) dès que le client le déclare terminé, avant que ses fichiers n'aient fini
+    d'arriver en local."""
+    if not client_item_id:
+        return None
+    try:
+        config = load_qbittorrent_config()
+        if not config.get('enabled'):
+            return None
+        session, base_url, error = create_qbittorrent_session(config)
+        if error or not session:
+            return None
+        response = session.get(f"{base_url}/api/v2/torrents/files",
+                               params={'hash': client_item_id}, timeout=8, verify=False)
+        response.raise_for_status()
+        files = response.json()
+        return len(files) if isinstance(files, list) and files else None
+    except Exception:
+        return None
 
 
 def get_qbittorrent_torrent_names(hashes):

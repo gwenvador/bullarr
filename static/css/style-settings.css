@@ -715,7 +715,7 @@
 .no-forums-placeholder {
     text-align: center;
     padding: 28px 20px;
-    color: #888;
+    color: var(--color-text-muted);
     font-size: 0.95em;
     border: 2px dashed var(--color-border);
     border-radius: 10px;
@@ -1172,3 +1172,35 @@ input[type="checkbox"].switch-input:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* Choix du mode d'authentification (Configuration > Login): couleurs du thème, pour que les
+   options restent lisibles en mode sombre (elles utilisaient des variables inexistantes et
+   retombaient sur un fond blanc). */
+.auth-mode-group { margin-bottom: 28px; }
+.auth-mode-heading { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.auth-mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.auth-mode-option {
+    display: flex; align-items: flex-start; gap: 12px; min-height: 76px; padding: 15px;
+    border: 1px solid var(--color-border); border-radius: 14px;
+    background: var(--color-surface); color: var(--color-text); text-align: left; cursor: pointer;
+    font: inherit;
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease, background .18s ease;
+}
+.auth-mode-option:hover {
+    transform: translateY(-1px); border-color: var(--color-accent);
+    box-shadow: 0 5px 16px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+.auth-mode-option.is-selected {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+.auth-mode-option:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-accent) 40%, transparent); outline-offset: 2px; }
+.auth-mode-icon {
+    display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px; border-radius: 10px;
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent); font-size: 18px;
+}
+.auth-mode-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.auth-mode-copy strong { font-size: .92rem; line-height: 1.2; color: var(--color-text); }
+.auth-mode-copy small { color: var(--color-text-muted); line-height: 1.25; }
+@media (max-width: 760px) { .auth-mode-options { grid-template-columns: 1fr; } .auth-mode-option { min-height: 0; } }

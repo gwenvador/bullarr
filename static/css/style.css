@@ -1299,7 +1299,7 @@ h2 {
     padding-top: 15px;
     border-top: 1px solid #e0e0e0;
     font-size: 0.85em;
-    color: #999;
+    color: var(--color-text-muted);
 }
 
 .search-box {
@@ -2017,7 +2017,7 @@ h2 {
 .loading {
     text-align: center;
     padding: 60px 20px;
-    color: #999;
+    color: var(--color-text-muted);
 }
 
 .spinner {
@@ -2038,7 +2038,7 @@ h2 {
 .no-data {
     text-align: center;
     padding: 80px 20px;
-    color: #999;
+    color: var(--color-text-muted);
 }
 
 .no-data-icon {
@@ -2448,6 +2448,20 @@ h2 {
     border: 1px solid var(--color-border);
     color: var(--color-text-muted);
     font-size: 0.88em;
+}
+
+.import-in-progress-banner .import-banner-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.import-in-progress-banner .import-banner-action {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.import-paused-banner {
+    border-color: var(--color-warning, #b45309);
 }
 
 .import-in-progress-banner .icon {
@@ -4114,3 +4128,67 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
 .volumes-table .volume-table-actions-inner {
     flex-wrap: wrap;
 }
+
+/* Déconnexion dans le tiroir de navigation: seulement sur téléphone, où le badge utilisateur de
+   la barre du haut est masqué faute de place. « Téléphone » = écran étroit, ou écran tactile de
+   faible hauteur (téléphone tenu à l'horizontale, plus de 768 px de large). Une tablette garde
+   le badge dans la barre du haut. */
+.sidebar-nav a.sidebar-logout, .sidebar-nav .sidebar-user { display: none; }
+@media (max-width: 768px), (hover: none) and (pointer: coarse) and (max-height: 500px) {
+    .header-user { display: none !important; }
+    .sidebar-nav .sidebar-user {
+        display: block;
+        margin-top: 12px;
+        padding: 14px 20px 4px;
+        border-top: 1px solid var(--color-border);
+        color: var(--color-text);
+        font-weight: 600;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .sidebar-nav a.sidebar-logout { display: flex !important; }
+}
+
+/* « Sur ma tablette l'appli laisse des espaces assez larges sur les côtés » - sur tablette
+   (écran moyen, ou tactile sans souris quelle que soit sa largeur) la page occupe toute la
+   largeur: plus de marge autour de la carte principale ni de marge à 95 %, et un retrait
+   intérieur réduit. */
+@media (max-width: 1200px), (hover: none) and (pointer: coarse) {
+    body { padding: 0; }
+    .container {
+        max-width: 100%;
+        border-radius: 0;
+        box-shadow: none;
+    }
+    .content { padding: 20px 16px; }
+}
+
+/* « Résultats des sources, ça dépasse » (tablette): le tableau des résultats de recherche gardait
+   1100 px minimum et ses dernières colonnes sortaient du cadre. Sur tablette et écran moyen il
+   tient dans la largeur: noms de fichiers coupés sur plusieurs lignes, filtres d'en-tête
+   réduits à la largeur de leur colonne. */
+@media (max-width: 1400px), (hover: none) and (pointer: coarse) {
+    .replace-results-table { min-width: 0 !important; width: 100%; }
+    .replace-results-table td { overflow-wrap: anywhere; }
+    .replace-results-table th, .replace-results-table td { padding-left: 6px; padding-right: 6px; }
+    .replace-results-table th, .replace-results-table th * { min-width: 0 !important; }
+    .replace-results-table .th-filterable-control { width: 100% !important; max-width: 100%; box-sizing: border-box; }
+}
+
+
+/* ===== Distill : succès lisible, icônes de titre, états vides compacts ===== */
+:root { --color-success: #17692a; }
+[data-theme="dark"] { --color-success: #4cc268; }
+
+.header-title-icon .header-title-svg {
+    width: 0.8em;
+    height: 0.8em;
+    vertical-align: -0.06em;
+    color: var(--color-accent);
+}
+.header-left h1 { margin-bottom: 0; }
+
+.loading { padding: 32px 20px; }
+.no-data { padding: 28px 20px; }

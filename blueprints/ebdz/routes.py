@@ -435,7 +435,10 @@ def latest_scrape():
             merged = {'volumes': set(), 'integrals': set(), 'hs': set(), 'episodes': set()}
             for sid in series_ids:
                 for key, values in owned_by_series[sid].items():
-                    merged[key] |= values
+                    if key == 'complete':
+                        merged['complete'] = merged.get('complete', False) or values
+                    else:
+                        merged[key] |= values
             owned_by_thread[tid] = merged
         library_conn.close()
 
@@ -732,6 +735,16 @@ def _annotate_rss_entries(events):
         'SELECT series_id, volume_number, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number '
         "FROM volumes WHERE filepath IS NOT NULL AND filepath != ''"
     ).fetchall()
+    # Séries dont tous les tomes réguliers du catalogue (hors intégrales, HS, spéciaux)
+    # sont possédés: une intégrale n'y apporte aucun album manquant.
+    complete_regular_series = {
+        int(row[0]) for row in conn.execute('''
+            SELECT series_id FROM volumes
+            WHERE COALESCE(is_integral, 0) = 0 AND COALESCE(is_hs, 0) = 0 AND COALESCE(is_special, 0) = 0
+            GROUP BY series_id
+            HAVING SUM(CASE WHEN filepath IS NULL OR filepath = '' THEN 1 ELSE 0 END) = 0
+        ''').fetchall()
+    }
     conn.close()
 
     by_title = {}
@@ -750,12 +763,18 @@ def _annotate_rss_entries(events):
     # la release (avec sa forme parsée complète), puis au volume réellement possédé de
     # la série locale déjà matchée.
     def exact_keys(title):
+        # Le titre de série seul ne suffit pas à identifier une release: « Chroniques
+        # Diplomatiques T03 » passait pour « déjà téléchargé » parce que le T01 de la même
+        # série l'avait été. Le titre lu est donc toujours accompagné du tome.
         raw = str(title or '').strip()
-        parsed = LibraryScanner.parse_filename(raw).get('title') or raw
-        return {
-            normalize_search_text(LibraryScanner.unscramble_trailing_article(value))
-            for value in (raw, parsed) if value
-        }
+        info = LibraryScanner.parse_filename(raw)
+        parsed = info.get('title') or raw
+        identity = '|'.join(str(info.get(key)) for key in (
+            'volume', 'is_integral', 'integral_number', 'is_hs', 'hs_number', 'is_episode', 'episode_number'))
+        keys = {normalize_search_text(LibraryScanner.unscramble_trailing_article(raw))} if raw else set()
+        if parsed:
+            keys.add(normalize_search_text(LibraryScanner.unscramble_trailing_article(parsed)) + '|' + identity)
+        return keys
 
     downloaded_links = {link for _title, link in successful if link}
     downloaded_titles = set().union(*(exact_keys(title) for title, _link in successful)) if successful else set()
@@ -867,6 +886,14 @@ def _annotate_rss_entries(events):
             # (« La.Derniere.Ombre…Integrale » = tomes 1 et 2).
             total = series_meta[int(match[0])]['total']
             already_owned = all(('volume', number) in owned_signatures for number in range(1, total + 1))
+        elif (signature is not None and signature[0] == 'integral' and match
+              and signature not in owned_signatures
+              and int(match[0]) in complete_regular_series):
+            # Intégrale d'une série dont tous les tomes réguliers sont déjà là (Kenya:
+            # T1-T5 possédés, l'« Intégrale » du catalogue ne contient rien de plus).
+            total = (series_meta.get(int(match[0])) or {}).get('total')
+            regular_owned = sum(1 for kind, _number in owned_signatures if kind in ('volume', 'episode'))
+            already_owned = not total or regular_owned >= total
         else:
             already_owned = signature in owned_signatures if signature is not None else None
         downloaded = (
@@ -899,7 +926,7 @@ def _annotate_rss_entries(events):
 _rss_persistent_cache_lock = threading.Lock()
 RSS_PERSISTENT_CACHE_TTL_SECONDS = 300
 RSS_PERSISTENT_CACHE_MAX_ENTRIES = 500
-RSS_ANNOTATION_VERSION = 6
+RSS_ANNOTATION_VERSION = 8
 
 
 def _rss_persistent_cache_path():

@@ -22,6 +22,34 @@ class _Response:
         self.encoding = None
 
 
+class RelatedSeriesParserTest(unittest.TestCase):
+    NEW_LAYOUT = '''
+        <div class="bdt-side-sheet bdt-box-alire bdt-box-liees">
+          <div class="bdt-kicker">3 séries liées</div>
+          <div class="bdt-related">
+            <a class="bdt-img bdt-related-couv" href="https://www.bedetheque.com/serie-44165-BD-Guerre-des-Sambre-Maxime-Constance.html" title="Guerre des Sambre (La) - Maxime &amp; Constance"><img src="x.jpg"></a>
+            <ul>
+              <li><a href="https://www.bedetheque.com/serie-15361-BD-Guerre-des-Sambre-Hugo-Iris.html" title="Guerre des Sambre (La) - Hugo &amp; Iris">Guerre des Sambre (La) - Hugo &amp; Iris</a></li>
+              <li><a href="https://www.bedetheque.com/serie-44165-BD-Guerre-des-Sambre-Maxime-Constance.html">Guerre des Sambre (La) - Maxime &amp; Constance</a></li>
+            </ul>
+          </div>
+        </div>'''
+
+    def test_new_related_series_block(self):
+        related = parsers.parse_related_series(BeautifulSoup(self.NEW_LAYOUT, 'html.parser'))
+        self.assertEqual([r['url'].split('/')[-1] for r in related],
+                         ['serie-44165-BD-Guerre-des-Sambre-Maxime-Constance.html', 'serie-15361-BD-Guerre-des-Sambre-Hugo-Iris.html'])
+        self.assertEqual(related[0]['title'], 'Guerre des Sambre (La) - Maxime & Constance')
+
+    def test_former_related_series_tab_still_parsed(self):
+        html = '<div class="tab_content serie-liee"><div class="description"><ul><li><a href="https://www.bedetheque.com/serie-1-BD-X.html" title="X">X</a></li></ul></div></div>'
+        self.assertEqual(parsers.parse_related_series(BeautifulSoup(html, 'html.parser')),
+                         [{'title': 'X', 'url': 'https://www.bedetheque.com/serie-1-BD-X.html'}])
+
+    def test_page_without_related_series(self):
+        self.assertEqual(parsers.parse_related_series(BeautifulSoup('<div></div>', 'html.parser')), [])
+
+
 def make_scraper(html):
     s = BedethequeScraper.__new__(BedethequeScraper)
     s.base_url = 'https://www.bedetheque.com'

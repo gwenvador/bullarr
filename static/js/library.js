@@ -150,7 +150,7 @@ async function loadLibraryInfo() {
 
         const response = await fetch(`/api/libraries/${libraryId}`);
         if (!response.ok) {
-            titleEl.innerHTML = '<span class="header-title-icon">📚</span> Bibliothèque introuvable';
+            titleEl.innerHTML = '<span class="header-title-icon">' + svgIcon('library', 'header-title-svg') + '</span> Bibliothèque introuvable';
             pathEl.textContent = `Aucune bibliothèque avec l'id ${libraryId}`;
             return;
         }
@@ -159,7 +159,7 @@ async function loadLibraryInfo() {
         // emoji enveloppé dans header-title-icon (masqué en mobile, voir style.css) -
         // même traitement que le h1 statique des autres pages (voir templates), sauf ici
         // où le titre est injecté dynamiquement plutôt qu'écrit en dur dans le HTML.
-        titleEl.innerHTML = `<span class="header-title-icon">📚</span> ${escapeHtml(library.name)}`;
+        titleEl.innerHTML = `<span class="header-title-icon">${svgIcon('library', 'header-title-svg')}</span> ${escapeHtml(library.name)}`;
         pathEl.textContent = library.path;
     } catch (error) {
         console.error('Erreur chargement bibliothèque:', error);
@@ -457,11 +457,11 @@ function closeCoverModal() {
 function buildQuickActionsHtml(s, btnClass) {
     return `
         <button class="${btnClass}" onclick="event.stopPropagation(); searchSeriesInSearchTab(${s.id})"
-                title="Rechercher cette série dans l'onglet Recherche">${svgIcon('search')}</button>
+                title="Rechercher cette série dans l'onglet Recherche" aria-label="Rechercher cette série dans l'onglet Recherche">${svgIcon('search')}</button>
         <button class="${btnClass}" onclick="event.stopPropagation(); runSeriesAutoAcquire(${s.id}, {seriesTitle: '${escapeForAttribute(s.title)}', buttonEl: this})"
-                title="Rechercher automatiquement et télécharger les albums manquants">${svgIcon('radar')}</button>
+                title="Rechercher automatiquement et télécharger les albums manquants" aria-label="Rechercher automatiquement et télécharger les albums manquants">${svgIcon('radar')}</button>
         <button class="${btnClass}" onclick="event.stopPropagation(); openSeriesEditModal(${s.id})"
-                title="Éditer cette série">${svgIcon('settings')}</button>
+                title="Éditer cette série" aria-label="Éditer cette série">${svgIcon('settings')}</button>
     `;
 }
 
@@ -500,14 +500,15 @@ function buildPosterCardHtml(s) {
     <div class="poster-card" data-series-id="${s.id}" onclick="viewSeries(${s.id})">
         <div class="poster-image-wrapper">
             ${imageHtml}
-            <input type="checkbox" class="series-select-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSeriesSelection(${s.id}, this.checked)" style="position:absolute; top:6px; left:6px; width:18px; height:18px; cursor:pointer; z-index:2;" title="Sélectionner">
+            <a class="poster-link" href="/series/${s.id}" aria-label="Ouvrir ${escapeHtml(s.title)}" onclick="event.stopPropagation()"></a>
+            <input type="checkbox" class="series-select-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSeriesSelection(${s.id}, this.checked)" style="position:absolute; top:6px; left:6px; width:18px; height:18px; cursor:pointer; z-index:2;" title="Sélectionner" aria-label="Sélectionner ${escapeHtml(s.title)}">
             <div class="poster-actions">
                 <button class="poster-action-btn" onclick="event.stopPropagation(); scanSeries(${s.id})"
-                        title="Actualiser: scan rapide de cette série">${svgIcon('refresh-cw')}</button>
+                        title="Actualiser: scan rapide de cette série" aria-label="Actualiser: scan rapide de cette série">${svgIcon('refresh-cw')}</button>
                 <button class="poster-action-btn" onclick="event.stopPropagation(); searchSeriesInSearchTab(${s.id})"
-                        title="Rechercher cette série dans l'onglet Recherche">${svgIcon('search')}</button>
+                        title="Rechercher cette série dans l'onglet Recherche" aria-label="Rechercher cette série dans l'onglet Recherche">${svgIcon('search')}</button>
                 <button class="poster-action-btn" onclick="event.stopPropagation(); openSeriesEditModal(${s.id})"
-                        title="Éditer: renommer, matcher EBDZ, matcher Komga">${svgIcon('settings')}</button>
+                        title="Éditer: renommer, matcher EBDZ, matcher Komga" aria-label="Éditer: renommer, matcher EBDZ, matcher Komga">${svgIcon('settings')}</button>
             </div>
             <div class="poster-overlay">
                 <div class="poster-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
@@ -533,10 +534,10 @@ function buildOverviewRowHtml(s) {
 
     return `
     <div class="overview-row" data-series-id="${s.id}" onclick="viewSeries(${s.id})">
-        <input type="checkbox" class="series-select-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSeriesSelection(${s.id}, this.checked)" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;" title="Sélectionner">
+        <input type="checkbox" class="series-select-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSeriesSelection(${s.id}, this.checked)" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;" title="Sélectionner" aria-label="Sélectionner ${escapeHtml(s.title)}">
         ${imageHtml}
         <div class="overview-info">
-            <div class="overview-title">${escapeHtml(s.title)}</div>
+            <div class="overview-title"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></div>
             ${summary ? `<p class="overview-summary">${escapeHtml(summary)}</p>` : ''}
             <div class="overview-tags">
                 ${statusInfo ? `<span class="overview-tag">${svgIcon(statusInfo.icon)} ${escapeHtml(statusInfo.label)}</span>` : ''}
@@ -665,8 +666,8 @@ function buildTableRowHtml(s) {
 
     return `
     <tr class="series-table-row" data-series-id="${s.id}" onclick="viewSeries(${s.id})">
-        <td class="volume-table-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="series-select-checkbox series-table-row-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onchange="toggleSeriesSelection(${s.id}, this.checked)"></td>
-        ${_isTableColumnVisible('title') ? `<td class="series-table-title" data-tooltip="${escapeHtml(s.title)}">${escapeHtml(s.title)}</td>` : ''}
+        <td class="volume-table-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="series-select-checkbox series-table-row-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onchange="toggleSeriesSelection(${s.id}, this.checked)" aria-label="Sélectionner ${escapeHtml(s.title)}"></td>
+        ${_isTableColumnVisible('title') ? `<td class="series-table-title" data-tooltip="${escapeHtml(s.title)}"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></td>` : ''}
         ${_isTableColumnVisible('volumes') ? `<td class="series-table-pill">${volumeLabel}</td>` : ''}
         ${_isTableColumnVisible('status') ? `<td class="series-table-pill">${escapeHtml(statusLabel)}</td>` : ''}
         ${_isTableColumnVisible('year') ? `<td class="series-table-pill">${escapeHtml(s.year || '—')}</td>` : ''}
@@ -2142,7 +2143,7 @@ function buildVolumeFileDetailHtml(v) {
     const ratingHtml = ci.communityrating
         ? ` • <span class="bd-rating-link" data-tooltip="Voir les avis Bédéthèque" onclick="openBedethequeReviewsModal(${v.id})">⭐ ${escapeHtml(String(ci.communityrating))}/5${ci.communityratingcount ? ` (${escapeHtml(String(ci.communityratingcount))} votes)` : ''}</span>`
         : '';
-    return `${(ci.year || v.year) ? `📅 ${escapeHtml(String(ci.year || v.year))} • ` : ''}📄 ${v.page_count} pages • 💾 ${formatBytes(v.file_size)} • ${(v.format || '').toUpperCase()}${ratingHtml}`;
+    return `${(ci.year || v.year) ? `<span${_volumeDateTooltipAttr(v)}>📅 ${escapeHtml(_volumeDateLabel(v))}</span> • ` : ''}📄 ${v.page_count} pages • 💾 ${formatBytes(v.file_size)} • ${(v.format || '').toUpperCase()}${ratingHtml}`;
 }
 
 // Construit les actions propres à un tome précis (MAJ métadonnées, conversion
@@ -2177,7 +2178,7 @@ function buildVolumeLinksIconHtml(v) {
     const linksMenuId = `volume-links-menu-${v.id}`;
     return `
         <div class="toolbar-dropdown">
-            <button type="button" class="volume-link-icon" onclick="toggleToolbarDropdown('${linksMenuId}', this)" title="Liens externes pour ce tome">${svgIcon('link')}</button>
+            <button type="button" class="volume-link-icon" onclick="toggleToolbarDropdown('${linksMenuId}', this)" title="Liens externes pour ce tome" aria-label="Liens externes pour ce tome">${svgIcon('link')}</button>
             <div class="toolbar-dropdown-menu series-detail-links-menu" id="${linksMenuId}" style="display: none;">
                 <div class="series-detail-links-icons">
                     ${komgaLinkHtml}
@@ -2186,6 +2187,49 @@ function buildVolumeLinksIconHtml(v) {
             </div>
         </div>
     `;
+}
+
+// Liens « Acheter » d'un album (Fnac, Amazon, BDfugue): recherche par ISBN quand le catalogue
+// Bédéthèque en cache le donne, sinon par série + titre de l'album. Rien n'est demandé à
+// Bédéthèque.
+// toolbar: version bouton de la barre d'outils de la fiche série (one-shot: son album; série:
+// le premier album), même bulle de logos que le caddie d'un album.
+function buildVolumeBuyItemsHtml(v, toolbar = false) {
+    const ci = v.comicinfo || {};
+    const number = v.volume_number != null ? `Tome ${v.volume_number}` : '';
+    const query = v.isbn || [currentSeriesDetail?.title, ci.title || number].filter(Boolean).join(' ');
+    if (!query) return '';
+    const q = encodeURIComponent(query);
+    const shops = [
+        ['Fnac', 'fnac', `https://www.fnac.com/SearchResult/ResultList.aspx?Search=${q}`],
+        ['Amazon', 'amazon', `https://www.amazon.fr/s?k=${q}&i=stripbooks`],
+        ['BDfugue', 'bdfugue', `https://www.bdfugue.com/catalogsearch/result/?q=${q}`],
+    ];
+    const how = v.isbn ? ` (ISBN ${escapeHtml(v.isbn)})` : '';
+    // Caddie à côté de la molette: un clic ouvre une petite bulle avec les logos des magasins
+    // sur une ligne, chacun lien direct vers la recherche de l'album.
+    const menuId = `${toolbar ? 'series' : 'volume'}-buy-menu-${v.id}`;
+    const buttonHtml = toolbar
+        ? `<button type="button" class="toolbar-btn" onclick="toggleToolbarDropdown('${menuId}', this)" data-tooltip="Acheter ${currentSeriesDetail?.is_oneshot ? 'cet album' : 'le premier album'}${how}"><span class="toolbar-btn-icon">${svgIcon('shopping-cart')}</span><span class="toolbar-btn-label">Acheter</span></button>`
+        : `<button type="button" class="volume-link-icon" onclick="toggleToolbarDropdown('${menuId}', this)" title="Acheter cet album${how}">${svgIcon('shopping-cart')}</button>`;
+    return `
+        <div class="toolbar-dropdown">
+            ${buttonHtml}
+            <div class="toolbar-dropdown-menu toolbar-dropdown-menu-autoclose volume-shop-popover" id="${menuId}" style="display: none;">
+                ${shops.map(([name, key, url]) =>
+                    `<a class="volume-shop-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" data-tooltip="Acheter sur ${name}" aria-label="Acheter sur ${name}"><img src="/static/img/shop-${key}.ico" alt="${name}"></a>`).join('')}
+            </div>
+        </div>`;
+}
+
+// Album proposé à l'achat depuis la barre d'outils: l'album du one-shot, sinon le premier tome
+// (plus petit numéro), à défaut le premier album de la liste.
+function _seriesBuyVolume(data) {
+    const volumes = data.volumes || [];
+    if (!volumes.length) return null;
+    const numbered = volumes.filter(v => v.volume_number != null && !v.is_hs && !v.is_integral && !v.is_episode)
+        .sort((a, b) => a.volume_number - b.volume_number);
+    return numbered[0] || volumes[0];
 }
 
 function buildVolumeMissingActionsGearHtml(v) {
@@ -2209,7 +2253,7 @@ function buildVolumeMissingActionsGearHtml(v) {
     const menuId = `volume-missing-actions-menu-${v.id}`;
     return `
         <div class="toolbar-dropdown">
-            <button type="button" class="volume-link-icon" id="volume-missing-actions-gear-${v.id}" onclick="toggleToolbarDropdown('${menuId}', this)" title="Actions sur ce tome">${svgIcon('settings')}</button>
+            <button type="button" class="volume-link-icon" id="volume-missing-actions-gear-${v.id}" onclick="toggleToolbarDropdown('${menuId}', this)" title="Actions sur ce tome" aria-label="Actions sur ce tome">${svgIcon('settings')}</button>
             <div class="toolbar-dropdown-menu toolbar-dropdown-menu-autoclose" id="${menuId}" style="display: none;">
                 ${updateMetadataItemHtml}
                 ${searchItemHtml}
@@ -2218,6 +2262,7 @@ function buildVolumeMissingActionsGearHtml(v) {
                 ${deleteItemHtml}
             </div>
         </div>
+        ${buildVolumeBuyItemsHtml(v)}
     `;
 }
 
@@ -2293,7 +2338,7 @@ function buildVolumeActionsGearHtml(v) {
     const menuId = `volume-actions-menu-${v.id}`;
     return `
         <div class="toolbar-dropdown">
-            <button type="button" class="volume-link-icon" id="volume-actions-gear-${v.id}" onclick="toggleToolbarDropdown('${menuId}', this)" title="Actions sur ce tome">${svgIcon('settings')}</button>
+            <button type="button" class="volume-link-icon" id="volume-actions-gear-${v.id}" onclick="toggleToolbarDropdown('${menuId}', this)" title="Actions sur ce tome" aria-label="Actions sur ce tome">${svgIcon('settings')}</button>
             <div class="toolbar-dropdown-menu toolbar-dropdown-menu-autoclose" id="${menuId}" style="display: none;">
                 ${updateMetadataItemHtml}
                 ${convertCbrItemHtml}
@@ -2306,6 +2351,7 @@ function buildVolumeActionsGearHtml(v) {
                 ${deleteItemHtml}
             </div>
         </div>
+        ${buildVolumeBuyItemsHtml(v)}
     `;
 }
 
@@ -2498,7 +2544,7 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
                               data-is-hs="${v.is_hs ? '1' : ''}"
                               data-is-episode="${v.is_episode ? '1' : ''}"
                               title="Rechercher ce tome sur EBDZ/Prowlarr">${svgIcon('search')} Non possédé</span>
-                        ${ci.year ? ` 📅 ${escapeHtml(String(ci.year))}` : ''}
+                        ${ci.year ? ` <span${_volumeDateTooltipAttr(v)}>📅 ${escapeHtml(_volumeDateLabel(v))}</span>` : ''}
                     </div>
                     <div class="volume-meta">
                         ${ci.writer ? `<span class="badge">✍️ ${escapeHtml(ci.writer)}</span>` : ''}
@@ -2619,8 +2665,36 @@ const VOLUME_TABLE_OPTIONAL_COLUMNS = [
 // Valeur "Date" (année de publication) d'un tome - colonne par défaut de la vue tableau,
 // factorisée ici puisque lue à la fois par buildVolumeTableRowHtml (affichage) et
 // _volumeTableSortValue (tri).
+// Date de parution d'un album: jour/mois/année quand on les connaît (ComicInfo, rempli depuis
+// Bédéthèque), sinon mois/année ou l'année seule. Bédéthèque date au 1er du mois les albums dont
+// il ne connaît que le mois du dépôt légal: un « 1 » est donc affiché comme mois/année.
+function _volumeDateParts(v) {
+    const ci = v.comicinfo || {};
+    const year = parseInt(ci.year || v.year, 10) || null;
+    const month = year ? (parseInt(ci.month, 10) || null) : null;
+    const day = month ? (parseInt(ci.day, 10) || null) : null;
+    return { year, month, day: day === 1 ? null : day };
+}
+
+// Affiché: mois/année (ou l'année seule); la date complète, quand le jour est connu, est
+// donnée en infobulle (voir _volumeDateTooltipAttr).
 function _volumeDateLabel(v) {
-    return (v.comicinfo || {}).year || v.year || '—';
+    const { year, month } = _volumeDateParts(v);
+    if (!year) return '—';
+    return month ? `${String(month).padStart(2, '0')}/${year}` : String(year);
+}
+
+function _volumeDateTooltipAttr(v) {
+    const { year, month, day } = _volumeDateParts(v);
+    if (!year || !month || !day) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return ` data-tooltip="Parution le ${pad(day)}/${pad(month)}/${year}"`;
+}
+
+function _volumeDateSortKey(v) {
+    const { year, month, day } = _volumeDateParts(v);
+    if (!year) return null;
+    return `${year}-${String(month || 0).padStart(2, '0')}-${String(day || 0).padStart(2, '0')}`;
 }
 
 let visibleVolumeTableColumns = new Set(JSON.parse(localStorage.getItem('volumeTableVisibleColumns') || '[]'));
@@ -2660,10 +2734,8 @@ function _volumeTableSortValue(v, column) {
             return v.volume_number ?? v.integral_number ?? v.hs_number ?? v.episode_number ?? null;
         case 'name':
             return (ci.title || v.filename || '').toLowerCase();
-        case 'date': {
-            const label = _volumeDateLabel(v);
-            return label === '—' ? null : label;
-        }
+        case 'date':
+            return _volumeDateSortKey(v);
         case 'format':
             return (v.format || '').toLowerCase();
         case 'size':
@@ -2779,7 +2851,7 @@ function buildVolumeTableRowHtml(v, isOneshot) {
             ${selectCellHtml}
             <td${v.is_special ? ` data-tooltip="${escapeHtml(_volumeNumberBadgeTooltip(v))}"` : ''}>${numberLabel}</td>
             <td class="volume-table-name" title="${escapeHtml(name)}">${escapeHtml(name)}</td>
-            <td style="white-space:nowrap;">${escapeHtml(String(_volumeDateLabel(v)))}</td>
+            <td style="white-space:nowrap;"${_volumeDateTooltipAttr(v)}>${escapeHtml(String(_volumeDateLabel(v)))}</td>
             <td>${isPlaceholder ? '—' : escapeHtml((v.format || '?').toUpperCase())}</td>
             <td style="white-space:nowrap;" data-raw-size="${v.file_size || 0}">${isPlaceholder ? '—' : formatBytes(v.file_size)}</td>
             <td class="volume-table-path" title="${escapeHtml(v.filepath || '')}">${hasVolumeFile(v) ? escapeHtml(v.filepath) : buildVolumeTableMissingBadgeHtml(v)}</td>
@@ -2841,7 +2913,8 @@ function _volumeTableFilterColumns(volumes) {
     const cols = [
         { label: '#', type: 'text' },
         { label: 'Nom', type: 'text' },
-        { label: 'Date', type: 'select', getValue: v => String(_volumeDateLabel(v)) },
+        // Filtre par année: une date complète par album rendrait la liste du filtre inutilisable.
+        { label: 'Date', type: 'select', getValue: v => String(_volumeDateParts(v).year || '—') },
         { label: 'Format', type: 'select', getValue: v => hasVolumeFile(v) ? (v.format || '?').toUpperCase() : '—' },
         { label: 'Taille', type: 'size-bucket' },
         { label: 'Emplacement', type: 'text' },
@@ -2980,13 +3053,13 @@ function buildVolumesViewSwitcherHtml() {
             </div>` : '';
     return `
         <div class="view-switcher" style="margin-bottom: 12px;">
-            <button class="view-switch-btn${volumesViewMode === 'overview' ? ' active' : ''}" onclick="setVolumesViewMode('overview')" title="Vue aperçu">${svgIcon('list')} Aperçu</button>
-            <button class="view-switch-btn${volumesViewMode === 'table' ? ' active' : ''}" onclick="setVolumesViewMode('table')" title="Vue tableau">${svgIcon('table')} Tableau</button>
+            <button class="view-switch-btn${volumesViewMode === 'overview' ? ' active' : ''}" onclick="setVolumesViewMode('overview')" title="Vue aperçu" aria-label="Vue aperçu">${svgIcon('list')} Aperçu</button>
+            <button class="view-switch-btn${volumesViewMode === 'table' ? ' active' : ''}" onclick="setVolumesViewMode('table')" title="Vue tableau" aria-label="Vue tableau">${svgIcon('table')} Tableau</button>
             ${columnsButtonHtml}
             <span style="width:1px; align-self:stretch; background:var(--color-border); margin:0 4px;"></span>
-            <button class="view-switch-btn view-switch-btn-icon-only${volumesOwnershipFilter === 'all' ? ' active' : ''}" onclick="setVolumesOwnershipFilter('all')" title="Tous les tomes">${svgIcon('layout-list')}</button>
-            <button class="view-switch-btn view-switch-btn-icon-only${volumesOwnershipFilter === 'owned' ? ' active' : ''}" onclick="setVolumesOwnershipFilter('owned')" title="Seulement les tomes déjà sur disque">${svgIcon('check-check')}</button>
-            <button class="view-switch-btn view-switch-btn-icon-only${volumesOwnershipFilter === 'missing' ? ' active' : ''}" onclick="setVolumesOwnershipFilter('missing')" title="Seulement les tomes manquants">${svgIcon('x')}</button>
+            <button class="view-switch-btn view-switch-btn-icon-only${volumesOwnershipFilter === 'all' ? ' active' : ''}" onclick="setVolumesOwnershipFilter('all')" title="Tous les tomes" aria-label="Tous les tomes">${svgIcon('layout-list')}</button>
+            <button class="view-switch-btn view-switch-btn-icon-only${volumesOwnershipFilter === 'owned' ? ' active' : ''}" onclick="setVolumesOwnershipFilter('owned')" title="Seulement les tomes déjà sur disque" aria-label="Seulement les tomes déjà sur disque">${svgIcon('check-check')}</button>
+            <button class="view-switch-btn view-switch-btn-icon-only${volumesOwnershipFilter === 'missing' ? ' active' : ''}" onclick="setVolumesOwnershipFilter('missing')" title="Seulement les tomes manquants" aria-label="Seulement les tomes manquants">${svgIcon('x')}</button>
         </div>
     `;
 }
@@ -3893,13 +3966,13 @@ async function renderSeriesDetail(seriesId) {
                             <span class="toolbar-btn-icon">${svgIcon('settings')}</span><span class="toolbar-btn-label">Actions</span>
                         </button>
                         <div class="toolbar-dropdown-menu toolbar-dropdown-menu-autoclose" id="series-actions-menu-${seriesId}" style="display: none;">
-                            <button class="toolbar-dropdown-item" onclick="scanSeries(${seriesId})" title="Scan rapide: ne retraite que les fichiers nouveaux/modifiés">${svgIcon('refresh-cw')} Actualiser</button>
-                            <button class="toolbar-dropdown-item" onclick="updateSeriesOnlyMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit uniquement les infos de la série (résumé, couverture, statut, titre...) sans toucher aux fichiers des tomes">${svgIcon('tag')} MAJ métadonnées (série uniquement)</button>
-                            <button class="toolbar-dropdown-item" onclick="updateSeriesMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)">${svgIcon('tag')} MAJ métadonnées (série + tomes)</button>
-                            <button class="toolbar-dropdown-item" onclick="openMergeSeriesModal(${seriesId})" title="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)">${svgIcon('git-merge')} Fusionner</button>
-                            <button class="toolbar-dropdown-item" onclick="openManualEditModal(${seriesId})" title="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque">${svgIcon('pencil')} Éditer manuellement</button>
+                            <button class="toolbar-dropdown-item" onclick="scanSeries(${seriesId})" title="Scan rapide: ne retraite que les fichiers nouveaux/modifiés" aria-label="Scan rapide: ne retraite que les fichiers nouveaux/modifiés">${svgIcon('refresh-cw')} Actualiser</button>
+                            <button class="toolbar-dropdown-item" onclick="updateSeriesOnlyMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit uniquement les infos de la série (résumé, couverture, statut, titre...) sans toucher aux fichiers des tomes" aria-label="Rafraîchit uniquement les infos de la série (résumé, couverture, statut, titre...) sans toucher aux fichiers des tomes">${svgIcon('tag')} MAJ métadonnées (série uniquement)</button>
+                            <button class="toolbar-dropdown-item" onclick="updateSeriesMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)" aria-label="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)">${svgIcon('tag')} MAJ métadonnées (série + tomes)</button>
+                            <button class="toolbar-dropdown-item" onclick="openMergeSeriesModal(${seriesId})" title="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)" aria-label="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)">${svgIcon('git-merge')} Fusionner</button>
+                            <button class="toolbar-dropdown-item" onclick="openManualEditModal(${seriesId})" title="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque" aria-label="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque">${svgIcon('pencil')} Éditer manuellement</button>
                             ${data.is_oneshot ? `
-                            <button class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(${seriesId})" title="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé">${svgIcon('upload')} Ajouter un fichier</button>
+                            <button class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(${seriesId})" title="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé" aria-label="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé">${svgIcon('upload')} Ajouter un fichier</button>
                             ` : ''}
                             ${(data.is_oneshot && oneshotFile && oneshotFile.filepath) ? `
                             <button class="toolbar-dropdown-item" onclick="window.location.href='/api/volumes/${oneshotFile.id}/download'">${svgIcon('download')} Télécharger le fichier</button>
@@ -3909,12 +3982,12 @@ async function renderSeriesDetail(seriesId) {
                             <button class="toolbar-dropdown-item" onclick="toggleSeriesCompleteOverride(${seriesId})" title="${data.manual_complete_override ? 'Le calcul automatique (Terminé/Incomplet/En cours) reprendra la main' : 'Force le statut \'Terminé\' quel que soit le calcul automatique - utile si un mix d\'intégrales/albums le trompe'}">${data.manual_complete_override ? svgIcon('x') : svgIcon('check')} ${data.manual_complete_override ? 'Retirer la déclaration "complète"' : 'Déclarer cette série complète'}</button>
                             ` : ''}
                             ${(data.total_volumes > 1 && !data.is_oneshot) ? `
-                            <button class="toolbar-dropdown-item" onclick="downloadSeriesZip(${seriesId})" title="Télécharge tous les tomes possédés de cette série dans une seule archive zip">${svgIcon('download')} Télécharger la série (zip)</button>
+                            <button class="toolbar-dropdown-item" onclick="downloadSeriesZip(${seriesId})" title="Télécharge tous les tomes possédés de cette série dans une seule archive zip" aria-label="Télécharge tous les tomes possédés de cette série dans une seule archive zip">${svgIcon('download')} Télécharger la série (zip)</button>
                             ` : ''}
                             ${(data.is_oneshot && oneshotFile && oneshotFile.filepath) ? `
-                            <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteVolume(${oneshotFile.id}, ${seriesId}, '${escapeForAttribute(data.title)}')" title="Supprime uniquement le fichier - la fiche de cette série reste, pour supprimer aussi la série elle-même utilisez 'Supprimer la série' ci-dessous">${svgIcon('trash-2')} Supprimer le fichier</button>
+                            <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteVolume(${oneshotFile.id}, ${seriesId}, '${escapeForAttribute(data.title)}')" title="Supprime uniquement le fichier - la fiche de cette série reste, pour supprimer aussi la série elle-même utilisez 'Supprimer la série' ci-dessous" aria-label="Supprime uniquement le fichier - la fiche de cette série reste, pour supprimer aussi la série elle-même utilisez 'Supprimer la série' ci-dessous">${svgIcon('trash-2')} Supprimer le fichier</button>
                             ` : ''}
-                            <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteSeries(${seriesId})" title="Supprimer définitivement cette série et son dossier du disque">${svgIcon('trash-2')} Supprimer la série</button>
+                            <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteSeries(${seriesId})" title="Supprimer définitivement cette série et son dossier du disque" aria-label="Supprimer définitivement cette série et son dossier du disque">${svgIcon('trash-2')} Supprimer la série</button>
                         </div>
                     </div>
                     ${oneshotFile ? `
@@ -3986,6 +4059,7 @@ async function renderSeriesDetail(seriesId) {
                     <button class="toolbar-btn" onclick="openSeriesHistoryModal(${seriesId}, '${escapeForAttribute(data.title)}')" data-tooltip="Historique de cette série: imports, téléchargements, renommages, suppressions">
                         <span class="toolbar-btn-icon">${svgIcon('history')}</span><span class="toolbar-btn-label">Historique</span>
                     </button>
+                    ${_seriesBuyVolume(data) ? buildVolumeBuyItemsHtml(_seriesBuyVolume(data), true) : ''}
                 </div>
             </div>
         `;
@@ -4648,8 +4722,8 @@ function buildEbdzStatusHtml({ seriesId, context, ownedCount, ebdzCount, missing
         return `
             <span class="badge badge-warning" title="Aucun match EBDZ non-ambigu trouvé automatiquement">❌</span>
             <span class="toolbar-status-actions">
-                <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Réessayer un matching automatique">${svgIcon('refresh-cw')}</button>
-                <button class="btn" onclick="openEbdzMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #8b5cf6;" title="Matcher manuellement sur EBDZ">${svgIcon('search')}</button>
+                <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Réessayer un matching automatique" aria-label="Réessayer un matching automatique">${svgIcon('refresh-cw')}</button>
+                <button class="btn" onclick="openEbdzMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #8b5cf6;" title="Matcher manuellement sur EBDZ" aria-label="Matcher manuellement sur EBDZ">${svgIcon('search')}</button>
             </span>
         `;
     }
@@ -4662,9 +4736,9 @@ function buildEbdzStatusHtml({ seriesId, context, ownedCount, ebdzCount, missing
     // existe): le rafraîchissement du matching se fait ici, dans les actions au survol
     const rematchHtml = `
         <span class="toolbar-status-actions">
-            <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Recomparer avec EBDZ">${svgIcon('refresh-cw')}</button>
-            <button class="btn" onclick="openEbdzMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Changer le match EBDZ">${svgIcon('pencil')}</button>
-            <button class="btn" onclick="unmatchEbdzSeries(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #ef4444;" title="Retirer le match EBDZ">${svgIcon('ban')}</button>
+            <button class="btn" onclick="checkEbdzVolumes(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Recomparer avec EBDZ" aria-label="Recomparer avec EBDZ">${svgIcon('refresh-cw')}</button>
+            <button class="btn" onclick="openEbdzMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Changer le match EBDZ" aria-label="Changer le match EBDZ">${svgIcon('pencil')}</button>
+            <button class="btn" onclick="unmatchEbdzSeries(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #ef4444;" title="Retirer le match EBDZ" aria-label="Retirer le match EBDZ">${svgIcon('ban')}</button>
         </span>
     `;
 
@@ -5146,7 +5220,7 @@ async function openMoveVolumeModal(seriesId, volumeId, volumeLabel) {
             const matches = candidates.filter(c => navNormalizeSearch(c.title).includes(needle)).slice(0, 50);
             candidatesEl.innerHTML = matches.length ? matches.map(c => `
                 <div class="series-card" style="cursor: pointer; margin-bottom: 8px;"
-                     onclick="confirmMoveVolume(${volumeId}, '${escapeForAttribute(volumeLabel)}', ${seriesId}, ${c.id}, '${escapeForAttribute(c.title)}')">
+                     onclick="chooseMoveVolumeSlot(${volumeId}, '${escapeForAttribute(volumeLabel)}', ${seriesId}, ${c.id}, '${escapeForAttribute(c.title)}')">
                     <div class="series-title">${escapeHtml(c.title)}</div>
                     <div class="series-info">${c.total_volumes || 0} album${(c.total_volumes || 0) > 1 ? 's' : ''}</div>
                 </div>
@@ -5171,17 +5245,66 @@ function closeMoveVolumeModal() {
     if (modal) modal.classList.remove('active');
 }
 
-async function confirmMoveVolume(volumeId, volumeLabel, sourceSeriesId, targetSeriesId, targetTitle) {
+// Seconde étape du déplacement: choix du tome que l'album prend dans la série cible
+// (« Même numéro » par défaut; les tomes déjà possédés sont grisés).
+let _moveVolumeSlots = [];
+
+async function chooseMoveVolumeSlot(volumeId, volumeLabel, sourceSeriesId, targetSeriesId, targetTitle) {
+    const content = document.querySelector('#move-volume-modal .modal-content');
+    if (!content) return;
+    content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+        const response = await fetch(`/api/series/${targetSeriesId}/volumes`);
+        const volumes = await response.json();
+        if (!response.ok || !Array.isArray(volumes)) throw new Error('Tomes de la série cible indisponibles');
+        _moveVolumeSlots = volumes;
+        const options = volumes.map((v, index) => {
+            const owned = !!v.is_owned;
+            return `<option value="${index}"${owned ? ' disabled' : ''}>${escapeHtml(buildVolumeOptionLabel(v, { preferBedethequeTitle: true, showOwned: true }))}${owned ? ' (déjà possédé)' : ''}</option>`;
+        }).join('');
+        content.innerHTML = `
+            <span class="close-modal" onclick="closeMoveVolumeModal()">×</span>
+            <h2 class="modal-title" style="margin-bottom: 10px;">🔀 Déplacer ce tome</h2>
+            <p class="modal-subtitle"><strong>${escapeHtml(volumeLabel)}</strong> va dans « ${escapeHtml(targetTitle)} ».
+                Choisissez le tome qu'il prend dans cette série.</p>
+            <select id="move-volume-slot" class="search-box" style="width: 100%; margin-bottom: 14px;">
+                <option value="">Même numéro que dans la série actuelle</option>
+                ${options}
+            </select>
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button type="button" class="btn-neutral-sm" onclick="openMoveVolumeModal(${sourceSeriesId}, ${volumeId}, '${escapeForAttribute(volumeLabel)}')">Retour</button>
+                <button type="button" class="btn btn-success" onclick="confirmMoveVolumeFromSlot(${volumeId}, '${escapeForAttribute(volumeLabel)}', ${sourceSeriesId}, ${targetSeriesId}, '${escapeForAttribute(targetTitle)}')">Déplacer</button>
+            </div>`;
+    } catch (error) {
+        content.innerHTML = `<span class="close-modal" onclick="closeMoveVolumeModal()">×</span><div class="no-data"><p>❌ ${escapeHtml(error.message)}</p></div>`;
+    }
+}
+
+function confirmMoveVolumeFromSlot(volumeId, volumeLabel, sourceSeriesId, targetSeriesId, targetTitle) {
+    const value = document.getElementById('move-volume-slot').value;
+    const slot = value === '' ? null : _moveVolumeSlots[parseInt(value, 10)];
+    return confirmMoveVolume(volumeId, volumeLabel, sourceSeriesId, targetSeriesId, targetTitle, slot);
+}
+
+async function confirmMoveVolume(volumeId, volumeLabel, sourceSeriesId, targetSeriesId, targetTitle, targetSlot = null) {
     if (!confirm(`Déplacer "${volumeLabel}" vers "${targetTitle}" ?`)) return;
 
-    const candidatesEl = document.getElementById('move-volume-candidates');
-    candidatesEl.innerHTML = '<div class="loading"><div class="spinner"></div><p>Déplacement en cours...</p></div>';
+    const content = document.querySelector('#move-volume-modal .modal-content');
+    if (content) content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Déplacement en cours...</p></div>';
 
     try {
+        const payload = { target_series_id: targetSeriesId };
+        if (targetSlot) {
+            payload.target_volume = {
+                volume_number: targetSlot.volume_number, is_integral: !!targetSlot.is_integral,
+                integral_number: targetSlot.integral_number, is_hs: !!targetSlot.is_hs, hs_number: targetSlot.hs_number,
+                is_episode: !!targetSlot.is_episode, episode_number: targetSlot.episode_number
+            };
+        }
         const response = await fetch(`/api/volumes/${volumeId}/move-to-series`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_series_id: targetSeriesId })
+            body: JSON.stringify(payload)
         });
         const data = await response.json();
 
@@ -5614,7 +5737,7 @@ function buildManualEditVolumeFieldsHtml(v, seriesId, seriesTitle, renameModalVo
     const writable = !isPlaceholder && (v.format || '').toLowerCase() === 'cbz';
     const volumeLabel = v.filename || `Tome ${v.volume_number != null ? v.volume_number : '?'}`;
     const deleteButtonHtml = `<button class="btn-danger-sm" onclick="deleteVolume(${v.id}, ${seriesId}, '${escapeForAttribute(volumeLabel)}', ${isPlaceholder})" title="${isPlaceholder ? 'Retire ce tome de la liste de suivi' : 'Supprime le fichier - le tome reste suivi comme manquant'}">${svgIcon('trash-2')} ${isPlaceholder ? 'Retirer ce tome' : 'Supprimer le fichier'}</button>`;
-    const moveButtonHtml = `<button class="btn-neutral-sm" onclick="openMoveVolumeModal(${seriesId}, ${v.id}, '${escapeForAttribute(volumeLabel)}')" title="Déplace ce tome vers une autre série existante (même bibliothèque)">${svgIcon('git-merge')} Déplacer vers une autre série</button>`;
+    const moveButtonHtml = `<button class="btn-neutral-sm" onclick="openMoveVolumeModal(${seriesId}, ${v.id}, '${escapeForAttribute(volumeLabel)}')" title="Déplace ce tome vers une autre série existante (même bibliothèque)" aria-label="Déplace ce tome vers une autre série existante (même bibliothèque)">${svgIcon('git-merge')} Déplacer vers une autre série</button>`;
 
     if (isPlaceholder) {
         // Tome "placeholder" (ajouté depuis Bédéthèque, sans fichier - voir
@@ -5661,7 +5784,7 @@ function buildManualEditVolumeFieldsHtml(v, seriesId, seriesTitle, renameModalVo
         </div>
         <label class="manual-edit-field-block">Résumé <textarea id="manual-vol-summary-${v.id}" rows="6">${escapeHtml(ci.summary || '')}</textarea></label>
         <div class="manual-edit-actions-row">
-            <button class="btn-neutral-sm" onclick="closeManualEditModal(); openRenameModal(${seriesId}, '${escapeForAttribute(seriesTitle)}', ${v.id}, false, {seriesId: ${seriesId}, volumeId: ${v.id}}, '${escapeForAttribute(renameModalVolumeLabel || '')}')" title="Renomme ce fichier au format standard configuré (Paramètres > Format)">${svgIcon('pencil')} Renommer ce fichier</button>
+            <button class="btn-neutral-sm" onclick="closeManualEditModal(); openRenameModal(${seriesId}, '${escapeForAttribute(seriesTitle)}', ${v.id}, false, {seriesId: ${seriesId}, volumeId: ${v.id}}, '${escapeForAttribute(renameModalVolumeLabel || '')}')" title="Renomme ce fichier au format standard configuré (Paramètres > Format)" aria-label="Renomme ce fichier au format standard configuré (Paramètres > Format)">${svgIcon('pencil')} Renommer ce fichier</button>
             <button class="btn" onclick="saveManualVolumeMetadata(${v.id}, this)">${svgIcon('save')} Enregistrer ce tome</button>
             ${moveButtonHtml}
             ${deleteButtonHtml}
@@ -5740,8 +5863,8 @@ function renderManualEditModal(data, focusVolumeId) {
                 <img src="/static/img/komga-logo.svg" alt="" style="width:14px;height:14px;">Komga ${data.komga.url ? '✅' : '❌'}
             </button>
             <span style="width:1px; align-self:stretch; background:#e5e7eb;"></span>
-            <button class="btn-neutral-sm" onclick="closeManualEditModal(); openRenameModal(${data.id}, '${escapeForAttribute(data.title)}', null, false, {seriesId: ${data.id}, volumeId: null})" title="Renomme le dossier de la série au format standard configuré (Paramètres > Format)">${svgIcon('pencil')} Renommer dossier</button>
-            <button class="btn-neutral-sm" onclick="closeManualEditModal(); openRenameModal(${data.id}, '${escapeForAttribute(data.title)}', null, true, {seriesId: ${data.id}, volumeId: null}, '${escapeForAttribute(oneshotRenameFileLabel)}')" title="Renomme tous les fichiers de tomes au format standard configuré (jamais le dossier)">${svgIcon('pencil')} Renommer tomes</button>
+            <button class="btn-neutral-sm" onclick="closeManualEditModal(); openRenameModal(${data.id}, '${escapeForAttribute(data.title)}', null, false, {seriesId: ${data.id}, volumeId: null})" title="Renomme le dossier de la série au format standard configuré (Paramètres > Format)" aria-label="Renomme le dossier de la série au format standard configuré (Paramètres > Format)">${svgIcon('pencil')} Renommer dossier</button>
+            <button class="btn-neutral-sm" onclick="closeManualEditModal(); openRenameModal(${data.id}, '${escapeForAttribute(data.title)}', null, true, {seriesId: ${data.id}, volumeId: null}, '${escapeForAttribute(oneshotRenameFileLabel)}')" title="Renomme tous les fichiers de tomes au format standard configuré (jamais le dossier)" aria-label="Renomme tous les fichiers de tomes au format standard configuré (jamais le dossier)">${svgIcon('pencil')} Renommer tomes</button>
         </div>
     `;
 
@@ -6053,7 +6176,7 @@ async function saveManualVolumeMetadata(volumeId, buttonEl) {
             if (renumberDuplicateFilename) {
                 feedback.innerHTML = `✅ Enregistré - ⚠️ « ${escapeHtml(renumberDuplicateFilename)} » a aussi ce numéro, supprimez celui qui est en trop`;
             } else {
-                feedback.textContent = '✅ Enregistré';
+                feedback.textContent = data.filename ? `✅ Enregistré - renommé en « ${data.filename} »` : '✅ Enregistré';
             }
             if (currentSeriesDetail) await renderSeriesDetail(currentSeriesDetail.id);
             // L'avertissement de doublon exige une action manuelle: le laisser visible
@@ -6318,8 +6441,8 @@ function buildKomgaStatusHtml({ seriesId, context, matchStatus, matchedTitle, ko
         return `
             <span class="badge badge-warning" title="Aucun match Komga non-ambigu trouvé automatiquement">❌</span>
             <span class="toolbar-status-actions">
-                <button class="btn" onclick="checkKomgaMetadata(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Réessayer un matching automatique">${svgIcon('refresh-cw')}</button>
-                <button class="btn" onclick="openKomgaMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #06b6d4;" title="Matcher manuellement sur Komga">${svgIcon('search')}</button>
+                <button class="btn" onclick="checkKomgaMetadata(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Réessayer un matching automatique" aria-label="Réessayer un matching automatique">${svgIcon('refresh-cw')}</button>
+                <button class="btn" onclick="openKomgaMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #06b6d4;" title="Matcher manuellement sur Komga" aria-label="Matcher manuellement sur Komga">${svgIcon('search')}</button>
             </span>
         `;
     }
@@ -6337,9 +6460,9 @@ function buildKomgaStatusHtml({ seriesId, context, matchStatus, matchedTitle, ko
         return `
             <span class="badge badge-success" title="${matchedTitle ? escapeHtml(matchedTitle) : 'Série matchée sur Komga'}">✅</span>
             <span class="toolbar-status-actions">
-                <button class="btn" onclick="checkKomgaMetadata(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Rafraîchir les métadonnées Komga">${svgIcon('refresh-cw')}</button>
-                <button class="btn" onclick="openKomgaMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Changer le match Komga">${svgIcon('pencil')}</button>
-                <button class="btn" onclick="unmatchKomgaSeries(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #ef4444;" title="Retirer le match Komga">${svgIcon('ban')}</button>
+                <button class="btn" onclick="checkKomgaMetadata(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Rafraîchir les métadonnées Komga" aria-label="Rafraîchir les métadonnées Komga">${svgIcon('refresh-cw')}</button>
+                <button class="btn" onclick="openKomgaMatchModal(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em;" title="Changer le match Komga" aria-label="Changer le match Komga">${svgIcon('pencil')}</button>
+                <button class="btn" onclick="unmatchKomgaSeries(${seriesId}, '${context}')" style="padding: 4px 8px; font-size: 0.75em; background: #ef4444;" title="Retirer le match Komga" aria-label="Retirer le match Komga">${svgIcon('ban')}</button>
             </span>
         `;
     }

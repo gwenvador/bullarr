@@ -38,8 +38,7 @@
             <header>
                 <div class="header-content">
                     <div class="header-left">
-                        <h1><span class="header-title-icon">🕓</span> <span class="header-title-full">Historique</span><span class="header-title-short">Historique</span></h1>
-                        <p class="subtitle">Imports, téléchargements, recherches, renommages, conversions et suppressions</p>
+                        <h1><span class="header-title-icon"><svg class="icon header-title-svg" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" /></svg></span> <span class="header-title-full">Historique</span><span class="header-title-short">Historique</span></h1>
                     </div>
                 </div>
             </header>
@@ -74,22 +73,7 @@
                                         <th class="volume-table-sortable" style="user-select:none;" data-sort-column="type">
                                             <div class="th-filterable-row">
                                                 <span class="th-filterable-label" style="cursor:pointer;" onclick="setHistorySort('type')">Type<span class="history-sort-arrow"></span></span>
-                                                <span class="th-filterable-filter">
-                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
-                                                    <!-- "all" est le sentinel "pas de filtre" ici (même convention que les
-                                                         boutons d'onglet ci-dessus), pas une chaîne vide - _syncFilterControlActive
-                                                         générique (qui traite toute valeur non vide comme "filtre actif")
-                                                         afficherait donc ce select comme actif en permanence. -->
-                                                    <select class="th-filterable-control" id="history-type-select" onchange="this.classList.toggle('has-value', this.value !== 'all'); filterHistoryEvents(this.value)">
-                                                        <option value="all">Tout</option>
-                                                        <option value="import">Imports</option>
-                                                        <option value="download">Téléchargements</option>
-                                                        <option value="search">Recherches</option>
-                                                        <option value="rename">Renommages</option>
-                                                        <option value="convert">Conversions</option>
-                                                        <option value="delete">Suppressions</option>
-                                                    </select>
-                                                </span>
+
                                             </div>
                                         </th>
                                         <th class="volume-table-sortable" style="user-select:none;" data-sort-column="label">
@@ -97,7 +81,7 @@
                                                 <span class="th-filterable-label" style="cursor:pointer;" onclick="setHistorySort('label')">Détails<span class="history-sort-arrow"></span></span>
                                                 <span class="th-filterable-filter">
                                                     <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
-                                                    <input type="text" class="th-filterable-control" id="history-search-input" placeholder="Filtrer..." oninput="_syncFilterControlActive(this); filterHistoryBySearchText(this.value)">
+                                                    <input type="text" class="th-filterable-control" id="history-search-input" placeholder="Filtrer..." aria-label="Filtrer les détails" oninput="_syncFilterControlActive(this); filterHistoryBySearchText(this.value)">
                                                 </span>
                                             </div>
                                         </th>
@@ -106,7 +90,7 @@
                                                 <span class="th-filterable-label" style="cursor:pointer;" onclick="setHistorySort('status')">Statut<span class="history-sort-arrow"></span></span>
                                                 <span class="th-filterable-filter">
                                                     <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
-                                                    <select class="th-filterable-control" id="history-status-select" onchange="_syncFilterControlActive(this); filterHistoryByStatus(this.value)">
+                                                    <select class="th-filterable-control" id="history-status-select" aria-label="Filtrer par statut" onchange="_syncFilterControlActive(this); filterHistoryByStatus(this.value)">
                                                         <option value="">Tous</option>
                                                         <option value="progress">En cours</option>
                                                         <option value="ok">OK</option>
@@ -124,7 +108,7 @@
                             <p>Aucun événement trouvé</p>
                         </div>
                         <div id="history-events-load-more" style="text-align:center; padding:15px; display:none;">
-                            <button class="btn" type="button" onclick="loadMoreHistoryEvents()"></button>
+                            <button class="btn" type="button" onclick="loadMoreHistoryEvents()" aria-label="Afficher plus d’événements"></button>
                         </div>
                         <div id="history-events-loading" class="loading"><div class="spinner"></div><p>Chargement...</p></div>
                     </div>

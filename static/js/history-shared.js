@@ -223,7 +223,7 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
     const statusBadge = status === 'progress'
         ? '<span style="color:#e67e22; font-weight:600;">⏳</span>'
         : status === 'ok'
-            ? '<span style="color:#28a745; font-weight:600;">✓ OK</span>'
+            ? '<span style="color:var(--color-success); font-weight:600;">✓ OK</span>'
             : '<span style="color:#dc3545; font-weight:600;">✗ Échec</span>';
     // Seuls les imports et les renommages ont un détail par fichier consultable - les
     // téléchargements n'ont qu'un seul fichier/tome et les suppressions un seul résumé,
@@ -254,14 +254,14 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
         : (clickableSeries && e.seriesTitle && e.seriesTitle !== e.label
             ? `${seriesLinkHtml}<span style="color:var(--color-text-muted, #777);"> · </span>${escapeHtmlHistory(e.label)}`
             : (clickableSeries ? seriesLinkHtml : escapeHtmlHistory(e.label)));
-    const fileNamesHtml = e.fileNames ? `<div style="color:#777; font-size:0.9em;">${escapeHtmlHistory(e.fileNames)}</div>` : '';
+    const fileNamesHtml = e.fileNames ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${escapeHtmlHistory(e.fileNames)}</div>` : '';
     return `
         <tr class="history-shared-row" style="border-bottom:1px solid var(--color-border); font-size:0.85em;${(expandable || clickableSeries) ? ' cursor:pointer;' : ''}" ${rowOnclick}>
             <td style="padding:6px 8px; white-space:nowrap;" data-tooltip="${escapeHtmlHistory(date)}">${escapeHtmlHistory(dateShort)}</td>
             <td style="padding:6px 8px; white-space:nowrap; text-align:center;" data-tooltip="${escapeHtmlHistory(typeLabel)}">${svgIcon(HISTORY_TYPE_ICONS[e.type] || 'tag')}</td>
             <td style="padding:6px 8px; overflow-wrap:break-word; word-break:break-word;">
                 <div style="font-weight:600; display:flex; align-items:center; gap:4px;">${expandable ? '▸ ' : ''}${labelHtml}</div>
-                <div style="color:#777; font-size:0.9em; white-space:pre-line;">${e.sourceHtml ? e.sourceHtml + ' ' : ''}${escapeHtmlHistory(e.detail)}</div>
+                <div style="color:var(--color-text-muted); font-size:0.9em; white-space:pre-line;">${e.sourceHtml ? e.sourceHtml + ' ' : ''}${escapeHtmlHistory(e.detail)}</div>
                 ${fileNamesHtml}
             </td>
             <td style="padding:6px 8px; text-align:center;">${statusBadge}</td>
@@ -290,7 +290,7 @@ async function toggleImportFiles(rowId, operationId, fullDate) {
 
     const cell = detailRow.querySelector('td');
     detailRow.style.display = 'table-row';
-    const dateHtml = fullDate ? `<div style="padding:6px 8px 2px; color:#777; font-size:0.85em;">🕐 ${escapeHtmlHistory(fullDate)}</div>` : '';
+    const dateHtml = fullDate ? `<div style="padding:6px 8px 2px; color:var(--color-text-muted); font-size:0.85em;">🕐 ${escapeHtmlHistory(fullDate)}</div>` : '';
 
     if (_importFilesDetailCache[operationId]) {
         cell.innerHTML = dateHtml + _importFilesDetailCache[operationId];
@@ -352,7 +352,7 @@ async function toggleActionDetail(rowId, actionId, fullDate) {
     const cell = detailRow.querySelector('td');
     detailRow.style.display = 'table-row';
     // Voir toggleImportFiles - même besoin d'heure complète visible sans hover sur mobile.
-    const dateHtml = fullDate ? `<div style="padding:6px 8px 2px; color:#777; font-size:0.85em;">🕐 ${escapeHtmlHistory(fullDate)}</div>` : '';
+    const dateHtml = fullDate ? `<div style="padding:6px 8px 2px; color:var(--color-text-muted); font-size:0.85em;">🕐 ${escapeHtmlHistory(fullDate)}</div>` : '';
 
     if (actionDetailCache[actionId]) {
         cell.innerHTML = dateHtml + actionDetailCache[actionId];
@@ -371,7 +371,7 @@ async function toggleActionDetail(rowId, actionId, fullDate) {
             rows.push(`
                 <tr style="border-top:1px solid #eee;">
                     <td style="padding:6px 8px; white-space:nowrap;">${folder.success ? '✅ Dossier' : '❌ Dossier'}</td>
-                    <td style="padding:6px 8px; color:#777;" colspan="2">${escapeHtmlHistory((folder.old_path || '').split('/').pop())} → ${escapeHtmlHistory((folder.new_path || '').split('/').pop())}${!folder.success && folder.error ? ` (${escapeHtmlHistory(folder.error)})` : ''}</td>
+                    <td style="padding:6px 8px; color:var(--color-text-muted);" colspan="2">${escapeHtmlHistory((folder.old_path || '').split('/').pop())} → ${escapeHtmlHistory((folder.new_path || '').split('/').pop())}${!folder.success && folder.error ? ` (${escapeHtmlHistory(folder.error)})` : ''}</td>
                 </tr>
             `);
         }
@@ -380,7 +380,7 @@ async function toggleActionDetail(rowId, actionId, fullDate) {
             rows.push(`
                 <tr style="border-top:1px solid #eee;">
                     <td style="padding:6px 8px; white-space:nowrap;">${label}</td>
-                    <td style="padding:6px 8px; color:#777;" colspan="2">${escapeHtmlHistory(f.old_name || '')} → ${escapeHtmlHistory(f.new_name || '')}${!f.success && f.error ? ` (${escapeHtmlHistory(f.error)})` : ''}</td>
+                    <td style="padding:6px 8px; color:var(--color-text-muted);" colspan="2">${escapeHtmlHistory(f.old_name || '')} → ${escapeHtmlHistory(f.new_name || '')}${!f.success && f.error ? ` (${escapeHtmlHistory(f.error)})` : ''}</td>
                 </tr>
             `);
         });

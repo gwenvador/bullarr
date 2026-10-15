@@ -1,5 +1,54 @@
 # Changements
 
+## v7.0 — 2026-10-15
+
+[Comparer v6.2 et v7.0](https://github.com/gwenvador/bullarr/compare/v6.2...v7.0)
+
+Mise à jour directe depuis v6.2, sans migration manuelle. Au premier démarrage, les releasers enregistrés qui ne sont qu'un format (« PDF », « CBZ ») sont effacés.
+
+### Import
+
+- Bouton « Arrêter l'import » : la file en cours s'arrête après le fichier en cours et l'import automatique reste en pause jusqu'à « Reprendre ».
+- Un tome dont le numéro n'existe pas dans le catalogue Bédéthèque de la série n'est plus importé automatiquement : il attend une vérification manuelle.
+- Un torrent de plusieurs fichiers est suivi comme un pack et ne se ferme qu'une fois tous ses fichiers traités ; la page Import l'affiche en pack dès le premier fichier.
+- Un téléchargement enregistré sans extension (fichier de torrent nommé d'après la release) reçoit l'extension lue dans son contenu (PDF, ZIP, RAR) et est importé.
+- Les tomes importés sans résumé reçoivent en arrière-plan le résumé de leur page d'album Bédéthèque.
+- Assigner une nouvelle série depuis la fenêtre d'import la crée dans la bibliothèque sans lancer de téléchargement automatique.
+
+### Lecture des noms de fichiers
+
+- « T01 à 15 et 2 HS » est un pack de tomes, plus un hors-série.
+- Une mention de format entre crochets ou parenthèses (« [PDF] », « [CBR].[CBZ] ») n'est jamais un releaser ni un auteur.
+
+### Surveillance et validation
+
+- Les tomes du catalogue sans fichier comptent comme manquants pour la surveillance RSS, EBDZ et Telegram.
+- « Déjà téléchargé » compare le tome, et plus seulement la série.
+- Validation : la série manquante est créée au rattachement ; un candidat sans lien est retrouvé via Prowlarr.
+- Délai de recherche Prowlarr porté à 30 s.
+
+### Nouveautés
+
+- Les lignes RSS, Telegram et EBDZ ont la même présentation : une ligne par fichier EBDZ, sans repli.
+- Une intégrale, numérotée ou non, est marquée possédée lorsque tous les albums réguliers de la série le sont.
+- « Télécharger le fichier torrent » passe par le serveur pour les liens Prowlarr, qui ajoute la clé API configurée (le lien direct renvoyait une erreur 401).
+- Le crayon de choix de la série est placé à côté du nom de la série.
+
+### Bibliothèque
+
+- Dates des albums au mois et à l'année, date complète en infobulle ; le filtre de date fonctionne par année.
+- Panier d'achat (Fnac, Amazon, BDfugue) par album, sur les one-shots et pour le premier album d'une série, avec recherche par ISBN quand il est connu.
+- Déplacer un album vers une autre série permet de choisir le tome de destination.
+- Modifier la qualité ou le releaser d'un tome renomme son fichier.
+- Univers Bédéthèque : prise en charge de la nouvelle mise en page des séries liées.
+
+### Interface
+
+- Vérification : badges d'effet par section (Modifie / Supprime) et actions groupées nommées par leur conséquence.
+- Accessibilité : vrais liens sur les affiches et titres de séries, libellés sur les boutons à icône, cases et filtres ; actions des affiches visibles au clavier.
+- Icônes SVG dans les titres de page, états vides plus compacts, contraste renforcé du gris et du vert.
+- Mobile et tablette : déconnexion dans le menu latéral sur mobile, marges latérales réduites sur tablette ; mode sombre corrigé pour les options de connexion.
+
 ## v6.2 — 2026-10-11
 
 [Comparer v6.1 et v6.2](https://github.com/gwenvador/bullarr/compare/v6.1...v6.2)

@@ -257,6 +257,23 @@ def _process_typed_monitor_file(source, item, filename, parsed, typed, match, se
     print(f"  {'✓' if success else '✗'} {message}")
 
 
+def _placeholder_missing_volumes(cursor, series_ids):
+    """{série: numéros des tomes sans fichier} - fiches d'albums connus mais pas possédés."""
+    if not series_ids:
+        return {}
+    placeholders = ','.join('?' for _ in series_ids)
+    cursor.execute(f'''
+        SELECT series_id, volume_number FROM volumes
+        WHERE series_id IN ({placeholders}) AND volume_number IS NOT NULL
+          AND COALESCE(is_integral, 0) = 0 AND COALESCE(is_hs, 0) = 0 AND COALESCE(is_episode, 0) = 0
+          AND COALESCE(filepath, '') = ''
+    ''', list(series_ids))
+    missing = {}
+    for series_id, number in cursor.fetchall():
+        missing.setdefault(series_id, set()).add(number)
+    return missing
+
+
 def process_new_monitor_files(source, items):
     """Télécharge les nouveaux fichiers qui correspondent à un tome manquant surveillé -
     ou, si l'option "upgrade qualité" est activée, à un tome DÉJÀ possédé d'une série
@@ -317,6 +334,12 @@ def process_new_monitor_files(source, items):
     if series_ids:
         cursor.execute(f'SELECT id, missing_volumes FROM series WHERE id IN ({placeholders})', series_ids)
         missing_by_series = {row[0]: set(json.loads(row[1] or '[]')) for row in cursor.fetchall()}
+        # La colonne missing_volumes n'est recalculée qu'au rafraîchissement des statistiques de
+        # la série: un tome ajouté depuis (nouvel album Bédéthèque) n'y figurait pas, et sa
+        # sortie n'était jamais téléchargée (« Chroniques Diplomatiques » T03). Les fiches sans
+        # fichier comptent donc aussi comme tomes manquants.
+        for missing_series_id, numbers in _placeholder_missing_volumes(cursor, series_ids).items():
+            missing_by_series.setdefault(missing_series_id, set()).update(numbers)
         cursor.execute(f'SELECT id, bedetheque_url FROM series WHERE id IN ({placeholders})', series_ids)
         bedetheque_url_by_series = {row[0]: row[1] for row in cursor.fetchall()}
         cursor.execute(f'SELECT id, ebdz_thread_id, ebdz_thread_url FROM series WHERE id IN ({placeholders})', series_ids)

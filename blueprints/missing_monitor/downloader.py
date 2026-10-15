@@ -659,7 +659,35 @@ def mark_download_completed(download_id: Optional[int]) -> None:
     quand la tentative d'import de ce fichier précis échoue - le fichier reste sur place,
     'completed' ("waiting to import") est le bon état pour qu'un prochain passage le
     reprenne, plutôt que de le laisser bloqué en 'importing' pour de bon."""
+    _promote_multi_file_torrent(download_id)
     _set_pending_download_status(download_id, 'completed')
+
+
+def _promote_multi_file_torrent(download_id: Optional[int]) -> None:
+    """Un torrent qBittorrent à plusieurs fichiers est un pack, même si son nom ne l'annonce
+    pas (« Sambre.1-17+HS »). Marqué au passage « terminé »: sinon le premier fichier arrivé
+    par Syncthing était importé seul, comme un album unique, avant que les autres
+    n'apparaissent. Best-effort: sans réponse du client, le téléchargement garde son état."""
+    if download_id is None:
+        return
+    try:
+        db_path = current_app.config.get('DATABASE')
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            row = conn.execute(
+                'SELECT status, client, client_item_id, is_pack, volume_number FROM active_downloads WHERE id = ?',
+                (download_id,)).fetchone()
+            if not row or row[0] != 'pending' or row[1] != 'qbittorrent' or row[3] or row[4] is not None or not row[2]:
+                return
+            from blueprints.qbittorrent.routes import get_qbittorrent_torrent_file_count
+            count = get_qbittorrent_torrent_file_count(row[2])
+            if count and count > 1:
+                conn.execute('UPDATE active_downloads SET is_pack = 1 WHERE id = ?', (download_id,))
+                conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"Erreur détection de pack du téléchargement #{download_id}: {exc}")
 
 
 def mark_download_importing(download_id: Optional[int]) -> None:
@@ -1392,10 +1420,20 @@ def reconcile_completed_download_files():
     return repaired
 
 
-def _folder_has_successful_imports(db_path, folder_name):
-    """True si l'historique contient un import réussi d'un fichier de ce dossier."""
+def _folder_has_successful_imports(db_path, folder_name, since=None, expected_files=None):
+    """True si l'historique contient un import réussi d'un fichier de ce dossier. Avec
+    expected_files (nombre de fichiers du torrent, lu chez le client), exige autant de
+    fichiers distincts traités depuis `since` (création du suivi): un dossier vidé par
+    l'import d'un seul fichier alors que les autres n'ont pas encore été copiés n'est pas fini."""
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
+        if expected_files:
+            (count,) = conn.execute(
+                "SELECT COUNT(DISTINCT source_path) FROM import_history_files WHERE status = 'success' "
+                "AND action IN ('imported', 'replaced', 'skipped') "
+                "AND instr(source_path, '/' || ? || '/') > 0 AND created_at >= ?",
+                (folder_name, since or '')).fetchone()
+            return count >= expected_files
         row = conn.execute(
             "SELECT 1 FROM import_history_files WHERE status = 'success' "
             "AND action IN ('imported', 'replaced', 'skipped') "
@@ -1475,12 +1513,13 @@ def _pack_awaiting_closure(download_id, db_path):
     try:
         conn = sqlite3.connect(db_path, timeout=30.0)
         try:
-            row = conn.execute('SELECT client_item_name, title FROM active_downloads WHERE id = ?', (download_id,)).fetchone()
+            row = conn.execute('SELECT client_item_name, title, client_item_id, created_at FROM active_downloads WHERE id = ?', (download_id,)).fetchone()
         finally:
             conn.close()
         if not row:
             return False
-        return pack_is_finished((row[0] or row[1] or '').strip(), db_path, current_app.config.get('IMPORT_DIRECTORIES', []))
+        return pack_is_finished((row[0] or row[1] or '').strip(), db_path, current_app.config.get('IMPORT_DIRECTORIES', []),
+                                row[2], row[3])
     except Exception:
         return False
 
@@ -1490,7 +1529,7 @@ def _pack_transfer_in_progress_temp(path):
     return any(name.lower().endswith(_PACK_TRANSFER_TEMP_SUFFIXES) for _r, _d, names in os.walk(path) for name in names)
 
 
-def pack_is_finished(folder_name, db_path, import_roots):
+def pack_is_finished(folder_name, db_path, import_roots, client_item_id=None, since=None):
     """True quand un pack 'completed' n'a plus rien à importer et peut être clos.
 
     - Dossier présent: plus aucun fichier sans résultat d'import, et pas de transfert en cours.
@@ -1498,10 +1537,20 @@ def pack_is_finished(folder_name, db_path, import_roots):
       résultat d'import.
     - Ni l'un ni l'autre (torrent retiré du client, ménage côté seedbox): au moins un fichier
       du dossier a été importé ; sinon le pack attend toujours l'arrivée de ses fichiers.
+    - Avec l'identifiant du torrent (client_item_id), le nombre de fichiers annoncé par
+      qBittorrent doit aussi être atteint: un pack dont un seul fichier est arrivé (puis
+      importé) alors que les autres sont encore en route n'est pas fini.
     """
     from blueprints.library.routes import _pack_has_unfinalized_files, _pack_transfer_in_progress
     from blueprints.library.import_history import get_finalized_import_source_paths
     from path_safety import UnsafePathError, resolve_within
+
+    def _imports_done():
+        expected = None
+        if client_item_id:
+            from blueprints.qbittorrent.routes import get_qbittorrent_torrent_file_count
+            expected = get_qbittorrent_torrent_file_count(client_item_id)
+        return _folder_has_successful_imports(db_path, folder_name, since, expected)
 
     if not folder_name or os.sep in folder_name or folder_name in ('.', '..'):
         return False
@@ -1520,12 +1569,12 @@ def pack_is_finished(folder_name, db_path, import_roots):
                     and not _pack_transfer_in_progress_temp(path):
                 # Dossier vidé par l'import: terminé tout de suite s'il a déjà donné des
                 # imports (sinon c'est une copie qui n'a pas encore commencé).
-                return _folder_has_successful_imports(db_path, folder_name)
+                return _imports_done()
             return not _pack_transfer_in_progress(path)
         if os.path.isfile(path):
             finalized = {os.path.realpath(p) for p in get_finalized_import_source_paths() if p}
             return path in finalized
-    return _folder_has_successful_imports(db_path, folder_name)
+    return _imports_done()
 
 
 def reconcile_completed_packs():
@@ -1545,14 +1594,14 @@ def reconcile_completed_packs():
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         rows = conn.execute('''
-            SELECT id, client_item_name, title FROM active_downloads
+            SELECT id, client_item_name, title, client_item_id, created_at FROM active_downloads
             WHERE status = 'completed' AND is_pack = 1 AND series_id IS NOT NULL
         ''').fetchall()
     finally:
         conn.close()
     repaired = 0
-    for download_id, client_item_name, title in rows:
-        if pack_is_finished((client_item_name or title or '').strip(), db_path, import_roots):
+    for download_id, client_item_name, title, client_item_id, created_at in rows:
+        if pack_is_finished((client_item_name or title or '').strip(), db_path, import_roots, client_item_id, created_at):
             mark_download_imported(download_id)
             repaired += 1
     return repaired
