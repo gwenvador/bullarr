@@ -495,13 +495,24 @@ def find_active_downloads_by_client_item_ids(client: str, client_item_ids) -> Di
             (client_item_id, tracking_id, series_id, volume_number, created_at, series_title, is_oneshot,
              is_integral, integral_number, is_hs, hs_number, is_episode, episode_number) = row
             result[client_item_id.lower()] = {
-                'tracking_id': tracking_id, 'series_id': series_id,
+                'tracking_id': tracking_id, 'priority': 0, 'series_id': series_id,
                 'volume_number': volume_number, 'series_title': series_title, 'created_at': created_at,
                 'is_oneshot': bool(is_oneshot),
                 'is_integral': bool(is_integral), 'integral_number': integral_number,
                 'is_hs': bool(is_hs), 'hs_number': hs_number,
                 'is_episode': bool(is_episode), 'episode_number': episode_number,
             }
+        if result:
+            try:
+                by_tracking = {entry['tracking_id']: entry for entry in result.values()}
+                marks = ','.join('?' for _ in by_tracking)
+                for tracking_id, priority in cursor.execute(
+                    f"SELECT id, COALESCE(priority, 0) FROM active_downloads WHERE id IN ({marks})",
+                    tuple(by_tracking)
+                ):
+                    by_tracking[tracking_id]['priority'] = priority
+            except sqlite3.OperationalError:
+                pass  # base sans la colonne priority (pas encore migrée)
         conn.close()
     except Exception as e:
         print(f"Erreur recherche téléchargements par id client ({client}): {e}")
@@ -660,6 +671,7 @@ def mark_download_completed(download_id: Optional[int]) -> None:
     'completed' ("waiting to import") est le bon état pour qu'un prochain passage le
     reprenne, plutôt que de le laisser bloqué en 'importing' pour de bon."""
     _promote_multi_file_torrent(download_id)
+    record_client_download_files(download_id)
     _set_pending_download_status(download_id, 'completed')
 
 
@@ -688,6 +700,157 @@ def _promote_multi_file_torrent(download_id: Optional[int]) -> None:
             conn.close()
     except Exception as exc:
         print(f"Erreur détection de pack du téléchargement #{download_id}: {exc}")
+
+
+def _ensure_download_files_table(conn) -> None:
+    conn.execute("""CREATE TABLE IF NOT EXISTS active_download_files (
+        download_id INTEGER NOT NULL,
+        relative_path TEXT NOT NULL,
+        size INTEGER,
+        recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (download_id, relative_path)
+    )""")
+
+
+# Dernière tentative (time.time()) par téléchargement dont le client n'a pas donné sa liste
+# de fichiers : ne pas réinterroger qBittorrent à chaque passage de l'import automatique.
+_DOWNLOAD_FILES_RETRY_SECONDS = 600
+_download_files_attempts: Dict[int, float] = {}
+
+
+def record_client_download_files(download_id: Optional[int]) -> bool:
+    """Enregistre la liste des fichiers que le client a réellement téléchargés pour ce suivi
+    (chemin relatif au dossier de sauvegarde, taille exacte). Le nom d'un torrent ou de ses
+    fichiers n'a souvent aucun rapport avec le titre suivi : avec cette liste, /import et
+    l'import automatique savent quels fichiers appartiennent à ce téléchargement sans
+    comparer de noms. Gardée en base parce que le torrent peut disparaître du client (seedbox
+    nettoyée) avant l'import. qBittorrent seulement pour l'instant. Best-effort : False si
+    rien n'a pu être enregistré."""
+    import time
+    if download_id is None:
+        return False
+    try:
+        db_path = current_app.config.get('DATABASE')
+        if not db_path:
+            return False
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            _ensure_download_files_table(conn)
+            if conn.execute('SELECT 1 FROM active_download_files WHERE download_id = ? LIMIT 1',
+                            (download_id,)).fetchone():
+                return True
+            row = conn.execute('SELECT client, client_item_id, title FROM active_downloads WHERE id = ?',
+                               (download_id,)).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return False
+        if row[0] == 'amule':
+            # Un lien eD2K désigne un seul fichier, et le titre suivi est son nom exact.
+            # Taille inconnue ici: l'import attend que la taille ne bouge plus.
+            title = os.path.basename((row[2] or '').strip())
+            if not title:
+                return False
+            files = [{'name': title, 'size': None}]
+        elif row[0] == 'qbittorrent' and row[1]:
+            _download_files_attempts[download_id] = time.time()
+            from blueprints.qbittorrent.routes import get_qbittorrent_torrent_files
+            files = get_qbittorrent_torrent_files(row[1])
+            if not files:
+                return False
+        else:
+            return False
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            _ensure_download_files_table(conn)
+            conn.executemany(
+                'INSERT OR IGNORE INTO active_download_files (download_id, relative_path, size) VALUES (?, ?, ?)',
+                [(download_id, f['name'], f.get('size')) for f in files],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        _download_files_attempts.pop(download_id, None)
+        return True
+    except Exception as exc:
+        print(f"Erreur enregistrement des fichiers du téléchargement #{download_id}: {exc}")
+        return False
+
+
+def record_local_download_file(download_id: Optional[int], relative_path: str, size: Optional[int]) -> None:
+    """Enregistre le fichier qu'un téléchargement géré par Bullarr lui-même (Telegram) vient
+    d'écrire: chemin relatif à son dossier d'import et taille exacte. Best-effort."""
+    if download_id is None or not relative_path:
+        return
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        try:
+            _ensure_download_files_table(conn)
+            conn.execute(
+                'INSERT OR IGNORE INTO active_download_files (download_id, relative_path, size) VALUES (?, ?, ?)',
+                (download_id, relative_path, size),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"Erreur enregistrement du fichier du téléchargement #{download_id}: {exc}")
+
+
+def record_missing_download_files(downloads) -> None:
+    """Rattrapage : enregistre la liste des fichiers des téléchargements qBittorrent terminés
+    qui n'en ont pas encore (terminés avant l'existence de cette liste, ou passés à
+    « terminé » sans mark_download_completed). Chaque échec attend
+    _DOWNLOAD_FILES_RETRY_SECONDS avant un nouvel essai."""
+    import time
+    candidates = [
+        d['id'] for d in downloads or []
+        # aMule: le nom du fichier est connu dès l'ajout (lien eD2K), et un fichier aMule
+        # peut être importé sans jamais passer par « terminé » (découvert sur le disque
+        # alors que le suivi est encore en attente): enregistré quel que soit le statut.
+        if (d.get('client') == 'amule' and d.get('download_status') in ('pending', 'completed', 'importing'))
+        or (d.get('client') == 'qbittorrent' and d.get('client_item_id')
+            and d.get('download_status') in ('completed', 'importing'))
+    ]
+    if not candidates:
+        return
+    recorded = get_recorded_download_files(candidates)
+    now = time.time()
+    for download_id in candidates:
+        if download_id in recorded:
+            continue
+        if now - _download_files_attempts.get(download_id, 0) < _DOWNLOAD_FILES_RETRY_SECONDS:
+            continue
+        record_client_download_files(download_id)
+
+
+def get_recorded_download_files(download_ids) -> Dict[int, List[Dict]]:
+    """{download_id: [{'relative_path', 'size'}]} pour les suivis dont la liste des fichiers
+    est connue (voir record_client_download_files). Lecture seule, sans appel au client."""
+    ids = sorted({int(i) for i in (download_ids or []) if i is not None})
+    if not ids:
+        return {}
+    try:
+        db_path = current_app.config.get('DATABASE')
+        if not db_path:
+            return {}
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            _ensure_download_files_table(conn)
+            placeholders = ','.join('?' for _ in ids)
+            rows = conn.execute(
+                f'SELECT download_id, relative_path, size FROM active_download_files '
+                f'WHERE download_id IN ({placeholders}) ORDER BY download_id, relative_path', ids
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"Erreur lecture des fichiers de téléchargements suivis: {exc}")
+        return {}
+    result: Dict[int, List[Dict]] = {}
+    for download_id, relative_path, size in rows:
+        result.setdefault(download_id, []).append({'relative_path': relative_path, 'size': size})
+    return result
 
 
 def mark_download_importing(download_id: Optional[int]) -> None:
@@ -1038,10 +1201,12 @@ def retry_stalled_telegram_downloads() -> None:
         # tentatives "consommées" avant un rebuild ne reflètent aucun échec réel du
         # téléchargement lui-même, les compter contre son quota serait injuste.
         cursor.execute('''
-            SELECT id, title, channel, message_id, series_id, volume_id, volume_number
+            SELECT id, title, channel, message_id, series_id, volume_id, volume_number,
+                   COALESCE(priority, 0) AS priority
             FROM active_downloads
             WHERE client = 'telegram' AND status = 'pending'
               AND channel IS NOT NULL AND message_id IS NOT NULL
+              AND COALESCE(paused, 0) = 0
               AND process_instance_id IS NOT NULL AND process_instance_id != ?
         ''', (current_process_id,))
         orphaned = [dict(row) for row in cursor.fetchall()]
@@ -1054,7 +1219,7 @@ def retry_stalled_telegram_downloads() -> None:
         # de progresser depuis plus d'1 minute - contrairement à une ligne encore
         # bytes_downloaded NULL, qui n'a simplement pas encore eu son tour dans la file
         # (les téléchargements Telegram sont sérialisés un par un, voir
-        # _telegram_client_lock scraper.py) et n'a donc rien d'anormal. Avant ce filtre
+        # _telegram_queue scraper.py) et n'a donc rien d'anormal. Avant ce filtre
         # bytes_downloaded IS NOT NULL, les deux cas étaient indiscernables (même
         # last_progress_at figé à created_at) - un lot de plusieurs tomes épuisait alors
         # ses 3 tentatives sur des tomes encore simplement en attente, jamais réellement
@@ -1062,15 +1227,20 @@ def retry_stalled_telegram_downloads() -> None:
         # ci-dessus, un blocage répété reflète potentiellement un vrai problème
         # (message supprimé, blocage réseau Telethon récurrent...).
         cursor.execute(f'''
-            SELECT id, title, channel, message_id, series_id, volume_id, volume_number, retry_count
+            SELECT id, title, channel, message_id, series_id, volume_id, volume_number, retry_count,
+                   COALESCE(priority, 0) AS priority
             FROM active_downloads
             WHERE client = 'telegram' AND status = 'pending'
               AND channel IS NOT NULL AND message_id IS NOT NULL
+              AND COALESCE(paused, 0) = 0
               AND bytes_downloaded IS NOT NULL
               AND COALESCE(retry_count, 0) < {TELEGRAM_MAX_RETRY_ATTEMPTS}
               AND COALESCE(last_progress_at, created_at) < datetime('now', '-{TELEGRAM_RETRY_AFTER_STALLED_MINUTES} minutes')
         ''')
-        stalled = [dict(row) for row in cursor.fetchall()]
+        from blueprints.telegram_channels.scraper import _live_telegram_downloads
+        # Thread encore vivant (en file d'attente après « télécharger en premier » d'un
+        # autre fichier): pas bloqué, ne pas lancer un second téléchargement.
+        stalled = [dict(row) for row in cursor.fetchall() if row['id'] not in _live_telegram_downloads]
         for row in stalled:
             row['_reason'] = 'bloquée'
         conn.close()
@@ -1116,13 +1286,54 @@ def retry_stalled_telegram_downloads() -> None:
                     row['channel'], row['message_id'], target_dir, app=app,
                     pending_title=row['title'],
                     series_id=row['series_id'], volume_id=row['volume_id'], volume_number=row['volume_number'],
-                    retry_count=row['retry_count'] + 1
+                    retry_count=row['retry_count'] + 1, priority=row['priority']
                 )
             except Exception as e:
                 print(f"Erreur relance téléchargement Telegram ({row['title']}): {e}")
         conn.close()
     except Exception as e:
         print(f"Erreur lors de la relance des téléchargements Telegram bloqués: {e}")
+
+
+def set_download_queue_flags(download_id: Optional[int], priority: Optional[int] = None,
+                              paused: Optional[bool] = None, clear_progress: bool = False) -> None:
+    """Ordre (priority, la plus haute passe d'abord) et pause d'un téléchargement suivi - voir
+    _TelegramQueue (telegram_channels/scraper.py). clear_progress: un transfert Telegram
+    interrompu par une pause repart de zéro à la reprise, sa progression n'a plus de sens."""
+    if not download_id:
+        return
+    sets, params = [], []
+    if priority is not None:
+        sets.append('priority = ?')
+        params.append(int(priority))
+    if paused is not None:
+        sets.append('paused = ?')
+        params.append(1 if paused else 0)
+    if clear_progress:
+        sets.append('bytes_downloaded = NULL')
+    if not sets:
+        return
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        conn.execute(f"UPDATE active_downloads SET {', '.join(sets)} WHERE id = ?", (*params, download_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Erreur mise à jour priorité/pause du téléchargement {download_id}: {e}")
+
+
+def next_download_priority() -> int:
+    """Priorité qui place un téléchargement devant tous ceux en attente (file Telegram,
+    et ordre d'affichage sur /import pour tous les clients)."""
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        row = conn.execute(
+            "SELECT MAX(COALESCE(priority, 0)) FROM active_downloads WHERE status = 'pending'"
+        ).fetchone()
+        conn.close()
+        return int(row[0] or 0) + 1
+    except Exception:
+        return 1
 
 
 def remove_pending_download(download_id: int) -> bool:
@@ -1636,6 +1847,13 @@ def get_pending_downloads() -> List[Dict]:
         # même piège documenté avec f.*).
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+        # priority/paused (file Telegram) ajoutées par migration: une base qui ne les a pas
+        # encore ne doit pas vider toute la liste /import.
+        queue_columns = {row[1] for row in cursor.execute('PRAGMA table_info(active_downloads)')}
+        queue_select = (
+            ("COALESCE(ad.priority, 0)" if 'priority' in queue_columns else "0") + " AS priority, "
+            + ("COALESCE(ad.paused, 0)" if 'paused' in queue_columns else "0") + " AS paused "
+        )
 
         # LEFT JOIN series: titre à jour plutôt que figé (une série peut être renommée/
         # rematchée après le lancement du téléchargement) - même raisonnement que
@@ -1646,7 +1864,8 @@ def get_pending_downloads() -> List[Dict]:
             "ad.bytes_downloaded, ad.bytes_total, "
             "ad.last_progress_at, ad.retry_count, ad.is_pack, ad.expected_volume_count, "
             "ad.client_item_id, ad.status, "
-            "ad.is_integral, ad.integral_number, ad.is_hs, ad.hs_number, ad.is_episode, ad.episode_number "
+            "ad.is_integral, ad.integral_number, ad.is_hs, ad.hs_number, ad.is_episode, ad.episode_number, "
+            + queue_select +
             "FROM active_downloads ad "
             "LEFT JOIN series s ON s.id = ad.series_id "
             "WHERE ad.status IN ('pending', 'completed', 'importing') "
@@ -1805,6 +2024,8 @@ def get_pending_downloads() -> List[Dict]:
                 'is_pack': bool(is_pack), 'is_oneshot': bool(is_oneshot), 'expected_volume_count': expected_volume_count,
                 'client_item_id': client_item_id,
                 'status': download_status,
+                'priority': row['priority'],
+                'paused': bool(row['paused']),
                 'needs_volume_correction': needs_volume_correction,
                 'needs_series_correction': needs_series_correction,
                 'already_owned': already_owned_flag,

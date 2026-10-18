@@ -1689,6 +1689,10 @@ function _renderToastElement(id, message, icon, href) {
     // ce seul flux.
     toast.classList.toggle('app-toast-clickable', !!href);
     toast.onclick = href ? () => { window.location.href = href; } : null;
+    // Réaffiché pendant sa transition de sortie (voir dismissToast): sans ceci, la
+    // suppression programmée par la fermeture précédente retirait le nouveau toast 300 ms
+    // plus tard.
+    clearTimeout(toast._removeTimer);
     toast.classList.remove('app-toast-hiding');
     return toast;
 }
@@ -1723,7 +1727,18 @@ function showToast(id, message, { icon = 'loader-circle', autoHideMs, href } = {
 
     if (autoHideMs) {
         toast._autoHideTimer = setTimeout(() => dismissToast(id), autoHideMs);
+        delete toast.dataset.persisted;
+        // Même id d'abord affiché « en cours » (persisté) puis avec son message final: la
+        // version persistée restait dans localStorage, et une navigation avant la fin de
+        // autoHideMs (ex: clic sur le toast et son href) faisait réapparaître « en cours… »
+        // sur la page suivante, sans plus rien pour le fermer avant TOAST_MAX_AGE_MS.
+        const toasts = _readPersistedToasts();
+        if (toasts[id]) {
+            delete toasts[id];
+            _writePersistedToasts(toasts);
+        }
     } else {
+        toast.dataset.persisted = '1';
         // createdAt réinitialisé à chaque (re)affichage, y compris ceux issus d'une
         // action utilisateur normale (pas seulement la restauration au chargement de
         // page) - c'est voulu: une opération dont le message est mis à jour plusieurs
@@ -1758,8 +1773,33 @@ function dismissToast(id) {
     clearTimeout(toast._autoHideTimer);
     clearInterval(toast._pollInterval);
     toast.classList.add('app-toast-hiding');
-    setTimeout(() => toast.remove(), 300);
+    clearTimeout(toast._removeTimer);
+    toast._removeTimer = setTimeout(() => toast.remove(), 300);
 }
+
+// Toasts persistés partagés entre onglets (même localStorage): un toast fermé ou mis à
+// jour dans un onglet restait affiché tel quel dans les autres, qui l'avaient restauré au
+// chargement et n'avaient plus rien pour le fermer. L'événement `storage` (déclenché
+// seulement dans les AUTRES onglets) les synchronise, sans réécrire le stockage.
+window.addEventListener('storage', (event) => {
+    if (event.key !== TOAST_STORAGE_KEY && event.key !== null) return;
+    const toasts = _readPersistedToasts();
+    document.querySelectorAll('#toast-container .app-toast[data-persisted="1"]').forEach(toast => {
+        const id = toast.id.replace(/^toast-/, '');
+        if (toasts[id]) return;
+        clearTimeout(toast._autoHideTimer);
+        clearInterval(toast._pollInterval);
+        toast.classList.add('app-toast-hiding');
+        clearTimeout(toast._removeTimer);
+        toast._removeTimer = setTimeout(() => toast.remove(), 300);
+    });
+    for (const [id, toast] of Object.entries(toasts)) {
+        const existing = document.getElementById(`toast-${id}`);
+        const message = existing?.querySelector('.app-toast-message')?.textContent;
+        if (existing && message === toast.message && !existing.classList.contains('app-toast-hiding')) continue;
+        _renderToastElement(id, toast.message, toast.icon, toast.href).dataset.persisted = '1';
+    }
+});
 
 // Sonde la progression de l'écriture ComicInfo en arrière-plan (voir
 // GET /update-metadata/series/<id>/progress côté Flask) pour afficher dans le toast le
@@ -1869,7 +1909,7 @@ function pollLinkVolumesBatchProgress(toastId, onComplete) {
         }
         // Rendu direct (pas showToast, qui écraserait createdAt et empêcherait la purge
         // d'un toast vraiment abandonné - voir commentaire dans showToast)
-        _renderToastElement(id, toast.message, toast.icon, toast.href);
+        _renderToastElement(id, toast.message, toast.icon, toast.href).dataset.persisted = '1';
 
         // Reprend le sondage de progression pour tout toast restauré qui en avait un
         // actif (voir pollMetadataWriteProgress/pollLinkVolumesBatchProgress) - sans ça
@@ -1952,13 +1992,20 @@ function pollEbdzScrapeStatus() {
     }
 })();
 
+// Libellé du type/numéro d'un tome (« Intégrale 2 », « Hors-série 1 », « Épisode 3 »,
+// « Tome 12 »), le seul endroit qui le construit (import, fiches, listes de tomes).
+// `emptyLabel` quand aucun type ni numéro n'est connu. Texte brut: à échapper à l'affichage.
+function volumeTypeLabel(v, emptyLabel = '') {
+    const suffix = number => (number != null && number !== '' ? ` ${number}` : '');
+    if (v.is_integral) return `Intégrale${suffix(v.integral_number)}`;
+    if (v.is_hs) return `Hors-série${suffix(v.hs_number)}`;
+    if (v.is_episode) return `Épisode${suffix(v.episode_number)}`;
+    if (v.volume_number != null && v.volume_number !== '' && v.volume_number !== 'null') return `Tome ${v.volume_number}`;
+    return emptyLabel;
+}
+
 function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = false } = {}) {
-    let label;
-    if (v.is_integral) label = `Intégrale${v.integral_number != null ? ' ' + v.integral_number : ''}`;
-    else if (v.is_hs) label = `Hors-série${v.hs_number != null ? ' ' + v.hs_number : ''}`;
-    else if (v.is_episode) label = `Épisode${v.episode_number != null ? ' ' + v.episode_number : ''}`;
-    else if (v.volume_number != null) label = `Tome ${v.volume_number}`;
-    else label = 'Édition unique';
+    let label = volumeTypeLabel(v, 'Édition unique');
 
     let ci = {};
     try { ci = typeof v.comicinfo === 'string' ? JSON.parse(v.comicinfo || '{}') : (v.comicinfo || {}); } catch (e) { ci = {}; }

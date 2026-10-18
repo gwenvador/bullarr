@@ -622,6 +622,13 @@ def _annotate_already_in_library(files):
         # pratique quand la série a été trouvée via ce lien) et reste disponible même
         # sans série connue en bibliothèque (voir _nouveautesMatchedHtml, ebdz-latest.js).
         f['bedetheque_url'] = f.get('bedetheque_url_hint') or (match[5] if match else None)
+        if not match and not f['bedetheque_url']:
+            # Même repli que les lignes RSS: fiche du catalogue Bédéthèque pour Détails.
+            from blueprints.ebdz.routes import bedetheque_catalog_match
+            catalog = bedetheque_catalog_match(f.get('filename'))
+            if catalog:
+                f['bedetheque_title'] = catalog.get('title')
+                f['bedetheque_url'] = catalog.get('url')
         f['already_monitored'] = bool(match and match[0] in monitored_series_ids)
         f['already_owned'] = (
             volume_possession_status(

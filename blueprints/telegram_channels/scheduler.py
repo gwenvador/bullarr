@@ -3,7 +3,7 @@ Scraping automatique des canaux Telegram configurés - même principe que
 blueprints/ebdz/scheduler.py (APScheduler + config persistée), mais restreint à
 heures/jours ('hour/par jours' demandé) plutôt que minutes: contrairement à EBDZ,
 chaque appel ouvre une connexion MTProto complète sérialisée (voir
-_telegram_client_lock dans scraper.py) - un intervalle à la minute n'aurait aucun
+_telegram_queue dans scraper.py) - un intervalle à la minute n'aurait aucun
 intérêt pour des canaux qui publient au mieux quelques fois par jour.
 """
 from apscheduler.schedulers.background import BackgroundScheduler

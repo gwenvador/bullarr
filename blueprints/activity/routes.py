@@ -7,6 +7,7 @@ import requests
 import xmlrpc.client
 import threading
 import time
+import itertools
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -194,6 +195,24 @@ def _amule_bytes_total_by_name():
 _amule_status_cache = {'result': None, 'fetched_at': 0.0}
 _amule_status_lock = threading.Lock()
 _AMULE_STATUS_CACHE_TTL = 20
+# Identifiant de chaque VRAI relevé amulecmd (snapshot_id): les appels servis depuis le
+# cache partagent le même, et activity_status ne compte les absences qu'une fois par
+# relevé (voir _claim_absence_snapshot).
+_amule_snapshot_ids = itertools.count(1)
+
+
+def _amule_status_copy(status):
+    """Copie du relevé en cache: activity_status remplace r['items'] et retire
+    r['shared_hashes'] - sur l'objet du cache lui-même, les appels suivants dans les
+    _AMULE_STATUS_CACHE_TTL secondes perdaient les fichiers partagés et prenaient un
+    téléchargement aMule terminé pour une absence (faux « échec », fichier caché sur /import)."""
+    if status is None:
+        return None
+    return {
+        **status,
+        'items': [dict(item) for item in status.get('items') or []],
+        'shared_hashes': set(status.get('shared_hashes') or ()),
+    }
 
 
 def _amule_status():
@@ -206,11 +225,13 @@ def _amule_status():
     with _amule_status_lock:
         now = time.time()
         if _amule_status_cache['result'] is not None and now - _amule_status_cache['fetched_at'] < _AMULE_STATUS_CACHE_TTL:
-            return _amule_status_cache['result']
+            return _amule_status_copy(_amule_status_cache['result'])
         status = _amule_status_uncached(config)
+        if status is not None:
+            status['snapshot_id'] = next(_amule_snapshot_ids)
         _amule_status_cache['result'] = status
         _amule_status_cache['fetched_at'] = time.time()
-        return status
+        return _amule_status_copy(status)
 
 
 def resolve_absent_amule_download(client_item_id, shared_hashes):
@@ -300,6 +321,26 @@ def _amule_status_uncached(config):
             pending_hash = None
             pending_name = None
     return {'client': 'amule', 'label': 'aMule', 'error': None, 'items': items, 'shared_hashes': shared_hashes}
+
+
+# Dernier relevé client dont les absences ont été comptées. CLIENT_ABSENCE_FAILURE_THRESHOLD
+# absences doivent venir de relevés distincts: plusieurs onglets qui sondent
+# /api/activity/status relisent le même relevé aMule en cache et faisaient passer un
+# téléchargement en « échec » en quelques secondes.
+_absence_counted_snapshots = {}
+_absence_counted_lock = threading.Lock()
+
+
+def _claim_absence_snapshot(client, snapshot_id):
+    """Vrai si les absences de ce relevé restent à compter (un client sans cache n'a pas
+    de snapshot_id: chaque sondage est un vrai relevé)."""
+    if snapshot_id is None:
+        return True
+    with _absence_counted_lock:
+        if _absence_counted_snapshots.get(client) == snapshot_id:
+            return False
+        _absence_counted_snapshots[client] = snapshot_id
+        return True
 
 
 def _run_in_context(app, func):
@@ -447,6 +488,7 @@ def activity_status():
                         set_active_download_client_item_id(pending_match['id'], item_id)
 
                 item['tracking_id'] = linked['tracking_id']
+                item['priority'] = linked.get('priority', 0)
                 item['series_id'] = linked['series_id']
                 item['series_title'] = linked['series_title']
                 item['volume_number'] = linked['volume_number']
@@ -475,6 +517,7 @@ def activity_status():
             # avant que quiconque ne la voie en prod). Retire ici, apres l'avoir
             # capture, avant que r ne rejoigne clients (ce qui finit par jsonify()).
             shared_hashes = r.pop('shared_hashes', None) or set()
+            snapshot_id = r.pop('snapshot_id', None)
             clients.append(r)
 
             # Seul un sondage RÉUSSI (error is None, on a vraiment reçu une réponse de
@@ -482,7 +525,7 @@ def activity_status():
             # être interprété comme "tous ses téléchargements ont disparu" (voir
             # error=None ci-dessous, sans quoi une simple panne réseau ferait échouer
             # en masse tout ce qui est en cours chez lui).
-            if r.get('error') is None:
+            if r.get('error') is None and _claim_absence_snapshot(client, snapshot_id):
                 # item['id'] est comparé tel quel a client_item_id qui est TOUJOURS
                 # stocke en minuscules (voir mark_download_pending/set_active_download_
                 # client_item_id) - meme normalisation que linked_by_item_id plus haut.
@@ -523,6 +566,110 @@ def activity_status():
     completed_pending_ids = [p['id'] for p in pending if p['id'] in just_completed_tracking_ids]
 
     return jsonify({'success': True, 'clients': clients, 'pending': pending, 'completed_pending_ids': completed_pending_ids})
+
+
+DOWNLOAD_CONTROL_ACTIONS = ('top', 'pause', 'resume')
+
+
+def _qbittorrent_control(torrent_hash, action):
+    """topPrio (file d'attente qBittorrent active), stop/start (qBittorrent 5, repli
+    pause/resume pour la v4)."""
+    from blueprints.qbittorrent.routes import load_qbittorrent_config, create_qbittorrent_session
+
+    if not re.fullmatch(r'[0-9A-Fa-f]{40}', torrent_hash or ''):
+        return False, 'id (hash) invalide'
+    config = load_qbittorrent_config()
+    if not config.get('enabled'):
+        return False, "qBittorrent n'est pas activé"
+    session, base_url, error = create_qbittorrent_session(config)
+    if error or not session:
+        return False, error or 'Connexion impossible'
+    endpoints = {
+        'top': ['topPrio'],
+        'pause': ['stop', 'pause'],
+        'resume': ['start', 'resume'],
+    }[action]
+    for endpoint in endpoints:
+        response = session.post(f"{base_url}/api/v2/torrents/{endpoint}",
+                                data={'hashes': torrent_hash}, timeout=10, verify=False)
+        if response.status_code == 200:
+            return True, None
+        if response.status_code == 409 and endpoint == 'topPrio':
+            return False, "File d'attente qBittorrent désactivée (Options > BitTorrent)"
+        if response.status_code != 404:
+            return False, f'HTTP {response.status_code}'
+    return False, 'Action non prise en charge par cette version de qBittorrent'
+
+
+def _amule_control(file_hash, action):
+    """amulecmd: « priority high », « pause », « resume » sur le hash eD2K. aMule n'a pas
+    de file ordonnée: « en premier » passe le fichier en priorité haute."""
+    from blueprints.emule.routes import load_emule_config
+
+    if not re.fullmatch(r'[0-9A-Fa-f]{32}', file_hash or ''):
+        return False, 'id (hash) invalide'
+    config = load_emule_config()
+    if not config.get('enabled'):
+        return False, 'aMule non activé'
+    command = {'top': 'priority high', 'pause': 'pause', 'resume': 'resume'}[action]
+    cmd = ['amulecmd', '-h', config['host'], '-P', config.get('password_decrypted', ''),
+           '-p', str(config['ec_port'])]
+    # lgtm [py/command-line-injection] hash validated above; shell=False is explicit.
+    result = subprocess.run(cmd, input=f'{command} {file_hash}\n', capture_output=True, text=True, timeout=15)
+    if result.returncode != 0:
+        return False, (result.stderr or 'Erreur amulecmd')[:200]
+    # Le prochain sondage doit refléter la pause/reprise, pas le relevé en cache.
+    with _amule_status_lock:
+        _amule_status_cache['fetched_at'] = 0.0
+    return True, None
+
+
+@activity_bp.route('/api/activity/download-control', methods=['POST'])
+def download_control():
+    """Depuis /import: « télécharger en premier » (top), pause et reprise d'un téléchargement
+    en cours. tracking_id (active_downloads.id) pour Telegram; client + id (hash du client)
+    pour qBittorrent/aMule, ou leur tracking_id."""
+    data = request.get_json() or {}
+    action = data.get('action')
+    if action not in DOWNLOAD_CONTROL_ACTIONS:
+        return jsonify({'success': False, 'error': 'Action inconnue'}), 400
+    client = data.get('client')
+    item_id = data.get('id')
+    tracking_id = data.get('tracking_id')
+
+    if tracking_id is not None and (not client or not item_id):
+        import sqlite3
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        row = conn.execute('SELECT client, client_item_id FROM active_downloads WHERE id = ?',
+                           (tracking_id,)).fetchone()
+        conn.close()
+        if not row:
+            return jsonify({'success': False, 'error': 'Téléchargement introuvable'}), 404
+        client = client or row[0]
+        item_id = item_id or row[1]
+
+    try:
+        if client == 'telegram':
+            if not isinstance(tracking_id, int):
+                return jsonify({'success': False, 'error': 'tracking_id requis'}), 400
+            from blueprints.telegram_channels.scraper import telegram_download_control
+            ok, error = telegram_download_control(tracking_id, action, current_app._get_current_object())
+        elif client == 'qbittorrent':
+            ok, error = _qbittorrent_control(item_id, action)
+        elif client == 'amule':
+            ok, error = _amule_control(item_id, action)
+        else:
+            return jsonify({'success': False, 'error': 'Non pris en charge pour ce client'}), 400
+    except Exception as exc:
+        from error_utils import error_message
+        return jsonify({'success': False, 'error': error_message(exc)}), 500
+    if not ok:
+        return jsonify({'success': False, 'error': error}), 400
+    # qBittorrent/aMule: la priorité enregistrée remonte aussi la ligne sur /import.
+    if action == 'top' and client != 'telegram' and isinstance(tracking_id, int):
+        from blueprints.missing_monitor.downloader import set_download_queue_flags, next_download_priority
+        set_download_queue_flags(tracking_id, priority=next_download_priority())
+    return jsonify({'success': True})
 
 
 @activity_bp.route('/api/activity/update-tracking', methods=['POST'])

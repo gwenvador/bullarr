@@ -13,6 +13,38 @@ let incompatibleFolders = [];
 let currentFileIndices = [];
 let allLibraries = [];
 let librariesSeriesMap = {};
+
+// Réponse JSON d'un appel de /import. Remplace response.json(): une erreur HTTP (ou une
+// page d'erreur HTML au lieu de JSON) devient { success: false, error } avec un message
+// lisible, que chaque appelant traite déjà comme ses autres échecs. expectArray: pour les
+// listes (tomes, séries...), une erreur lève une exception avec ce message au lieu de
+// laisser la suite planter sur un objet inattendu.
+async function readJsonResponse(response, { expectArray = false } = {}) {
+    let data;
+    try {
+        data = await response.json();
+    } catch (e) {
+        data = { success: false, error: `Réponse inattendue du serveur (HTTP ${response.status})` };
+    }
+    if (!response.ok && data && typeof data === 'object' && !Array.isArray(data)) {
+        data.success = false;
+        data.error = data.error || `Erreur serveur (HTTP ${response.status})`;
+    }
+    if (expectArray && !Array.isArray(data)) {
+        throw new Error(data?.error || `Réponse inattendue du serveur (HTTP ${response.status})`);
+    }
+    return data;
+}
+
+// Messages de /import: toasts (non bloquants) au lieu de alert(). kind: 'error',
+// 'warning' ou 'success'.
+function importNotify(message, kind = 'error', { autoHideMs } = {}) {
+    const icons = { error: 'circle-x', warning: 'triangle-alert', success: 'check' };
+    showToast(`import-notify-${kind}`, message, {
+        icon: icons[kind] || 'info',
+        autoHideMs: autoHideMs ?? (kind === 'success' ? 5000 : 10000),
+    });
+}
 // Distingue "le tout premier rendu de la page n'a pas encore eu lieu" de "rendu, et rien
 // à montrer" - mis à true inconditionnellement dès DOMContentLoaded
 // (voir plus bas), plus par un scan lui-même: "for import there should be a database of
@@ -213,7 +245,7 @@ function setImportAlbumFilter(value) {
     });
 }
 function _importAlbumMatches(value) { const q = String(importAlbumFilter || '').trim().toLocaleLowerCase(); return !q || String(value || '').toLocaleLowerCase().includes(q); }
-// Série devinée/assignée pour Album (voir albumHtml côté rendu de ligne, même logique):
+// Série devinée/assignée pour Album (voir albumCellHtml côté rendu de ligne, même logique):
 // le destination.series_title déjà choisi prime, sinon la même série devinée depuis le
 // nom de fichier/dossier qu'utilise le regroupement/tri par défaut.
 function _importFileAlbumText(file) { return (file.destination && file.destination.series_title) || fileGroupTitle(file); }
@@ -240,12 +272,7 @@ function _importVolumeMatches(value) { return !importVolumeFilter || value === i
 // file.volume_number que _importFileSortValue('volume').
 function _importFileVolumeText(file) {
     const parsed = file.parsed || {};
-    const raw = parsed.volume != null ? parsed.volume : file.volume_number;
-    if (raw != null && raw !== '') return `Tome ${raw}`;
-    if (parsed.is_integral) return `Intégrale${parsed.integral_number != null ? ' ' + parsed.integral_number : ''}`;
-    if (parsed.is_hs) return `Hors-série${parsed.hs_number != null ? ' ' + parsed.hs_number : ''}`;
-    if (parsed.is_episode) return `Épisode${parsed.episode_number != null ? ' ' + parsed.episode_number : ''}`;
-    return '';
+    return volumeTypeLabel({ ...parsed, volume_number: parsed.volume != null ? parsed.volume : file.volume_number });
 }
 function _importDateValue(value) {
     if (value == null || value === '') return '';
@@ -307,7 +334,7 @@ function clientBadgeHtml(clientKey) {
 // Vocabulaire de statut par client - qBittorrent/Deluge/aMule renvoient des clés/mots
 // bruts (souvent en anglais), rTorrent traduit déjà côté serveur (activity/routes.py)
 const CLIENT_STATE_LABELS = {
-    downloading: 'Téléchargement', stalledDL: 'En attente de pairs', pausedDL: 'En pause',
+    downloading: 'Téléchargement', stalledDL: 'En attente de pairs', pausedDL: 'En pause', stoppedDL: 'En pause',
     queuedDL: 'En file d’attente', checkingDL: 'Vérification', metaDL: 'Récupération métadonnées',
     error: 'Erreur', missingFiles: 'Fichiers manquants',
     Downloading: 'Téléchargement', Paused: 'En pause', Queued: 'En file d’attente',
@@ -381,7 +408,7 @@ async function loadActiveDownloads() {
         // active_downloads et les fichiers suivis. Ne pas combiner dans le navigateur
         // des réponses obtenues à des instants différents.
         const response = await _fetchWithTimeout('/api/import/state', {}, 30000);
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         dismissToast('activity-status-timeout');
         activeDownloads = [];
         pendingDownloads = [];
@@ -404,6 +431,9 @@ async function loadActiveDownloads() {
                     // le serveur n'a pas fourni une destination plus récente pour ce chemin.
                     destination: file.destination || old.destination,
                     manual_override: file.manual_override || old.manual_override,
+                    // Tome corrigé à la main (liste, « Autre ») pas encore importé: un
+                    // rechargement (Actualiser, début/fin d'un import) ne doit pas l'effacer.
+                    ...(old.manual_override ? { parsed: old.parsed, _manualVolume: old._manualVolume } : {}),
                 });
             });
             incompatibleFolders = data.incompatible_folders || [];
@@ -425,7 +455,6 @@ async function loadActiveDownloads() {
         }
     }
     hasCheckedActiveDownloadsOnce = true;
-    renderCurrentlyProcessingBanner();
     displayImportFiles();
     if (volumesToRefresh.length) {
         _ensureVolumesLoadedForFiles(volumesToRefresh).then(() => displayImportFiles());
@@ -449,14 +478,14 @@ async function _postImportControl(url, button) {
     if (button) button.disabled = true;
     try {
         const response = await fetch(url, { method: 'POST' });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok || !data.success) throw new Error(data.error || 'Action impossible');
         importPaused = !!data.paused;
         _renderImportPausedBanner();
         if (typeof displayImportFiles === 'function') displayImportFiles();
     } catch (error) {
         if (button) button.disabled = false;
-        alert('❌ Erreur: ' + error.message);
+        importNotify('Erreur : ' + error.message);
     }
 }
 
@@ -468,35 +497,11 @@ function resumeImport(button) {
     return _postImportControl('/api/import/resume', button);
 }
 
-function renderCurrentlyProcessingBanner() {
-    const container = document.getElementById('currently-processing-banner');
-    if (!container) return;
-    if (!currentlyProcessingFile) {
-        container.innerHTML = '';
-        container.style.display = 'none';
-        return;
-    }
-    const elapsed = currentlyProcessingFile.elapsed_seconds ?? 0;
-    const isStuck = elapsed > 300;
-    const color = isStuck ? '#dc3545' : '#e67e22';
-    const label = isStuck
-        ? `⚠️ Bloqué depuis ${elapsed}s (au-delà du délai normal) : `
-        : `🔄 En cours de traitement (${elapsed}s) : `;
-    container.style.display = 'block';
-    container.innerHTML = `
-        <div style="padding:8px 12px; margin-bottom:10px; border-radius:6px; background:${isStuck ? '#f8d7da' : '#fff3cd'}; border:1px solid ${color}; color:${color}; font-weight:600;">
-            ${svgIcon('loader-circle', 'icon-spin')} ${label}${escapeHtml(currentlyProcessingFile.filename)}
-        </div>
-    `;
-}
+const IMPORT_STUCK_SECONDS = 300;
 
 function _pendingVolumeLabel(pending) {
     if (pending.is_oneshot) return 'One Shot';
-    if (pending.volume_number && pending.volume_number !== 'null') return `Tome ${escapeHtml(String(pending.volume_number))}`;
-    if (pending.is_integral) return `Intégrale${pending.integral_number != null ? ' ' + pending.integral_number : ''}`;
-    if (pending.is_hs) return `Hors-série${pending.hs_number != null ? ' ' + pending.hs_number : ''}`;
-    if (pending.is_episode) return `Épisode${pending.episode_number != null ? ' ' + pending.episode_number : ''}`;
-    return '—';
+    return escapeHtml(volumeTypeLabel(pending, '—'));
 }
 
 // Factorisé pour être réutilisé par refreshDownloadingProgress (mise à jour EN PLACE
@@ -558,6 +563,8 @@ function _pendingDownloadRowHtml(pending) {
             ? `<span style="color:var(--color-success); font-weight:600;" data-tooltip="Téléchargement terminé - repris automatiquement au prochain passage de l'import (quelques secondes)">${svgIcon('check')} Téléchargé — import automatique sous peu</span>`
             : pending.exhausted
                 ? `<span class="import-download-error">${svgIcon('alert-triangle')} Échec — relance manuelle</span>`
+            : pending.paused
+                ? `<div style="font-size:0.85em;">${svgIcon('pause')} En pause</div>`
             : hasProgress
                 ? `
                     <div style="height:6px; background:var(--color-surface-alt); border:1px solid var(--color-border); border-radius:3px; overflow:hidden;">
@@ -577,12 +584,13 @@ function _pendingDownloadRowHtml(pending) {
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(pending.title)}">${escapeHtml(pending.title)}</div>
                 ${pending.already_owned ? `<div style="font-size:0.78em; color:var(--color-text-muted);" data-tooltip="Ce tome est déjà dans la bibliothèque (autre source) : ce téléchargement le remplacera ou sera ignoré comme doublon.">déjà possédé</div>` : ''}
             </td>
-            <td>${pending.series_title ? (pending.series_id ? `<a href="/series/${pending.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(pending.series_title)}</a>` : escapeHtml(pending.series_title)) : '—'}</td>
+            <td>${_seriesCellHtml(pending.series_id, pending.series_title)}</td>
             <td>${_pendingVolumeLabel(pending)}</td>
             <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension({ filename: pending.title }))}</td>
             <td style="text-align:center; min-width:110px;">
                 ${statusHtml}
                 ${pending.exhausted ? `<button class="btn-icon-only" onclick="retryTelegramDownload(${pending.id}, this)" data-tooltip="Relancer manuellement (budget de tentatives automatiques épuisé)">${svgIcon('refresh-cw')}</button>` : ''}
+                ${_pendingQueueButtonsHtml(pending)}
                 <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}', {is_integral: ${!!pending.is_integral}, integral_number: ${pending.integral_number ?? 'null'}, is_hs: ${!!pending.is_hs}, hs_number: ${pending.hs_number ?? 'null'}, is_episode: ${!!pending.is_episode}, episode_number: ${pending.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
                 <button class="btn-icon-only" onclick="removePendingDownload(${pending.id}, this)" data-tooltip="Retirer et annuler le téléchargement chez le client (si retrouvé)">${svgIcon('trash-2')}</button>
             </td>
@@ -631,9 +639,9 @@ async function deleteActiveDownload(clientKey, id, trackingId, button) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) {
-            alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));
+            importNotify('Erreur : ' + (data.error || 'Erreur inconnue'));
             if (button) button.disabled = false;
             return;
         }
@@ -646,7 +654,7 @@ async function deleteActiveDownload(clientKey, id, trackingId, button) {
         }
         await loadActiveDownloads();
     } catch (error) {
-        alert('❌ Erreur de connexion: ' + error.message);
+        importNotify('Erreur de connexion : ' + error.message);
         if (button) button.disabled = false;
     }
 }
@@ -661,9 +669,9 @@ async function removePendingDownload(downloadId, button) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: downloadId })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) {
-            alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));
+            importNotify('Erreur : ' + (data.error || 'Erreur inconnue'));
             if (button) button.disabled = false;
             return;
         }
@@ -672,7 +680,7 @@ async function removePendingDownload(downloadId, button) {
         }
         await loadActiveDownloads();
     } catch (error) {
-        alert('❌ Erreur de connexion: ' + error.message);
+        importNotify('Erreur de connexion : ' + error.message);
         if (button) button.disabled = false;
     }
 }
@@ -689,7 +697,7 @@ async function _deleteImportFileRequest(file) {
             tracking_id: file.destination?.tracking_id ?? file.pack_download_id
         })
     });
-    return response.json();
+    return readJsonResponse(response);
 }
 
 async function _deleteIncompatibleFolderRequest(importRoot, relativePath) {
@@ -698,7 +706,7 @@ async function _deleteIncompatibleFolderRequest(importRoot, relativePath) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ import_root: importRoot, relative_path: relativePath })
     });
-    return response.json();
+    return readJsonResponse(response);
 }
 
 // Valide à la main qu'un pack-archive est terminé (volumes empaquetés puis importés): le
@@ -718,7 +726,7 @@ async function completePackGroup(downloadId, containerIndices, button) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ download_id: downloadId, archive_paths: containers.map(f => f.filepath) })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok || !data.success) throw new Error(data.error || 'Validation impossible');
         containers.forEach(file => {
             const idx = importFiles.indexOf(file);
@@ -728,7 +736,7 @@ async function completePackGroup(downloadId, containerIndices, button) {
         updateImportStats();
         await loadActiveDownloads();
     } catch (error) {
-        alert('❌ Erreur: ' + error.message);
+        importNotify('Erreur : ' + error.message);
         if (button) button.disabled = false;
     }
 }
@@ -758,9 +766,9 @@ async function removePendingPack(downloadId, fileIndices, folderIndices, button)
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: downloadId })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) {
-            alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));
+            importNotify('Erreur : ' + (data.error || 'Erreur inconnue'));
             if (button) button.disabled = false;
             return;
         }
@@ -794,13 +802,13 @@ async function removePendingPack(downloadId, fileIndices, folderIndices, button)
         }
 
         if (failures.length > 0) {
-            alert(`⚠️ Pack retiré, mais ${failures.length} ${pluralize(failures.length, 'élément')} n'${pluralize(failures.length, "a", "ont")} pas pu être ${pluralize(failures.length, 'supprimé')}:\n${failures.join('\n')}`);
+            importNotify(`Pack retiré, mais ${failures.length} ${pluralize(failures.length, 'élément')} n'${pluralize(failures.length, "a", "ont")} pas pu être ${pluralize(failures.length, 'supprimé')}:\n${failures.join('\n')}`, 'warning');
         }
 
         updateImportStats();
         await loadActiveDownloads();
     } catch (error) {
-        alert('❌ Erreur de connexion: ' + error.message);
+        importNotify('Erreur de connexion : ' + error.message);
         if (button) button.disabled = false;
     }
 }
@@ -815,15 +823,15 @@ async function retryTelegramDownload(downloadId, button) {
 
     try {
         const response = await fetch(`/api/telegram-channels/retry/${downloadId}`, { method: 'POST' });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) {
-            alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));
+            importNotify('Erreur : ' + (data.error || 'Erreur inconnue'));
             if (button) button.disabled = false;
             return;
         }
         await loadActiveDownloads();
     } catch (error) {
-        alert('❌ Erreur de connexion: ' + error.message);
+        importNotify('Erreur de connexion : ' + error.message);
         if (button) button.disabled = false;
     }
 }
@@ -887,7 +895,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
                 <div class="active-download-size-line" style="font-size:0.9em;">${_activeDownloadSizeLineHtml(item)}</div>
             </td>
-            <td>${item.series_title ? (item.series_id ? `<a href="/series/${item.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(item.series_title)}</a>` : escapeHtml(item.series_title)) : '—'}</td>
+            <td>${_seriesCellHtml(item.series_id, item.series_title)}</td>
             <td>${_pendingVolumeLabel(item)}</td>
             <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension({ filename: item.name }))}</td>
             <td style="text-align:center; min-width:110px;">
@@ -895,11 +903,105 @@ function _activeDownloadRowHtml({ clientKey, item }) {
                     <div class="active-download-progress-fill" style="height:100%; width:${progress}%; background:var(--color-accent);"></div>
                 </div>
                 <div class="active-download-progress-label" style="font-size:0.8em; margin-top:2px;">${_activeDownloadProgressLabelHtml(item)}</div>
+                ${_activeQueueButtonsHtml(clientKey, item)}
                 ${editButtonHtml}
                 ${deleteButtonHtml}
             </td>
         </tr>
     `;
+}
+
+// « Télécharger en premier » / pause / reprise (POST /api/activity/download-control):
+// Telegram (file de Bullarr), qBittorrent (file d'attente, stop/start) et aMule (priorité
+// haute, pause/resume). rTorrent/Deluge: pas de bouton.
+const DOWNLOAD_CONTROL_CLIENTS = new Set(['telegram', 'qbittorrent', 'amule']);
+const PAUSED_CLIENT_STATES = new Set(['pausedDL', 'stoppedDL', 'Paused']);
+
+function _downloadControlButtonsHtml(target, paused, topLabel) {
+    const arg = escapeForAttribute(JSON.stringify(target));
+    const pauseButton = paused
+        ? `<button class="btn-icon-only" onclick="controlDownload('${arg}', 'resume', this)" data-tooltip="Reprendre le téléchargement">${svgIcon('play')}</button>`
+        : `<button class="btn-icon-only" onclick="controlDownload('${arg}', 'pause', this)" data-tooltip="Mettre le téléchargement en pause">${svgIcon('pause')}</button>`;
+    return `<button class="btn-icon-only" onclick="controlDownload('${arg}', 'top', this)" data-tooltip="${topLabel}">${svgIcon('arrow-up-to-line')}</button>${pauseButton}`;
+}
+
+function _pendingQueueButtonsHtml(pending) {
+    if (pending.client !== 'telegram' || pending.status !== 'pending' || pending.exhausted) return '';
+    return _downloadControlButtonsHtml({ client: 'telegram', tracking_id: pending.id }, pending.paused,
+        'Télécharger ce fichier en premier (passe devant les autres téléchargements Telegram)');
+}
+
+function _activeQueueButtonsHtml(clientKey, item) {
+    if (!DOWNLOAD_CONTROL_CLIENTS.has(clientKey) || !item.id) return '';
+    const topLabel = clientKey === 'amule'
+        ? 'Priorité haute dans aMule (aMule n\'a pas de file ordonnée)'
+        : 'Télécharger en premier (tête de la file d\'attente qBittorrent)';
+    return _downloadControlButtonsHtml({ client: clientKey, id: String(item.id), tracking_id: item.tracking_id ?? null },
+        PAUSED_CLIENT_STATES.has(item.state), topLabel);
+}
+
+async function controlDownload(targetJson, action, button) {
+    const target = JSON.parse(targetJson);
+    if (button) button.disabled = true;
+    try {
+        const response = await fetch('/api/activity/download-control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...target, action }),
+        });
+        const data = await readJsonResponse(response);
+        if (!response.ok || !data.success) throw new Error(data.error || 'Action impossible');
+        const labels = { top: 'Passé en premier', pause: 'Téléchargement mis en pause', resume: 'Téléchargement repris' };
+        showToast('download-control', labels[action], { icon: 'check', autoHideMs: 3000 });
+        await loadActiveDownloads();
+    } catch (error) {
+        showToast('download-control', error.message, { icon: 'circle-x', autoHideMs: 6000 });
+        if (button) button.disabled = false;
+    }
+}
+
+// Ordre par défaut: les téléchargements passés « en premier » tout en haut (le dernier
+// remonté d'abord), puis l'ordre habituel (en attente, puis en cours chez un client).
+function _prioritizedDownloadRowsHtml(pendingEntries, activeEntries) {
+    const prioritized = [...pendingEntries, ...activeEntries]
+        .filter(entry => entry.priority > 0)
+        .sort((a, b) => b.priority - a.priority);
+    const rest = [...pendingEntries, ...activeEntries].filter(entry => !(entry.priority > 0));
+    return [...prioritized, ...rest].map(entry => entry.html).join('');
+}
+
+// Série par id, toutes bibliothèques confondues. Table calculée une fois et refaite
+// seulement quand librariesSeriesMap change (remplacée ou séries ajoutées): appelée pour
+// chaque ligne à chaque rendu, l'ancien Object.values(...).flat().find() parcourait toutes
+// les séries de toutes les bibliothèques à chaque fois.
+let _seriesByIdCache = { source: null, count: -1, byId: new Map() };
+
+function _findSeriesById(seriesId) {
+    if (seriesId == null || seriesId === '') return null;
+    const lists = Object.values(librariesSeriesMap);
+    const count = lists.reduce((total, list) => total + (list?.length || 0), 0);
+    if (_seriesByIdCache.source !== librariesSeriesMap || _seriesByIdCache.count !== count) {
+        const byId = new Map();
+        lists.forEach(list => (list || []).forEach(series => byId.set(String(series.id), series)));
+        _seriesByIdCache = { source: librariesSeriesMap, count, byId };
+    }
+    return _seriesByIdCache.byId.get(String(seriesId)) || null;
+}
+
+// Colonne Album de toutes les lignes de /import (fichier, en attente, en cours, pack):
+// série (lien vers sa fiche) puis lien Bédéthèque (celui de la série en base, ou
+// bedethequeUrl pour une nouvelle série déjà matchée), puis extraHtml (boutons).
+function _seriesCellHtml(seriesId, seriesTitle, { bedethequeUrl = null, extraHtml = '' } = {}) {
+    if (!seriesTitle) return '—';
+    const titleHtml = seriesId
+        ? `<a href="/series/${seriesId}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(seriesTitle)}</a>`
+        : escapeHtml(seriesTitle);
+    const series = _findSeriesById(seriesId);
+    const url = bedethequeUrl || series?.bedetheque_url;
+    const bedethequeHtml = url
+        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" class="import-bedetheque-link" onclick="event.stopPropagation()" title="Voir la fiche Bédéthèque de « ${escapeHtml(series?.title || seriesTitle)} »"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque"></a>`
+        : '';
+    return `<div class="import-series-cell"><span class="import-series-cell-title">${titleHtml}</span>${bedethequeHtml}${extraHtml}</div>`;
 }
 
 let trackingEditId = null;
@@ -1030,8 +1132,7 @@ async function _loadTrackingEditVolumes() {
         return;
     }
 
-    const allSeries = Object.values(librariesSeriesMap).flat();
-    const series = allSeries.find(s => s.id === parseInt(seriesId, 10));
+    const series = _findSeriesById(seriesId);
     if (series && series.is_oneshot) {
         group.style.display = 'none';
         document.getElementById('tracking-edit-volume').value = '';
@@ -1041,7 +1142,7 @@ async function _loadTrackingEditVolumes() {
 
     try {
         const response = await fetch(`/api/series/${seriesId}/volumes`);
-        const volumes = await response.json();
+        const volumes = await readJsonResponse(response, { expectArray: true });
         const plainVolumes = volumes.filter(v => v.volume_number != null && !v.is_integral && !v.is_hs && !v.is_episode);
         select.innerHTML = '<option value="">-- Tomes connus de la série --</option>' +
             plainVolumes.map(v => `<option value="${v.volume_number}">${escapeHtml(_bdVolumeOptionLabel(v))}</option>`).join('');
@@ -1054,7 +1155,7 @@ async function _loadTrackingEditVolumes() {
 async function saveTrackingEdit() {
     const seriesValue = document.getElementById('tracking-edit-series').value;
     if (!trackingEditId || !seriesValue) {
-        alert('⚠️ Veuillez sélectionner une série');
+        importNotify('Veuillez sélectionner une série', 'warning');
         return;
     }
     const volumeRaw = document.getElementById('tracking-edit-volume').value.trim();
@@ -1070,7 +1171,7 @@ async function saveTrackingEdit() {
         const newTitle = document.getElementById('tracking-edit-new-series-name').value.trim();
         const libraryId = document.getElementById('tracking-edit-library').value;
         if (!newTitle || !libraryId) {
-            alert('⚠️ Veuillez indiquer le nom de la nouvelle série');
+            importNotify('Veuillez indiquer le nom de la nouvelle série', 'warning');
             return;
         }
         try {
@@ -1083,14 +1184,14 @@ async function saveTrackingEdit() {
                     bedetheque_url: getBedethequeMatchForTitle(newTitle)
                 })
             });
-            const createData = await createResponse.json();
+            const createData = await readJsonResponse(createResponse);
             if (!createData.success) {
-                alert('❌ Erreur création série: ' + (createData.error || 'Erreur inconnue'));
+                importNotify('Erreur création série : ' + (createData.error || 'Erreur inconnue'));
                 return;
             }
             seriesId = createData.series_id;
         } catch (error) {
-            alert('❌ Erreur de connexion: ' + error.message);
+            importNotify('Erreur de connexion : ' + error.message);
             return;
         }
     } else {
@@ -1107,16 +1208,16 @@ async function saveTrackingEdit() {
                 ...typePayload
             })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) {
-            alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));
+            importNotify('Erreur : ' + (data.error || 'Erreur inconnue'));
             return;
         }
         closeTrackingEditModal();
         if (seriesValue === '__new__') await loadAllLibraries();
         await loadActiveDownloads();
     } catch (error) {
-        alert('❌ Erreur de connexion: ' + error.message);
+        importNotify('Erreur de connexion : ' + error.message);
     }
 }
 
@@ -1179,12 +1280,12 @@ function _assignStableOrder(files) {
 async function loadAllLibraries() {
     try {
         const response = await fetch('/api/libraries');
-        allLibraries = await response.json();
+        allLibraries = await readJsonResponse(response, { expectArray: true });
 
         // Charger les séries de toutes les bibliothèques en parallèle
         await Promise.all(allLibraries.map(async (lib) => {
             const seriesResponse = await fetch(`/api/library/${lib.id}/series?view=import`);
-            librariesSeriesMap[lib.id] = await seriesResponse.json();
+            librariesSeriesMap[lib.id] = await readJsonResponse(seriesResponse, { expectArray: true });
         }));
     } catch (error) {
         console.error('Erreur chargement bibliothèques:', error);
@@ -1207,7 +1308,7 @@ async function scanImportDirectory() {
             }
         }, 20000);
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         hasScannedOnce = true;
 
         if (data.success) {
@@ -1262,7 +1363,7 @@ async function refreshImportFilesQuietly() {
 
     try {
         const response = await _fetchWithTimeout('/api/import/state', {}, 30000);
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) return;
 
         const stillPresentPaths = new Set(data.files.map(f => f.filepath));
@@ -1346,9 +1447,19 @@ function updateImportStats() {
         selectAll.indeterminate = totalSelected > 0 && totalSelected < totalSelectable;
     }
 
+    // Oublier les sélections de lignes disparues (téléchargement terminé, importé ou
+    // supprimé ailleurs): gardées dans ces ensembles, elles laissaient « Supprimer la
+    // sélection » affiché sans aucune case cochée à l'écran.
+    const presentPendingIds = new Set(pendingDownloads.map(p => p.id));
+    [...selectedPendingIds].forEach(id => { if (!presentPendingIds.has(id)) selectedPendingIds.delete(id); });
+    const presentActiveKeys = new Set(selectableActiveDownloads.map(({ clientKey, item }) => `${clientKey}:${item.id}`));
+    [...selectedActiveKeys].forEach(key => { if (!presentActiveKeys.has(key)) selectedActiveKeys.delete(key); });
+
     const deleteBtn = document.getElementById('delete-selected-btn');
     if (deleteBtn) {
-        const selectedCount = importFiles.filter(_isFileCheckedForDeletion).length + selectedPendingIds.size + selectedActiveKeys.size + selectedIncompatibleFolderKeys.size;
+        // Seulement les cases cochées réellement présentes (mêmes comptes que « tout
+        // sélectionner » ci-dessus).
+        const selectedCount = importFiles.filter(_isFileCheckedForDeletion).length + pendingSelectedCount + activeSelectedCount + folderSelectedCount;
         deleteBtn.disabled = selectedCount === 0;
     }
 
@@ -1356,6 +1467,79 @@ function updateImportStats() {
     if (convertBtn) {
         convertBtn.disabled = importFiles.filter(_isFileCheckedForConversion).length === 0;
     }
+
+    // Un seul bouton pause/reprise: « Mettre en pause » dès qu'un téléchargement coché
+    // tourne, « Reprendre » quand tous les cochés sont en pause.
+    const controllable = _selectedControllableDownloads();
+    const pauseBtn = document.getElementById('pause-selected-btn');
+    if (pauseBtn) {
+        const action = controllable.some(target => !target.paused) ? 'pause' : 'resume';
+        pauseBtn.disabled = controllable.length === 0;
+        if (pauseBtn.dataset.action !== action || !pauseBtn.dataset.tooltip) {
+            pauseBtn.dataset.action = action;
+            pauseBtn.innerHTML = action === 'pause'
+                ? `${svgIcon('pause')} Mettre en pause`
+                : `${svgIcon('play')} Reprendre`;
+            pauseBtn.dataset.tooltip = action === 'pause'
+                ? 'Mettre en pause les téléchargements cochés (Telegram, qBittorrent, aMule)'
+                : 'Reprendre les téléchargements cochés';
+        }
+    }
+
+    // Boutons du bas affichés seulement quand la sélection leur donne quelque chose à
+    // faire (« uniquement quand je clique sur une checkbox ») - aucune case cochée:
+    // barre vide.
+    for (const id of SELECTION_ACTION_BUTTON_IDS) {
+        const button = document.getElementById(id);
+        if (button) button.style.display = button.disabled ? 'none' : '';
+    }
+}
+
+const SELECTION_ACTION_BUTTON_IDS = ['delete-selected-btn', 'pause-selected-btn', 'convert-selected-btn', 'import-btn'];
+
+// Téléchargements cochés pilotables (voir controlDownload): Telegram en attente, et les
+// lignes qBittorrent/aMule en cours. paused: état actuel, pour n'envoyer que ce qui change.
+function _selectedControllableDownloads() {
+    const targets = [];
+    for (const pending of _visiblePendingDownloads()) {
+        if (!selectedPendingIds.has(pending.id)) continue;
+        if (pending.client !== 'telegram' || pending.status !== 'pending' || pending.exhausted) continue;
+        targets.push({ client: 'telegram', tracking_id: pending.id, paused: !!pending.paused });
+    }
+    for (const { clientKey, item } of activeDownloads) {
+        if (item.id == null || !selectedActiveKeys.has(`${clientKey}:${item.id}`)) continue;
+        if (!DOWNLOAD_CONTROL_CLIENTS.has(clientKey)) continue;
+        targets.push({ client: clientKey, id: String(item.id), tracking_id: item.tracking_id ?? null, paused: PAUSED_CLIENT_STATES.has(item.state) });
+    }
+    return targets;
+}
+
+async function bulkControlSelectedDownloads(action, button) {
+    const targets = _selectedControllableDownloads().filter(target => (action === 'pause') !== target.paused);
+    if (!targets.length) return;
+    if (button) button.disabled = true;
+    const errors = [];
+    for (const { paused, ...target } of targets) {
+        try {
+            const response = await fetch('/api/activity/download-control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...target, action }),
+            });
+            const data = await readJsonResponse(response);
+            if (!response.ok || !data.success) errors.push(data.error || 'Action impossible');
+        } catch (error) {
+            errors.push(error.message);
+        }
+    }
+    const done = targets.length - errors.length;
+    const verb = action === 'pause' ? 'mis en pause' : 'repris';
+    showToast('download-control',
+        errors.length
+            ? `${done}/${targets.length} ${pluralize(targets.length, 'téléchargement')} ${verb}. Erreur : ${errors[0]}`
+            : `${done} ${pluralize(done, 'téléchargement')} ${verb}`,
+        { icon: errors.length ? 'circle-x' : 'check', autoHideMs: errors.length ? 8000 : 3000 });
+    await loadActiveDownloads();
 }
 
 function _isFileCheckedForDeletion(file) {
@@ -1406,7 +1590,7 @@ async function bulkDeleteSelectedImportFiles() {
             tracking_id: file.destination?.tracking_id ?? file.pack_download_id
                 })
             });
-            const data = await response.json();
+            const data = await readJsonResponse(response);
             if (!data.success) {
                 failedFiles.push(file);
                 failureMessages.push(`${file.filename}: ${data.error || 'erreur inconnue'}`);
@@ -1426,7 +1610,7 @@ async function bulkDeleteSelectedImportFiles() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: pending.id })
             });
-            const data = await response.json();
+            const data = await readJsonResponse(response);
             if (!data.success) failureMessages.push(`${pending.title}: ${data.error || 'erreur inconnue'}`);
         } catch (error) {
             failureMessages.push(`${pending.title}: ${error.message}`);
@@ -1444,7 +1628,7 @@ async function bulkDeleteSelectedImportFiles() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: item.id })
             });
-            const data = await response.json();
+            const data = await readJsonResponse(response);
             if (!data.success) failureMessages.push(`${item.name}: ${data.error || 'erreur inconnue'}`);
         } catch (error) {
             failureMessages.push(`${item.name}: ${error.message}`);
@@ -1462,7 +1646,7 @@ async function bulkDeleteSelectedImportFiles() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ import_root: folder.import_root, relative_path: folder.relative_path })
             });
-            const data = await response.json();
+            const data = await readJsonResponse(response);
             if (!data.success) {
                 failedFolders.push(folder);
                 failureMessages.push(`${folder.folder_name}: ${data.error || 'erreur inconnue'}`);
@@ -1482,7 +1666,7 @@ async function bulkDeleteSelectedImportFiles() {
 
     showToast(toastId, failureMessages.length ? `Terminé avec ${failureMessages.length} ${pluralize(failureMessages.length, 'erreur')}` : 'Terminé',
         { icon: failureMessages.length ? 'triangle-alert' : 'check', autoHideMs: 4000 });
-    if (failureMessages.length) alert('❌ Échecs:\n' + failureMessages.join('\n'));
+    if (failureMessages.length) importNotify('Échecs :\n' + failureMessages.join('\n'));
 
     // Réinterroge les clients immédiatement (comme le fait déjà chaque suppression
     // individuelle) plutôt que d'attendre le prochain sondage périodique - rafraîchit
@@ -1528,7 +1712,7 @@ async function bulkConvertSelectedImportFiles() {
                 files: filesToConvert.map(f => ({ import_root: f.import_root, relative_path: f.relative_path, force_mislabeled: String(f.convertible || '').startsWith('mislabeled-') }))
             })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) {
             showToast(toastId, `❌ Erreur: ${data.error || 'erreur inconnue'}`, { icon: 'triangle-alert', autoHideMs: 6000 });
             return;
@@ -1583,9 +1767,9 @@ async function convertIncompatibleFolderToCbz(importRoot, relativePath, button) 
         const previewResponse = await fetch(
             `/api/import/incompatible-folder/convert-to-cbz/preview?import_root=${encodeURIComponent(importRoot)}&relative_path=${encodeURIComponent(relativePath)}`
         );
-        const preview = await previewResponse.json();
+        const preview = await readJsonResponse(previewResponse);
         if (!preview.success) {
-            alert('❌ ' + (preview.error || 'Erreur inconnue'));
+            importNotify(preview.error || 'Erreur inconnue');
             resetButton();
             return;
         }
@@ -1604,9 +1788,9 @@ async function convertIncompatibleFolderToCbz(importRoot, relativePath, button) 
                 manual_groups: packaging.manualGroups,
             })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) {
-            alert('❌ Erreur: ' + (data.errors || []).join('\n') || 'Erreur inconnue');
+            importNotify('Erreur : ' + ((data.errors || []).join('\n') || data.error || 'Erreur inconnue'));
         }
         if (data.created && data.created.length) {
             showToast('convert-jpg-cbz', `✅ ${data.created.length} ${pluralize(data.created.length, 'fichier')} .cbz ${pluralize(data.created.length, 'créé')}`, { icon: 'package', autoHideMs: 4000 });
@@ -1615,7 +1799,7 @@ async function convertIncompatibleFolderToCbz(importRoot, relativePath, button) 
         // rescan complet le fait ressortir comme des fichiers importables normaux.
         await loadActiveDownloads();
     } catch (error) {
-        alert('❌ Erreur de connexion: ' + error.message);
+        importNotify('Erreur de connexion : ' + error.message);
         resetButton();
     }
 }
@@ -1756,7 +1940,7 @@ function confirmCbzPackagingMode() {
     }));
 
     if (manualGroups.length === 0) {
-        alert('Tous les groupes sont ignorés, rien à empaqueter.');
+        importNotify('Tous les groupes sont ignorés, rien à empaqueter.', 'warning');
         return;
     }
 
@@ -1790,7 +1974,7 @@ async function toggleIncompatibleFolderFiles(rowId, importRoot, relativePath) {
     try {
         const params = new URLSearchParams({ import_root: importRoot, relative_path: relativePath });
         const response = await fetch(`/api/import/incompatible-folder/files?${params}`);
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!data.success) throw new Error(data.error || 'Erreur inconnue');
 
         const remainingCount = data.total_count - data.files.length;
@@ -1830,7 +2014,7 @@ async function deleteIncompatibleFolder(importRoot, relativePath, button) {
         );
         displayImportFiles();
     } catch (error) {
-        alert('❌ Erreur: ' + error.message);
+        importNotify('Erreur : ' + error.message);
         if (button) button.disabled = false;
     }
 }
@@ -1908,7 +2092,7 @@ async function viewArchiveContent(importRoot, relativePath) {
     try {
         const params = new URLSearchParams({import_root: importRoot, relative_path: relativePath});
         const response = await fetch(`/api/import/archive-content?${params}`);
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
         summary.textContent = `${data.format.toUpperCase()} · ${data.total_count} entrée(s)${data.truncated ? ' · liste plafonnée' : ''}`;
         if (data.format === 'zip') {
@@ -1937,7 +2121,7 @@ async function packageArchiveAsCbz() {
             packageButton.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} Empaquetage en cours…`;
         }
         const response = await fetch('/api/import/archive-package-folders', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
         const count = data.created.length;
         // Les CBZ créés sont enregistrés comme fichiers à revue manuelle. Recharge-les
@@ -1996,7 +2180,7 @@ function _importFileRowHtml(file, index) {
     const hasKnownVolume = _hasKnownVolume(file);
     const hasDatabaseVolume = !!file.destination?.volume_id;
     // "en import en cours je ne devrais plus rien changer. c'est uniquement en mode
-    // import manuel" - calculé une seule fois ici (avant albumHtml/_volumeCellHtml/
+    // import manuel" - calculé une seule fois ici (avant albumCellHtml/_volumeCellHtml/
     // statusBadge, qui en ont tous besoin) plutôt que recalculé séparément à chaque
     // Seul un fichier réellement réclamé par l'import verrouille ses actions et porte
     // le badge « Import en cours ». Les autres membres du pack restent visibles.
@@ -2011,35 +2195,21 @@ function _importFileRowHtml(file, index) {
         && ['completed', 'importing'].includes(file.destination.download_status)
         && !file.auto_import_skip_reason && !file.manual_override;
     const isLocked = isImportingNow || awaitingAutoImport;
-    const seriesTitleHtml = hasDestination
-        ? ((file.destination.series_id && !file.destination.is_new_series)
-            ? `<a href="/series/${file.destination.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(file.destination.series_title)}</a>`
-            : escapeHtml(file.destination.series_title))
-        : '';
-    const albumHtml = hasDestination
-        ? `
-            <span>${svgIcon('pin')} ${escapeHtml(file.destination.library_name)} → ${seriesTitleHtml}${file.destination.is_new_series ? ' · nouvelle série' : ''}</span>
-            ${isLocked ? '' : `
-            <button class="btn-icon-only" onclick="openDestinationModal(${index})" data-tooltip="Modifier">${svgIcon('pencil')}</button>
-            <button class="btn-icon-only" onclick="removeDestination(${index})" data-tooltip="Retirer l'assignation">${svgIcon('x')}</button>
-            `}
-        `
-        : `<button class="btn-icon-only" onclick="openDestinationModal(${index})" data-tooltip="Assigner une destination (série existante ou nouvelle, avec matching Bédéthèque)">${svgIcon('pin')}</button>`;
-    // buildBedethequeLinkHtml ne connaît que les séries DÉJÀ en base - pour un
-    // fichier tout juste assigné à une NOUVELLE série matchée sur Bédéthèque pendant
-    // cet import (destination.bedetheque_url, voir pickBedethequeImportMatch), cette
-    // série n'existe pas encore en base et le lien restait vide malgré le matching
-    // déjà fait. Priorité au match déjà choisi pour CE fichier, retombe sur la
-    // recherche par titre sinon - résultat mis en cache sur le fichier lui-même
-    // ("import est très lent à s'afficher": parcourt toutes les séries de toutes les
-    // bibliothèques, pas la peine de le refaire à chaque re-rendu).
-    const destinationSeries = file.destination?.series_id != null
-        ? Object.values(librariesSeriesMap).flat().find(series => String(series.id) === String(file.destination.series_id))
-        : null;
-    const destinationBedethequeUrl = file.destination?.bedetheque_url || destinationSeries?.bedetheque_url;
-    const bedethequeLinkHtml = destinationBedethequeUrl
-        ? `<a href="${escapeHtml(destinationBedethequeUrl)}" target="_blank" rel="noopener" class="import-bedetheque-link" title="Voir la fiche Bédéthèque de « ${escapeHtml(file.destination?.series_title || destinationSeries.title)} »"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque"></a>`
-        : (file._bedethequeLinkHtml ?? (file._bedethequeLinkHtml = buildBedethequeLinkHtml(fileGroupTitle(file))));
+    // Colonne Album: même rendu que les lignes de téléchargement (_seriesCellHtml), pour que
+    // la ligne ne change pas d'aspect entre téléchargement et import. Sans destination,
+    // bouton d'assignation et lien Bédéthèque deviné d'après le titre (mis en cache sur le
+    // fichier: parcourt toutes les séries de toutes les bibliothèques).
+    const albumCellHtml = hasDestination
+        ? _seriesCellHtml(
+            file.destination.is_new_series ? null : file.destination.series_id,
+            file.destination.series_title,
+            {
+                bedethequeUrl: file.destination.bedetheque_url,
+                extraHtml: (file.destination.is_new_series ? ' · nouvelle série' : '') + (isLocked ? '' : `
+                    <button class="btn-icon-only" onclick="openDestinationModal(${index})" data-tooltip="Modifier">${svgIcon('pencil')}</button>
+                    <button class="btn-icon-only" onclick="removeDestination(${index})" data-tooltip="Retirer l'assignation">${svgIcon('x')}</button>`),
+            })
+        : `<div class="import-series-cell"><button class="btn-icon-only" onclick="openDestinationModal(${index})" data-tooltip="Assigner une destination (série existante ou nouvelle, avec matching Bédéthèque)">${svgIcon('pin')}</button>${file._bedethequeLinkHtml ?? (file._bedethequeLinkHtml = buildBedethequeLinkHtml(fileGroupTitle(file)))}</div>`;
     const trackedConflictVolume = file.parsed.tracked_volume_conflict;
     const statusBadge = file.validation_error
         ? (file.forceImport
@@ -2113,7 +2283,7 @@ function _importFileRowHtml(file, index) {
                 ${hasDatabaseVolume ? `<div class="import-auto-skip-explanation">⚠️ Album déjà enregistré dans Bullarr.<button type="button" class="btn-neutral-sm" style="margin-left:6px;" onclick="openDestinationModal(${index})">Remplacer le fichier existant</button></div>` : ''}
                 ${_archiveContentActionHtml(file)}
             </td>
-            <td><div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">${albumHtml}${bedethequeLinkHtml || ''}</div></td>
+            <td>${albumCellHtml}</td>
             <td>${_volumeCellHtml(file, index, isLocked)}</td>
             <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension(file))}</td>
             <td style="text-align:center;">
@@ -2141,12 +2311,12 @@ async function takeManualControl(index) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filepath: file.filepath, destination: file.destination })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok || !data.success) throw new Error(data.error || 'Impossible de reprendre la main');
     } catch (error) {
         file.manual_override = previous;
         displayImportFiles();
-        alert('❌ Erreur: ' + error.message);
+        importNotify('Erreur : ' + error.message);
     }
 }
 
@@ -2285,7 +2455,7 @@ async function _loadArchiveContent(file) {
     try {
         const params = new URLSearchParams({ import_root: file.import_root, relative_path: file.relative_path });
         const response = await fetch(`/api/import/archive-content?${params}`);
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok || !data.success) throw new Error(data.error || 'Archive illisible');
         archiveContentCache.set(key, { data });
     } catch (error) {
@@ -2367,7 +2537,7 @@ async function packageInlineArchive(button) {
         button.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} Empaquetage en cours…`;
         const body = { import_root: button.dataset.importRoot, relative_path: button.dataset.relativePath, folder_paths: folderPaths };
         const response = await fetch('/api/import/archive-package-folders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok || !data.success) throw new Error(data.error || 'Empaquetage impossible');
         archiveSelectedFolders.delete(key);
         await loadActiveDownloads();
@@ -2406,9 +2576,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
     const packNeedsManualAction = readyCount > 0 && autoReadyCount < readyCount;
     const isImportingNow = _pendingImportingNow(pending)
         || fileMatches.some(({ file }) => _isFileImportingNow(file));
-    const seriesLabel = pending.series_title
-        ? (pending.series_id ? `<a href="/series/${pending.series_id}" class="import-series-link" title="Voir la fiche de cette série">${escapeHtml(pending.series_title)}</a>` : escapeHtml(pending.series_title))
-        : '—';
+    const seriesLabel = _seriesCellHtml(pending.series_id, pending.series_title);
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
             <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
@@ -2493,10 +2661,22 @@ function _importingBannerLabels(importingFiles, pendingPackGroups) {
     // Les fichiers d'un pack sont retirés des lignes racines du tableau. Compter
     // leur groupe une seule fois, sinon le bandeau disparaît précisément quand
     // l'import se fait à partir d'une intégrale ou répète le nom de la série.
-    const labels = importingFiles.map(file => fileGroupTitle(file));
+    // Libellé « Album – Tome N » (même texte que les colonnes Album/Volume), pas seulement
+    // le nom du dossier ou de la série: « 1 import en cours : Alix » ne disait pas quel tome.
+    const fileLabel = (file, fallbackTitle) => {
+        const title = file.destination?.series_title || fallbackTitle || fileGroupTitle(file);
+        const volume = _importFileVolumeText(file);
+        return volume ? `${title} – ${volume}` : title;
+    };
+    const labels = importingFiles.map(file => fileLabel(file));
     for (const { pending, fileMatches } of pendingPackGroups) {
-        if (_pendingImportingNow(pending) || fileMatches.some(({ file }) => _isFileImportingNow(file))) {
-            labels.push(pending.series_title || pending.title);
+        const importingInPack = fileMatches.filter(({ file }) => _isFileImportingNow(file));
+        const packTitle = pending.series_title || pending.title;
+        if (importingInPack.length) {
+            importingInPack.forEach(({ file }) => labels.push(fileLabel(file, packTitle)));
+        } else if (_pendingImportingNow(pending)) {
+            const volume = _pendingVolumeLabel(pending);
+            labels.push(volume && volume !== '—' ? `${packTitle} – ${volume}` : packTitle);
         }
     }
     return labels;
@@ -2611,8 +2791,7 @@ function displayImportFiles() {
             && _importAlbumMatches(item.series_title)
             && _importVolumeMatches(item.volume_number ? `Tome ${item.volume_number}` : '')
             && _importExtensionMatches(_importFileExtension({ filename: item.name })))
-        .map(entry => ({ date: Date.parse(entry.item?.created_at || '') || 0, html: _activeDownloadRowHtml(entry) }));
-    const activeRowsHtml = activeEntries.map(e => e.html).join('');
+        .map(entry => ({ date: Date.parse(entry.item?.created_at || '') || 0, priority: entry.item?.priority || 0, html: _activeDownloadRowHtml(entry) }));
     const visiblePending = _visiblePendingDownloads();
     const pendingRows = importTableSort.column === 'volume'
         ? [...visiblePending].sort((a, b) => _compareImportDownloadRows(a, b, importTableSort.direction))
@@ -2630,15 +2809,14 @@ function displayImportFiles() {
         })
         .map(pending => {
             const group = pendingPackGroups.find(g => g.pending === pending);
-            return { date: Date.parse(pending.created_at || '') || 0, html: group ? _pendingPackGroupRowHtml(group) : _pendingDownloadRowHtml(pending) };
+            return { date: Date.parse(pending.created_at || '') || 0, priority: pending.priority || 0, html: group ? _pendingPackGroupRowHtml(group) : _pendingDownloadRowHtml(pending) };
         });
-    const pendingRowsHtml = pendingEntries.map(e => e.html).join('');
 
     const mainRowsHtml = importingRowsHtml + (importTableSort.column === 'date'
         ? [...pendingEntries, ...activeEntries, ...fileEntries]
             .sort((a, b) => importTableSort.direction === 'asc' ? a.date - b.date : b.date - a.date)
             .map(e => e.html).join('')
-        : pendingRowsHtml + activeRowsHtml + rowsHtml);
+        : _prioritizedDownloadRowsHtml(pendingEntries, activeEntries) + rowsHtml);
 
     // Options des selects Type/Volume/Ext. (voir leurs commentaires): seulement ce qui
     // est réellement présent dans les données, PAS encore réduit par les autres filtres
@@ -2674,10 +2852,24 @@ function displayImportFiles() {
     const importBanner = document.getElementById('import-in-progress-banner');
     if (importBanner) {
         const labels = _importingBannerLabels(importingFiles, pendingPackGroups);
+        // Import réclamé côté serveur mais aucun fichier de la page ne correspond (fichier
+        // pas encore dans la liste, ou retiré du scan pendant son traitement): le bandeau
+        // doit quand même s'afficher, avec le nom du fichier traité.
+        if (labels.length === 0 && (importingFilepaths.size > 0 || currentlyProcessingFile)) {
+            const path = currentlyProcessingFile?.filename || [...importingFilepaths][0] || '';
+            labels.push(path.split('/').pop() || 'fichier');
+        }
         if (labels.length > 0) {
             const names = labels.slice(0, 5).map(escapeHtml).join(', ');
             const extra = labels.length > 5 ? ` et ${labels.length - 5} ${pluralize(labels.length - 5, 'autre')}` : '';
-            importBanner.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} <span class="import-banner-text">${labels.length} ${pluralize(labels.length, 'import')} en cours : ${names}${extra}</span>
+            // Import bloqué (fichier traité depuis plus de IMPORT_STUCK_SECONDS): signalé ici,
+            // dans le même bandeau, plutôt que dans un second bandeau dédié.
+            const elapsed = currentlyProcessingFile?.elapsed_seconds ?? 0;
+            const stuckHtml = elapsed > IMPORT_STUCK_SECONDS
+                ? ` <span class="import-banner-stuck">${svgIcon('alert-triangle')} bloqué depuis ${elapsed >= 60 ? `${Math.floor(elapsed / 60)} min` : `${elapsed} s`}</span>`
+                : '';
+            importBanner.classList.toggle('import-in-progress-banner-stuck', !!stuckHtml);
+            importBanner.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} <span class="import-banner-text">${labels.length} ${pluralize(labels.length, 'import')} en cours : ${names}${extra}${stuckHtml}</span>
                 <button type="button" class="btn-danger-sm import-banner-action" onclick="stopImport(this)" data-tooltip="Termine le fichier en cours, ne prend pas les suivants et met l'import automatique en pause">${svgIcon('circle-x')} Arrêter l'import</button>`;
             importBanner.style.display = 'flex';
         } else {
@@ -2714,9 +2906,10 @@ function displayImportFiles() {
         <div class="import-files-table-footer">
             <div id="import-bulk-assign-bar" class="import-bulk-assign-bar" style="display:none;"></div>
             <span id="assign-selected-count" class="import-group-meta-text"></span>
-            <button class="btn-danger-sm" onclick="bulkDeleteSelectedImportFiles()" id="delete-selected-btn" disabled>${svgIcon('trash-2')} Supprimer la sélection</button>
-            <button class="btn-neutral-sm" onclick="bulkConvertSelectedImportFiles()" id="convert-selected-btn" disabled>${svgIcon('refresh-cw')} Convertir en CBZ</button>
-            <button class="btn btn-success" onclick="executeImport()" id="import-btn" disabled>${svgIcon('check')} Importer</button>
+            <button class="btn-danger-sm" onclick="bulkDeleteSelectedImportFiles()" id="delete-selected-btn" disabled style="display:none;">${svgIcon('trash-2')} Supprimer la sélection</button>
+            <button class="btn-neutral-sm" onclick="bulkControlSelectedDownloads(this.dataset.action, this)" id="pause-selected-btn" data-action="pause" disabled style="display:none;">${svgIcon('pause')} Mettre en pause</button>
+            <button class="btn-neutral-sm" onclick="bulkConvertSelectedImportFiles()" id="convert-selected-btn" disabled style="display:none;">${svgIcon('refresh-cw')} Convertir en CBZ</button>
+            <button class="btn btn-success" onclick="executeImport()" id="import-btn" disabled style="display:none;">${svgIcon('check')} Importer</button>
         </div>
     `;
 
@@ -2855,11 +3048,11 @@ async function convertMislabeledImportFile(fileIndex) {
     if (!confirm(`« ${file.filename} » porte .cbz mais contient une archive ${kind}. La convertir en CBZ ? L'original sera conservé.`)) return;
     try {
         const response = await fetch('/api/import/convert', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({import_root: file.import_root, relative_path: file.relative_path, force_mislabeled: true}) });
-        const result = await response.json();
-        if (!response.ok || !result.success) { alert(`Conversion impossible : ${result.error || 'erreur inconnue'}`); return; }
-        alert(`Conversion terminée : ${result.file.filename}. L'original a été conservé.`);
+        const result = await readJsonResponse(response);
+        if (!response.ok || !result.success) { importNotify(`Conversion impossible : ${result.error || 'erreur inconnue'}`); return; }
+        importNotify(`Conversion terminée : ${result.file.filename}. L'original a été conservé.`, 'success');
         await loadActiveDownloads();
-    } catch (error) { alert(`Erreur de conversion : ${error.message}`); }
+    } catch (error) { importNotify(`Erreur de conversion : ${error.message}`); }
 }
 
 function forceImportCorruptedFile(fileIndex) {
@@ -2886,11 +3079,11 @@ async function rescanCorruptedFile(fileIndex) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filepath: file.filepath })
         });
-        const result = await response.json();
-        if (!result.success) { alert(result.error || 'Erreur lors de la revérification.'); return; }
+        const result = await readJsonResponse(response);
+        if (!result.success) { importNotify(result.error || 'Erreur lors de la revérification.'); return; }
         file.validation_error = result.valid ? null : result.error;
     } catch (e) {
-        alert(`Erreur lors de la revérification : ${e}`);
+        importNotify(`Erreur lors de la revérification : ${e.message || e}`);
     } finally {
         file._rescanning = false;
         displayImportFiles();
@@ -2906,7 +3099,7 @@ async function _ensureSeriesVolumesLoaded(seriesId) {
     const pending = (async () => {
         try {
             const response = await fetch(`/api/series/${seriesId}/volumes`);
-            _seriesVolumesCache[seriesId] = await response.json();
+            _seriesVolumesCache[seriesId] = await readJsonResponse(response, { expectArray: true });
         } catch (e) {
             _seriesVolumesCache[seriesId] = [];
         } finally {
@@ -2973,11 +3166,7 @@ function _volumeCellHtml(file, index, disabled = false) {
         // le cache des tomes connus n'est pas chargé, plutôt qu'un champ numéro vide qui
         // ne correspond à rien pour ce type de tome.
         if (file.parsed.is_integral || file.parsed.is_hs || file.parsed.is_episode) {
-            const label = file.parsed.is_integral
-                ? `Intégrale${file.parsed.integral_number != null ? ' ' + file.parsed.integral_number : ''}`
-                : file.parsed.is_hs
-                    ? `Hors-série${file.parsed.hs_number != null ? ' ' + file.parsed.hs_number : ''}`
-                    : `Épisode${file.parsed.episode_number != null ? ' ' + file.parsed.episode_number : ''}`;
+            const label = volumeTypeLabel(file.parsed);
             return `<span style="font-size:0.9em;" data-tooltip="Type détecté depuis le nom du fichier">${escapeHtml(label)}</span>`;
         }
         return `<input type="number" class="import-volume-input" min="0" step="1"
@@ -2987,8 +3176,11 @@ function _volumeCellHtml(file, index, disabled = false) {
                        onchange="updateFileVolume(${index}, this.value)"${disabledAttr}>`;
     }
 
-    const matchIndex = volumes.findIndex(v => _volumeMatchesParsed(v, file.parsed));
-    const isManual = matchIndex === -1 && (file.parsed.volume != null || file.parsed.is_integral || file.parsed.is_hs || file.parsed.is_episode);
+    // file._manualVolume: « Autre » choisi à la main. Sans ce drapeau, un fichier sans
+    // numéro détecté (ex: « [T1-2] ») retombait sur « — » au rendu suivant et le choix
+    // « Autre » ne faisait rien.
+    const matchIndex = file._manualVolume ? -1 : volumes.findIndex(v => _volumeMatchesParsed(v, file.parsed));
+    const isManual = !!file._manualVolume || (matchIndex === -1 && (file.parsed.volume != null || file.parsed.is_integral || file.parsed.is_hs || file.parsed.is_episode));
     const optionsHtml = volumes.map((v, i) => `<option value="${i}"${i === matchIndex ? ' selected' : ''}>${escapeHtml(_bdVolumeOptionLabel(v))}</option>`).join('');
     const selectedLabel = matchIndex !== -1
         ? _bdVolumeOptionLabel(volumes[matchIndex])
@@ -3000,21 +3192,71 @@ function _volumeCellHtml(file, index, disabled = false) {
             ${optionsHtml}
             <option value="manual"${isManual ? ' selected' : ''}>Autre (préciser un numéro)</option>
         </select>
-        ${isManual ? `
-            <input type="number" class="import-volume-input" min="0" step="1" style="margin-top:4px;"
-                   value="${file.parsed.volume != null ? file.parsed.volume : ''}" placeholder="Numéro"
-                   onchange="updateFileVolume(${index}, this.value)"${disabledAttr}>
-        ` : ''}
+        ${isManual ? _manualVolumeFieldsHtml(file, index, disabledAttr) : ''}
     `;
+}
+
+// « Autre »: type (tome/intégrale/hors-série/épisode) + numéro, posés dans file.parsed comme
+// un tome choisi dans la liste (voir updateFileVolumeSlot).
+function _manualVolumeType(parsed) {
+    return parsed.is_integral ? 'integral' : parsed.is_hs ? 'hs' : parsed.is_episode ? 'episode' : 'volume';
+}
+
+function _manualVolumeNumber(parsed) {
+    const type = _manualVolumeType(parsed);
+    return type === 'integral' ? parsed.integral_number
+        : type === 'hs' ? parsed.hs_number
+        : type === 'episode' ? parsed.episode_number
+        : parsed.volume;
+}
+
+function _manualVolumeFieldsHtml(file, index, disabledAttr) {
+    const type = _manualVolumeType(file.parsed);
+    const number = _manualVolumeNumber(file.parsed);
+    const typeOptions = [['volume', 'Tome'], ['integral', 'Intégrale'], ['hs', 'Hors-série'], ['episode', 'Épisode']]
+        .map(([value, label]) => `<option value="${value}"${value === type ? ' selected' : ''}>${label}</option>`).join('');
+    return `
+        <div class="import-volume-manual">
+            <select class="import-volume-type" aria-label="Type de tome" onchange="updateFileManualVolume(${index}, this.value, null)"${disabledAttr}>${typeOptions}</select>
+            <input type="number" class="import-volume-input" min="0" step="1"
+                   value="${number != null ? number : ''}" placeholder="N°" aria-label="Numéro"
+                   onchange="updateFileManualVolume(${index}, null, this.value)"${disabledAttr}>
+        </div>
+    `;
+}
+
+function updateFileManualVolume(fileIndex, type, rawNumber) {
+    const file = importFiles[fileIndex];
+    const newType = type ?? _manualVolumeType(file.parsed);
+    let number = _manualVolumeNumber(file.parsed) ?? null;
+    if (rawNumber != null) {
+        const parsedNumber = parseInt(String(rawNumber).trim(), 10);
+        number = Number.isFinite(parsedNumber) ? parsedNumber : null;
+    }
+    file.parsed = {
+        ...file.parsed,
+        volume: newType === 'volume' ? number : null,
+        is_integral: newType === 'integral',
+        integral_number: newType === 'integral' ? number : null,
+        is_hs: newType === 'hs',
+        hs_number: newType === 'hs' ? number : null,
+        is_episode: newType === 'episode',
+        episode_number: newType === 'episode' ? number : null,
+        is_special: false,
+        special_label: null,
+        tracked_volume_conflict: null,
+    };
+    file._manualVolume = true;
+    file.manual_override = true;
+    displayImportFiles();
 }
 
 // Choix d'un tome dans le dropdown de la table - écrit directement dans file.parsed (même
 // champ que updateFileVolume/executeImport lisent déjà), pas de mécanisme séparé.
 function updateFileVolumeSlot(fileIndex, value) {
     const file = importFiles[fileIndex];
-    if (value !== 'manual') {
-        file.manual_override = true;
-    }
+    file._manualVolume = value === 'manual';
+    file.manual_override = true;
     if (value === 'none') {
         file.parsed = { ...file.parsed, volume: null, is_integral: false, integral_number: null, is_hs: false, hs_number: null, is_episode: false, episode_number: null, is_special: false, special_label: null, tracked_volume_conflict: null };
     } else if (value !== 'manual') {
@@ -3033,9 +3275,8 @@ function updateFileVolumeSlot(fileIndex, value) {
             tracked_volume_conflict: null,
         };
     }
-    // "manual": rien à faire ici, juste réafficher le champ numérique manuel (voir
-    // _volumeCellHtml) - sa propre valeur sera posée par updateFileVolume au prochain
-    // changement.
+    // "manual": rien à changer ici, juste afficher type + numéro (voir
+    // _manualVolumeFieldsHtml) - posés par updateFileManualVolume au prochain changement.
     displayImportFiles();
 }
 
@@ -3174,7 +3415,7 @@ async function searchBedethequeImportCandidates() {
 
     try {
         const response = await fetch(`/api/bedetheque/search?q=${encodeURIComponent(query)}`);
-        const data = await response.json();
+        const data = await readJsonResponse(response);
 
         if (!data.success) {
             resultsEl.innerHTML = matchModalErrorHtml(data.error || 'Erreur inconnue');
@@ -3541,12 +3782,7 @@ async function updateVolumeOverrideVisibility(seriesValue, existingOverride) {
             }));
 
         const slotOptionsHtml = volumeOverrideSlots.map((v, index) => {
-            let label;
-            if (v.is_integral) label = `Intégrale${v.integral_number != null ? ' ' + v.integral_number : ''}`;
-            else if (v.is_hs) label = `Hors-série${v.hs_number != null ? ' ' + v.hs_number : ''}`;
-            else if (v.is_episode) label = `Épisode${v.episode_number != null ? ' ' + v.episode_number : ''}`;
-            else if (v.volume_number != null) label = `Tome ${v.volume_number}`;
-            else label = 'Édition unique';
+            const label = volumeTypeLabel(v, 'Édition unique');
             return `<option value="${index}">${escapeHtml(label)} (autre fichier de ce lot)</option>`;
         }).join('');
 
@@ -3566,7 +3802,7 @@ async function updateVolumeOverrideVisibility(seriesValue, existingOverride) {
 
     try {
         const response = await fetch(`/api/series/${seriesValue}/volumes`);
-        const volumes = await response.json();
+        const volumes = await readJsonResponse(response, { expectArray: true });
         volumeOverrideSlots = volumes;
 
         const slotOptionsHtml = volumes.map((v, index) => `<option value="${index}">${escapeHtml(_bdVolumeOptionLabel(v))}</option>`).join('');
@@ -3698,9 +3934,9 @@ async function _createSeriesFromBedetheque(url, libraryId) {
             // des tomes qui lui manquent.
             body: JSON.stringify({ url, library_id: libraryId, skip_auto_acquire: true })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok || !data.success || !data.series_id) throw new Error(data.error || 'Création impossible');
-        const detail = await (await fetch(`/api/series/${data.series_id}`)).json();
+        const detail = await readJsonResponse(await fetch(`/api/series/${data.series_id}`));
         const created = {
             id: data.series_id, title: detail.title, is_oneshot: detail.is_oneshot,
             bedetheque_total_volumes: detail.bedetheque_total_volumes
@@ -3710,7 +3946,7 @@ async function _createSeriesFromBedetheque(url, libraryId) {
         librariesSeriesMap[libraryId] = list;
         return created;
     } catch (error) {
-        alert(`⚠️ La série n'a pas pu être créée maintenant (${error.message}) : elle sera créée à l'import.`);
+        importNotify(`La série n'a pas pu être créée maintenant (${error.message}) : elle sera créée à l'import.`, 'warning');
         return null;
     } finally {
         if (button) { button.disabled = false; button.textContent = label; }
@@ -3723,7 +3959,7 @@ async function assignDestination() {
     const seriesValue = document.getElementById('destination-series').value;
 
     if (!libraryId || !seriesValue) {
-        alert('⚠️ Veuillez sélectionner une bibliothèque et une série');
+        importNotify('Veuillez sélectionner une bibliothèque et une série', 'warning');
         return;
     }
 
@@ -3738,7 +3974,7 @@ async function assignDestination() {
     if (seriesValue === '__new__') {
         const newSeriesName = document.getElementById('new-series-name').value.trim();
         if (!newSeriesName) {
-            alert('⚠️ Veuillez entrer un nom pour la nouvelle série');
+            importNotify('Veuillez entrer un nom pour la nouvelle série', 'warning');
             return;
         }
 
@@ -3799,7 +4035,7 @@ async function assignDestination() {
         const series = seriesList.find(s => parseInt(s.id) === seriesId);
 
         if (!series) {
-            alert('⚠️ Série introuvable dans la bibliothèque sélectionnée. Vérifiez la bibliothèque choisie.');
+            importNotify('Série introuvable dans la bibliothèque sélectionnée. Vérifiez la bibliothèque choisie.', 'warning');
             console.warn('assignDestination: series not found', { libraryId, seriesId, seriesList });
             return;
         }
@@ -3862,7 +4098,7 @@ async function assignDestination() {
         fetch('/api/import/check-conflict', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filepath: importFiles[idx].filepath, destination, parsed: importFiles[idx].parsed })
-        }).then(r => r.json()).then(result => {
+        }).then(r => readJsonResponse(r)).then(result => {
             if (result.success) importFiles[idx].existing_conflict = result.existing_conflict || null;
             displayImportFiles();
         }).catch(() => {});
@@ -3918,7 +4154,7 @@ async function deleteImportFile(fileIndex) {
         const data = await _deleteImportFileRequest(file);
 
         if (!data.success) {
-            alert(`❌ Erreur: ${data.error || 'Suppression impossible'}`);
+            importNotify(`Erreur : ${data.error || 'Suppression impossible'}`);
             return;
         }
 
@@ -3931,7 +4167,7 @@ async function deleteImportFile(fileIndex) {
         updateImportStats();
         displayImportFiles();
     } catch (error) {
-        alert(`❌ Erreur de connexion: ${error.message}`);
+        importNotify(`Erreur de connexion : ${error.message}`);
     }
 }
 
@@ -4067,7 +4303,7 @@ async function executeImport() {
     const filesToImport = importFiles.filter(f => f.destination && _isFileSelected(f));
 
     if (filesToImport.length === 0) {
-        alert('⚠️ Aucun fichier à importer');
+        importNotify('Aucun fichier à importer', 'warning');
         return;
     }
 
@@ -4094,7 +4330,7 @@ async function executeImport() {
             })
         });
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
 
         if (data.success) {
             let message = `✅ Import terminé !\n\n`;
@@ -4125,7 +4361,7 @@ async function executeImport() {
             if (data.imported_count > 0 || data.replaced_count > 0) {
                 showToast('komga-scan', 'Scan Komga demandé', { icon: 'radio', autoHideMs: 4000 });
             }
-            alert(message);
+            importNotify(message.trim(), data.failed_count ? 'warning' : 'success', { autoHideMs: 20000 });
 
             // Un import réussi doit disparaître immédiatement de la liste, même si la
             // source est conservée (aMule) ou si un scan réseau répond plus tard. En cas
@@ -4143,10 +4379,10 @@ async function executeImport() {
             // désormais consultable sur sa propre page (voir /history, static/js/history.js)
             await loadActiveDownloads();
         } else {
-            alert('❌ Erreur: ' + (data.error || 'Erreur inconnue'));
+            importNotify('Erreur : ' + (data.error || 'Erreur inconnue'));
         }
     } catch (error) {
-        alert('❌ Erreur de connexion: ' + error.message);
+        importNotify('Erreur de connexion : ' + error.message);
     } finally {
         importBtn.disabled = false;
         importBtn.innerHTML = `${svgIcon('check')} Importer`;
@@ -4224,7 +4460,7 @@ async function loadImportHistorySection(silent = false) {
     try {
         // "widget history in import is limited to 10 entry"
         const response = await fetch('/api/import/history?limit=10');
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         const events = data.history || [];
         if (!silent) loading.style.display = 'none';
 
@@ -4401,7 +4637,7 @@ function refreshDownloadingProgress() {
     const oldDownloadingPending = pendingDownloads.filter(p => p.status !== 'completed' && p.bytes_total != null);
     if (activeDownloads.length === 0 && oldDownloadingPending.length === 0) return; // rien à mettre à jour, pas d'appel réseau inutile
     fetch('/api/activity/status')
-        .then(r => r.json())
+        .then(r => readJsonResponse(r))
         .then(data => {
             if (!data.success) return;
             const newActive = [];
@@ -4465,6 +4701,48 @@ function refreshDownloadingProgress() {
 // HTTP sur 5 tous les 5s pour rien (le cache renvoie alors la même réponse déjà vue)
 // n'apportait de toute façon aucune fraîcheur réelle à l'affichage.
 setInterval(refreshDownloadingProgress, 15000);
+
+// « vérifie que l'import s'affiche bien à chaque fois que je suis sur la page » - un import
+// lancé pendant que la page est ouverte (import automatique, fin d'un téléchargement)
+// n'apparaissait qu'après « Actualiser »: loadActiveDownloads ne tourne qu'au chargement et
+// sur changement de téléchargement. GET /api/import/progress (base seule) est sondé toutes
+// les 5 s; un changement des fichiers réclamés (import démarré, fichier suivant, import fini)
+// recharge l'état complet, comme « Actualiser ».
+const IMPORT_PROGRESS_POLL_MS = 5000;
+let importProgressPollBusy = false;
+
+function _importingSignature(paths, processing) {
+    return JSON.stringify([[...paths].sort(), processing?.file_id ?? null]);
+}
+
+async function pollImportProgress() {
+    if (importProgressPollBusy || document.hidden || !hasCheckedActiveDownloadsOnce) return;
+    importProgressPollBusy = true;
+    try {
+        const response = await fetch('/api/import/progress');
+        const data = await readJsonResponse(response);
+        if (!data.success) return;
+        const before = _importingSignature(importingFilepaths, currentlyProcessingFile);
+        const after = _importingSignature(data.importing_filepaths || [], data.currently_processing);
+        const pausedChanged = !!data.import_paused !== importPaused;
+        if (before !== after || pausedChanged) {
+            await loadActiveDownloads();
+        } else if (currentlyProcessingFile && data.currently_processing) {
+            const wasStuck = (currentlyProcessingFile.elapsed_seconds ?? 0) > IMPORT_STUCK_SECONDS;
+            currentlyProcessingFile = data.currently_processing;
+            if (wasStuck !== ((currentlyProcessingFile.elapsed_seconds ?? 0) > IMPORT_STUCK_SECONDS)) displayImportFiles();
+        }
+    } catch (error) {
+        /* erreur réseau ponctuelle: prochain passage */
+    } finally {
+        importProgressPollBusy = false;
+    }
+}
+
+setInterval(pollImportProgress, IMPORT_PROGRESS_POLL_MS);
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) pollImportProgress();
+});
 
 // A manual series-match review links here with the title in the query string.
 // Reuse the normal Import Bédéthèque modal (the same one used by the destination

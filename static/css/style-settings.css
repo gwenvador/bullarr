@@ -1204,3 +1204,15 @@ input[type="checkbox"].switch-input:disabled {
 .auth-mode-copy strong { font-size: .92rem; line-height: 1.2; color: var(--color-text); }
 .auth-mode-copy small { color: var(--color-text-muted); line-height: 1.25; }
 @media (max-width: 760px) { .auth-mode-options { grid-template-columns: 1fr; } .auth-mode-option { min-height: 0; } }
+
+/* « Autre (préciser un numéro) » sur /import: type de tome + numéro sous la liste. */
+.import-volume-manual {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.import-volume-type {
+    flex: 1;
+    min-width: 0;
+}

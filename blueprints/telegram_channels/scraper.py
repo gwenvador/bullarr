@@ -12,6 +12,7 @@ via aMule/un torrent (scan, matching automatique ou assignation manuelle sur /im
 sélecteur de tome...) - aucune logique d'import dupliquée ici.
 """
 import asyncio
+import itertools
 import json
 import os
 import re
@@ -169,16 +170,120 @@ def ensure_telegram_search_index():
 # de Telethon (le loop.close() ci-dessous survenant avant la fin propre du disconnect()
 # d'un autre client concurrent). Sérialiser élimine ce recouvrement plutôt que de fiabiliser
 # plus finement l'arrêt concurrent de plusieurs event loops.
-_telegram_client_lock = threading.Lock()
+class TelegramDownloadPaused(Exception):
+    """Levée depuis le callback de progression quand le téléchargement en cours est mis en
+    pause: le transfert s'arrête, la ligne reste en attente (paused=1). Le fichier .part
+    est gardé: la reprise continue là où il s'était arrêté (voir _download_resumable)."""
 
 
-def _run_async(coro_fn, *args, **kwargs):
-    with _telegram_client_lock:
+class TelegramDownloadPreempted(Exception):
+    """Un téléchargement plus prioritaire attend (« télécharger en premier »): le transfert
+    en cours rend la main et retourne dans la file, son .part gardé pour reprendre."""
+
+
+class _TelegramQueue:
+    """File d'accès au client Telegram, toujours un seul à la fois (voir plus haut), mais
+    dans un ordre choisi: « télécharger ce fichier en premier » / pause depuis /import.
+    Avant, chaque téléchargement attendait un simple Lock dont l'ordre de passage n'est pas
+    garanti. Ordre de passage: scrape/recherche (download_id None) d'abord, puis les
+    téléchargements par priorité décroissante puis ordre d'arrivée; un téléchargement en
+    pause attend sans bloquer les autres. Priorité/pause vivent en mémoire pour la file
+    (miroir de active_downloads.priority/paused, voir set_download_queue_flags)."""
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._busy = False
+        self._tickets = itertools.count()
+        self._waiting = {}
+        self.flags = {}
+        self.active = None
+
+    def _next(self):
+        candidates = []
+        for ticket, download_id in self._waiting.items():
+            if download_id is None:
+                candidates.append(((0, 0, ticket), ticket))
+                continue
+            flags = self.flags.get(download_id, {})
+            if flags.get('paused'):
+                continue
+            candidates.append(((1, -int(flags.get('priority', 0)), ticket), ticket))
+        return min(candidates)[1] if candidates else None
+
+    def acquire(self, download_id=None):
+        ticket = next(self._tickets)
+        with self._cond:
+            self._waiting[ticket] = download_id
+            try:
+                while self._busy or self._next() != ticket:
+                    self._cond.wait(timeout=5)
+                self._busy = True
+                self.active = download_id
+            finally:
+                self._waiting.pop(ticket, None)
+
+    def release(self):
+        with self._cond:
+            self._busy = False
+            self.active = None
+            self._cond.notify_all()
+
+    def update(self, download_id, **flags):
+        with self._cond:
+            self.flags.setdefault(download_id, {}).update(flags)
+            self._preempt_if_needed()
+            self._cond.notify_all()
+
+    def _priority(self, download_id):
+        return int(self.flags.get(download_id, {}).get('priority', 0))
+
+    def _preempt_if_needed(self):
+        """« Télécharger en premier » doit passer tout de suite, pas après le transfert
+        en cours: si un téléchargement en attente est plus prioritaire que celui qui
+        tient la file, ce dernier est interrompu (voir check_interrupt)."""
+        if self.active is None:
+            return
+        ticket = self._next()
+        waiting_id = self._waiting.get(ticket) if ticket is not None else None
+        if waiting_id is not None and self._priority(waiting_id) > self._priority(self.active):
+            self.flags.setdefault(self.active, {})['preempt'] = True
+
+    def check_interrupt(self, download_id):
+        """Appelée à chaque morceau reçu: pause ou passage d'un plus prioritaire."""
+        flags = self.flags.get(download_id)
+        if not flags:
+            return
+        if flags.get('paused'):
+            raise TelegramDownloadPaused()
+        if flags.pop('preempt', False):
+            raise TelegramDownloadPreempted()
+
+    def forget(self, download_id):
+        with self._cond:
+            self.flags.pop(download_id, None)
+            self._cond.notify_all()
+
+    def is_paused(self, download_id):
+        return bool(self.flags.get(download_id, {}).get('paused'))
+
+
+_telegram_queue = _TelegramQueue()
+# Téléchargements dont le thread tourne encore (en file ou en transfert): une reprise n'a
+# alors qu'à lever la pause; sinon (transfert interrompu, conteneur redémarré) il faut le
+# relancer.
+_live_telegram_downloads = set()
+
+
+def _run_async(coro_fn, *args, download_id=None, **kwargs):
+    _telegram_queue.acquire(download_id)
+    try:
         loop = asyncio.new_event_loop()
         try:
             return loop.run_until_complete(coro_fn(*args, loop, **kwargs))
         finally:
             loop.close()
+    finally:
+        _telegram_queue.release()
 
 
 async def _scrape_channel(client, channel, limit, search=None):
@@ -277,7 +382,7 @@ async def _backfill_channel_chunk(api_id, api_hash, session_string, channel, off
     Retourne (channel_title, files_trouvés, dernier_message_id_vu, épuisé). épuisé=True
     quand ce morceau contient moins de messages que demandé: on a atteint le tout premier
     message du canal, plus rien à parcourir derrière. Connexion propre à cet appel (comme
-    _scrape_all/_download_one) - _run_async sérialise déjà via _telegram_client_lock,
+    _scrape_all/_download_one) - _run_async sérialise déjà via _telegram_queue,
     jamais deux clients Telegram simultanés avec la même session."""
     client = TelegramClient(StringSession(session_string), api_id, api_hash, loop=loop)
     await client.connect()
@@ -448,6 +553,35 @@ def get_latest_files(days=15, limit=None, older_than_days=None):
     return rows
 
 
+TELEGRAM_RESUME_CHUNK = 512 * 1024
+
+
+async def _download_resumable(client, msg, temp_path, expected_size, progress_callback=None):
+    """Télécharge dans temp_path en reprenant le .part existant (pause, passage d'un
+    fichier plus prioritaire, limite temporaire Telegram) au lieu de repartir de zéro.
+    La reprise se fait sur une frontière de morceau (iter_download exige un décalage
+    aligné): la fin éventuellement incomplète du .part est retéléchargée."""
+    start = 0
+    if os.path.exists(temp_path):
+        start = (os.path.getsize(temp_path) // TELEGRAM_RESUME_CHUNK) * TELEGRAM_RESUME_CHUNK
+        if expected_size and start > expected_size:
+            start = 0
+    with open(temp_path, 'r+b' if start else 'wb') as handle:
+        handle.seek(start)
+        handle.truncate()
+        received = start
+        if progress_callback and expected_size:
+            progress_callback(received, expected_size)
+        async for chunk in client.iter_download(
+            msg.document or msg.media, offset=start,
+            request_size=TELEGRAM_RESUME_CHUNK, file_size=expected_size
+        ):
+            handle.write(chunk)
+            received += len(chunk)
+            if progress_callback:
+                progress_callback(received, expected_size or received)
+
+
 async def _download_one(api_id, api_hash, session_string, channel, message_id, target_dir, loop, progress_callback=None, on_flood_retry=None):
     client = TelegramClient(StringSession(session_string), api_id, api_hash, loop=loop)
     await client.connect()
@@ -486,8 +620,11 @@ async def _download_one(api_id, api_hash, session_string, channel, message_id, t
         flood_retries = 0
         while True:
             try:
-                await client.download_media(msg, file=temp_path, progress_callback=progress_callback)
+                await _download_resumable(client, msg, temp_path, expected_size, progress_callback)
                 break
+            except (TelegramDownloadPaused, TelegramDownloadPreempted):
+                # .part gardé pour la reprise.
+                raise
             except Exception as exc:
                 wait_seconds = _telegram_flood_wait_seconds(exc)
                 if wait_seconds is None or flood_retries >= TELEGRAM_DOWNLOAD_FLOOD_RETRIES:
@@ -497,10 +634,7 @@ async def _download_one(api_id, api_hash, session_string, channel, message_id, t
                         pass
                     raise
                 flood_retries += 1
-                try:
-                    os.remove(temp_path)
-                except OSError:
-                    pass
+                # .part gardé: le nouvel essai reprend là où Telegram a coupé.
                 wait_seconds = min(wait_seconds, TELEGRAM_DOWNLOAD_MAX_WAIT_SECONDS)
                 print(
                     f"⏳ Telegram limite temporaire ({wait_seconds}s), "
@@ -540,7 +674,7 @@ async def _download_one(api_id, api_hash, session_string, channel, message_id, t
         await client.disconnect()
 
 
-def download_channel_file_background(api_id, api_hash, session_string, channel, message_id, target_dir, channel_title=None, app=None, pending_title=None, series_id=None, volume_id=None, volume_number=None, retry_count=0, force_replace=False):
+def download_channel_file_background(api_id, api_hash, session_string, channel, message_id, target_dir, channel_title=None, app=None, pending_title=None, series_id=None, volume_id=None, volume_number=None, retry_count=0, force_replace=False, priority=0):
     """Technical rationale and compatibility constraints for this code path."""
     def _log(filename, success, message='', tracking_id=None):
         if not app:
@@ -567,6 +701,13 @@ def download_channel_file_background(api_id, api_hash, session_string, channel, 
                     )
             except Exception as e:
                 print(f"Erreur enregistrement téléchargement Telegram en attente: {e}")
+        if download_id:
+            _live_telegram_downloads.add(download_id)
+            _telegram_queue.update(download_id, priority=priority or 0, paused=False)
+            if priority and app:
+                from blueprints.missing_monitor.downloader import set_download_queue_flags
+                with app.app_context():
+                    set_download_queue_flags(download_id, priority=priority)
 
         # Callback de progression Telethon ("import avec telegram essaie de monitorer le
         # status de telechargement") - appelé très fréquemment (par chunk reçu, potentiellement
@@ -580,6 +721,8 @@ def download_channel_file_background(api_id, api_hash, session_string, channel, 
 
         def on_progress(current, total):
             nonlocal last_reported_pct
+            if download_id:
+                _telegram_queue.check_interrupt(download_id)
             if not app or not download_id or not total:
                 return
             pct = int(current * 100 / total)
@@ -605,10 +748,18 @@ def download_channel_file_background(api_id, api_hash, session_string, channel, 
 
         try:
             os.makedirs(target_dir, exist_ok=True)
-            target_path = _run_async(
-                _download_one, api_id, api_hash, session_string, channel, message_id, target_dir,
-                progress_callback=on_progress, on_flood_retry=on_flood_retry
-            )
+            while True:
+                try:
+                    target_path = _run_async(
+                        _download_one, api_id, api_hash, session_string, channel, message_id, target_dir,
+                        download_id=download_id,
+                        progress_callback=on_progress, on_flood_retry=on_flood_retry
+                    )
+                    break
+                except TelegramDownloadPreempted:
+                    # Un fichier plus prioritaire passe: retour dans la file, reprise
+                    # du .part plus tard.
+                    continue
             filename = os.path.basename(target_path)
 
             conn = _connect_db()
@@ -618,6 +769,15 @@ def download_channel_file_background(api_id, api_hash, session_string, channel, 
             _log(filename, True, f'Téléchargé depuis {channel_title or channel}', tracking_id=download_id)
             if app and download_id:
                 with app.app_context():
+                    # Nom final exact (suffixé si le nom existait déjà): /import et l'import
+                    # automatique le retrouvent sans comparer de noms.
+                    from blueprints.missing_monitor.downloader import record_local_download_file
+                    try:
+                        size = os.path.getsize(target_path)
+                    except OSError:
+                        size = None
+                    record_local_download_file(
+                        download_id, os.path.relpath(target_path, os.path.realpath(target_dir)), size)
                     mark_download_completed(download_id)
             if app:
                 try:
@@ -626,6 +786,10 @@ def download_channel_file_background(api_id, api_hash, session_string, channel, 
                         attempt_immediate_auto_import(target_path, target_dir)
                 except Exception as e:
                     print(f"Erreur import automatique immédiat après téléchargement Telegram: {e}")
+        except TelegramDownloadPaused:
+            # Pause demandée pendant le transfert: la ligne reste en attente (paused=1),
+            # reprise du .part via telegram_download_control('resume').
+            pass
         except Exception as e:
             # pending_title/channel_title: même repli que mark_download_pending plus haut
             # ("title") plutôt que le simple identifiant de canal - `filename` n'est pas
@@ -635,5 +799,73 @@ def download_channel_file_background(api_id, api_hash, session_string, channel, 
             if app and download_id:
                 with app.app_context():
                     mark_download_failed(download_id)
+        finally:
+            if download_id:
+                _live_telegram_downloads.discard(download_id)
+                if not _telegram_queue.is_paused(download_id):
+                    _telegram_queue.forget(download_id)
 
     threading.Thread(target=run, daemon=True).start()
+
+
+def telegram_download_control(download_id, action, app):
+    """« Télécharger en premier », pause et reprise d'un téléchargement Telegram suivi
+    (active_downloads.id). Retourne (ok, message d'erreur)."""
+    import sqlite3
+    from blueprints.missing_monitor.downloader import set_download_queue_flags, next_download_priority
+
+    with app.app_context():
+        conn = sqlite3.connect(app.config['DATABASE'], timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT id, title, channel, message_id, series_id, volume_id, volume_number, retry_count, "
+            "force_replace, COALESCE(priority, 0) AS priority, COALESCE(paused, 0) AS paused "
+            "FROM active_downloads WHERE id = ? AND client = 'telegram' AND status = 'pending'",
+            (download_id,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            return False, 'Téléchargement Telegram introuvable ou déjà terminé'
+        row = dict(row)
+
+        if action == 'top':
+            priority = next_download_priority()
+            set_download_queue_flags(download_id, priority=priority)
+            _telegram_queue.update(download_id, priority=priority)
+            return True, None
+        if action == 'pause':
+            set_download_queue_flags(download_id, paused=True)
+            _telegram_queue.update(download_id, paused=True)
+            return True, None
+        if action != 'resume':
+            return False, 'Action inconnue'
+
+        set_download_queue_flags(download_id, paused=False)
+        if download_id in _live_telegram_downloads:
+            _telegram_queue.update(download_id, paused=False)
+            return True, None
+
+        # Plus de thread (transfert interrompu par la pause, ou conteneur redémarré):
+        # relance, comme « Relancer » (voir retry_telegram_download, routes.py).
+        if not row['channel'] or not row['message_id']:
+            return False, 'Téléchargement non relançable (informations manquantes)'
+        from .routes import _require_connected_config
+        config = _require_connected_config()
+        if not config:
+            return False, 'Non connecté à Telegram'
+        target_dir = app.config.get('TELEGRAM_IMPORT_DIRECTORY')
+        if not target_dir:
+            return False, "Répertoire d'import Telegram non configuré"
+        _telegram_queue.forget(download_id)
+        conn = sqlite3.connect(app.config['DATABASE'], timeout=30.0)
+        conn.execute('DELETE FROM active_downloads WHERE id = ?', (download_id,))
+        conn.commit()
+        conn.close()
+        download_channel_file_background(
+            config['api_id'], config['api_hash_decrypted'], config['session_decrypted'],
+            row['channel'], row['message_id'], target_dir, app=app,
+            pending_title=row['title'], series_id=row['series_id'], volume_id=row['volume_id'],
+            volume_number=row['volume_number'], retry_count=row['retry_count'] or 0,
+            force_replace=bool(row['force_replace']), priority=row['priority'],
+        )
+        return True, None

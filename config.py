@@ -478,7 +478,11 @@ class Config:
         # redemarrage temporaire du client ou un sondage manque) declenche la
         # transition vers 'failed' (voir CLIENT_ABSENCE_FAILURE_THRESHOLD,
         # activity/routes.py).
-        for col_name, col_type in [('client_absence_streak', 'INTEGER DEFAULT 0')]:
+        # priority/paused: ordre et pause de la file de téléchargement Telegram (voir
+        # _TelegramQueue, telegram_channels/scraper.py) - « télécharger ce fichier en premier ».
+        for col_name, col_type in [('client_absence_streak', 'INTEGER DEFAULT 0'),
+                                   ('priority', 'INTEGER DEFAULT 0'),
+                                   ('paused', 'INTEGER DEFAULT 0')]:
             if col_name not in existing_columns:
                 try:
                     cursor.execute(f"ALTER TABLE active_downloads ADD COLUMN {col_name} {col_type}")

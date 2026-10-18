@@ -37,7 +37,7 @@ class ImportManualReviewPresentationTest(unittest.TestCase):
     def test_initial_import_load_renders_before_loading_known_volumes(self):
         source = (Path(__file__).resolve().parents[1] / 'static/js/import.js').read_text()
         start = source.index('async function loadActiveDownloads()')
-        end = source.index('function renderCurrentlyProcessingBanner()', start)
+        end = source.index('function _renderImportPausedBanner()', start)
         body = source[start:end]
         self.assertIn('_ensureVolumesLoadedForFiles(volumesToRefresh).then(() => displayImportFiles());', body)
         self.assertLess(body.index('displayImportFiles();'), body.index('_ensureVolumesLoadedForFiles(volumesToRefresh)'))

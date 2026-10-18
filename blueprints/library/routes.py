@@ -3107,6 +3107,26 @@ def download_volume(volume_id):
     return send_file(volume['filepath'], as_attachment=True, download_name=volume['filename'])
 
 
+def _parse_manual_release_date(value):
+    """« JJ/MM/AAAA », « MM/AAAA » ou « AAAA » (séparateurs / . - ou espace) -> balises
+    ComicInfo Year/Month/Day. Une partie absente est effacée (chaîne vide) pour ne pas
+    garder le mois d'une ancienne date. ValueError si la date est invalide."""
+    parts = [p for p in re.split(r'[/.\-\s]+', (value or '').strip()) if p]
+    if not parts:
+        return {'Year': '', 'Month': '', 'Day': ''}
+    if len(parts) > 3 or not all(p.isdigit() for p in parts):
+        raise ValueError(value)
+    if len(parts[0]) == 4:  # AAAA-MM-JJ
+        parts = parts[::-1]
+    year = int(parts[-1])
+    month = int(parts[-2]) if len(parts) >= 2 else None
+    day = int(parts[-3]) if len(parts) == 3 else None
+    if not 1000 <= year <= 9999 or (month is not None and not 1 <= month <= 12) \
+            or (day is not None and not 1 <= day <= 31):
+        raise ValueError(value)
+    return {'Year': str(year), 'Month': str(month) if month else '', 'Day': str(day) if day else ''}
+
+
 @library_bp.route('/api/volumes/<int:volume_id>/manual-metadata', methods=['PUT'])
 def update_volume_manual_metadata(volume_id):
     """Édite manuellement les métadonnées d'un tome (Title/Summary/Writer/Penciller/
@@ -3132,7 +3152,7 @@ def update_volume_manual_metadata(volume_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, series_id, filepath, format, resolution, release_group FROM volumes WHERE id = ?', (volume_id,))
+        cursor.execute('SELECT id, series_id, filepath, filename, format, resolution, release_group FROM volumes WHERE id = ?', (volume_id,))
         vol = cursor.fetchone()
         conn.close()
 
@@ -3144,6 +3164,11 @@ def update_volume_manual_metadata(volume_id):
             'colorist': 'Colorist', 'publisher': 'Publisher', 'genre': 'Genre', 'year': 'Year',
         }
         fields = {tag: (data.get(key) or '').strip() for key, tag in field_map.items() if key in data}
+        if 'date' in data:
+            try:
+                fields.update(_parse_manual_release_date(data.get('date')))
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Date de parution invalide (JJ/MM/AAAA, MM/AAAA ou AAAA)'}), 400
 
         db_column_map = {'resolution': 'resolution', 'release_group': 'release_group'}
         db_updates = {
@@ -3169,14 +3194,17 @@ def update_volume_manual_metadata(volume_id):
             conn.commit()
             conn.close()
 
-        # Qualité et releaser font partie du nom de fichier standard: le renommer dès
-        # qu'ils changent, comme le ferait « Renommer ce fichier ».
+        # Titre, année, qualité, releaser... font partie du nom de fichier standard:
+        # « Enregistrer » renomme le tome comme « Renommer ce fichier » (sans effet si le
+        # nom est déjà le bon), par ex. après avoir complété des métadonnées manquantes.
         new_filename = None
-        if vol['filepath'] and any(vol[col] != value for col, value in db_updates.items()):
-            _rename_single_volume(vol['series_id'], volume_id, 'édition qualité/releaser')
+        if vol['filepath']:
+            _rename_single_volume(vol['series_id'], volume_id, 'édition du tome')
             conn = get_db_connection()
-            new_filename = conn.execute('SELECT filename FROM volumes WHERE id = ?', (volume_id,)).fetchone()['filename']
+            row = conn.execute('SELECT filename FROM volumes WHERE id = ?', (volume_id,)).fetchone()
             conn.close()
+            if row and row['filename'] != vol['filename']:
+                new_filename = row['filename']
 
         scanner = LibraryScanner()
         scanner.update_series_stats(vol['series_id'])
@@ -4842,6 +4870,134 @@ def _terminal_download_has_finalized_sibling(path, finalized_source_paths):
     return any(os.path.realpath(source).startswith(prefix) for source in finalized_source_paths if source)
 
 
+def _destination_from_download(download):
+    """Destination d'un fichier connu pour appartenir à `download` (ligne
+    get_trackable_active_downloads), avec le type suivi (intégrale, HS, épisode) et
+    « Remplacer quand même »."""
+    return _build_active_download_destination(
+        download['series_id'], download.get('volume_number'), download['id'],
+        force_replace=download.get('force_replace', False),
+        is_integral=download.get('is_integral', False), integral_number=download.get('integral_number'),
+        is_hs=download.get('is_hs', False), hs_number=download.get('hs_number'),
+        is_episode=download.get('is_episode', False), episode_number=download.get('episode_number'),
+    )
+
+
+def _recorded_top_exists(root, top, supported_extensions):
+    """Le premier élément d'un chemin enregistré est présent sous `root`, tel quel, renommé
+    avec son extension (add_missing_download_extensions) ou extrait dans un dossier du même
+    nom (_extract_archive_containers)."""
+    path = os.path.join(root, top)
+    if os.path.lexists(path):
+        return True
+    if any(os.path.isfile(path + ext) for ext in supported_extensions):
+        return True
+    stem, ext = os.path.splitext(path)
+    return ext.lower() in _ARCHIVE_EXTENSIONS and os.path.isdir(stem)
+
+
+def index_recorded_download_files(downloads, recorded_files, import_roots, supported_extensions):
+    """Fichiers attendus de chaque téléchargement dont le client a donné la liste exacte
+    (voir record_client_download_files, downloader.py) : le nom du torrent ou des fichiers
+    ne sert plus à les retrouver, leur chemin relatif suffit. Partagé par /import et
+    l'import automatique pour qu'ils voient exactement les mêmes fichiers.
+
+    Un téléchargement dont aucun fichier n'est encore arrivé sous une racine d'import
+    n'est pas indexé : l'ancienne recherche (dossier, nom) reste son repli.
+
+    Retourne {
+      'downloads': {id: {'download', 'import_root', 'files': [entrée], 'extracted_dirs',
+                         'nested', 'multi'}},
+      'by_path': {chemin réel: entrée}, 'extracted_by_dir': {dossier réel: id},
+      'covered_tops': {(racine, premier élément du chemin en minuscules): id},
+    }
+    entrée = {'download', 'filepath', 'filename', 'import_root', 'expected_size',
+              'complete', 'multi', 'nested'}."""
+    index = {'downloads': {}, 'by_path': {}, 'extracted_by_dir': {}, 'covered_tops': {}}
+    for download in downloads or []:
+        files = recorded_files.get(download['id']) if recorded_files else None
+        if not files:
+            continue
+        relatives = [f['relative_path'].replace('\\', '/').strip('/') for f in files]
+        tops = {rel.split('/')[0] for rel in relatives if rel}
+        import_root = next((
+            root for root in import_roots
+            if any(_recorded_top_exists(root, top, supported_extensions) for top in tops)
+        ), None)
+        if import_root is None:
+            continue
+        nested = any(len(rel.split('/')) > 2 for rel in relatives)
+        multi = len(relatives) > 1
+        info = {'download': download, 'import_root': import_root, 'files': [],
+                'extracted_dirs': [], 'nested': nested, 'multi': multi}
+        for recorded, rel in zip(files, relatives):
+            if not rel:
+                continue
+            try:
+                path = resolve_within(os.path.join(import_root, rel), import_root)
+            except UnsafePathError:
+                continue
+            ext = os.path.splitext(path)[1].lower()
+            if ext not in supported_extensions:
+                # Fichier enregistré sans extension, renommé depuis (voir
+                # add_missing_download_extensions) : même contenu, même taille.
+                renamed = next((path + e for e in sorted(supported_extensions) if os.path.isfile(path + e)), None)
+                if not renamed:
+                    continue
+                path, ext = renamed, os.path.splitext(renamed)[1].lower()
+            if not os.path.isfile(path):
+                # Archive conteneur déjà extraite dans un dossier du même nom (voir
+                # _extract_archive_containers) : ce dossier appartient au téléchargement.
+                stem_dir = os.path.splitext(path)[0]
+                if ext in _ARCHIVE_EXTENSIONS and os.path.isdir(stem_dir):
+                    real_dir = os.path.realpath(stem_dir)
+                    info['extracted_dirs'].append(real_dir)
+                    index['extracted_by_dir'][real_dir] = download['id']
+                    if '/' not in rel:
+                        index['covered_tops'][(import_root, os.path.basename(stem_dir).strip().lower())] = download['id']
+                continue
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                continue
+            expected = recorded.get('size')
+            entry = {
+                'download': download, 'filepath': path, 'filename': os.path.basename(path),
+                'import_root': import_root, 'expected_size': expected,
+                'complete': expected is None or size == expected,
+                'multi': multi, 'nested': nested,
+            }
+            info['files'].append(entry)
+            index['by_path'][path] = entry
+            # Nom réel sur disque (peut différer du nom enregistré après un renommage).
+            actual_top = os.path.relpath(path, os.path.realpath(import_root)).split(os.sep)[0]
+            index['covered_tops'][(import_root, actual_top.strip().lower())] = download['id']
+        for top in tops:
+            index['covered_tops'][(import_root, top.strip().lower())] = download['id']
+        index['downloads'][download['id']] = info
+    return index
+
+
+def recorded_download_id_for_path(index, filepath):
+    """Id du téléchargement indexé auquel appartient `filepath` (fichier listé, ou fichier
+    d'une archive extraite), sinon None."""
+    real = os.path.realpath(filepath)
+    entry = index['by_path'].get(real)
+    if entry:
+        return entry['download']['id']
+    for directory, download_id in index['extracted_by_dir'].items():
+        if real.startswith(directory.rstrip(os.sep) + os.sep):
+            return download_id
+    return None
+
+
+def path_in_recorded_download_folder(index, import_root, filepath):
+    """True si `filepath` se trouve sous un dossier/fichier racine d'un téléchargement
+    indexé : seuls les fichiers de sa liste en font partie, le reste est ignoré."""
+    top = os.path.relpath(filepath, import_root).split(os.sep)[0].strip().lower()
+    return (import_root, top) in index['covered_tops']
+
+
 def _scan_tracked_import_files(validate_files=True):
     """Cœur de scan_import_directory (voir sa docstring pour le principe: uniquement les
     téléchargements SUIVIS EN BASE, jamais de matching flou par titre/dossier) - factorisé
@@ -4922,6 +5078,18 @@ def _scan_tracked_import_files(validate_files=True):
     incompatible_folders = []
     scanned_roots = []
 
+    # Liste exacte des fichiers donnée par le client (voir index_recorded_download_files):
+    # prime sur toute correspondance de dossier ou de nom pour ces téléchargements.
+    from blueprints.missing_monitor.downloader import get_recorded_download_files
+    recorded_index = index_recorded_download_files(
+        trackable_downloads,
+        get_recorded_download_files([d['id'] for d in trackable_downloads]),
+        [root for root in current_app.config['IMPORT_DIRECTORIES'] if os.path.isdir(root)],
+        supported_extensions,
+    )
+    name_match_downloads = [d for d in trackable_downloads if d['id'] not in recorded_index['downloads']]
+    emitted_recorded_ids = set()
+
     # Un seul listage NON récursif par répertoire surveillé (pas d'os.walk global) -
     # chaque entrée est soit le dossier d'un téléchargement suivi (repli sur son
     # contenu complet, voir _collect_download_folder_files), soit un fichier isolé
@@ -4940,6 +5108,43 @@ def _scan_tracked_import_files(validate_files=True):
 
         for entry in entries:
             if entry.name.startswith('.'):
+                continue
+
+            recorded_id = recorded_index['covered_tops'].get((import_path, entry.name.strip().lower()))
+            if recorded_id is not None:
+                if recorded_id in emitted_recorded_ids:
+                    continue
+                emitted_recorded_ids.add(recorded_id)
+                info = recorded_index['downloads'][recorded_id]
+                download = info['download']
+                if (download.get('download_status') in ('imported', 'skipped')
+                        and not _terminal_download_has_finalized_sibling(entry.path, finalized_source_paths)):
+                    continue
+                destination = _destination_from_download(download)
+                if destination and (download.get('is_pack') or info['multi']):
+                    destination['is_pack_download'] = True
+                for recorded_file in info['files']:
+                    # Copie locale pas finie (Syncthing...) : la ligne de téléchargement
+                    # affiche déjà son avancement, le fichier n'est pas encore importable.
+                    if not recorded_file['complete']:
+                        continue
+                    if info['nested']:
+                        from .import_history import mark_import_file_manual
+                        mark_import_file_manual(recorded_file['filepath'])
+                        manual_override_filepaths.add(recorded_file['filepath'])
+                    _append_scanned_file(
+                        recorded_file['filepath'], import_path, recorded_file['filename'], destination, scanner,
+                        manual_override_filepaths, import_config, files_found,
+                        pack_download_id=download['id'], validate_file=validate_files,
+                        manual_destinations=manual_destinations
+                    )
+                for extracted_dir in info['extracted_dirs']:
+                    _collect_download_folder_files(
+                        extracted_dir, import_path, download, destination, scanner,
+                        supported_extensions, manual_override_filepaths,
+                        import_config, files_found, incompatible_folders,
+                        validate_files=validate_files, manual_destinations=manual_destinations
+                    )
                 continue
 
             if entry.is_dir():
@@ -4964,7 +5169,7 @@ def _scan_tracked_import_files(validate_files=True):
                 ext = os.path.splitext(entry.name)[1].lower()
                 if ext == '.part' or ext not in supported_extensions:
                     continue
-                match = find_active_download_destination(entry.name, trackable_downloads)
+                match = find_active_download_destination(entry.name, name_match_downloads)
                 if not match:
                     torrent_download = downloads_by_folder_name.get(entry.name.strip().lower())
                     if torrent_download:
@@ -5112,6 +5317,20 @@ def import_validation_items():
         return jsonify({'success': True, 'items': items + folders})
     except Exception as e:
         return jsonify({'success': False, 'error': error_message(e)}), 500
+
+
+@library_bp.route('/api/import/progress', methods=['GET'])
+def import_progress():
+    """Fichiers réclamés par l'import à cet instant, pour la page /import (sondée toutes
+    les 5 s). Lecture seule en base, sans scan disque ni sondage des clients : la page ne
+    recharge /api/import/state que lorsque cet ensemble change (import démarré ou fini)."""
+    from .import_history import get_claimed_import_filepaths, get_currently_processing_file
+    return jsonify({
+        'success': True,
+        'importing_filepaths': get_claimed_import_filepaths(),
+        'currently_processing': get_currently_processing_file(),
+        'import_paused': import_control.is_paused(),
+    })
 
 
 @library_bp.route('/api/import/state', methods=['GET'])

@@ -281,12 +281,12 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null) {
     const target = linkIndex != null ? ev?.links?.[linkIndex] : ev;
     if (!ev || !target || target._autoAddTriggered) return;
     const title = ev.type === 'telegram'
-        ? (ev.series_title || ev.parsed_title || ev.filename)
+        ? (ev.series_title || ev.bedetheque_title || ev.parsed_title || ev.filename)
         : (ev.series_title || ev.matched_series_title || ev.bedetheque_title || ev.title);
     const rawHint = ev.type === 'telegram' ? ev.filename
         : ev.type === 'ebdz' ? ((linkIndex != null ? target : ev.links?.[0])?.filename ? decodeFilename((linkIndex != null ? target : ev.links[0]).filename) : ev.title)
         : ev.title;
-    const bedethequeUrl = ev.type === 'ebdz' ? ev.matched_bedetheque_url : ev.bedetheque_url;
+    const bedethequeUrl = (ev.type === 'ebdz' ? ev.matched_bedetheque_url : ev.bedetheque_url) || ev.bedetheque_url;
     let seriesId = ev.type === 'ebdz' ? ev.matched_series_id : ev.series_id;
     const seriesWasKnown = !!seriesId;
     const original = button.innerHTML;
@@ -355,6 +355,19 @@ let nouveautesOriginFilters = new Set();
 
 function _nouveautesOrigin(e) {
     return e.type === 'ebdz' ? (e.category || '—') : e.type === 'rss' ? (e.feed_title || e.feed_name || 'RSS') : (e.channel_title || e.channel || '—');
+}
+
+const NOUVEAUTES_SOURCE_ICONS = {
+    ebdz: ['/static/img/ebdz-logo.png', 'EBDZ'],
+    telegram: ['/static/img/telegram-logo.svg', 'Telegram'],
+    rss: ['/static/img/rss-logo.svg', 'RSS'],
+};
+
+function _nouveautesOriginIconsHtml(types) {
+    return ['ebdz', 'telegram', 'rss'].filter(t => types && types.has(t)).map(t => {
+        const [src, label] = NOUVEAUTES_SOURCE_ICONS[t];
+        return `<img src="${src}" alt="${label}" title="${label}" class="nouveautes-source-icon" style="width:16px; height:16px;">`;
+    }).join('');
 }
 
 function _nouveautesMatched(e) {
@@ -469,8 +482,10 @@ function _nouveautesMatchPencilHtml(event) {
 }
 
 function _nouveautesSeriesHtml(event) {
-    const seriesTitle = event.type === 'ebdz' ? event.matched_series_title : event.series_title;
-    const bedethequeUrl = event.type === 'ebdz' ? event.matched_bedetheque_url : event.bedetheque_url;
+    // Série locale rattachée, sinon fiche du catalogue Bédéthèque (bedetheque_title/url,
+    // même repli pour RSS, EBDZ et Telegram).
+    const seriesTitle = (event.type === 'ebdz' ? event.matched_series_title : event.series_title) || event.bedetheque_title;
+    const bedethequeUrl = (event.type === 'ebdz' ? event.matched_bedetheque_url : event.bedetheque_url) || event.bedetheque_url;
     const pencilHtml = _nouveautesMatchPencilHtml(event);
     if (!seriesTitle && !bedethequeUrl) {
         return pencilHtml ? `<div class="nouveautes-matched-series">${pencilHtml}</div>` : '';
@@ -920,6 +935,14 @@ function _populateNouveautesOriginOptions() {
     const eventsForOrigins = currentNouveautesFilter === 'all'
         ? allNouveautesEvents
         : allNouveautesEvents.filter(e => e.type === currentNouveautesFilter);
+    // Source(s) de chaque origine, pour son icône dans le menu (un même nom peut en
+    // théorie venir de deux sources: une icône par source).
+    const originTypes = new Map();
+    for (const e of eventsForOrigins) {
+        const o = _nouveautesOrigin(e);
+        if (!originTypes.has(o)) originTypes.set(o, new Set());
+        originTypes.get(o).add(e.type);
+    }
     const origins = [...new Set(eventsForOrigins.map(_nouveautesOrigin).filter(o => o && o !== '—'))]
         .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
     // Une origine cochée qui a disparu de l'ensemble actuel (ex: filtre EBDZ/Telegram
@@ -932,7 +955,8 @@ function _populateNouveautesOriginOptions() {
         ? '<div style="padding:8px 10px; color:#999; font-size:0.85em;">Aucune origine</div>'
         : origins.map(o => `
             <button type="button" class="toolbar-dropdown-item${nouveautesOriginFilters.has(o) ? ' active' : ''}"
-                    onclick="toggleNouveautesOriginFilter('${escapeForAttribute(o)}')">${escapeHtml(o)}</button>
+                    style="display:flex; align-items:center; gap:8px;"
+                    onclick="toggleNouveautesOriginFilter('${escapeForAttribute(o)}')">${_nouveautesOriginIconsHtml(originTypes.get(o))}${escapeHtml(o)}</button>
         `).join('');
 
     countEl.textContent = nouveautesOriginFilters.size ? `(${nouveautesOriginFilters.size})` : '';
@@ -1308,22 +1332,7 @@ async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays 
             ebdzEvents = [];
             ebdzData.sessions.forEach(session => {
                 session.results.forEach(thread => {
-                    ebdzEvents.push({
-                        type: 'ebdz',
-                        thread_id: thread.thread_id,
-                        date: session.scraped_at,
-                        title: thread.title,
-                        url: thread.url,
-                        category: thread.category,
-                        already_in_library: thread.already_in_library,
-                        already_matched_thread: thread.already_matched_thread,
-                        already_monitored: thread.already_monitored,
-                        matched_series_id: thread.matched_series_id,
-                        matched_series_title: thread.matched_series_title,
-                        matched_bedetheque_url: thread.matched_bedetheque_url,
-                        is_new_thread: thread.is_new_thread,
-                        links: thread.links,
-                    });
+                    ebdzEvents.push({ ...thread, type: 'ebdz', date: session.scraped_at });
                 });
             });
         }
@@ -1333,23 +1342,7 @@ async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays 
     const telegramPromise = fetch(`/api/telegram-channels/latest?days=${nouveautesDaysWindow}${olderRangeParam}${limitParam}`).then(r => r.json()).catch(() => ({ success: false })).then(telegramData => {
         if (generation !== nouveautesLoadGeneration) return;
         if (telegramData.success) telegramEvents = (telegramData.files || []).map(f => ({
-            type: 'telegram',
-            date: f.message_date,
-            filename: f.filename,
-            channel: f.channel,
-            channel_title: f.channel_title,
-            file_size: f.file_size,
-            message_id: f.message_id,
-            parsed_title: f.parsed_title,
-            parsed_volume: f.parsed_volume,
-            volume: f.volume,
-            already_owned: f.already_owned,
-            already_in_library: f.already_in_library,
-            already_monitored: f.already_monitored,
-            series_id: f.series_id,
-            series_title: f.series_title,
-            bedetheque_url: f.bedetheque_url,
-            downloaded: !!f.downloaded,
+            ...f, type: 'telegram', date: f.message_date, downloaded: !!f.downloaded,
         }));
     });
 

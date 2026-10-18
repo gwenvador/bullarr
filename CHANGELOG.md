@@ -1,5 +1,43 @@
 # Changements
 
+## v7.1 — 2026-10-18
+
+[Comparer v7.0 et v7.1](https://github.com/gwenvador/bullarr/compare/v7.0...v7.1)
+
+Mise à jour directe depuis v7.0. Au premier démarrage, la table des téléchargements reçoit deux colonnes (priorité, pause) ; aucune action manuelle.
+
+### Téléchargements
+
+- Priorité et pause depuis la page Import, par ligne ou pour la sélection : « Télécharger en premier », « Mettre en pause » / « Reprendre » (un seul bouton).
+- Telegram : les téléchargements passent par une file à priorités. « En premier » interrompt le transfert moins prioritaire, qui retourne dans la file. Pause, redémarrage du conteneur et attente imposée par Telegram reprennent depuis le fichier `.part` au lieu de recommencer.
+- qBittorrent : mise en tête de file et pause/reprise (API v5, repli sur pause/resume en v4). aMule : priorité haute, pause, reprise.
+- Les lignes prioritaires sont affichées en haut de la page Import ; une ligne en pause n'est jamais relancée automatiquement.
+- aMule et Telegram enregistrent le fichier téléchargé, comme qBittorrent : l'import le retrouve par son suivi et non plus par son nom.
+- aMule : une absence n'est comptée qu'une fois par relevé réel ; un fichier terminé n'est plus masqué de la page Import après quelques actualisations.
+
+### Import
+
+- Le bandeau affiche l'album et le tome en cours d'import (« Album – Tome N »), apparaît à chaque ouverture de la page et signale un import bloqué depuis plus de 5 minutes.
+- La page se met à jour seule au début et à la fin d'un import.
+- La colonne Album est la même pendant le téléchargement et l'import, avec le lien Bédéthèque à côté du nom.
+- « Autre (préciser le numéro) » fonctionne sur un fichier sans numéro détecté et permet de choisir Tome, Intégrale, Hors-série ou Épisode.
+- Les boutons de sélection n'apparaissent que lorsqu'ils s'appliquent à la sélection.
+- Les erreurs du serveur s'affichent en notification lisible, sans fenêtre `alert()`.
+
+### Bibliothèque
+
+- Modifier un tome : « Année » devient « Parution » (JJ/MM/AAAA, MM/AAAA ou AAAA) avec un calendrier, écrite dans ComicInfo ; l'enregistrement renomme toujours le fichier au nom standard.
+- Infobulles immédiates sur le nom et l'emplacement des tomes.
+
+### Nouveautés
+
+- Les lignes EBDZ et Telegram non liées à une série locale affichent la série du catalogue Bédéthèque correspondante, comme les lignes RSS ; l'éclair l'utilise aussi.
+- Le filtre d'origine affiche l'icône de chaque source.
+
+### Notifications
+
+- Une notification « en cours » se ferme avec le message final ; les notifications restent synchronisées entre onglets et acceptent plusieurs lignes.
+
 ## v7.0 — 2026-10-15
 
 [Comparer v6.2 et v7.0](https://github.com/gwenvador/bullarr/compare/v6.2...v7.0)

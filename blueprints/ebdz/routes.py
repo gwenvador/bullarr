@@ -586,6 +586,17 @@ def latest_scrape():
                 'results': [grouped[tid] for tid in order]
             })
 
+        # Sujet non rattaché à une série locale: fiche Bédéthèque du catalogue pour
+        # Détails, comme une ligne RSS.
+        for session in sessions:
+            for thread in session['results']:
+                if thread.get('matched_series_id') or thread.get('matched_bedetheque_url'):
+                    continue
+                catalog = bedetheque_catalog_match(thread.get('title'))
+                if catalog:
+                    thread['bedetheque_title'] = catalog.get('title')
+                    thread['bedetheque_url'] = catalog.get('url')
+
         return jsonify({
             'success': True,
             'total_sessions': len(sessions),
@@ -678,6 +689,36 @@ def _rss_library_fingerprint():
         return '|'.join(str(v) for v in (*series, *owned, *active))
     finally:
         conn.close()
+
+
+_CATALOG_MATCH_CACHE = {}
+
+
+def bedetheque_catalog_match(title):
+    """Série du catalogue Bédéthèque local (index de recherche) qui correspond sans
+    ambiguïté au titre d'une release, ou None. Même règle pour les lignes RSS, EBDZ et
+    Telegram de Nouveautés: elle ne sert qu'à afficher la fiche Bédéthèque dans Détails,
+    jamais à rattacher la release à une série locale. Résultats de l'index mis en cache
+    par requête (cache partagé entre les sources)."""
+    from blueprints.library.scanner import LibraryScanner
+    from blueprints.bedetheque.catalog_index import search_catalog_index
+    from blueprints.bedetheque.scraper import BedethequeScraper, matching_query_variants
+
+    parsed = LibraryScanner.parse_filename(str(title or '')).get('title') or str(title or '')
+    for query in matching_query_variants(parsed):
+        if query in _CATALOG_MATCH_CACHE:
+            candidates = _CATALOG_MATCH_CACHE[query]
+        else:
+            candidates = search_catalog_index(query, limit=30) or []
+            _CATALOG_MATCH_CACHE[query] = candidates
+        confident = [
+            candidate for candidate in candidates
+            if BedethequeScraper._is_confident_series_match(
+                query, candidate['title'], BedethequeScraper._match_score(query, candidate['title']))
+        ]
+        if confident:
+            return max(confident, key=lambda candidate: BedethequeScraper._match_score(query, candidate['title']))
+    return None
 
 
 def _annotate_rss_entries(events):
@@ -844,21 +885,10 @@ def _annotate_rss_entries(events):
                 return True
         return False
 
-    catalog_cache = getattr(_annotate_rss_entries, '_catalog_cache', {})
     rss_overrides = _load_rss_match_overrides()
     series_by_id = {int(series_id): (series_id, title, url) for series_id, title, url in rows}
 
-    def catalog_match(title):
-        for query in query_variants(title):
-            if query in catalog_cache:
-                candidates = catalog_cache[query]
-            else:
-                candidates = search_catalog_index(query, limit=30) or []
-                catalog_cache[query] = candidates
-            confident = [candidate for candidate in candidates if BedethequeScraper._is_confident_series_match(query, candidate['title'], BedethequeScraper._match_score(query, candidate['title']))]
-            if confident:
-                return sorted(confident, key=lambda candidate: BedethequeScraper._match_score(query, candidate['title']), reverse=True)[0]
-        return None
+    catalog_match = bedetheque_catalog_match
 
     fingerprint = _rss_library_fingerprint()
     annotated = []
@@ -919,7 +949,6 @@ def _annotate_rss_entries(events):
             '_rss_annotation_version': RSS_ANNOTATION_VERSION,
             '_library_fingerprint': fingerprint,
         })
-    _annotate_rss_entries._catalog_cache = catalog_cache
     return annotated
 
 

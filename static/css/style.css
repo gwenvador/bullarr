@@ -73,7 +73,12 @@
     border-radius: 5px;
     font-size: 0.78em;
     font-weight: 400;
-    white-space: nowrap;
+    /* Une ligne tant que le texte tient dans la fenêtre (max-content), puis retour à la
+       ligne n'importe où - les chemins de fichiers (colonne Emplacement) n'ont pas d'espaces. */
+    width: max-content;
+    max-width: calc(100vw - 12px);
+    overflow-wrap: anywhere;
+    box-sizing: border-box;
     pointer-events: none;
     z-index: 99999;
 }
@@ -127,8 +132,12 @@
 }
 
 .app-toast-message {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* Messages sur plusieurs lignes (bilan d'import, liste d'échecs): retours à la ligne
+       gardés, défilement au-delà d'une certaine hauteur plutôt qu'un texte tronqué. */
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    max-height: 40vh;
+    overflow-y: auto;
 }
 
 .app-toast-close {
@@ -2419,6 +2428,22 @@ h2 {
     transition: opacity 0.2s;
 }
 
+/* Colonne Album de /import (_seriesCellHtml): le nom peut passer à la ligne, le logo
+   Bédéthèque et les boutons restent sur la même ligne, à sa droite. */
+.import-series-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.import-series-cell-title {
+    min-width: 0;
+}
+
+.import-series-cell > :not(.import-series-cell-title) {
+    flex: none;
+}
+
 .import-bedetheque-link:hover {
     opacity: 1;
 }
@@ -2448,6 +2473,17 @@ h2 {
     border: 1px solid var(--color-border);
     color: var(--color-text-muted);
     font-size: 0.88em;
+}
+
+/* Import bloqué (voir IMPORT_STUCK_SECONDS, import.js). */
+.import-in-progress-banner-stuck {
+    border-color: var(--color-danger, #dc3545);
+}
+
+.import-banner-stuck {
+    color: var(--color-danger, #dc3545);
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .import-in-progress-banner .import-banner-text {
@@ -4192,3 +4228,66 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
 
 .loading { padding: 32px 20px; }
 .no-data { padding: 28px 20px; }
+
+/* Champ Parution du formulaire d'édition d'un tome: texte JJ/MM/AAAA + bouton calendrier
+   (input date natif caché, ouvert par showPicker). */
+.manual-edit-field-row label.manual-vol-date-label {
+    flex: 0 0 210px;
+}
+
+.manual-vol-date-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+
+.manual-vol-date-wrap input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    padding-right: 40px;
+}
+
+.manual-vol-date-picker-btn {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+
+.manual-vol-date-picker-btn:hover {
+    background: var(--color-border);
+    color: var(--color-text);
+}
+
+.manual-vol-date-picker-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.manual-vol-date-wrap input.manual-vol-date-picker {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    border: 0;
+    padding: 0;
+}
+
+@media (max-width: 600px) {
+    .manual-edit-field-row label.manual-vol-date-label {
+        flex-basis: auto;
+    }
+}

@@ -450,6 +450,36 @@ def get_qbittorrent_torrent_file_count(client_item_id):
         return None
 
 
+def get_qbittorrent_torrent_files(client_item_id):
+    """Fichiers réellement contenus dans le torrent (API torrents/files) : chemin relatif au
+    dossier de sauvegarde et taille exacte, quels que soient le titre du résultat de
+    recherche ou le nom des fichiers. Les fichiers désélectionnés (priorité 0) ne seront
+    jamais téléchargés et sont écartés. None si qBittorrent n'est pas joignable ou ne
+    connaît pas ce hash."""
+    if not client_item_id:
+        return None
+    try:
+        config = load_qbittorrent_config()
+        if not config.get('enabled'):
+            return None
+        session, base_url, error = create_qbittorrent_session(config)
+        if error or not session:
+            return None
+        response = session.get(f"{base_url}/api/v2/torrents/files",
+                               params={'hash': client_item_id}, timeout=8, verify=False)
+        response.raise_for_status()
+        files = response.json()
+        if not isinstance(files, list) or not files:
+            return None
+        return [
+            {'name': f['name'], 'size': f.get('size')}
+            for f in files
+            if f.get('name') and f.get('priority', 1) != 0
+        ]
+    except Exception:
+        return None
+
+
 def get_qbittorrent_torrent_names(hashes):
     """"can the clients api tell you the location of the files so it will be easier to
     match" / "we might need to setup a remote path mapping. check this if it is needed" -

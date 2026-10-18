@@ -377,6 +377,24 @@ class LibraryImportScheduler:
                     if d.get('client') == 'qbittorrent' and d.get('client_item_id')
                 }
                 torrent_names_by_hash = get_qbittorrent_torrent_names(qbittorrent_hashes)
+
+                # Liste exacte des fichiers de chaque téléchargement, donnée par le client
+                # (même index que /import, voir routes.index_recorded_download_files): ces
+                # fichiers sont rattachés à leur téléchargement sans comparer de noms, et les
+                # téléchargements indexés ne servent plus au matching par nom.
+                from blueprints.missing_monitor.downloader import (
+                    get_recorded_download_files, record_missing_download_files,
+                )
+                record_missing_download_files(trackable_downloads)
+                recorded_index = routes.index_recorded_download_files(
+                    trackable_downloads,
+                    get_recorded_download_files([d['id'] for d in trackable_downloads]),
+                    [root for root in import_directories if os.path.isdir(root)],
+                    supported_extensions,
+                )
+                name_match_downloads = [
+                    d for d in trackable_downloads if d['id'] not in recorded_index['downloads']
+                ]
                 tracked_download_folder_names = set()
                 for download in trackable_downloads:
                     tracked_download_folder_names.update(
@@ -459,13 +477,27 @@ class LibraryImportScheduler:
                                 if filepath in in_progress_filepaths:
                                     continue
 
+                                recorded_id = routes.recorded_download_id_for_path(recorded_index, filepath)
+                                recorded_entry = recorded_index['by_path'].get(os.path.realpath(filepath))
+                                if recorded_id is None and routes.path_in_recorded_download_folder(
+                                        recorded_index, import_path, filepath):
+                                    # Dans le dossier d'un téléchargement dont on connaît la
+                                    # liste exacte, mais absent de cette liste : pas à lui.
+                                    continue
+
                                 try:
                                     current_size = os.path.getsize(filepath)
                                 except OSError:
                                     continue
                                 previous_size = self._file_size_history.get(filepath)
                                 new_size_history[filepath] = current_size
-                                if previous_size != current_size:
+                                if recorded_entry is not None and recorded_entry['expected_size'] is not None:
+                                    # Taille attendue connue: le fichier est complet quand il
+                                    # l'atteint, inutile d'attendre un second passage.
+                                    if current_size != recorded_entry['expected_size']:
+                                        routes.note_pack_transfer_activity(import_path, filepath)
+                                        continue
+                                elif previous_size != current_size:
                                     routes.note_pack_transfer_activity(import_path, filepath)
                                     continue
 
@@ -504,7 +536,18 @@ class LibraryImportScheduler:
                                 # le nom de fichier parsé, qui reste le repli pour un
                                 # fichier déposé sans être passé par cette app (aucune
                                 # ligne active_downloads à retrouver).
-                                destination = routes.find_active_download_destination(filename, trackable_downloads)
+                                recorded_info = recorded_index['downloads'].get(recorded_id) if recorded_id is not None else None
+                                if recorded_info is not None:
+                                    # Fichier de la liste du client: son téléchargement est
+                                    # connu, aucun matching par nom.
+                                    if recorded_info['nested']:
+                                        if filepath not in auto_held_filepaths:
+                                            from .import_history import mark_import_file_manual
+                                            mark_import_file_manual(filepath)
+                                        continue
+                                    destination = routes._destination_from_download(recorded_info['download'])
+                                else:
+                                    destination = routes.find_active_download_destination(filename, name_match_downloads)
                                 # "il ne faut pas que l'import automatique soit activé" sans
                                 # numéro de tome connu nulle part (order.md) - une série
                                 # connue avec certitude ne suffit pas à elle seule, voir
@@ -515,10 +558,15 @@ class LibraryImportScheduler:
                                 # Repli par nom de torrent (voir même ordre côté
                                 # scan_import_directory) avant le repli le plus faible par
                                 # nom de dossier/fichier reparsé.
-                                matched_by_torrent_container = False
-                                if not destination and folder_name:
+                                # Membre d'un téléchargement à plusieurs fichiers: même
+                                # vérification du titre qu'un fichier trouvé par son dossier.
+                                matched_by_torrent_container = bool(
+                                    recorded_info is not None and destination
+                                    and (recorded_info['multi'] or recorded_entry is None)
+                                )
+                                if recorded_info is None and not destination and folder_name:
                                     destination = routes.find_active_download_destination_by_torrent_name(
-                                        folder_name, trackable_downloads, torrent_names_by_hash
+                                        folder_name, name_match_downloads, torrent_names_by_hash
                                     )
                                     matched_by_torrent_container = bool(destination)
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
@@ -528,16 +576,16 @@ class LibraryImportScheduler:
                                 # fichier niché dans un sous-dossier du pack ("Hors série/",
                                 # "Bonus/"), où seul le nom du dossier racine correspond au
                                 # vrai nom du torrent.
-                                if not destination and root_folder_name and root_folder_name != folder_name:
+                                if recorded_info is None and not destination and root_folder_name and root_folder_name != folder_name:
                                     destination = routes.find_active_download_destination_by_torrent_name(
-                                        root_folder_name, trackable_downloads, torrent_names_by_hash
+                                        root_folder_name, name_match_downloads, torrent_names_by_hash
                                     )
                                     matched_by_torrent_container = bool(destination)
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None
-                                if not destination:
+                                if recorded_info is None and not destination:
                                     destination = routes.find_active_download_destination_by_torrent_name(
-                                        filename, trackable_downloads, torrent_names_by_hash
+                                        filename, name_match_downloads, torrent_names_by_hash
                                     )
                                     if destination and not routes.apply_tracked_volume_and_gate(parsed, destination):
                                         destination = None

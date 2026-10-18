@@ -2850,11 +2850,11 @@ function buildVolumeTableRowHtml(v, isOneshot) {
         <tr class="volume-table-row${isPlaceholder ? ' volume-table-row-placeholder' : ' volume-table-row-owned'}" data-group="${groupKey}"${groupHiddenStyle}>
             ${selectCellHtml}
             <td${v.is_special ? ` data-tooltip="${escapeHtml(_volumeNumberBadgeTooltip(v))}"` : ''}>${numberLabel}</td>
-            <td class="volume-table-name" title="${escapeHtml(name)}">${escapeHtml(name)}</td>
+            <td class="volume-table-name" data-tooltip="${escapeHtml(name)}">${escapeHtml(name)}</td>
             <td style="white-space:nowrap;"${_volumeDateTooltipAttr(v)}>${escapeHtml(String(_volumeDateLabel(v)))}</td>
             <td>${isPlaceholder ? '—' : escapeHtml((v.format || '?').toUpperCase())}</td>
             <td style="white-space:nowrap;" data-raw-size="${v.file_size || 0}">${isPlaceholder ? '—' : formatBytes(v.file_size)}</td>
-            <td class="volume-table-path" title="${escapeHtml(v.filepath || '')}">${hasVolumeFile(v) ? escapeHtml(v.filepath) : buildVolumeTableMissingBadgeHtml(v)}</td>
+            <td class="volume-table-path" data-tooltip="${escapeHtml(v.filepath || '')}">${hasVolumeFile(v) ? escapeHtml(v.filepath) : buildVolumeTableMissingBadgeHtml(v)}</td>
             ${optionalCellsHtml}
             <td class="volume-table-actions"><div class="volume-table-actions-inner">${actionsHtml}</div></td>
         </tr>
@@ -5769,7 +5769,13 @@ function buildManualEditVolumeFieldsHtml(v, seriesId, seriesTitle, renameModalVo
         ${renumberHtml}
         <div class="manual-edit-field-row" style="align-items:flex-end;">
             <label style="flex:2;">Titre <input type="text" id="manual-vol-title-${v.id}" value="${escapeHtml(ci.title || '')}"></label>
-            <label>Année <input type="text" id="manual-vol-year-${v.id}" value="${escapeHtml(ci.year || '')}" style="max-width:100px;"></label>
+            <label class="manual-vol-date-label">Parution
+                <span class="manual-vol-date-wrap">
+                    <input type="text" id="manual-vol-date-${v.id}" value="${escapeHtml(_manualVolumeDateValue(ci.year, ci.month, ci.day))}" placeholder="JJ/MM/AAAA">
+                    <button type="button" class="manual-vol-date-picker-btn" onclick="openManualVolumeDatePicker(${v.id})" data-tooltip="Choisir dans le calendrier" aria-label="Choisir la date de parution dans le calendrier">${svgIcon('calendar')}</button>
+                    <input type="date" class="manual-vol-date-picker" id="manual-vol-date-picker-${v.id}" tabindex="-1" aria-hidden="true" onchange="applyManualVolumeDatePicker(${v.id})">
+                </span>
+            </label>
             <button class="btn-neutral-sm" id="manual-vol-load-bd-btn-${v.id}" onclick="loadBedethequeIntoVolumeForm(${v.id}, this)" style="margin-bottom:10px;">
                 <img src="/static/img/bedetheque-logo.png" alt="" style="width:14px;height:14px;">Métadonnées
             </button>
@@ -6015,6 +6021,44 @@ async function loadBedethequeIntoSeriesForm(buttonEl) {
 // Même principe pour un tome précis: GET /bedetheque/volume-preview/<id> (lecture seule,
 // n'écrit rien - voir preview_volume_bedetheque_metadata côté Flask) puis remplit les
 // champs de CE tome sans les enregistrer.
+// Date de parution du formulaire d'édition: JJ/MM/AAAA, MM/AAAA ou AAAA selon ce qui est
+// connu (balises ComicInfo Year/Month/Day) - un simple champ « Année » perdait le mois et
+// le jour à chaque enregistrement.
+function _manualVolumeDateValue(year, month, day) {
+    if (!year) return '';
+    const pad = n => String(parseInt(n, 10)).padStart(2, '0');
+    if (!parseInt(month, 10)) return String(year);
+    return parseInt(day, 10) ? `${pad(day)}/${pad(month)}/${year}` : `${pad(month)}/${year}`;
+}
+
+// Calendrier du champ Parution: un <input type="date"> caché, ouvert sur la date déjà saisie
+// (ou le 1er du mois / 1er janvier pour une date partielle). Le champ texte reste la source:
+// on peut toujours y taper MM/AAAA ou AAAA quand le jour n'est pas connu.
+function openManualVolumeDatePicker(volumeId) {
+    const text = document.getElementById(`manual-vol-date-${volumeId}`).value.trim();
+    const picker = document.getElementById(`manual-vol-date-picker-${volumeId}`);
+    const m = text.match(/^(?:(\d{1,2})\/)?(?:(\d{1,2})\/)?(\d{4})$/);
+    let iso = '';
+    if (m) {
+        const [day, month] = m[2] ? [m[1], m[2]] : [null, m[1]];
+        const pad = n => String(parseInt(n, 10) || 1).padStart(2, '0');
+        iso = `${m[3]}-${pad(month)}-${pad(day)}`;
+    }
+    picker.value = iso;
+    if (typeof picker.showPicker === 'function') {
+        try { picker.showPicker(); return; } catch (e) { /* navigateur sans showPicker: focus */ }
+    }
+    picker.focus();
+    picker.click();
+}
+
+function applyManualVolumeDatePicker(volumeId) {
+    const iso = document.getElementById(`manual-vol-date-picker-${volumeId}`).value;
+    if (!iso) return;
+    const [year, month, day] = iso.split('-');
+    document.getElementById(`manual-vol-date-${volumeId}`).value = `${day}/${month}/${year}`;
+}
+
 async function loadBedethequeIntoVolumeForm(volumeId, buttonEl) {
     const button = buttonEl;
     const originalHtml = button.innerHTML;
@@ -6032,7 +6076,7 @@ async function loadBedethequeIntoVolumeForm(volumeId, buttonEl) {
 
         const f = data.fields;
         if ('Title' in f) document.getElementById(`manual-vol-title-${volumeId}`).value = f.Title || '';
-        if ('Year' in f) document.getElementById(`manual-vol-year-${volumeId}`).value = f.Year || '';
+        if ('Year' in f) document.getElementById(`manual-vol-date-${volumeId}`).value = _manualVolumeDateValue(f.Year, f.Month, f.Day);
         if ('Writer' in f) document.getElementById(`manual-vol-writer-${volumeId}`).value = f.Writer || '';
         if ('Penciller' in f) document.getElementById(`manual-vol-penciller-${volumeId}`).value = f.Penciller || '';
         if ('Colorist' in f) document.getElementById(`manual-vol-colorist-${volumeId}`).value = f.Colorist || '';
@@ -6124,7 +6168,7 @@ async function saveManualVolumeMetadata(volumeId, buttonEl) {
         colorist: document.getElementById(`manual-vol-colorist-${volumeId}`).value,
         publisher: document.getElementById(`manual-vol-publisher-${volumeId}`).value,
         genre: document.getElementById(`manual-vol-genre-${volumeId}`).value,
-        year: document.getElementById(`manual-vol-year-${volumeId}`).value,
+        date: document.getElementById(`manual-vol-date-${volumeId}`).value,
         resolution: document.getElementById(`manual-vol-resolution-${volumeId}`).value,
         release_group: document.getElementById(`manual-vol-release-group-${volumeId}`).value,
     };
