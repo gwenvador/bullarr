@@ -1216,3 +1216,22 @@ input[type="checkbox"].switch-input:disabled {
     flex: 1;
     min-width: 0;
 }
+
+
+/* Vue d'ensemble → À propos : version, code source et liens externes. La vue d'ensemble
+   occupe au moins la hauteur de la fenêtre (sous le header de 120 px et le padding de
+   .content) et la carte À propos se place tout en bas (margin-top: auto). */
+#tab-overview.active { display: flex; flex-direction: column; min-height: calc(100vh - 20px - 120px - 80px); }
+#tab-overview > .settings-section { flex: 1; display: flex; flex-direction: column; }
+.about-card { margin-top: auto; font-size: 0.9rem; }
+#tab-overview .integration-cards-grid { margin-bottom: 24px; }
+.about-card h3 { margin: 0 0 10px; font-size: 1.2em; }
+.about-version { margin: 0 0 18px; color: var(--color-text-muted); line-height: 1.7; }
+.about-version strong { color: var(--color-text); }
+.about-version-number { font-variant-numeric: tabular-nums; color: var(--color-text); }
+.about-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px 28px; }
+.about-links-group h4 { margin: 0 0 8px; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.about-links-group ul { list-style: none; margin: 0; padding: 0; }
+.about-links-group li { margin: 6px 0; color: var(--color-text-muted); line-height: 1.5; }
+.about-card a { color: var(--color-accent); text-decoration: none; }
+.about-card a:hover { color: var(--color-accent-hover); text-decoration: underline; }

@@ -54,3 +54,4 @@ data/covers/*
 # OS
 .DS_Store
 Thumbs.db
+incoming-vk/

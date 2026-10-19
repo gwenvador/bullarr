@@ -37,6 +37,7 @@ class MissingVolumeSearcher:
             'telegram': self._search_telegram,
             'fourtoutici': self._search_fourtoutici,
             'annas_archive': self._search_annas_archive,
+            'vk': self._search_vk,
         }
     
     def search_for_volume(self, title: str, volume_num: int, sources: List[str] = None,
@@ -545,6 +546,54 @@ class MissingVolumeSearcher:
             return results
         except Exception as e:
             print(f"Erreur fourtoutici search: {e}")
+            return []
+
+    def _search_vk(self, title: str, volume_num: int, thread_id: int = None, label: str = None) -> List[Dict]:
+        """Forum VK « Au Phil des Bulles » : pas de recherche sans compte, la série est
+        cherchée dans un index local des archives (blueprints/vk/scraper.py), puis les
+        fichiers de son sujet sont lus. Téléchargement HTTP interne, comme fourtoutici."""
+        try:
+            from flask import current_app
+            from blueprints.vk.routes import vk_search_enabled
+            from blueprints.vk.scraper import search_vk_raw
+            from blueprints.library.scanner import LibraryScanner
+
+            if not vk_search_enabled():
+                return []
+            data_dir = current_app.config['DATA_DIR']
+            files = search_vk_raw(self._clean_series_name(title), data_dir)
+            results = []
+            for f in files:
+                filename = f.get('filename') or ''
+                confirmed, reason = self._confirms_requested_volume(filename, volume_num, label)
+                parsed = LibraryScanner.parse_filename(filename)
+                results.append({
+                    'source': 'vk',
+                    'filename': filename,
+                    'size': f.get('size'),
+                    'download_url': f.get('download_url'),
+                    'link': f.get('download_url'),
+                    'thread_url': f.get('link'),
+                    'topic_title': f.get('topic_title'),
+                    'date': f.get('date'),
+                    'parsed_volume': self._parsed_volume_label(filename),
+                    'resolution': self._resolution_label(filename),
+                    'volume': parsed['volume'],
+                    'is_integral': parsed['is_integral'],
+                    'integral_number': parsed['integral_number'],
+                    'is_hs': parsed['is_hs'],
+                    'hs_number': parsed['hs_number'],
+                    'unconfirmed_volume': not confirmed,
+                    'unconfirmed_reason': reason,
+                })
+            # Un sujet de série contient tous ses tomes : pour un tome précis, ne garder
+            # que les fichiers qui le confirment (sinon toute la série remonterait).
+            if volume_num is not None or label:
+                confirmed_only = [r for r in results if not r['unconfirmed_volume']]
+                results = confirmed_only
+            return results
+        except Exception as e:
+            print(f"Erreur VK search: {e}")
             return []
 
     def _search_annas_archive(self, title: str, volume_num: int, thread_id: int = None, label: str = None) -> List[Dict]:

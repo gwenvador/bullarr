@@ -1196,10 +1196,11 @@ def poll_rss_for_monitoring():
                     seen.append(key)
                     continue
             new_items.append((key, {
-                'filename': entry.get('title') or '', 'title': entry.get('title') or '',
+                'filename': entry.get('filename') or entry.get('title') or '', 'title': entry.get('title') or '',
                 'link': entry.get('link') or entry.get('page_link') or '',
                 'download_links': entry.get('download_links') or [],
                 'prowlarr_indexer_id': entry.get('prowlarr_indexer_id'),
+                'vk': bool(entry.get('vk')),
             }))
     totals = None
     # Une release à la fois: on sait ainsi laquelle a échoué, pour la retenter plus tard.

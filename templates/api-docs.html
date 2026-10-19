@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <title>API Bullarr</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <style>
+        .api-docs { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
+        .api-docs h1 { margin-bottom: 4px; }
+        .api-docs pre { background: var(--color-surface-alt, #f4f4f5); padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 0.9em; }
+        .api-docs h2 { margin-top: 32px; font-size: 1.15em; text-transform: none; }
+        .api-route { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--color-border, #e4e4e7); }
+        .api-route code { overflow-wrap: anywhere; }
+        .api-methods { display: flex; flex-wrap: wrap; gap: 4px; }
+        .api-method { font: 600 0.75em/1.6 ui-monospace, monospace; padding: 0 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3; }
+        .api-method-POST { background: #dcfce7; color: #166534; }
+        .api-method-PUT, .api-method-PATCH { background: #fef3c7; color: #92400e; }
+        .api-method-DELETE { background: #fee2e2; color: #991b1b; }
+        .api-summary { grid-column: 2; color: var(--color-text-muted, #71717a); font-size: 0.9em; }
+        @media (max-width: 600px) { .api-route { grid-template-columns: 1fr; } .api-summary { grid-column: 1; } }
+    </style>
+</head>
+<body>
+<main class="api-docs">
+    <h1>API Bullarr</h1>
+    <p>{{ count }} routes. Envoyez la clé API (Paramètres → Login → Accès API) dans l'en-tête <code>X-Api-Key</code>,
+       ou en paramètre <code>?apikey=</code>. Les réponses sont en JSON ; les erreurs ont la forme
+       <code>{"success": false, "error": "…"}</code>. Cette liste en JSON : <a href="?format=json">/api/docs?format=json</a>.</p>
+    <pre>curl -H "X-Api-Key: VOTRE_CLE" {{ request.url_root }}api/activity/status
+curl -X POST -H "X-Api-Key: VOTRE_CLE" -H "Content-Type: application/json" \
+     -d '{"tracking_id": 12, "action": "pause"}' {{ request.url_root }}api/activity/download-control</pre>
+    {% for group, routes in groups.items() %}
+    <h2 id="{{ group }}">{{ group }}</h2>
+    {% for route in routes %}
+    <div class="api-route">
+        <div class="api-methods">{% for m in route.methods %}<span class="api-method api-method-{{ m }}">{{ m }}</span>{% endfor %}</div>
+        <code>{{ route.path }}</code>
+        {% if route.summary %}<div class="api-summary">{{ route.summary }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% endfor %}
+</main>
+</body>
+</html>

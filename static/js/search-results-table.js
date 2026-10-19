@@ -231,7 +231,7 @@ function getSearchFormatPriority() {
 // au pire palier quelle que soit cette priorité: un torrent SANS seed ou un PDF (voir
 // _searchResultTier) - ni l'un ni l'autre n'est réellement téléchargeable/désirable,
 // aucun ordre de préférence ne change ça.
-const SEARCH_SOURCE_PRIORITY_DEFAULT = ['prowlarr', 'ebdz', 'telegram', 'fourtoutici', 'annas_archive'];
+const SEARCH_SOURCE_PRIORITY_DEFAULT = ['prowlarr', 'ebdz', 'telegram', 'fourtoutici', 'annas_archive', 'vk'];
 
 function getSearchSourcePriority() {
     try {
@@ -422,7 +422,7 @@ function _searchResultSourceLinkUrl(result) {
     // cette source - pas d'icône cliquable, comme avant.
     if (result.source === 'fourtoutici') return '';
     if (result.source === 'annas_archive') return result.info_url || '';
-    return result.thread_url || '';
+    return result.thread_url || '';  // EBDZ : fil du forum ; VK : message du forum
 }
 
 function _searchResultSourceIconHtml(result, sourceLabel) {
@@ -434,6 +434,8 @@ function _searchResultSourceIconHtml(result, sourceLabel) {
                 ? `<img src="/static/img/fourtoutici-favicon.svg" alt="fourtoutici" class="replace-results-source-icon">`
                 : result.source === 'annas_archive'
                     ? `<img src="/static/img/annas-archive-favicon.ico" alt="Anna's Archive" class="replace-results-source-icon">`
+                    : result.source === 'vk'
+                    ? `<img src="/static/img/vk-logo.svg" alt="VK" class="replace-results-source-icon">`
                     : `<img src="/static/img/ebdz-logo.png" alt="EBDZ" class="replace-results-source-icon">`;
     const sourceLinkUrl = safeExternalHttpUrl(_searchResultSourceLinkUrl(result));
     return sourceLinkUrl
@@ -446,7 +448,7 @@ function _searchResultSourceIconHtml(result, sourceLabel) {
 // logique par source.
 function _searchResultDisplayName(result) {
     if (result.source === 'ebdz') return decodeFilename(result.filename || result.title || '');
-    if (result.source === 'telegram' || result.source === 'fourtoutici') return result.filename || result.title || '';
+    if (result.source === 'telegram' || result.source === 'fourtoutici' || result.source === 'vk') return result.filename || result.title || '';
     return result.title || '';
 }
 
@@ -525,20 +527,31 @@ function _updateSearchBatchDownloadToolbar() {
     if (label) label.textContent = `${count} sélectionné${count > 1 ? 's' : ''}`;
     if (button) button.disabled = count === 0;
     const selectAll = document.getElementById('search-results-select-all');
-    const visible = [...document.querySelectorAll('#search-results-tbody .search-result-select')];
-    const checkedVisible = visible.filter(checkbox => checkbox.checked).length;
+    const selectable = _selectableSearchResultCheckboxes();
+    const checkedSelectable = selectable.filter(checkbox => checkbox.checked).length;
     if (selectAll) {
-        selectAll.checked = visible.length > 0 && checkedVisible === visible.length;
-        selectAll.indeterminate = checkedVisible > 0 && checkedVisible < visible.length;
+        selectAll.checked = selectable.length > 0 && checkedSelectable === selectable.length;
+        selectAll.indeterminate = checkedSelectable > 0 && checkedSelectable < selectable.length;
+        selectAll.disabled = selectable.length === 0;
     }
 }
 
+// Entrées « disponibles » pour « Tout sélectionner » : lignes visibles qui ont un bouton de
+// téléchargement actif (pas déjà ajoutées), possédées ou non (remplacement possible).
+function _selectableSearchResultCheckboxes() {
+    return [...document.querySelectorAll('#search-results-tbody .search-result-select')].filter(checkbox => {
+        const row = checkbox.closest('tr');
+        return row && !!row.querySelector('.search-result-download-action:not([disabled])');
+    });
+}
+
 function toggleAllSearchResults(selectAll) {
-    const visible = [...document.querySelectorAll('#search-results-tbody .search-result-select')];
-    visible.forEach(checkbox => {
-        checkbox.checked = selectAll.checked;
+    const selectable = new Set(_selectableSearchResultCheckboxes());
+    document.querySelectorAll('#search-results-tbody .search-result-select').forEach(checkbox => {
+        const checked = selectAll.checked && selectable.has(checkbox);
+        checkbox.checked = checked;
         const key = checkbox.dataset.selectionKey;
-        if (selectAll.checked) _searchTableSelectedKeys.add(key);
+        if (checked) _searchTableSelectedKeys.add(key);
         else _searchTableSelectedKeys.delete(key);
     });
     _updateSearchBatchDownloadToolbar();
@@ -567,6 +580,7 @@ function buildSearchResultRowHtml(result) {
     const isTelegram = result.source === 'telegram';
     const isFourtoutici = result.source === 'fourtoutici';
     const isAnnasArchive = result.source === 'annas_archive';
+    const isVk = result.source === 'vk';
     const displayName = _searchResultDisplayName(result);
     const format = detectResultFormat(result);
     const isBlackAndWhite = _isBlackAndWhiteSearchResult(result);
@@ -577,8 +591,8 @@ function buildSearchResultRowHtml(result) {
     // servi directement par le site/compte, pas un essaim de pairs).
     const seedsPeers = isEbdz
         ? (result._ed2kSources !== undefined ? `${result._ed2kSources} source${result._ed2kSources > 1 ? 's' : ''}` : '…')
-        : (isTelegram || isFourtoutici || isAnnasArchive) ? '—' : `${result.seeders ?? 'N/A'} / ${result.peers ?? 'N/A'}`;
-    const sourceLabel = isEbdz ? (result.forum || 'EBDZ') : isTelegram ? (result.channel_title || 'Telegram') : isFourtoutici ? 'fourtoutici' : isAnnasArchive ? "Anna's Archive" : (result.indexer || 'Prowlarr');
+        : (isTelegram || isFourtoutici || isAnnasArchive || isVk) ? '—' : `${result.seeders ?? 'N/A'} / ${result.peers ?? 'N/A'}`;
+    const sourceLabel = isEbdz ? (result.forum || 'EBDZ') : isTelegram ? (result.channel_title || 'Telegram') : isFourtoutici ? 'fourtoutici' : isAnnasArchive ? "Anna's Archive" : isVk ? 'VK' : (result.indexer || 'Prowlarr');
     // "dans historique il faudrait voir quelle est la source du téléchargement et
     // cliquable aussi" - même lien que l'icône de source ci-dessus (_searchResultSourceLinkUrl),
     // transmis jusqu'à log_manual_download par les fonctions addToEmule/
@@ -653,6 +667,11 @@ function buildSearchResultRowHtml(result) {
                 ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
                 : `<button class="btn-icon-only search-result-download-action" data-result-action="downloadFourtoutici" data-tooltip="Télécharger vers l'import" onclick="downloadFourtoutici('${escapeForAttribute(result.file_id)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.download_url || result.link || '')}', ${trackingForceReplace})">${svgIcon('download')}</button>`}
         `;
+    } else if (isVk) {
+        // Comme fourtoutici : téléchargement interne vers le répertoire d'import VK.
+        actionsHtml = added.vk
+            ? `<button class="btn-icon-only search-result-download-action add-button-added" data-tooltip="Téléchargement démarré - voir sa progression sur la page Import" disabled>${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span></button>`
+            : `<button class="btn-icon-only search-result-download-action" data-result-action="downloadVk" data-tooltip="Télécharger vers l'import" onclick="downloadVkResult('${escapeForAttribute(result.download_url)}', this, '${escapeForAttribute(trackingTitle)}', ${trackingSeriesId}, ${trackingVolumeId}, ${trackingVolumeNumber}, '${escapeForAttribute(result.thread_url || '')}', ${trackingForceReplace})">${svgIcon('download')}</button>`;
     } else if (isAnnasArchive) {
         const shelfmarkAdded = added.shelfmark;
         actionsHtml = `
@@ -869,6 +888,7 @@ function _searchResultSourceLabel(source) {
     if (source === 'telegram') return 'Telegram';
     if (source === 'fourtoutici') return 'fourtoutici';
     if (source === 'annas_archive') return "Anna's Archive";
+    if (source === 'vk') return 'VK';
     return 'EBDZ';
 }
 
@@ -973,6 +993,7 @@ function _runSearchResultAction(action, control, result) {
         case 'addTorrentToRtorrent': return addTorrentToRtorrent(link, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, args.sourceLinkUrl, args.trackingForceReplace);
         case 'addTorrentToDeluge': return addTorrentToDeluge(link, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, args.sourceLinkUrl, args.trackingForceReplace);
         case 'downloadTelegramFile': return downloadTelegramFile(result.channel, result.message_id, control, result.channel_title || '', args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, args.sourceLinkUrl, args.trackingForceReplace);
+        case 'downloadVk': return downloadVkResult(result.download_url, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, result.thread_url || '', args.trackingForceReplace);
         case 'downloadFourtoutici': return downloadFourtoutici(result.file_id, control, args.trackingTitle, args.trackingSeriesId, args.trackingVolumeId, args.trackingVolumeNumber, result.download_url || result.link || '', args.trackingForceReplace);
         case 'downloadViaShelfmark': return downloadViaShelfmark(control, encodeURIComponent(JSON.stringify({...result, series_id: args.trackingSeriesId, volume_id: args.trackingVolumeId, volume_number: args.trackingVolumeNumber, force_replace: args.trackingForceReplace})));
         case 'downloadSelectedSearchResults': return downloadSelectedSearchResults();
@@ -986,6 +1007,7 @@ function bindSearchResultsTableActions(root = document) {
     scope.querySelectorAll('[data-result-action]').forEach(control => {
         if (control.dataset.actionBound === '1') return;
         control.dataset.actionBound = '1';
+        if (control.hasAttribute('onclick')) return;
         control.addEventListener('click', event => {
             const action = control.dataset.resultAction;
             if (action === 'toggleSelection' || action === 'avoidBlackAndWhite') return;
@@ -1007,12 +1029,12 @@ function bindSearchResultsTableControls(root = document) {
     const scope = root && root.querySelectorAll ? root : document;
     bindSearchResultsTableActions(scope);
     scope.querySelectorAll('.search-results-sort-label[data-sort-column]').forEach(label => {
-        if (label.dataset.bound === '1') return;
+        if (label.dataset.bound === '1' || label.hasAttribute('onclick')) return;
         label.dataset.bound = '1';
         label.addEventListener('click', () => _setSearchTableSort(label.dataset.sortColumn));
     });
     scope.querySelectorAll('[data-filter-field]').forEach(control => {
-        if (control.dataset.bound === '1') return;
+        if (control.dataset.bound === '1' || control.hasAttribute('onchange') || control.hasAttribute('oninput')) return;
         control.dataset.bound = '1';
         const eventName = control.matches('input[type="text"]') ? 'input' : 'change';
         control.addEventListener(eventName, () => {
@@ -1267,4 +1289,37 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
             </table>
         </div>
     `;
+}
+
+
+// Résultat VK (forum Au Phil des Bulles) : téléchargé par Bullarr dans le répertoire
+// d'import VK, comme fourtoutici. Partagé par Recherche, Découvrir et la fiche série.
+async function downloadVkResult(downloadUrl, button, filename, seriesId = null, volumeId = null, volumeNumber = null, sourceLink = '', forceReplace = false) {
+    if (typeof confirmReplacementBeforeDownload === 'function') {
+        forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, filename, forceReplace);
+        if (forceReplace === null) return;
+    }
+    const originalHtml = button.innerHTML;
+    button.innerHTML = svgIcon('loader-circle', 'icon-spin');
+    button.disabled = true;
+    try {
+        const response = await fetch('/api/vk/download', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: downloadUrl, filename, series_id: seriesId, volume_id: volumeId, volume_number: volumeNumber,
+                source_link: sourceLink, force_replace: forceReplace
+            })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || `Téléchargement VK impossible (HTTP ${response.status})`);
+        if (typeof _markSearchResultAdded === 'function') _markSearchResultAdded(downloadUrl, 'vk');
+        button.innerHTML = `${svgIcon('download')} <span style="font-size:0.85em;">Ajouté</span>`;
+        button.classList.add('add-button-added');
+        button.setAttribute('data-tooltip', 'Téléchargement démarré - voir sa progression sur la page Import');
+        showToast('vk-dl-' + filename, `📥 ${filename} : téléchargement VK démarré - voir la page Import`, { icon: 'download', autoHideMs: 5000 });
+    } catch (error) {
+        button.innerHTML = originalHtml;
+        button.disabled = false;
+        showToast('vk-dl-error', error.message, { icon: 'circle-x', autoHideMs: 8000 });
+    }
 }

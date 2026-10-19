@@ -3,6 +3,7 @@ Chargement/sauvegarde de la configuration SSO / OIDC (partagé entre routes.py e
 """
 import json
 import os
+import secrets
 import tempfile
 from flask import current_app
 from encryption import encrypt, decrypt
@@ -37,7 +38,16 @@ def load_oidc_config():
         if decrypted:
             cfg['client_secret_decrypted'] = decrypted
 
+    api_key = cfg.get('api_key', '')
+    if api_key:
+        cfg['api_key_decrypted'] = decrypt(api_key) or ''
+
     return cfg
+
+
+def generate_api_key():
+    """Nouvelle clé API (32 caractères hexadécimaux, comme les applications *arr)."""
+    return secrets.token_hex(16)
 
 
 def save_oidc_config(config):
@@ -54,6 +64,11 @@ def save_oidc_config(config):
                 config_to_save['client_secret'] = encrypt(secret_to_encrypt)
             if 'client_secret_decrypted' in config_to_save:
                 del config_to_save['client_secret_decrypted']
+
+        # La clé API est stockée chiffrée, comme le secret client
+        if config_to_save.get('api_key_decrypted'):
+            config_to_save['api_key'] = encrypt(config_to_save['api_key_decrypted'])
+        config_to_save.pop('api_key_decrypted', None)
 
         directory = os.path.dirname(config_file)
         fd, temporary = tempfile.mkstemp(prefix='.oidc-config-', dir=directory)

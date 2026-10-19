@@ -1,5 +1,40 @@
 # Changements
 
+## v8.0 — 2026-10-19
+
+[Comparer v7.1 et v8.0](https://github.com/gwenvador/bullarr/compare/v7.1...v8.0)
+
+Mise à jour directe depuis v7.1, sans migration de base. Pour garder les téléchargements du forum VK entre deux redémarrages, ajoutez le montage `- ./incoming-vk:/downloads/vk` à votre `docker-compose.yml` (voir `docker-compose.example.yml`).
+
+### API
+
+- Clé API : **Configuration → Login → Accès API** (générer, régénérer, copier, supprimer ; chiffrée sur disque).
+- La clé, envoyée dans l'en-tête `X-Api-Key` (ou `Authorization: Bearer`, ou `?apikey=`), ouvre toutes les routes `/api/` sans session ni jeton CSRF, jamais les pages. Une clé fausse reçoit une erreur 401 en JSON.
+- `/api/docs` liste toutes les routes, lues dans la table de routage (HTML, ou JSON avec `?format=json`).
+- Documentation : [docs/API.md](docs/API.md) (authentification, conventions, téléchargements, import, bibliothèque, recherche, Nouveautés, exemples `curl` et Python).
+
+### Forum VK « Au Phil des Bulles »
+
+- Nouvelle source, lue sans compte VK : le forum [vk.com/board203785966](https://vk.com/board203785966) (BD et mangas en français, surtout en PDF).
+- **Flux RSS** : bouton « + Forum VK » dans Flux RSS. Les fichiers postés récemment apparaissent dans Nouveautés, et la surveillance télécharge les tomes manquants des séries surveillées.
+- **Recherche web** : index des séries construit à partir des archives du forum (reconstruit une fois par jour), puis lecture des fichiers du sujet de la série. Les sujets qui regroupent plusieurs séries sont séparés par l'en-tête de chaque message. Résultats dans Recherche, la fiche série et l'acquisition automatique.
+- **Configuration → Indexeurs → Web Archive** : carte Forum VK (activation de la recherche, adresse du site, test de connexion). La recherche désactivée ne part jamais, y compris en acquisition automatique.
+- **Téléchargement** direct par Bullarr dans `/downloads/vk`, avec reprise du fichier partiel, puis import automatique.
+
+### Recherche
+
+- La case « Tout sélectionner » des résultats était recouverte par la poignée de redimensionnement de la colonne : elle sélectionne maintenant toutes les entrées téléchargeables, possédées ou non.
+- Dans la fenêtre de recherche de la fiche série, les cases et « Télécharger la sélection » fonctionnent.
+
+### Configuration
+
+- Vue d'ensemble : carte **À propos** avec la version, le lien vers le code source et les liens des services utilisés.
+- Le menu de gauche n'affiche plus de barres de défilement quand il dépasse la fenêtre (il défile toujours), et les pages qui tiennent dans la fenêtre n'ont plus de barre de défilement de 20 px.
+
+### Documentation
+
+- README : sections Canaux Telegram, Forum VK et API ; onglets, sources et clients mis à jour.
+
 ## v7.1 — 2026-10-18
 
 [Comparer v7.0 et v7.1](https://github.com/gwenvador/bullarr/compare/v7.0...v7.1)

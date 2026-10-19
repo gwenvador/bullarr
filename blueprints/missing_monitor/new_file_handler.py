@@ -165,6 +165,16 @@ def _send_monitor_download(source, item, downloader, series_title, volume_number
         return downloader.send_torrent_download(
             item.get('link'), series_title, volume_number, series_id=series_id,
             filename=filename, source='ebdz', source_link=item.get('thread_url'))
+    if source == 'rss' and item.get('vk'):
+        from blueprints.vk.scraper import download_vk_file_background
+        url = next((str(link.get('url') or '') for link in item.get('download_links') or []), '')
+        target_dir = current_app.config.get('VK_IMPORT_DIRECTORY')
+        if not url or not target_dir:
+            return False, f'Lien VK ou répertoire d\'import VK manquant pour {filename}'
+        download_vk_file_background(
+            url, filename, target_dir, app=current_app._get_current_object(), pending_title=filename,
+            series_id=series_id, volume_id=volume_id, volume_number=volume_number, source_link=item.get('link'))
+        return True, f'{filename} : téléchargement VK démarré'
     if source == 'rss':
         url = _rss_torrent_url(item, series_title)
         if not url:

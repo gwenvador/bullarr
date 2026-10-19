@@ -749,8 +749,9 @@ async function searchSources() {
     const searchWebArchive = document.getElementById('search-web-archive').checked;
     const searchFourtoutici = searchWebArchive && enabledIntegrations.fourtoutici;
     const searchAnnasArchive = searchWebArchive && enabledIntegrations.annas_archive;
+    const searchVk = searchWebArchive && enabledIntegrations.vk;
 
-    if (!searchEbdz && !searchProwlarr && !searchTelegram && !searchFourtoutici && !searchAnnasArchive) {
+    if (!searchEbdz && !searchProwlarr && !searchTelegram && !searchFourtoutici && !searchAnnasArchive && !searchVk) {
         showError('step-3', 'Sélectionnez au moins une source');
         return;
     }
@@ -796,6 +797,7 @@ async function searchSources() {
         let prowlarrDone = !searchProwlarr;
         let telegramDone = !searchTelegram;
         let fourtouticiDone = !searchFourtoutici;
+        let vkDone = !searchVk;
         let annasArchiveDone = !searchAnnasArchive;
         // "quand prowlarr est mis à jour dans la recherche ça reset tous mes changements"
         // - Prowlarr (le plus lent) rappelle render() après EBDZ/Telegram déjà affichés;
@@ -803,7 +805,7 @@ async function searchSources() {
         // à zéro à chaque rappel au lieu de seulement les compléter avec les nouveaux
         // résultats.
         let renderedOnce = false;
-        const allDone = () => ebdzDone && prowlarrDone && telegramDone && fourtouticiDone && annasArchiveDone;
+        const allDone = () => ebdzDone && prowlarrDone && telegramDone && fourtouticiDone && annasArchiveDone && vkDone;
         const render = () => {
             if (combined.length > 0) {
                 // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
@@ -838,7 +840,10 @@ async function searchSources() {
         const annasArchivePromise = (searchAnnasArchive ? searchMissingVolumeSource('annas_archive', seriesTitle, null, seriesId, false, false, false) : Promise.resolve([]))
             .then(results => { combined = [...combined, ...results]; annasArchiveDone = true; render(); });
 
-        await Promise.all([ebdzPromise, prowlarrPromise, telegramPromise, fourtouticiPromise, annasArchivePromise]);
+        const vkPromise = (searchVk ? searchMissingVolumeSource('vk', seriesTitle, null, seriesId, false, false, false) : Promise.resolve([]))
+            .then(results => { combined = [...combined, ...results]; vkDone = true; render(); });
+
+        await Promise.all([ebdzPromise, prowlarrPromise, telegramPromise, fourtouticiPromise, annasArchivePromise, vkPromise]);
 
     } catch (error) {
         console.error('Erreur:', error);
@@ -973,7 +978,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
     // Recherche archive web: une seule option regroupe Fourtoutici et Anna's Archive.
-    if (!enabledIntegrations.fourtoutici && !enabledIntegrations.annas_archive) {
+    if (!enabledIntegrations.fourtoutici && !enabledIntegrations.annas_archive && !enabledIntegrations.vk) {
         const toggle = document.getElementById('search-web-archive');
         if (toggle) { toggle.checked = false; const label = toggle.closest('.source-toggle'); if (label) label.style.display = 'none'; }
     }

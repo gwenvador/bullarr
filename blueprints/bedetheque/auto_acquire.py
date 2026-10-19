@@ -491,7 +491,7 @@ _PACK_TITLE_MATCH_THRESHOLD = 0.8
 # rester dans /validation plutôt que déclencher un téléchargement automatique.
 _VOLUME_TITLE_MATCH_THRESHOLD = 0.8
 
-_SOURCE_LABELS = {'ebdz': 'EBDZ', 'prowlarr': 'Prowlarr', 'telegram': 'Telegram', 'fourtoutici': 'fourtoutici'}
+_SOURCE_LABELS = {'ebdz': 'EBDZ', 'prowlarr': 'Prowlarr', 'telegram': 'Telegram', 'fourtoutici': 'fourtoutici', 'vk': 'VK'}
 
 
 def _result_source_link(result):
@@ -511,7 +511,7 @@ def _result_source_link(result):
         return f"https://t.me/{channel}/{message_id}" if channel and message_id else ''
     if source == 'fourtoutici':
         return ''
-    return result.get('thread_url') or ''
+    return result.get('thread_url') or ''  # VK : le message du forum
 
 
 def _download_result(app, result, series_id, title, vol_num):
@@ -557,6 +557,17 @@ def _download_result(app, result, series_id, title, vol_num):
             pending_title=filename, series_id=series_id, volume_number=vol_num
         )
         return True, f"{filename or title} : téléchargement fourtoutici démarré"
+
+    if source == 'vk':
+        from blueprints.vk.scraper import download_vk_file_background
+
+        target_dir = app.config.get('VK_IMPORT_DIRECTORY')
+        if not target_dir:
+            return False, "Répertoire d'import VK non configuré"
+        download_vk_file_background(
+            result.get('download_url'), filename, target_dir, app=app, pending_title=filename,
+            series_id=series_id, volume_number=vol_num, source_link=result.get('thread_url'))
+        return True, f"{filename or title} : téléchargement VK démarré"
 
     link = result.get('link') or result.get('download_url')
     if not link and source == 'prowlarr':

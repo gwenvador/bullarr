@@ -59,6 +59,7 @@ def create_app(config_name='default'):
     from blueprints.activity import activity_bp
     from blueprints.telegram_channels import telegram_channels_bp
     from blueprints.fourtoutici import fourtoutici_bp
+    from blueprints.vk import vk_bp
     from blueprints.annas_archive import annas_archive_bp
     from blueprints.shelfmark import shelfmark_bp
     from blueprints.bdgest import bdgest_bp
@@ -80,6 +81,7 @@ def create_app(config_name='default'):
     app.register_blueprint(activity_bp)
     app.register_blueprint(telegram_channels_bp)
     app.register_blueprint(fourtoutici_bp)
+    app.register_blueprint(vk_bp)
     app.register_blueprint(annas_archive_bp)
     app.register_blueprint(shelfmark_bp)
     app.register_blueprint(bdgest_bp, url_prefix='/api/bdgest')
@@ -184,7 +186,9 @@ def create_app(config_name='default'):
                 return int(os.path.getmtime(path))
             except OSError:
                 return 0
-        return {'asset_version': asset_version}
+        return {'asset_version': asset_version,
+                'app_version': app.config.get('APP_VERSION', ''),
+                'source_url': app.config.get('SOURCE_URL', '')}
 
     return app
 

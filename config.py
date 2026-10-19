@@ -29,6 +29,11 @@ class Config:
     # Chemins
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     DATA_DIR = os.path.join(BASE_DIR, 'data')
+
+    # Version publiée (release GitHub et image ghcr.io/gwenvador/bullarr), affichée dans
+    # Configuration → Vue d'ensemble → À propos.
+    APP_VERSION = '8.0'
+    SOURCE_URL = 'https://github.com/gwenvador/bullarr'
     COVERS_DIR = os.path.join(DATA_DIR, 'covers')
     
     # Bases de données
@@ -168,6 +173,13 @@ class Config:
         'base_url': 'https://fourtoutici.cc'
     }
 
+    # Forum VK « Au Phil des Bulles » : recherche web activable (le flux RSS se règle à part).
+    VK_CONFIG_FILE = os.path.join(DATA_DIR, 'vk_config.json')
+    VK_CONFIG = {
+        'enabled': True,
+        'base_url': 'https://vk.com/board203785966'
+    }
+
     ANNAS_ARCHIVE_CONFIG_FILE = os.path.join(DATA_DIR, 'annas_archive_config.json')
     ANNAS_ARCHIVE_CONFIG = {
         'enabled': True,
@@ -193,7 +205,7 @@ class Config:
     # Telegram - son propre répertoire dédié pour que scan_import_directory l'attribue au
     # bon client plutôt que de le confondre avec Telegram (voir AMULE_IMPORT_DIRECTORY/
     # TELEGRAM_IMPORT_DIRECTORY ci-dessous, même raisonnement).
-    IMPORT_DIRECTORIES = ['/downloads/amule', '/downloads/torrents', '/downloads/telegram', '/downloads/fourtoutici', '/downloads/shelfmark']
+    IMPORT_DIRECTORIES = ['/downloads/amule', '/downloads/torrents', '/downloads/telegram', '/downloads/fourtoutici', '/downloads/shelfmark', '/downloads/vk']
 
     # Répertoires cibles dédiés par source, utilisés là où le code doit écrire dans UN
     # répertoire précis plutôt que parcourir IMPORT_DIRECTORIES (voir
@@ -202,6 +214,8 @@ class Config:
     AMULE_IMPORT_DIRECTORY = '/downloads/amule'
     TELEGRAM_IMPORT_DIRECTORY = '/downloads/telegram'
     FOURTOUTICI_IMPORT_DIRECTORY = '/downloads/fourtoutici'
+    # Forum VK « Au Phil des Bulles » (flux RSS des Nouveautés) : téléchargement HTTP interne.
+    VK_IMPORT_DIRECTORY = '/downloads/vk'
     SHELFMARK_IMPORT_DIRECTORY = '/downloads/shelfmark'
 
     # Configuration d'import automatique

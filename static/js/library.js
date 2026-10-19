@@ -4652,9 +4652,10 @@ async function searchMissingVolume(seriesTitle, volumeNumber, options = {}) {
     let telegramDone = false;
     let fourtouticiDone = false;
     let annasArchiveDone = false;
+    let vkDone = false;
     let renderedOnce = false;
     const generation = ++_searchModalGeneration;
-    const allSlowSourcesDone = () => prowlarrDone && telegramDone && fourtouticiDone && annasArchiveDone;
+    const allSlowSourcesDone = () => prowlarrDone && telegramDone && fourtouticiDone && annasArchiveDone && vkDone;
     const render = () => {
         if (generation !== _searchModalGeneration) return;
         if (combined.length > 0) {
@@ -4684,7 +4685,10 @@ async function searchMissingVolume(seriesTitle, volumeNumber, options = {}) {
     const annasArchivePromise = searchMissingVolumeSource('annas_archive', seriesTitle, volumeNumber, seriesId, isIntegral, isHs, isEpisode)
         .then(results => { combined = [...combined, ...results]; annasArchiveDone = true; render(); });
 
-    await Promise.all([ebdzPromise, prowlarrPromise, telegramPromise, fourtouticiPromise, annasArchivePromise]);
+    const vkPromise = (enabledIntegrations.vk ? searchMissingVolumeSource('vk', seriesTitle, volumeNumber, seriesId, isIntegral, isHs, isEpisode) : Promise.resolve([]))
+        .then(results => { combined = [...combined, ...results]; vkDone = true; render(); });
+
+    await Promise.all([ebdzPromise, prowlarrPromise, telegramPromise, fourtouticiPromise, annasArchivePromise, vkPromise]);
 }
 
 // Bouton EBDZ de la toolbar de la page de détail: lien direct vers le thread quand la
@@ -6827,6 +6831,8 @@ function displaySearchResults(seriesTitle, volumeNumber, results, displayLabel, 
     const selection = focusKey && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
     searchModalBody.innerHTML = html;
     initClearableSearchInputs(searchModalBody);
+    bindSearchResultsTableControls(searchModalBody);
+    _updateSearchBatchDownloadToolbar();
     scrollers.forEach((el, i) => { el.scrollTop = scrollPositions[i]; });
     if (focusKey) {
         const again = searchModalBody.querySelector(focusKey);

@@ -50,6 +50,13 @@ def normalize_feeds(value):
             seen.add(key)
             feeds.append({'name': str(item.get('name') or 'Prowlarr').strip()[:120], 'provider': 'prowlarr', 'enabled': item.get('enabled', True) is not False})
             continue
+        if item.get('provider') == 'vk':
+            key = ('provider', 'vk')
+            if key in seen:
+                continue
+            seen.add(key)
+            feeds.append({'name': str(item.get('name') or 'VK – Au Phil des Bulles').strip()[:120], 'provider': 'vk', 'enabled': item.get('enabled', True) is not False})
+            continue
         url = _validate_url(item.get('url', ''))
         if url in seen:
             continue
@@ -322,6 +329,9 @@ def feed_cache_key(feed):
 def fetch_feed(feed, force_refresh=False):
     if feed.get('provider') == 'prowlarr':
         return fetch_prowlarr_feed(feed)
+    if feed.get('provider') == 'vk':
+        from blueprints.vk.scraper import fetch_vk_feed
+        return fetch_vk_feed(feed)
     url = _validate_url(feed['url'])
     cached = _rss_cache.get(url)
     now = time.monotonic()

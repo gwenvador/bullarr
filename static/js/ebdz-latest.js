@@ -160,6 +160,13 @@ async function replaceNouveautesRssFile(eventIndex, button) {
     button.disabled = true;
     button.innerHTML = svgIcon('loader-circle', 'icon-spin');
     try {
+        if (event.vk) {
+            await _downloadVkNouveaute(event, event.series_id, volumeId, true);
+            button.disabled = false;
+            button.innerHTML = original;
+            showToast('nouveautes-replace-vk', `📥 ${event.title} : téléchargement VK démarré`, { icon: 'download', autoHideMs: 5000 });
+            return;
+        }
         const torrentUrl = await _resolveRssTorrentUrl(event);
         if (!torrentUrl) throw new Error('Lien de téléchargement introuvable pour cette release');
         button.disabled = false;
@@ -223,9 +230,42 @@ async function _sendRssTorrentToClient(torrentUrl, event, seriesId) {
     return client;
 }
 
+// Fichier du forum VK : téléchargé par Bullarr lui-même (répertoire d'import VK).
+async function _downloadVkNouveaute(ev, seriesId, volumeId = null, forceReplace = false) {
+    const url = (ev.download_links || [])[0]?.url;
+    if (!url) throw new Error('Lien VK introuvable pour ce fichier');
+    const response = await fetch('/api/vk/download', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            url, filename: ev.filename || ev.title || '', series_id: seriesId, volume_id: volumeId,
+            volume_number: null, source_link: ev.link || '', force_replace: forceReplace
+        })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || `Téléchargement VK impossible (HTTP ${response.status})`);
+    return 'VK';
+}
+
+async function downloadVkNouveaute(eventIndex, button) {
+    const ev = allNouveautesEvents[eventIndex];
+    if (!ev) return;
+    button.disabled = true;
+    try {
+        await _downloadVkNouveaute(ev, ev.series_id || null);
+        button.classList.add('add-button-added');
+        button.innerHTML = svgIcon('check');
+        showToast('vk-dl-' + eventIndex, `📥 ${ev.title} : téléchargement VK démarré - voir la page Import`,
+            { icon: 'download', autoHideMs: 5000 });
+    } catch (error) {
+        button.disabled = false;
+        showToast('vk-dl-error-' + eventIndex, error.message, { icon: 'circle-x', autoHideMs: 8000 });
+    }
+}
+
 // Télécharge le(s) fichier(s) de la ligne (et uniquement ceux-là, sans recherche) vers le client
 // adapté à sa source. Retourne le libellé de la destination pour le message affiché.
 async function _downloadNouveautesRelease(ev, seriesId, linkIndex = null) {
+    if (ev.type === 'rss' && ev.vk) return await _downloadVkNouveaute(ev, seriesId);
     if (ev.type === 'telegram') {
         const response = await fetch('/api/telegram-channels/download', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -842,6 +882,7 @@ function _nouveautesRssTorrentClientButtons(event, item, itemIndex) {
 // ajoute la clé configurée (sinon 401). Les autres liens restent directs.
 function _nouveautesRssDownloadLink(item, title) {
     const url = item.url || '';
+    if (/^https:\/\/(m\.)?vk\.(com|ru)\/doc-?\d+_\d+/.test(url)) return { href: url, label: 'Ouvrir le fichier sur VK' };
     if (url.startsWith('magnet:')) return { href: url, label: 'Ouvrir le lien magnet' };
     if (url.startsWith('ed2k://')) return { href: url, label: 'Ouvrir le lien ed2k' };
     const label = 'Télécharger le fichier torrent';
@@ -865,11 +906,14 @@ function _nouveautesRssRowHtml(event) {
         ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesRssFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
         : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger cette release" aria-label="Ajouter la série et télécharger cette release">${svgIcon('zap')}</button>`}${_nouveautesMatched(event) ? '' : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
     const matchedSeriesHtml = _nouveautesSeriesHtml(event);
-    const downloadButtons = (event.download_links || []).map(item => {
+    // Ligne VK : le titre ouvre déjà le message sur VK ; le bouton télécharge dans Bullarr.
+    const downloadButtons = event.vk ? '' : (event.download_links || []).map(item => {
         const link = _nouveautesRssDownloadLink(item, event.title);
         return `<a class="btn-icon-only" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer" data-tooltip="${escapeHtml(link.label)}" aria-label="${escapeHtml(link.label)}" onclick="event.stopPropagation()">${svgIcon('download')}</a>`;
     }).join('');
-    const torrentClientButtons = (event.download_links || []).map((item, itemIndex) => _nouveautesRssTorrentClientButtons(event, item, itemIndex)).join('');
+    const torrentClientButtons = event.vk
+        ? `<button class="btn-icon-only" type="button" onclick="downloadVkNouveaute(${event._index}, this)" data-tooltip="Télécharger dans Bullarr (VK)" aria-label="Télécharger dans Bullarr (VK)">${svgIcon('download')}</button>`
+        : (event.download_links || []).map((item, itemIndex) => _nouveautesRssTorrentClientButtons(event, item, itemIndex)).join('');
     const rssMonitoredHtml = event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : '';
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
     return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${matchedSeriesHtml}${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td><td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;

@@ -4661,6 +4661,8 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
         client = 'fourtoutici'
     elif tracked_client == 'shelfmark' or import_root == current_app.config.get('SHELFMARK_IMPORT_DIRECTORY'):
         client = 'shelfmark'
+    elif tracked_client == 'vk' or import_root == current_app.config.get('VK_IMPORT_DIRECTORY'):
+        client = 'vk'
     else:
         client = 'torrent'
 

@@ -499,6 +499,49 @@ async function testAnnasArchiveConnection() {
     } catch (error) { showMessage('annasArchiveMessage', '❌ Erreur de connexion: ' + error.message, 'error'); }
 }
 
+async function loadVkSettings() {
+    try {
+        const response = await fetch('/api/vk/config');
+        const config = await response.json();
+        document.getElementById('vkEnabled').checked = config.enabled !== false;
+        document.getElementById('vkBaseUrl').value = config.base_url || '';
+    } catch (error) {
+        showMessage('vkMessage', '❌ Erreur lors du chargement de la configuration VK', 'error');
+    }
+}
+
+async function saveVkSettings() {
+    try {
+        const response = await fetch('/api/vk/config', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                enabled: document.getElementById('vkEnabled').checked,
+                base_url: document.getElementById('vkBaseUrl').value.trim()
+            })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        document.getElementById('vkBaseUrl').value = data.base_url || '';
+        showMessage('vkMessage', '✅ Configuration VK enregistrée avec succès !', 'success');
+        if (typeof refreshEnabledIntegrations === 'function') await refreshEnabledIntegrations();
+        if (typeof loadIndexeurCardStatuses === 'function') loadIndexeurCardStatuses();
+    } catch (error) {
+        showMessage('vkMessage', '❌ Erreur: ' + error.message, 'error');
+    }
+}
+
+async function testVkConnection() {
+    showMessage('vkMessage', '⏳ Test du forum VK...', 'info');
+    try {
+        const response = await fetch('/api/vk/test');
+        const data = await response.json();
+        showMessage('vkMessage', data.success ? `✅ Forum VK lisible : ${data.topics} sujets (${data.seconds} s)` : '❌ ' + data.error,
+            data.success ? 'success' : 'error');
+    } catch (error) {
+        showMessage('vkMessage', '❌ Erreur de connexion: ' + error.message, 'error');
+    }
+}
+
 async function loadFourtouticiSettings() {
     try {
         const response = await fetch('/api/fourtoutici/config');
@@ -1184,6 +1227,64 @@ async function loadOidcSettings() {
     }
 }
 
+// ===== Accès API =====
+function renderApiKey(key) {
+    document.getElementById('apiKeyValue').value = key || '';
+    document.getElementById('apiKeyCopyBtn').hidden = !key;
+    document.getElementById('apiKeyDeleteBtn').hidden = !key;
+    document.getElementById('apiKeyGenerateBtn').textContent = key ? 'Régénérer la clé' : 'Générer une clé';
+}
+
+async function loadApiKey() {
+    try {
+        const response = await fetch('/api/auth/api-key');
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        renderApiKey(data.api_key);
+    } catch (error) {
+        showMessage('apiKeyMessage', '❌ Clé API illisible : ' + error.message, 'error');
+    }
+}
+
+async function regenerateApiKey() {
+    if (document.getElementById('apiKeyValue').value
+        && !confirm('Régénérer la clé API ? Les applications qui utilisent l\'ancienne clé perdront l\'accès.')) return;
+    try {
+        const response = await fetch('/api/auth/api-key', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        renderApiKey(data.api_key);
+        showMessage('apiKeyMessage', '✅ Nouvelle clé API enregistrée', 'success');
+    } catch (error) {
+        showMessage('apiKeyMessage', '❌ ' + error.message, 'error');
+    }
+}
+
+async function deleteApiKey() {
+    if (!confirm('Supprimer la clé API ? Plus aucune application ne pourra accéder à Bullarr par l\'API.')) return;
+    try {
+        const response = await fetch('/api/auth/api-key', { method: 'DELETE' });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        renderApiKey('');
+        showMessage('apiKeyMessage', '🗑️ Clé API supprimée', 'info');
+    } catch (error) {
+        showMessage('apiKeyMessage', '❌ ' + error.message, 'error');
+    }
+}
+
+async function copyApiKey() {
+    const key = document.getElementById('apiKeyValue').value;
+    if (!key) return;
+    try {
+        await navigator.clipboard.writeText(key);
+        showMessage('apiKeyMessage', '📋 Clé copiée', 'success');
+    } catch (error) {
+        document.getElementById('apiKeyValue').select();
+        showMessage('apiKeyMessage', 'Copie impossible : sélectionnez la clé et copiez-la', 'warning');
+    }
+}
+
 async function saveOidcSettings() {
     const config = {
         mode: document.getElementById('authMode').value,
@@ -1473,6 +1574,7 @@ function switchTab(tabName) {
         loadTelegramSettings();
     } else if (tabName === 'oidc') {
         loadOidcSettings();
+        loadApiKey();
     } else if (tabName === 'search-formats') {
         initSearchFormatPriority();
         initSearchSourcePriority();
@@ -1510,7 +1612,7 @@ const INTEGRATION_MODAL_LOADERS = {
     deluge: () => loadDelugeSettings(),
     shelfmark: () => loadShelfmarkSettings(),
     komga: () => loadKomgaSettings(),
-    web: () => { loadFourtouticiSettings(); loadAnnasArchiveSettings(); loadShelfmarkSettings(); },
+    web: () => { loadFourtouticiSettings(); loadAnnasArchiveSettings(); loadVkSettings(); loadShelfmarkSettings(); },
     'telegram-channels': () => { loadTelegramChannelsConfig(); loadTelegramAutoScrapeConfig(); telegramChannelsBackfillPoll(); },
     rss: () => loadRssFeeds()
 };
@@ -1590,14 +1692,15 @@ function loadIndexeurCardStatuses() {
         label: config.connected ? `Connecté (${config.username ? '@' + config.username : config.first_name})` : 'Non connecté'
     }));
     // Web Archive regroupe les deux sources publiques configurables dans sa modale.
-    Promise.all([fetch('/api/fourtoutici/config'), fetch('/api/annas-archive/config')])
-        .then(async ([four, anna]) => {
+    Promise.all([fetch('/api/fourtoutici/config'), fetch('/api/annas-archive/config'), fetch('/api/vk/config')])
+        .then(async ([four, anna, vk]) => {
             const fourConfig = await four.json();
             const annaConfig = await anna.json();
-            const active = [fourConfig.enabled !== false, annaConfig.enabled !== false].filter(Boolean).length;
+            const vkConfig = await vk.json();
+            const active = [fourConfig.enabled !== false, annaConfig.enabled !== false, vkConfig.enabled !== false].filter(Boolean).length;
             const badge = document.getElementById('card-status-web');
             if (badge) {
-                badge.textContent = `${active}/2 sources actives`;
+                badge.textContent = `${active}/3 sources actives`;
                 badge.className = 'integration-card-status ' + (active ? 'integration-card-status-on' : 'integration-card-status-off');
             }
         }).catch(() => {});
@@ -1742,6 +1845,7 @@ async function initSearchSourcePriority() {
         : source === 'ebdz' ? enabledIntegrations.ebdz
         : source === 'fourtoutici' ? enabledIntegrations.fourtoutici
         : source === 'annas_archive' ? enabledIntegrations.annas_archive
+        : source === 'vk' ? enabledIntegrations.vk
         : true;
     try {
         const config = await (await fetch('/api/import/config')).json();
@@ -1807,6 +1911,7 @@ function resetSearchSourcePriority() {
         : source === 'ebdz' ? enabledIntegrations.ebdz
         : source === 'fourtoutici' ? enabledIntegrations.fourtoutici
         : source === 'annas_archive' ? enabledIntegrations.annas_archive
+        : source === 'vk' ? enabledIntegrations.vk
         : true;
     searchSourcePriorityDraft = SEARCH_SOURCE_PRIORITY_DEFAULT.filter(active);
     renderSearchSourcePriorityList();
@@ -1895,7 +2000,8 @@ const SEARCH_SOURCE_LABELS = {
     ebdz: `<img src="/static/img/ebdz-logo.png" alt="" style="${_SEARCH_SOURCE_ICON_STYLE}"> EBDZ`,
     telegram: `<img src="/static/img/telegram-logo.svg" alt="" style="${_SEARCH_SOURCE_ICON_STYLE}"> Telegram`,
     fourtoutici: `<img src="/static/img/fourtoutici-logo.svg" alt="" style="${_SEARCH_SOURCE_ICON_STYLE}"> fourtoutici`,
-    annas_archive: `<img src="/static/img/annas-archive-favicon.ico" alt="" style="${_SEARCH_SOURCE_ICON_STYLE}"> Anna’s Archive`
+    annas_archive: `<img src="/static/img/annas-archive-favicon.ico" alt="" style="${_SEARCH_SOURCE_ICON_STYLE}"> Anna’s Archive`,
+    vk: `<img src="/static/img/vk-logo.svg" alt="" style="${_SEARCH_SOURCE_ICON_STYLE}"> Forum VK`
 };
 
 async function initSearchSourcePriority() {
@@ -1910,6 +2016,7 @@ async function initSearchSourcePriority() {
         : source === 'ebdz' ? enabledIntegrations.ebdz
         : source === 'fourtoutici' ? enabledIntegrations.fourtoutici
         : source === 'annas_archive' ? enabledIntegrations.annas_archive
+        : source === 'vk' ? enabledIntegrations.vk
         : true;
     try {
         const config = await (await fetch('/api/import/config')).json();
@@ -1975,6 +2082,7 @@ function resetSearchSourcePriority() {
         : source === 'ebdz' ? enabledIntegrations.ebdz
         : source === 'fourtoutici' ? enabledIntegrations.fourtoutici
         : source === 'annas_archive' ? enabledIntegrations.annas_archive
+        : source === 'vk' ? enabledIntegrations.vk
         : true;
     searchSourcePriorityDraft = SEARCH_SOURCE_PRIORITY_DEFAULT.filter(active);
     renderSearchSourcePriorityList();
@@ -2828,7 +2936,12 @@ function updateRssCardStatus() {
 function renderRssFeeds() {
     const el = document.getElementById('rssFeedsList');
     if (!el) return;
-    el.innerHTML = rssFeeds.length ? rssFeeds.map((feed, i) => { const detail = feed.provider === 'prowlarr' ? 'Tous les indexeurs Prowlarr (clé conservée côté serveur)' : feed.url; return `<div class="rss-feed-row"><div class="rss-feed-row-copy"><strong>${escapeHtml(feed.name)}</strong><small>${escapeHtml(detail)}</small></div><button class="btn-icon-only" type="button" onclick="rssFeeds.splice(${i},1); renderRssFeeds()" aria-label="Supprimer le flux RSS" data-tooltip="Supprimer le flux RSS">${svgIcon('trash-2')}</button></div>`; }).join('') : '<p class="help-text">Aucun flux configuré.</p>';
+    el.innerHTML = rssFeeds.length ? rssFeeds.map((feed, i) => { const detail = feed.provider === 'prowlarr' ? 'Tous les indexeurs Prowlarr (clé conservée côté serveur)' : feed.provider === 'vk' ? 'Forum vk.com/board203785966 : fichiers récents, téléchargés par Bullarr' : feed.url; return `<div class="rss-feed-row"><div class="rss-feed-row-copy"><strong>${escapeHtml(feed.name)}</strong><small>${escapeHtml(detail)}</small></div><button class="btn-icon-only" type="button" onclick="rssFeeds.splice(${i},1); renderRssFeeds()" aria-label="Supprimer le flux RSS" data-tooltip="Supprimer le flux RSS">${svgIcon('trash-2')}</button></div>`; }).join('') : '<p class="help-text">Aucun flux configuré.</p>';
+}
+function addVkRssFeed() {
+    if (rssFeeds.some(feed => feed.provider === 'vk')) return;
+    rssFeeds.push({ name: 'VK – Au Phil des Bulles', provider: 'vk', enabled: true });
+    renderRssFeeds();
 }
 function addRssFeed() { const name = document.getElementById('rssFeedName').value.trim(); const url = document.getElementById('rssFeedUrl').value.trim(); if (!url) return; rssFeeds.push({name: name || url, url, enabled: true}); document.getElementById('rssFeedName').value=''; document.getElementById('rssFeedUrl').value=''; renderRssFeeds(); }
 async function saveRssFeeds() { try { const response = await fetch('/api/settings/rss', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({feeds:rssFeeds})}); const data=await response.json(); if (!response.ok || !data.success) throw new Error(data.error || 'Erreur'); rssFeeds=data.feeds || []; renderRssFeeds(); updateRssCardStatus(); showSettingsMessage('rssMessage','✅ Flux RSS enregistré','success'); } catch(e) { showSettingsMessage('rssMessage','❌ '+e.message,'error'); } }

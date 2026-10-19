@@ -124,17 +124,18 @@ async function refreshEnabledDownloadClients() {
 // veut dire identifiants renseignés (voir is_ebdz_configured côté Flask, même critère
 // que /api/ebdz/scrape) - le mot de passe renvoyé est masqué ('****') mais toujours une
 // chaîne non vide si un mot de passe existe, donc utilisable tel quel ici.
-const enabledIntegrations = { komga: false, ebdz: false, prowlarr: false, telegram: false, fourtoutici: true, annas_archive: true };
+const enabledIntegrations = { komga: false, ebdz: false, prowlarr: false, telegram: false, fourtoutici: true, annas_archive: true, vk: true };
 
 async function refreshEnabledIntegrations() {
     try {
-        const [komgaRes, ebdzRes, prowlarrRes, telegramRes, fourtouticiRes, annasArchiveRes] = await Promise.all([
+        const [komgaRes, ebdzRes, prowlarrRes, telegramRes, fourtouticiRes, annasArchiveRes, vkRes] = await Promise.all([
             fetch('/api/komga/config'),
             fetch('/api/ebdz/config'),
             fetch('/api/prowlarr/config'),
             fetch('/api/telegram-channels/config'),
             fetch('/api/fourtoutici/config'),
             fetch('/api/annas-archive/config'),
+            fetch('/api/vk/config'),
         ]);
         const komgaConfig = await komgaRes.json();
         const ebdzConfig = await ebdzRes.json();
@@ -142,6 +143,7 @@ async function refreshEnabledIntegrations() {
         const telegramConfig = await telegramRes.json();
         const fourtouticiConfig = await fourtouticiRes.json();
         const annasArchiveConfig = await annasArchiveRes.json();
+        const vkConfig = await vkRes.json();
         enabledIntegrations.komga = !!komgaConfig.enabled;
         enabledIntegrations.ebdz = !!(ebdzConfig.username && ebdzConfig.password);
         enabledIntegrations.prowlarr = !!prowlarrConfig.enabled;
@@ -151,6 +153,7 @@ async function refreshEnabledIntegrations() {
         // masqué par défaut comme Prowlarr - il n'y a rien à configurer avant de l'utiliser.
         enabledIntegrations.fourtoutici = fourtouticiConfig.enabled !== false;
         enabledIntegrations.annas_archive = annasArchiveConfig.enabled !== false;
+        enabledIntegrations.vk = vkConfig.enabled !== false;
     } catch (e) {
         enabledIntegrations.komga = false;
         enabledIntegrations.ebdz = false;
@@ -158,6 +161,7 @@ async function refreshEnabledIntegrations() {
         enabledIntegrations.telegram = false;
         enabledIntegrations.fourtoutici = true;
         enabledIntegrations.annas_archive = true;
+        enabledIntegrations.vk = true;
     }
 }
 
@@ -680,6 +684,10 @@ function initResizableTableColumns(root) {
         }
 
         ths.forEach((th, index) => {
+            // Colonne de sélection (une case « Tout sélectionner », sans texte) : rien à
+            // redimensionner, et la poignée de 14 px recouvrait entièrement la case de 13 px
+            // (un clic sur la case attrapait la poignée, rien n'était sélectionné).
+            if (th.querySelector('input[type="checkbox"]') && !th.textContent.trim()) return;
             if (savedWidths[index]) th.style.width = savedWidths[index] + 'px';
             th.classList.add('col-resizable');
             const handle = document.createElement('span');

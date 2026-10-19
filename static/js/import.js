@@ -298,11 +298,12 @@ const CLIENT_LOGOS = {
     telegram: '/static/img/telegram-logo.svg',
     packaged: null,
     fourtoutici: '/static/img/fourtoutici-favicon.svg',
-    shelfmark: '/static/img/annas-archive-favicon.ico'
+    shelfmark: '/static/img/annas-archive-favicon.ico',
+    vk: '/static/img/vk-logo.svg'
 };
 const CLIENT_LABELS = {
     qbittorrent: 'qBittorrent', rtorrent: 'rTorrent', deluge: 'Deluge', amule: 'aMule',
-    telegram: 'Telegram', packaged: 'Empaqueté', fourtoutici: 'fourtoutici', shelfmark: 'Shelfmark',
+    telegram: 'Telegram', packaged: 'Empaqueté', fourtoutici: 'fourtoutici', shelfmark: 'Shelfmark', vk: 'VK',
     // '/torrents' est partagé entre qBittorrent/rTorrent/Deluge - un fichier déjà sur
     // disque ne peut pas être rattaché avec certitude à l'un des trois (voir client côté
     // serveur, scan_import_directory)

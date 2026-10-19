@@ -27,10 +27,11 @@ const HISTORY_TYPE_LABELS = {
     quality_upgrade: 'Upgrade qualité', missing_volume_match: 'Tome manquant détecté'
 };
 
-const HISTORY_SOURCE_LABELS = { ebdz: 'EBDZ', prowlarr: 'Prowlarr', telegram: 'Telegram', fourtoutici: 'fourtoutici' };
+const HISTORY_SOURCE_LABELS = { ebdz: 'EBDZ', prowlarr: 'Prowlarr', telegram: 'Telegram', fourtoutici: 'fourtoutici', vk: 'VK' };
 const HISTORY_SOURCE_ICONS = {
     ebdz: '/static/img/ebdz-logo.png', prowlarr: '/static/img/prowlarr-logo.svg',
-    telegram: '/static/img/telegram-logo.svg', fourtoutici: '/static/img/fourtoutici-logo.svg'
+    telegram: '/static/img/telegram-logo.svg', fourtoutici: '/static/img/fourtoutici-logo.svg',
+    vk: '/static/img/vk-logo.svg'
 };
 
 function safeHistorySourceLink(sourceLink) {

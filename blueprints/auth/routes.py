@@ -3,7 +3,7 @@ Routes pour l'authentification SSO / OIDC
 Utilise Authlib pour la découverte OIDC (issuer/.well-known/openid-configuration),
 le PKCE et la validation du token d'identité — pas de JWT fait maison.
 """
-from flask import request, jsonify, redirect, url_for, session, current_app, render_template
+from flask import request, jsonify, redirect, url_for, session, current_app, render_template, g
 from authlib.integrations.flask_client import OAuth
 from werkzeug.security import check_password_hash, generate_password_hash
 import hmac
@@ -12,7 +12,7 @@ import requests
 
 from . import auth_bp
 from encryption import decrypt
-from .config_store import AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url
+from .config_store import AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url, generate_api_key
 
 # Endpoints toujours accessibles, même quand le SSO/OIDC est activé (sans quoi
 # l'utilisateur ne pourrait jamais atteindre le flux de connexion ou les assets statiques)
@@ -38,6 +38,28 @@ def _oidc_enabled(config):
 def _oidc_ready(config):
     """SSO activé ET suffisamment configuré pour démarrer le flux."""
     return _oidc_enabled(config) and bool(config.get('issuer')) and bool(config.get('client_id'))
+
+
+def _supplied_api_key():
+    """Clé API envoyée par un client externe : en-tête X-Api-Key (ou Authorization: Bearer),
+    ou paramètre ?apikey= pour les clients qui ne savent pas ajouter d'en-tête."""
+    key = request.headers.get('X-Api-Key') or request.args.get('apikey') or ''
+    if not key:
+        auth = request.headers.get('Authorization', '')
+        if auth.lower().startswith('bearer '):
+            key = auth[7:]
+    return key.strip()
+
+
+def _api_key_status(config):
+    """None si aucune clé n'est fournie, True si elle est valide, False sinon.
+
+    Une clé n'est acceptée que sur les routes /api/ : elle ne donne pas accès aux pages."""
+    supplied = _supplied_api_key()
+    if not supplied or not request.path.startswith('/api/'):
+        return None
+    expected = config.get('api_key_decrypted') or ''
+    return bool(expected) and hmac.compare_digest(expected, supplied)
 
 
 def _render_login(config, error=None, status=200):
@@ -89,6 +111,16 @@ def enforce_login():
         return None
 
     config = load_oidc_config()
+
+    # Accès API : une clé valide remplace la session et le jeton CSRF ; une clé fausse
+    # est refusée même sans authentification, pour que le client voie son erreur.
+    api_key_ok = _api_key_status(config)
+    if api_key_ok is True:
+        g.api_key_auth = True
+        return None
+    if api_key_ok is False:
+        return jsonify({'success': False, 'error': 'Clé API invalide'}), 401
+
     mode = _auth_mode(config)
     if mode == 'none':
         return None
@@ -104,6 +136,9 @@ def enforce_login():
     # Keep the post-login destination same-origin. Storing request.url trusted the
     # client-controlled Host/X-Forwarded-Host header and could turn the callback into
     # an open redirect after a successful login.
+    if (request.path.startswith('/api/') and request.accept_mimetypes.accept_json
+            and not request.accept_mimetypes.accept_html):
+        return jsonify({'success': False, 'error': 'Authentification requise : envoyez la clé API dans l\'en-tête X-Api-Key'}), 401
     session['next_url'] = request.full_path if request.query_string else request.path
     return redirect(url_for('auth.login'))
 
@@ -315,3 +350,74 @@ def test_oidc_discovery():
         return jsonify({'success': False, 'error': "Impossible de se connecter à l'issuer. Vérifiez l'URL."}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
+
+
+@auth_bp.route('/api/auth/api-key', methods=['GET'])
+def get_api_key():
+    """Clé API de Bullarr (en-tête X-Api-Key pour les applications externes)."""
+    if getattr(g, 'api_key_auth', False):
+        return jsonify({'success': False, 'error': 'La clé API ne peut pas être lue avec la clé API'}), 403
+    config = load_oidc_config()
+    return jsonify({'success': True, 'api_key': config.get('api_key_decrypted') or ''})
+
+
+@auth_bp.route('/api/auth/api-key', methods=['POST'])
+def regenerate_api_key():
+    """Crée (ou remplace) la clé API ; l'ancienne cesse aussitôt de fonctionner."""
+    if getattr(g, 'api_key_auth', False):
+        return jsonify({'success': False, 'error': 'La clé API ne peut pas être changée avec la clé API'}), 403
+    config = load_oidc_config()
+    config['api_key_decrypted'] = generate_api_key()
+    if not save_oidc_config(config):
+        return jsonify({'success': False, 'error': 'Erreur de sauvegarde de la clé API'}), 500
+    return jsonify({'success': True, 'api_key': config['api_key_decrypted']})
+
+
+@auth_bp.route('/api/auth/api-key', methods=['DELETE'])
+def delete_api_key():
+    """Supprime la clé API : plus aucun accès par clé."""
+    if getattr(g, 'api_key_auth', False):
+        return jsonify({'success': False, 'error': 'La clé API ne peut pas être supprimée avec la clé API'}), 403
+    config = load_oidc_config()
+    config.pop('api_key', None)
+    config.pop('api_key_decrypted', None)
+    if not save_oidc_config(config):
+        return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
+    return jsonify({'success': True})
+
+
+def api_routes():
+    """Toutes les routes /api/ de l'application, lues dans la table de routage Flask."""
+    routes = []
+    for rule in current_app.url_map.iter_rules():
+        if not rule.rule.startswith('/api/'):
+            continue
+        view = current_app.view_functions.get(rule.endpoint)
+        doc = (view.__doc__ or '').strip() if view else ''
+        methods = sorted(m for m in rule.methods if m not in {'HEAD', 'OPTIONS'})
+        parts = rule.rule.split('/')
+        group = parts[2] if len(parts) > 2 else ''
+        routes.append({
+            'path': rule.rule,
+            'methods': methods,
+            'group': group,
+            'summary': doc.split('\n\n')[0].replace('\n', ' ').strip(),
+            'endpoint': rule.endpoint,
+        })
+    routes.sort(key=lambda r: (r['group'], r['path'], r['methods']))
+    return routes
+
+
+@auth_bp.route('/api/docs')
+def api_docs():
+    """Documentation de l'API : HTML dans un navigateur, JSON sinon (ou avec ?format=json)."""
+    routes = api_routes()
+    wants_json = request.args.get('format') == 'json' or (
+        request.accept_mimetypes.best_match(['application/json', 'text/html']) == 'application/json')
+    if wants_json:
+        return jsonify({'success': True, 'auth': {'header': 'X-Api-Key', 'query': 'apikey'},
+                        'count': len(routes), 'routes': routes})
+    groups = {}
+    for route in routes:
+        groups.setdefault(route['group'], []).append(route)
+    return render_template('api-docs.html', groups=groups, count=len(routes))

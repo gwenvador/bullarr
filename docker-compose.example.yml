@@ -17,6 +17,10 @@ services:
       - /path/to/telegram/incoming:/downloads/telegram
       # Dossier entrant Fourtoutici.
       - ./incoming:/downloads/fourtoutici
+      # Dossier entrant du forum VK (flux RSS « VK – Au Phil des Bulles »).
+      - ./incoming-vk:/downloads/vk
+      # Dossier d'ingestion Shelfmark (Anna's Archive), si vous utilisez Shelfmark.
+      - /path/to/shelfmark/books:/downloads/shelfmark
     environment:
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before starting Bullarr}
       # Récupération d'accès uniquement (voir README): true le temps de corriger la configuration

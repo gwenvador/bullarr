@@ -110,6 +110,48 @@
                                 <div class="integration-card-name">Backup</div>
                             </div>
                         </div>
+
+                        <div class="settings-card about-card" id="about">
+                            <h3>À propos</h3>
+                            <p class="about-version">
+                                <strong>Bullarr</strong>{% if app_version %} <span class="about-version-number">v{{ app_version }}</span>{% endif %}
+                                — gestionnaire de bibliothèque BD.
+                                Code source : <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url | replace('https://', '') }}</a>
+                                · <a href="{{ source_url }}/releases" target="_blank" rel="noopener noreferrer">Versions</a>
+                                · <a href="/api/docs" target="_blank" rel="noopener">API</a>
+                            </p>
+                            <div class="about-links">
+                                <div class="about-links-group">
+                                    <h4>Métadonnées</h4>
+                                    <ul>
+                                        <li><a href="https://www.bedetheque.com" target="_blank" rel="noopener noreferrer">Bédéthèque</a> — fiches séries, albums, auteurs</li>
+                                        <li><a href="https://www.bdgest.com" target="_blank" rel="noopener noreferrer">BDGest</a> — Top 100</li>
+                                    </ul>
+                                </div>
+                                <div class="about-links-group">
+                                    <h4>Sources</h4>
+                                    <ul>
+                                        <li><a href="https://ebdz.net/forum/" target="_blank" rel="noopener noreferrer">EBDZ.net</a> — forum, liens ed2k</li>
+                                        <li><a href="https://prowlarr.com" target="_blank" rel="noopener noreferrer">Prowlarr</a> — indexeurs torrent</li>
+                                        <li><a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">Telegram</a> — api_id / api_hash des canaux</li>
+                                        <li><a href="https://fourtoutici.cc" target="_blank" rel="noopener noreferrer">fourtoutici.cc</a></li>
+                                        <li><a href="https://annas-archive.gl" target="_blank" rel="noopener noreferrer">Anna's Archive</a></li>
+                                        <li><a href="https://vk.com/board203785966" target="_blank" rel="noopener noreferrer">Forum VK Au Phil des Bulles</a></li>
+                                    </ul>
+                                </div>
+                                <div class="about-links-group">
+                                    <h4>Clients et services</h4>
+                                    <ul>
+                                        <li><a href="https://komga.org" target="_blank" rel="noopener noreferrer">Komga</a> — serveur de lecture</li>
+                                        <li><a href="https://www.qbittorrent.org" target="_blank" rel="noopener noreferrer">qBittorrent</a></li>
+                                        <li><a href="https://github.com/rakshasa/rtorrent" target="_blank" rel="noopener noreferrer">rTorrent</a></li>
+                                        <li><a href="https://deluge-torrent.org" target="_blank" rel="noopener noreferrer">Deluge</a></li>
+                                        <li><a href="https://www.amule.org" target="_blank" rel="noopener noreferrer">aMule</a></li>
+                                        <li><a href="https://github.com/calibrain/shelfmark" target="_blank" rel="noopener noreferrer">Shelfmark</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -336,7 +378,7 @@
                         <span class="close-modal" onclick="closeIntegrationModal('rss')">×</span>
                         <div class="settings-section">
                             <div class="section-header"><h2><img src="{{ url_for('static', filename='img/rss-logo.svg') }}" alt="" class="section-header-logo"> Flux RSS des Nouveautés</h2><p class="section-description">Configurez les flux RSS affichés dans la page Nouveautés.</p></div>
-                            <div class="settings-card rss-settings-card"><div class="rss-feed-list" id="rssFeedsList"></div><div class="form-row rss-feed-form-row"><div class="form-group"><label for="rssFeedName">Nom du flux</label><input id="rssFeedName" type="text" placeholder="DupeFR EBOOKS"></div><div class="form-group"><label for="rssFeedUrl">URL du flux</label><input id="rssFeedUrl" type="url" placeholder="https://exemple/flux.xml"></div></div><div class="form-actions"><button class="btn" type="button" onclick="addRssFeed()">+ Ajouter le flux</button><button class="btn btn-success" type="button" onclick="saveRssFeeds()">Sauvegarder</button></div><div id="rssMessage" class="message"></div></div>
+                            <div class="settings-card rss-settings-card"><div class="rss-feed-list" id="rssFeedsList"></div><div class="form-row rss-feed-form-row"><div class="form-group"><label for="rssFeedName">Nom du flux</label><input id="rssFeedName" type="text" placeholder="DupeFR EBOOKS"></div><div class="form-group"><label for="rssFeedUrl">URL du flux</label><input id="rssFeedUrl" type="url" placeholder="https://exemple/flux.xml"></div></div><div class="form-actions"><button class="btn" type="button" onclick="addRssFeed()">+ Ajouter le flux</button><button class="btn" type="button" onclick="addVkRssFeed()" data-tooltip="Fichiers récents du forum VK Au Phil des Bulles (vk.com/board203785966), téléchargés par Bullarr">+ Forum VK</button><button class="btn btn-success" type="button" onclick="saveRssFeeds()">Sauvegarder</button></div><div id="rssMessage" class="message"></div></div>
                         </div>
                     </div>
                 </div>
@@ -1247,6 +1289,23 @@
                             <div id="annasArchiveMessage" class="message"></div>
                         </div>
 
+                        <div class="settings-card source-row">
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="vkEnabled">
+                                <label for="vkEnabled"><img src="{{ url_for('static', filename='img/vk-logo.svg') }}" alt="" style="width:16px; height:16px; object-fit:contain; vertical-align:-3px; margin-right:4px;"> <strong>Forum VK – Au Phil des Bulles</strong>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="vkBaseUrl">Adresse du site</label>
+                                <input type="text" id="vkBaseUrl" placeholder="https://vk.com/board203785966">
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveVkSettings()">Sauvegarder</button>
+                                <button class="btn" onclick="testVkConnection()">Tester la connexion</button>
+                            </div>
+                            <div id="vkMessage" class="message"></div>
+                        </div>
+
                     </div>
                     </div>
                 </div>
@@ -1450,6 +1509,28 @@
                             </div>
 
                             <div id="oidcMessage" class="message"></div>
+                        </div>
+
+                        <div class="settings-card" id="apiAccessCard">
+                            <h3>Accès API</h3>
+                            <p class="help-text">
+                                Les applications externes contrôlent Bullarr par les routes <code>/api/</code>,
+                                avec cette clé dans l'en-tête <code>X-Api-Key</code> (ou le paramètre <code>?apikey=</code>).
+                                Elle ne donne pas accès aux pages.
+                                <a href="/api/docs" target="_blank" rel="noopener">Liste des routes</a>
+                            </p>
+                            <div class="form-group">
+                                <label for="apiKeyValue">Clé API</label>
+                                <div class="password-input-group">
+                                    <input type="text" id="apiKeyValue" readonly placeholder="Aucune clé : accès API désactivé" spellcheck="false" autocomplete="off">
+                                    <button type="button" class="btn-toggle-password" id="apiKeyCopyBtn" onclick="copyApiKey()" hidden>Copier</button>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn" id="apiKeyGenerateBtn" onclick="regenerateApiKey()">Générer une clé</button>
+                                <button type="button" class="btn" id="apiKeyDeleteBtn" onclick="deleteApiKey()" hidden>Supprimer la clé</button>
+                            </div>
+                            <div id="apiKeyMessage" class="message"></div>
                         </div>
                     </div>
                 </div>
