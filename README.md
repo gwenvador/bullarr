@@ -45,6 +45,8 @@ tomes manquants.
 - 🐳 **100 % Docker**, base SQLite (aucune base externe à gérer)
 - 🔌 **API** : toutes les fonctions de l'interface pilotables par une application externe
   avec une clé API — voir [📖 la documentation de l'API](docs/API.md)
+- 📱 **Application Android** : bibliothèque, recherche, téléchargements, import et réglages
+  depuis le téléphone — voir [Application Android](#-application-android)
 
 ---
 
@@ -273,6 +275,24 @@ l'en-tête `X-Api-Key`.
   import, bibliothèque, recherche, Nouveautés, exemples `curl` et Python
 - `/api/docs` sur votre instance : liste à jour de toutes les routes (`?format=json` pour
   la version JSON)
+
+### 📱 Application Android
+
+Une application Android pilote Bullarr par son API : bibliothèque et fiches séries,
+recherche sur toutes les sources avec envoi au bon client, suivi des téléchargements
+(pause, reprise, « en premier »), import, Nouveautés, Enrichir, surveillance, vérification
+et réglages.
+
+- **APK** : `bullarr-android-<version>.apk`, joint aux
+  [releases](https://github.com/gwenvador/bullarr/releases) (actuellement
+  [bullarr-android-1.0.apk](https://github.com/gwenvador/bullarr/releases/download/v8.0/bullarr-android-1.0.apk),
+  dans la release v8.0). Android 8 ou plus récent ; autorisez l'installation
+  d'applications inconnues, ou `adb install -r bullarr-android-1.0.apk`.
+- **Premier lancement** : adresse du serveur (par exemple `http://192.168.1.10:4000`) et
+  clé API (**Configuration** → `Login` → **Accès API**), puis « Tester » et « Enregistrer ».
+  L'adresse et la clé sont chiffrées sur le téléphone.
+- **Code source** : [github.com/gwenvador/bullarr-android](https://github.com/gwenvador/bullarr-android)
+  (Kotlin, Jetpack Compose ; identifiant `io.github.gwenvador.bullarr`).
 
 ### 📊 Surveillance des tomes manquants
 
