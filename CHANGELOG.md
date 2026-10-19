@@ -28,12 +28,16 @@ Mise à jour directe depuis v7.1, sans migration de base. Pour garder les télé
 
 ### Configuration
 
-- Vue d'ensemble : carte **À propos** avec la version, le lien vers le code source et les liens des services utilisés.
+- Vue d'ensemble : carte **À propos** avec la version, le lien vers le code source, l'application Android (APK) et les liens des services utilisés.
 - Le menu de gauche n'affiche plus de barres de défilement quand il dépasse la fenêtre (il défile toujours), et les pages qui tiennent dans la fenêtre n'ont plus de barre de défilement de 20 px.
 
 ### Documentation
 
 - README : sections Canaux Telegram, Forum VK et API ; onglets, sources et clients mis à jour.
+
+### Application Android
+
+- Nouvelle application Android qui pilote Bullarr par l'API : APK `bullarr-android-1.0.apk` joint à cette release, code source sur [github.com/gwenvador/bullarr-android](https://github.com/gwenvador/bullarr-android).
 
 ## v7.1 — 2026-10-18
 
