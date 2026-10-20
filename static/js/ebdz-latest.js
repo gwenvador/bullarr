@@ -442,6 +442,7 @@ function _nouveautesSortValue(e, column) {
         case 'type': return e.type === 'ebdz' ? 'EBDZ' : e.type === 'rss' ? 'RSS' : 'Telegram';
         case 'origin': return _nouveautesOrigin(e).toLowerCase();
         case 'title': return (e.type === 'ebdz' ? e.title : e.type === 'rss' ? e.title : e.filename || '').toLowerCase();
+        case 'genre': return ({ bd: 'BD', comics: 'Comics', manga: 'Manga' })[_nouveautesGenreKind(e)] || '~';
         case 'matched': return _nouveautesMatched(e) ? 1 : 0;
         // "Actions" n'a plus de notion de possédée/non possédée (déjà dans la colonne
         // Série, voir _nouveautesMatched) depuis que ce doublon a été retiré d'ici - trie
@@ -538,6 +539,106 @@ function _nouveautesSeriesHtml(event) {
         ? `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir la série sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="" style="width:14px; height:14px; vertical-align:-2px; margin-right:4px;">${escapeHtml(label)}</a>`
         : escapeHtml(label);
     return `<div class="nouveautes-matched-series" style="display:flex; align-items:center; gap:6px;">${content}${pencilHtml}</div>`;
+}
+
+// Colonne Genre (BD / Comics / Manga) : origine de la fiche Bédéthèque de la série, lue par
+// POST /api/bedetheque/origins (bibliothèque, puis cache, puis page Bédéthèque - quelques
+// fiches par appel, le serveur répond « pending » tant qu'il en reste). Gardée en mémoire
+// pour la page ; le filtre Genre charge les origines de toutes les lignes, pas seulement des
+// lignes affichées.
+const _nouveautesOriginCache = {};
+let _nouveautesOriginRun = null;
+
+// Genres RSS à voir (Configuration > Indexeurs > Flux RSS) : une ligne RSS dont le genre
+// est connu et décoché est masquée ; genre inconnu (pas de série Bédéthèque) : visible.
+let nouveautesRssGenres = new Set(['bd', 'comics', 'manga']);
+
+function _nouveautesRssGenreHidden(event) {
+    if (event.type !== 'rss' || nouveautesRssGenres.size >= 3) return false;
+    const kind = _nouveautesGenreKind(event);
+    return !!kind && !nouveautesRssGenres.has(kind);
+}
+
+function _nouveautesBedethequeUrl(event) {
+    return (event.type === 'ebdz' ? event.matched_bedetheque_url : event.bedetheque_url) || event.bedetheque_url || '';
+}
+
+function _nouveautesGenreKind(event) {
+    const url = _nouveautesBedethequeUrl(event);
+    return (url && _nouveautesOriginCache[url]?.kind) || null;
+}
+
+function _nouveautesGenreCellHtml(event) {
+    const url = _nouveautesBedethequeUrl(event);
+    const known = url ? _nouveautesOriginCache[url] : null;
+    return `<td class="nouveautes-genre-cell" style="padding:10px;">${url
+        ? `<span class="nouveautes-origin-slot" data-bdt-url="${escapeHtml(url)}">${known ? bedethequeOriginHtml(known.origin) : ''}</span>`
+        : ''}</td>`;
+}
+
+function _fillNouveautesGenreSlots() {
+    document.querySelectorAll('#nouveautes-events-body .nouveautes-origin-slot[data-bdt-url]').forEach(slot => {
+        const known = _nouveautesOriginCache[slot.dataset.bdtUrl];
+        if (known && !slot.innerHTML) slot.innerHTML = bedethequeOriginHtml(known.origin);
+    });
+}
+
+// Retourne true si de nouvelles origines ont été lues.
+async function loadNouveautesOrigins(urls) {
+    if (_nouveautesOriginRun) await _nouveautesOriginRun;
+    const wanted = [...new Set((urls || []).filter(Boolean))];
+    let missing = wanted.filter(url => !(url in _nouveautesOriginCache));
+    if (!missing.length) return false;
+    _nouveautesOriginRun = (async () => {
+        for (let round = 0; round < 60 && missing.length; round++) {
+            try {
+                const response = await fetch('/api/bedetheque/origins', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: missing.slice(0, 100) })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) return;
+                const answered = Object.entries(data.origins || {});
+                answered.forEach(([url, value]) => { _nouveautesOriginCache[url] = value; });
+                _fillNouveautesGenreSlots();
+                // Rien de lu et rien en attente côté serveur : adresses non reconnues, on les écarte.
+                if (!answered.length && !data.pending) {
+                    missing.slice(0, 100).forEach(url => { _nouveautesOriginCache[url] = { origin: null, kind: null }; });
+                }
+            } catch (error) {
+                console.warn('Origine Bédéthèque indisponible:', error);
+                return;
+            }
+            missing = wanted.filter(url => !(url in _nouveautesOriginCache));
+            if (missing.length) await new Promise(resolve => setTimeout(resolve, 300));
+        }
+    })();
+    try { await _nouveautesOriginRun; } finally { _nouveautesOriginRun = null; }
+    return true;
+}
+
+// Lignes affichées d'abord (drapeaux visibles tout de suite) ; avec un filtre Genre actif,
+// toutes les lignes, puis le tableau est redessiné avec les résultats.
+async function fillNouveautesOriginFlags() {
+    const visibleUrls = [...document.querySelectorAll('#nouveautes-events-body .nouveautes-origin-slot[data-bdt-url]')]
+        .map(slot => slot.dataset.bdtUrl);
+    const loadedVisible = await loadNouveautesOrigins(visibleUrls);
+    // Genres RSS restreints : les origines de toutes les lignes RSS sont nécessaires pour
+    // masquer les genres décochés (pas seulement des lignes affichées).
+    if (nouveautesRssGenres.size < 3) {
+        const loadedRss = await loadNouveautesOrigins(allNouveautesEvents.filter(e => e.type === 'rss').map(_nouveautesBedethequeUrl));
+        if ((loadedVisible || loadedRss) && !_nouveautesGenreFilterValue()) renderNouveautesEvents(false);
+    }
+    if (_nouveautesGenreFilterValue()) {
+        // Redessiné seulement si de nouvelles origines ont été lues (sinon boucle sans fin :
+        // chaque rendu relance ce remplissage).
+        const loaded = await loadNouveautesOrigins(allNouveautesEvents.map(_nouveautesBedethequeUrl));
+        if (loaded && _nouveautesGenreFilterValue()) renderNouveautesEvents(false);
+    }
+}
+
+function _nouveautesGenreFilterValue() {
+    return document.getElementById('nouveautesGenreFilter')?.value || '';
 }
 
 function _nouveautesMatchedHtml(event) {
@@ -836,6 +937,7 @@ function _nouveautesEbdzRowHtml(event, index) {
                 ${_nouveautesSeriesHtml(event)}
                 <div style="color:var(--color-text-muted); font-size:0.9em;">${safeThreadTitle} · ${formatBytes(link.filesize)}${volumeLabel ? ` · ${escapeHtml(volumeLabel)}` : ''}</div>
             </td>
+            ${_nouveautesGenreCellHtml(event)}
             <td style="padding:10px; text-align:center;">${_nouveautesEbdzLinkMatchedHtml(event, link)}</td>
             <td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${monitoredHtml}${pendingHtml}<button class="btn-icon-only" type="button" onclick="copyLink('${escapeForAttribute(link.link)}', this)" data-tooltip="Copier le lien ed2k" aria-label="Copier le lien ed2k">${svgIcon('copy')}</button>${downloadHtml}${zapHtml}${discoverHtml}</div></td>
         </tr>`;
@@ -916,7 +1018,7 @@ function _nouveautesRssRowHtml(event) {
         : (event.download_links || []).map((item, itemIndex) => _nouveautesRssTorrentClientButtons(event, item, itemIndex)).join('');
     const rssMonitoredHtml = event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : '';
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
-    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${matchedSeriesHtml}${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td><td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
+    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${matchedSeriesHtml}${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
@@ -949,6 +1051,7 @@ function _nouveautesTelegramRowHtml(event) {
                     ${event.parsed_volume ? ` · ${escapeHtml(event.parsed_volume)}` : ''}
                 </div>
             </td>
+            ${_nouveautesGenreCellHtml(event)}
             <td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td>
             <td class="nouveautes-actions-cell" style="padding:10px; text-align:left;">
                 <div style="display:flex; align-items:center; justify-content:flex-start; gap:8px;">
@@ -1094,12 +1197,15 @@ function syncNouveautesHorizontalScrollbars() {
 function renderNouveautesEvents(resetPage = true) {
     const query = navNormalizeSearch(document.getElementById('nouveautesTitleFilter').value.trim());
     const ownershipFilter = document.getElementById('nouveautesOwnershipFilter')?.value || '';
+    const genreFilter = _nouveautesGenreFilterValue();
     _populateNouveautesOriginOptions();
 
     let filtered = allNouveautesEvents.filter((e, index) => {
         e._index = index;
         if (currentNouveautesFilter !== 'all' && e.type !== currentNouveautesFilter) return false;
         if (ownershipFilter && _nouveautesOwnership(e) !== ownershipFilter) return false;
+        if (genreFilter && _nouveautesGenreKind(e) !== genreFilter) return false;
+        if (_nouveautesRssGenreHidden(e)) return false;
         if (nouveautesOriginFilters.size && !nouveautesOriginFilters.has(_nouveautesOrigin(e))) return false;
         if (!query) return true;
         const haystack = navNormalizeSearch(e.type === 'ebdz' || e.type === 'rss' ? e.title : e.filename);
@@ -1131,6 +1237,7 @@ function renderNouveautesEvents(resetPage = true) {
     const visible = filtered.slice(0, nouveautesDisplayedCount);
     body.innerHTML = visible.map(e => e.type === 'ebdz' ? _nouveautesEbdzRowHtml(e, e._index) : e.type === 'rss' ? _nouveautesRssRowHtml(e) : _nouveautesTelegramRowHtml(e)).join('');
     checkEmuleStatus();
+    fillNouveautesOriginFlags();
 
     _renderNouveautesLoadMoreButton(loadMoreDiv, filtered.length - nouveautesDisplayedCount);
     syncNouveautesHorizontalScrollbars();
@@ -1334,7 +1441,7 @@ async function loadNouveautesEvents(forceScrape, resetPage = true, olderThanDays
         if (generation === nouveautesLoadGeneration) nouveautesLoadingInitial = false;
         loading.style.display = 'none';
         document.getElementById('nouveautes-events-body').innerHTML =
-            `<tr><td colspan="6" style="padding:20px; text-align:center; color:#c0392b;">Erreur: ${escapeHtml(error.message)}</td></tr>`;
+            `<tr><td colspan="7" style="padding:20px; text-align:center; color:#c0392b;">Erreur: ${escapeHtml(error.message)}</td></tr>`;
     }
 }
 
@@ -1399,6 +1506,7 @@ async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays 
                 if (generation !== nouveautesLoadGeneration) return;
                 if (rssData.success) {
                     rssEvents = (rssData.entries || []).map(entry => ({ type: 'rss', ...entry }));
+                    nouveautesRssGenres = new Set(rssData.genres && rssData.genres.length ? rssData.genres : ['bd', 'comics', 'manga']);
                 }
                 if (!rssData.success || rssData.errors?.length) {
                     const names = (rssData.errors || []).map(error => error.name).join(', ');

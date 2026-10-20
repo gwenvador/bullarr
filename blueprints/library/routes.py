@@ -1924,6 +1924,93 @@ def _synthetic_bd_volume_entry(album, **kwargs):
     return entry
 
 
+def _reader_volume(volume_id):
+    """Tome lisible dans le lecteur : (ligne, None) ou (None, (réponse, code))."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute('''
+            SELECT v.id, v.filepath, v.format, v.volume_number, v.is_integral, v.integral_number,
+                   v.is_hs, v.hs_number, v.filename, v.comicinfo, s.id AS series_id, s.title AS series_title
+            FROM volumes v JOIN series s ON s.id = v.series_id WHERE v.id = ?
+        ''', (volume_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None, (jsonify({'success': False, 'error': 'Tome introuvable'}), 404)
+    if not row['filepath'] or not os.path.isfile(row['filepath']):
+        return None, (jsonify({'success': False, 'error': "Ce tome n'a pas de fichier sur le disque"}), 404)
+    return row, None
+
+
+@library_bp.route('/api/volumes/<int:volume_id>/reader', methods=['GET'])
+def get_volume_reader_info(volume_id):
+    """Lecteur intégré : titre et nombre de pages d'un tome (CBZ, CBR ou PDF)."""
+    from .reader import page_count
+    row, error = _reader_volume(volume_id)
+    if error:
+        return error
+    try:
+        count = page_count(row['filepath'], row['format'])
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Lecture du fichier impossible')}), 500
+    try:
+        comicinfo_title = (json.loads(row['comicinfo'] or '{}') or {}).get('title')
+    except (ValueError, TypeError, AttributeError):
+        comicinfo_title = None
+    if row['is_integral']:
+        label = f"Intégrale {row['integral_number'] or ''}".strip()
+    elif row['is_hs']:
+        label = f"HS {row['hs_number'] or ''}".strip()
+    elif row['volume_number'] is not None:
+        label = f"Tome {row['volume_number']}"
+    else:
+        label = ''
+    return jsonify({'success': True, 'volume_id': row['id'], 'series_id': row['series_id'],
+                    'series_title': row['series_title'], 'label': label,
+                    'title': comicinfo_title or row['filename'], 'page_count': count})
+
+
+@library_bp.route('/api/volumes/<int:volume_id>/reader/page/<int:number>', methods=['GET'])
+def get_volume_reader_page(volume_id, number):
+    """Lecteur intégré : image de la page `number` (à partir de 1) d'un tome."""
+    from .reader import read_page
+    row, error = _reader_volume(volume_id)
+    if error:
+        return error
+    try:
+        data, mimetype = read_page(row['filepath'], row['format'], number)
+    except IndexError as e:
+        return jsonify({'success': False, 'error': str(e)}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Lecture de la page impossible')}), 500
+    response = current_app.response_class(data, mimetype=mimetype)
+    response.headers['Cache-Control'] = 'private, max-age=3600'
+    return response
+
+
+@library_bp.route('/api/series/<int:series_id>/preview-pages', methods=['GET'])
+def get_series_preview_pages(series_id):
+    """Quelques pages du début du premier tome possédé (CBZ, CBR ou PDF), pour la fiche
+    série. Réponse : {success, volume_id, volume_number, pages: [url…], page_numbers: [n…]}
+    (numéro de chaque page dans le fichier, couverture = 1) ; pages vide si
+    aucun tome n'a de fichier."""
+    from .preview_pages import pick_preview_volume, extract_preview_pages
+    conn = get_db_connection()
+    try:
+        volume = pick_preview_volume(conn.cursor(), series_id)
+    finally:
+        conn.close()
+    if not volume:
+        return jsonify({'success': True, 'volume_id': None, 'volume_number': None, 'pages': []})
+    try:
+        pages = extract_preview_pages(volume['filepath'], volume['format'], current_app.config['COVERS_DIR'])
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, "Lecture des pages impossible")}), 500
+    return jsonify({'success': True, 'volume_id': volume['id'], 'volume_number': volume['volume_number'],
+                    'pages': ['/' + path for path, _number in pages],
+                    'page_numbers': [number for _path, number in pages]})
+
+
 @library_bp.route('/api/series/<int:series_id>/volumes', methods=['GET'])
 def get_series_volumes(series_id):
     ""
@@ -2204,7 +2291,7 @@ def get_library_series(library_id):
                    s.komga_series_id, s.komga_match_status, s.komga_matched_title, s.komga_url,
                    s.komga_cover_path,
                    s.bedetheque_url, s.bedetheque_cover_path, s.bedetheque_total_volumes, s.bedetheque_status,
-                   s.bedetheque_editeurs,
+                   s.bedetheque_editeurs, s.bedetheque_origin,
                    s.local_cover_path, s.local_summary, s.local_genre, s.local_author, s.is_oneshot,
                    CAST(COALESCE(s.manual_year_start, s.bedetheque_year_start, s.local_year) AS TEXT) AS year,
                    s.volumes_without_metadata, s.oneshot_is_integral,
@@ -2260,6 +2347,7 @@ def get_library_series(library_id):
                 'bedetheque_cover_path': row['bedetheque_cover_path'],
                 'bedetheque_total_volumes': row['bedetheque_total_volumes'],
                 'bedetheque_editeurs': row['bedetheque_editeurs'],
+                'bedetheque_origin': row['bedetheque_origin'],
                 'local_cover_path': row['local_cover_path'],
                 'local_summary': row['local_summary'],
                 'local_genre': row['local_genre'],
@@ -2747,7 +2835,7 @@ def get_series_details(series_id):
                    s.bedetheque_cover_path, s.bedetheque_description, s.bedetheque_genre,
                    s.bedetheque_status, s.bedetheque_total_volumes, s.bedetheque_scenaristes,
                    s.bedetheque_dessinateurs, s.bedetheque_editeurs, s.bedetheque_author_links,
-                   s.bedetheque_read_also,
+                   s.bedetheque_read_also, s.bedetheque_origin,
                    s.bedetheque_year_start, s.bedetheque_year_end,
                    s.manual_summary, s.manual_genre, s.manual_status, s.manual_author,
                    s.manual_year_start, s.manual_year_end, s.manual_complete_override,
@@ -2900,6 +2988,7 @@ def get_series_details(series_id):
                 'genre': series_row['bedetheque_genre'],
                 'status': series_row['bedetheque_status'],
                 'total_volumes': series_row['bedetheque_total_volumes'],
+                'origin': series_row['bedetheque_origin'],
                 'scenaristes': series_row['bedetheque_scenaristes'],
                 'dessinateurs': series_row['bedetheque_dessinateurs'],
                 'editeurs': series_row['bedetheque_editeurs'],

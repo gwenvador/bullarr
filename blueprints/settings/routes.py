@@ -16,7 +16,7 @@ from error_utils import error_message
 from backup_utils import PENDING_RESTORE_DIR, snapshot_sqlite
 from . import settings_bp
 from .rename_config_store import load_rename_config, save_rename_config, DEFAULT_RENAME_CONFIG
-from .rss import load_feeds, save_feeds
+from .rss import load_feeds, save_feeds, load_genres, save_genres
 
 
 @settings_bp.route('/settings')
@@ -55,16 +55,16 @@ def preserve_server_managed_feeds(existing_feeds, submitted_feeds):
 
 @settings_bp.route('/api/settings/rss', methods=['GET', 'POST'])
 def rss_config():
+    path = current_app.config['RSS_CONFIG_FILE']
     if request.method == 'GET':
-        return jsonify({'feeds': load_feeds(current_app.config['RSS_CONFIG_FILE'])})
+        return jsonify({'feeds': load_feeds(path), 'genres': load_genres(path)})
     try:
-        payload_feeds = (request.get_json(silent=True) or {}).get('feeds', [])
-        existing_feeds = load_feeds(current_app.config['RSS_CONFIG_FILE'])
-        feeds = save_feeds(
-            current_app.config['RSS_CONFIG_FILE'],
-            preserve_server_managed_feeds(existing_feeds, payload_feeds),
-        )
-        return jsonify({'success': True, 'feeds': feeds})
+        payload = request.get_json(silent=True) or {}
+        payload_feeds = payload.get('feeds', [])
+        existing_feeds = load_feeds(path)
+        feeds = save_feeds(path, preserve_server_managed_feeds(existing_feeds, payload_feeds))
+        genres = save_genres(path, payload['genres']) if 'genres' in payload else load_genres(path)
+        return jsonify({'success': True, 'feeds': feeds, 'genres': genres})
     except ValueError as exc:
         return jsonify({'success': False, 'error': error_message(exc)}), 400
     except OSError:

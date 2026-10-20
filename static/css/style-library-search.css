@@ -3355,3 +3355,56 @@ a.toolbar-dropdown-item { text-decoration: none; box-sizing: border-box; }
     .poster-action-btn { width: 36px; height: 36px; }
     .series-select-checkbox { width: 24px !important; height: 24px !important; }
 }
+
+
+/* Fiche série : aperçu de quelques pages du premier tome possédé, sous la couverture
+   (voir loadSeriesPreviewPages) : les 4 vignettes sur une ligne, de la largeur de la couverture. */
+.series-detail-cover-col { flex-direction: column; gap: 8px; }
+/* Le bouton Lire s'aligne sur le bas du texte de la fiche (fin du résumé) : la colonne
+   couverture prend la hauteur de l'en-tête et le bouton se place en bas. */
+.series-detail-header > .series-detail-cover-col { align-self: stretch; }
+.series-detail-cover-col .series-read-btn { margin-top: auto; }
+.series-preview-pages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.series-preview-pages[hidden] { display: none; }
+.series-preview-page { position: relative; padding: 0; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); cursor: zoom-in; overflow: hidden; line-height: 0; transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease; }
+.series-preview-page { opacity: 0.6; }
+.series-preview-page:hover, .series-preview-page:focus-visible { opacity: 1; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.series-preview-page img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; object-position: top; display: block; }
+/* Mobile : colonne couverture de 70 px, une seule vignette avec « +N » */
+@media (max-width: 768px) {
+    .series-preview-pages { grid-template-columns: 1fr; }
+    .series-preview-page:not(:first-child) { display: none; }
+    .series-preview-page[data-more]::after { content: attr(data-more); position: absolute; right: 4px; bottom: 4px; padding: 1px 5px; border-radius: 8px; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; line-height: 1.4; }
+}
+
+/* Visionneuse en galerie (couverture + pages) : flèches de part et d'autre de l'image */
+.cover-gallery-nav { display: none; position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: none; border-radius: 8px; background: rgba(0,0,0,0.45); color: #fff; font-size: 34px; line-height: 1; cursor: pointer; z-index: 2; }
+.cover-gallery-nav:hover, .cover-gallery-nav:focus-visible { background: rgba(0,0,0,0.7); }
+.cover-gallery-prev { left: 10px; }
+.cover-gallery-next { right: 10px; }
+#cover-image-modal.cover-gallery-active .cover-gallery-nav { display: block; }
+#cover-image-modal .cover-image-modal-content { position: relative; }
+
+
+/* Lecteur de BD intégré (reader.js) */
+.series-read-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; align-self: center; padding: 2px 9px 2px 7px; border: 1px solid var(--color-accent); border-radius: 999px; background: transparent; color: var(--color-accent); font-size: 0.8rem; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.series-read-btn:hover, .series-read-btn:focus-visible { background: var(--color-accent); color: #fff; }
+.series-read-btn .icon { width: 12px; height: 12px; display: block; flex: none; }
+.series-read-slot { display: none; }
+body.comic-reader-open { overflow: hidden; }
+.comic-reader { position: fixed; inset: 0; z-index: 1300; display: flex; flex-direction: column; background: #111; color: #eee; }
+.comic-reader[hidden] { display: none; }
+.comic-reader-bar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(0,0,0,0.6); flex: 0 0 auto; }
+.comic-reader-title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comic-reader-counter { font-variant-numeric: tabular-nums; color: #bbb; white-space: nowrap; }
+.comic-reader-actions { display: flex; gap: 6px; }
+.comic-reader-btn { width: 38px; height: 38px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: #fff; font-size: 22px; line-height: 1; cursor: pointer; }
+.comic-reader-btn:hover, .comic-reader-btn:focus-visible { background: rgba(255,255,255,0.25); }
+.comic-reader-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; }
+.comic-reader-image { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.comic-reader-status { position: absolute; color: #ddd; font-size: 1.05rem; text-align: center; padding: 0 20px; }
+.comic-reader-footer { flex: 0 0 auto; padding: 8px 16px 12px; background: rgba(0,0,0,0.6); }
+.comic-reader-slider { width: 100%; accent-color: var(--color-accent); }
+.comic-reader:fullscreen .comic-reader-bar, .comic-reader:fullscreen .comic-reader-footer { opacity: 0.15; transition: opacity 0.2s ease; }
+.comic-reader:fullscreen .comic-reader-bar:hover, .comic-reader:fullscreen .comic-reader-footer:hover { opacity: 1; }
+@media (max-width: 600px) { .comic-reader-btn { width: 34px; height: 34px; font-size: 20px; } .comic-reader-title { font-size: 0.9rem; } }

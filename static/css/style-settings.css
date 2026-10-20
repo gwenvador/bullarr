@@ -1235,3 +1235,7 @@ input[type="checkbox"].switch-input:disabled {
 .about-links-group li { margin: 6px 0; color: var(--color-text-muted); line-height: 1.5; }
 .about-card a { color: var(--color-accent); text-decoration: none; }
 .about-card a:hover { color: var(--color-accent-hover); text-decoration: underline; }
+
+.rss-genres-setting { margin: 16px 0; display: flex; flex-direction: column; gap: 6px; }
+.rss-genres-options { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.rss-genres-options label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }

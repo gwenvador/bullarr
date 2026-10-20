@@ -18,6 +18,7 @@ from network_safety import safe_external_get
 
 DEFAULT_FEEDS = [{'name': 'DupeFR EBOOKS', 'url': 'https://dupefr.com/flux_rss/section/EBOOKS', 'enabled': True}]
 MAX_FEEDS = 20
+RSS_GENRES = ('bd', 'comics', 'manga')
 MAX_FEED_BYTES = 2 * 1024 * 1024
 RSS_CACHE_TTL_SECONDS = 300
 _rss_cache = {}
@@ -77,19 +78,50 @@ def load_feeds(path):
         return []
 
 
-def save_feeds(path, feeds):
-    normalized = normalize_feeds(feeds)
+def normalize_genres(value):
+    """Genres Bédéthèque (bd, comics, manga) à voir dans les flux RSS ; tous par défaut.
+    ValueError si la sélection est vide ou inconnue."""
+    if value is None:
+        return list(RSS_GENRES)
+    if not isinstance(value, (list, tuple)):
+        raise ValueError('Genres RSS invalides')
+    genres = [genre for genre in RSS_GENRES if genre in {str(item).strip().lower() for item in value}]
+    if not genres:
+        raise ValueError('Choisissez au moins un genre (BD, Comics ou Manga)')
+    return genres
+
+
+def load_genres(path):
+    try:
+        with open(path, encoding='utf-8') as handle:
+            return normalize_genres(json.load(handle).get('genres'))
+    except (OSError, ValueError, AttributeError):
+        return list(RSS_GENRES)
+
+
+def _write_config(path, feeds, genres):
     directory = os.path.dirname(path) or '.'
     fd, temporary = tempfile.mkstemp(prefix='.rss-feeds-', dir=directory)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as handle:
-            json.dump({'feeds': normalized}, handle, indent=2, ensure_ascii=False)
+            json.dump({'feeds': feeds, 'genres': genres}, handle, indent=2, ensure_ascii=False)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def save_genres(path, genres):
+    genres = normalize_genres(genres)
+    _write_config(path, load_feeds(path), genres)
+    return genres
+
+
+def save_feeds(path, feeds):
+    normalized = normalize_feeds(feeds)
+    _write_config(path, normalized, load_genres(path))
     return normalized
 
 

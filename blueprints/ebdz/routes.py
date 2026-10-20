@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from encryption import encrypt, decrypt
-from blueprints.settings.rss import fetch_feed, load_feeds, feed_cache_key
+from blueprints.settings.rss import fetch_feed, load_feeds, feed_cache_key, load_genres
 from blueprints.prowlarr.config_store import load_prowlarr_config
 
 # Durée max entre deux liens pour qu'ils soient considérés comme faisant
@@ -1290,4 +1290,5 @@ def rss_latest():
         ]
         events.extend({**entry, 'type': 'rss', 'feed_name': name} for entry in entries)
     events.sort(key=lambda item: item.get('date', ''), reverse=True)
-    return jsonify({'success': True, 'entries': events, 'errors': errors, 'feeds': feed_states})
+    return jsonify({'success': True, 'entries': events, 'errors': errors, 'feeds': feed_states,
+                    'genres': load_genres(current_app.config['RSS_CONFIG_FILE'])})

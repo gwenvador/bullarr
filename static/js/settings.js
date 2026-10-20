@@ -2925,7 +2925,9 @@ function showSettingsMessage(elementId, message, type) {
 
 
 let rssFeeds = [];
-async function loadRssFeeds() { try { const data = await (await fetch('/api/settings/rss')).json(); rssFeeds = data.feeds || []; renderRssFeeds(); updateRssCardStatus(); } catch (e) { showSettingsMessage('rssMessage', '❌ Erreur de chargement', 'error'); } }
+function renderRssGenres(genres) { const selected = new Set(genres && genres.length ? genres : ['bd', 'comics', 'manga']); document.querySelectorAll('.rss-genre-checkbox').forEach(box => { box.checked = selected.has(box.value); }); }
+function selectedRssGenres() { return [...document.querySelectorAll('.rss-genre-checkbox:checked')].map(box => box.value); }
+async function loadRssFeeds() { try { const data = await (await fetch('/api/settings/rss')).json(); rssFeeds = data.feeds || []; renderRssGenres(data.genres); renderRssFeeds(); updateRssCardStatus(); } catch (e) { showSettingsMessage('rssMessage', '❌ Erreur de chargement', 'error'); } }
 function updateRssCardStatus() {
     const el = document.getElementById('card-status-rss');
     if (!el) return;
@@ -2944,7 +2946,7 @@ function addVkRssFeed() {
     renderRssFeeds();
 }
 function addRssFeed() { const name = document.getElementById('rssFeedName').value.trim(); const url = document.getElementById('rssFeedUrl').value.trim(); if (!url) return; rssFeeds.push({name: name || url, url, enabled: true}); document.getElementById('rssFeedName').value=''; document.getElementById('rssFeedUrl').value=''; renderRssFeeds(); }
-async function saveRssFeeds() { try { const response = await fetch('/api/settings/rss', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({feeds:rssFeeds})}); const data=await response.json(); if (!response.ok || !data.success) throw new Error(data.error || 'Erreur'); rssFeeds=data.feeds || []; renderRssFeeds(); updateRssCardStatus(); showSettingsMessage('rssMessage','✅ Flux RSS enregistré','success'); } catch(e) { showSettingsMessage('rssMessage','❌ '+e.message,'error'); } }
+async function saveRssFeeds() { try { const response = await fetch('/api/settings/rss', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({feeds:rssFeeds, genres:selectedRssGenres()})}); const data=await response.json(); if (!response.ok || !data.success) throw new Error(data.error || 'Erreur'); rssFeeds=data.feeds || []; renderRssGenres(data.genres); renderRssFeeds(); updateRssCardStatus(); showSettingsMessage('rssMessage','✅ Flux RSS enregistré','success'); } catch(e) { showSettingsMessage('rssMessage','❌ '+e.message,'error'); } }
 
 // ===== UTILITAIRES PARTAGÉS (pas d'autre script chargé sur cette page qui les fournisse) =====
 function escapeHtml(text) {

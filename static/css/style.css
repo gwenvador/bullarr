@@ -3244,9 +3244,11 @@ table thead th {
     gap: 3px !important;
 }
 .nouveautes-table > thead > tr > th:nth-child(5),
-.nouveautes-table > tbody > tr > td:nth-child(5) { width: 74px; }
+.nouveautes-table > tbody > tr > td:nth-child(5) { width: 96px; }
 .nouveautes-table > thead > tr > th:nth-child(6),
-.nouveautes-table > tbody > tr > td:nth-child(6) { width: 112px; }
+.nouveautes-table > tbody > tr > td:nth-child(6) { width: 74px; }
+.nouveautes-table > thead > tr > th:nth-child(7),
+.nouveautes-table > tbody > tr > td:nth-child(7) { width: 112px; }
 .nouveautes-origin-cell,
 .nouveautes-details-cell,
 .nouveautes-details-cell > div {
@@ -3258,8 +3260,9 @@ table thead th {
 .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-control {
     width: min(240px, 100%);
 }
-/* Le filtre Série (« Pas en bibliothèque ») prend toute la largeur de sa colonne. */
-.nouveautes-table > thead > tr > th:nth-child(5) .th-filterable-control {
+/* Les filtres Genre et Série prennent toute la largeur de leur colonne. */
+.nouveautes-table > thead > tr > th:nth-child(5) .th-filterable-control,
+.nouveautes-table > thead > tr > th:nth-child(6) .th-filterable-control {
     width: 100%;
 }
 
@@ -3274,13 +3277,15 @@ table thead th {
     .nouveautes-table > thead > tr > th:nth-child(3),
     .nouveautes-table > tbody > tr > td:nth-child(3) { width: 170px; }
     .nouveautes-table > thead > tr > th:nth-child(5),
-    .nouveautes-table > tbody > tr > td:nth-child(5) { width: 180px; }
+    .nouveautes-table > tbody > tr > td:nth-child(5) { width: 120px; }
     .nouveautes-table > thead > tr > th:nth-child(6),
-    .nouveautes-table > tbody > tr > td:nth-child(6) { width: 150px; }
+    .nouveautes-table > tbody > tr > td:nth-child(6) { width: 180px; }
+    .nouveautes-table > thead > tr > th:nth-child(7),
+    .nouveautes-table > tbody > tr > td:nth-child(7) { width: 150px; }
     .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-control { width: min(320px, 100%); }
 }
 .nouveautes-actions-cell,
-.nouveautes-table > thead > tr > th:nth-child(6) {
+.nouveautes-table > thead > tr > th:nth-child(7) {
     position: sticky;
     right: 0;
     z-index: 1;
@@ -3292,7 +3297,7 @@ table thead th {
 .nouveautes-actions-cell {
     background: inherit;
 }
-.nouveautes-table > thead > tr > th:nth-child(6) {
+.nouveautes-table > thead > tr > th:nth-child(7) {
     z-index: 2;
     background: var(--color-surface-alt);
 }
@@ -3309,7 +3314,7 @@ table thead th {
    quitte à défiler pour l'atteindre. */
 @media (max-width: 1100px) {
     .nouveautes-actions-cell,
-    .nouveautes-table > thead > tr > th:nth-child(6) {
+    .nouveautes-table > thead > tr > th:nth-child(7) {
         position: static;
         box-shadow: none;
     }
@@ -3343,11 +3348,11 @@ table thead th {
     .nouveautes-table > thead > tr > th:nth-child(4) { flex: 1 1 140px; }
     .nouveautes-table > tbody > tr.nouveautes-event-row {
         display: grid;
-        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        grid-template-columns: auto auto minmax(0, 1fr) auto auto;
         grid-template-areas:
-            "date type origin matched"
-            "details details details details"
-            "actions actions actions actions";
+            "date type origin genre matched"
+            "details details details details details"
+            "actions actions actions actions actions";
         align-items: center;
         column-gap: 8px;
     }
@@ -3361,8 +3366,9 @@ table thead th {
     .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(2) { grid-area: type; }
     .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(3) { grid-area: origin; }
     .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(4) { grid-area: details; }
-    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(5) { grid-area: matched; text-align: right !important; }
-    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(6) { grid-area: actions; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(5) { grid-area: genre; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(6) { grid-area: matched; text-align: right !important; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(7) { grid-area: actions; }
 }
 
 /* La définition de .th-filterable-row/-label/-filter/-icon/-control vivait ici EN DOUBLE
@@ -4301,3 +4307,19 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
         flex-basis: auto;
     }
 }
+
+
+/* Origine Bédéthèque (BD / Comics / Manga), voir bedethequeOriginHtml (nav.js) */
+.origin-badge { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.origin-badge .origin-flag { width: 18px; height: 12px; flex: none; border-radius: 2px; }
+.origin-badge-detail { color: var(--color-text-muted); }
+.nouveautes-genre-cell { white-space: nowrap; }
+
+.origin-pill .origin-flag { width: 15px; height: 10px; border-radius: 1px; margin-right: 4px; vertical-align: -1px; }
+.origin-pill { display: inline-block; padding: 0 6px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; line-height: 1.55; letter-spacing: 0.02em; white-space: nowrap; border: 1px solid transparent; }
+.origin-pill-bd { color: #8a5220; background: #f6e8d8; border-color: #e6cdae; }
+.origin-pill-comics { color: #1f4f8f; background: #e1ecfa; border-color: #bcd2ef; }
+.origin-pill-manga { color: #a3261f; background: #fae3e1; border-color: #efc0bb; }
+:root[data-theme="dark"] .origin-pill-bd { color: #e8b98a; background: rgba(201,138,75,0.18); border-color: rgba(201,138,75,0.35); }
+:root[data-theme="dark"] .origin-pill-comics { color: #9cc3f5; background: rgba(90,150,230,0.16); border-color: rgba(90,150,230,0.35); }
+:root[data-theme="dark"] .origin-pill-manga { color: #f2a39c; background: rgba(220,80,70,0.16); border-color: rgba(220,80,70,0.35); }

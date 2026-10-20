@@ -428,14 +428,67 @@ function buildCoverHtml(s, imgClass, placeholderClass) {
 // renseigné via textContent/src plutôt que concaténé dans le HTML de la modale, afin
 // que les titres provenant de la base restent inoffensifs même s'ils contiennent des
 // caractères spéciaux.
-function openCoverModal(imageUrl, title) {
+//
+// gallery (optionnel) : {items: [{url, title}], index} - la visionneuse devient une galerie
+// (couverture puis pages d'aperçu de la fiche série) : flèches ‹ ›, touches ← →, glissement
+// du doigt, et compteur « 2/5 » dans la légende.
+let _coverGallery = null;
+
+function _ensureCoverGalleryControls(modal) {
+    const content = modal.querySelector('.cover-image-modal-content');
+    if (!content || content.querySelector('.cover-gallery-nav')) return;
+    [['prev', '‹', 'Image précédente', -1], ['next', '›', 'Image suivante', 1]].forEach(([name, label, aria, step]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `cover-gallery-nav cover-gallery-${name}`;
+        button.textContent = label;
+        button.setAttribute('aria-label', aria);
+        button.addEventListener('click', event => { event.stopPropagation(); stepCoverGallery(step); });
+        content.appendChild(button);
+    });
+    const image = document.getElementById('cover-image-modal-image');
+    let touchStartX = null;
+    image.addEventListener('touchstart', event => { touchStartX = event.changedTouches[0].clientX; }, { passive: true });
+    image.addEventListener('touchend', event => {
+        if (touchStartX === null) return;
+        const dx = event.changedTouches[0].clientX - touchStartX;
+        touchStartX = null;
+        if (Math.abs(dx) > 40) stepCoverGallery(dx < 0 ? 1 : -1);
+    });
+}
+
+function _showCoverGalleryItem() {
+    const image = document.getElementById('cover-image-modal-image');
+    const caption = document.getElementById('cover-image-modal-caption');
+    const item = _coverGallery.items[_coverGallery.index];
+    image.src = item.url;
+    image.alt = item.title || '';
+    if (caption) caption.textContent = `${item.title || ''} (${_coverGallery.index + 1}/${_coverGallery.items.length})`;
+}
+
+function stepCoverGallery(step) {
+    if (!_coverGallery || _coverGallery.items.length < 2) return;
+    const count = _coverGallery.items.length;
+    _coverGallery.index = (_coverGallery.index + step + count) % count;
+    _showCoverGalleryItem();
+}
+
+function openCoverModal(imageUrl, title, gallery = null) {
     const modal = document.getElementById('cover-image-modal');
     const image = document.getElementById('cover-image-modal-image');
     const caption = document.getElementById('cover-image-modal-caption');
     if (!modal || !image) return;
-    image.src = imageUrl;
-    image.alt = title || 'Couverture';
-    if (caption) caption.textContent = title || '';
+    _coverGallery = gallery && gallery.items && gallery.items.length > 1
+        ? { items: gallery.items, index: Math.max(0, gallery.index || 0) } : null;
+    _ensureCoverGalleryControls(modal);
+    modal.classList.toggle('cover-gallery-active', !!_coverGallery);
+    if (_coverGallery) {
+        _showCoverGalleryItem();
+    } else {
+        image.src = imageUrl;
+        image.alt = title || 'Couverture';
+        if (caption) caption.textContent = title || '';
+    }
     modal.classList.add('active');
 }
 
@@ -443,7 +496,8 @@ function closeCoverModal() {
     const modal = document.getElementById('cover-image-modal');
     const image = document.getElementById('cover-image-modal-image');
     if (!modal) return;
-    modal.classList.remove('active');
+    modal.classList.remove('active', 'cover-gallery-active');
+    _coverGallery = null;
     if (image) image.removeAttribute('src');
 }
 
@@ -512,7 +566,7 @@ function buildPosterCardHtml(s) {
             </div>
             <div class="poster-overlay">
                 <div class="poster-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
-                <div class="poster-subtitle">${volumeLabel}</div>
+                <div class="poster-subtitle">${bedethequeOriginHtml(s.bedetheque_origin)} ${volumeLabel}</div>
             </div>
         </div>
         ${buildHiddenStatusAnchorsHtml(s)}
@@ -540,6 +594,7 @@ function buildOverviewRowHtml(s) {
             <div class="overview-title"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></div>
             ${summary ? `<p class="overview-summary">${escapeHtml(summary)}</p>` : ''}
             <div class="overview-tags">
+                ${bedethequeOriginHtml(s.bedetheque_origin)}
                 ${statusInfo ? `<span class="overview-tag">${svgIcon(statusInfo.icon)} ${escapeHtml(statusInfo.label)}</span>` : ''}
                 <span class="overview-tag">📖 ${volumeLabel}</span>
             </div>
@@ -600,6 +655,7 @@ const TABLE_FIXED_COLUMNS = [
     { key: 'status', label: 'Statut', icon: '📌' },
     { key: 'year', label: 'Année', icon: '📅' },
     { key: 'genre', label: 'Genre', icon: '🏷️' },
+    { key: 'type', label: 'Type', icon: '🌍' },
 ];
 
 function _availableTableOptionalColumns() {
@@ -672,6 +728,7 @@ function buildTableRowHtml(s) {
         ${_isTableColumnVisible('status') ? `<td class="series-table-pill">${escapeHtml(statusLabel)}</td>` : ''}
         ${_isTableColumnVisible('year') ? `<td class="series-table-pill">${escapeHtml(s.year || '—')}</td>` : ''}
         ${_isTableColumnVisible('genre') ? `<td class="series-table-pill">${escapeHtml(s.local_genre || '—')}</td>` : ''}
+        ${_isTableColumnVisible('type') ? `<td class="series-table-pill">${bedethequeOriginHtml(s.bedetheque_origin) || escapeHtml(bedethequeOriginLabel(s.bedetheque_origin))}</td>` : ''}
         ${optionalCellsHtml}
         <td class="series-table-actions" onclick="event.stopPropagation()"><div class="series-table-actions-inner">${buildQuickActionsHtml(s, 'poster-action-btn poster-action-btn-light')}</div></td>
         ${buildHiddenStatusAnchorsHtml(s)}
@@ -716,6 +773,7 @@ function _tableFilterColumns(series) {
         status: { label: 'Statut', type: 'select', getValue: _seriesStatusLabel },
         year: { label: 'Année', type: 'select', getValue: s => s.year || '—' },
         genre: { label: 'Genre', type: 'select', getValue: s => s.local_genre || '—', multi: true },
+        type: { label: 'Type', type: 'select', getValue: s => bedethequeOriginLabel(s.bedetheque_origin) },
     };
     const cols = [
         ...fixed.map(col => fixedFilters[col.key]),
@@ -794,6 +852,7 @@ function _seriesTableSortValue(s, column) {
         case 'status': return _seriesStatusLabel(s);
         case 'year': return s.year || null;
         case 'genre': return (s.local_genre || '').toLowerCase() || null;
+        case 'type': return bedethequeOriginLabel(s.bedetheque_origin);
         default: {
             const col = _availableTableOptionalColumns().find(c => c.key === column);
             return col ? col.render(s) : null;
@@ -2194,6 +2253,13 @@ function buildVolumeLinksIconHtml(v) {
 // Bédéthèque.
 // toolbar: version bouton de la barre d'outils de la fiche série (one-shot: son album; série:
 // le premier album), même bulle de logos que le caddie d'un album.
+// Lecteur intégré (reader.js) : icône lecture (play) à côté du panier, pour un tome dont le
+// fichier est présent sur le disque.
+function buildVolumeReadIconHtml(v) {
+    if (!v.filepath || v.filesystem_present === 0) return '';
+    return `<button type="button" class="volume-link-icon volume-read-icon" onclick="event.stopPropagation(); openComicReader(${Number(v.id)})" title="Lire cet album" aria-label="Lire cet album">${svgIcon('play')}</button>`;
+}
+
 function buildVolumeBuyItemsHtml(v, toolbar = false) {
     const ci = v.comicinfo || {};
     const number = v.volume_number != null ? `Tome ${v.volume_number}` : '';
@@ -2351,6 +2417,7 @@ function buildVolumeActionsGearHtml(v) {
                 ${deleteItemHtml}
             </div>
         </div>
+        ${buildVolumeReadIconHtml(v)}
         ${buildVolumeBuyItemsHtml(v)}
     `;
 }
@@ -3696,6 +3763,65 @@ async function applySeriesPathCorrection() {
     renderSeriesDetail(seriesId);
 }
 
+// Aperçu : quelques pages du début du premier tome possédé, lues dans le fichier lui-même
+// (GET /api/series/<id>/preview-pages, vignettes en cache côté serveur). Chargé après
+// l'affichage de la fiche pour ne pas la ralentir ; rien n'apparaît sans fichier.
+let _seriesPreviewGallery = null;
+
+async function loadSeriesPreviewPages(seriesId) {
+    const slot = document.getElementById(`series-preview-pages-${seriesId}`);
+    if (!slot) return;
+    _seriesPreviewGallery = null;
+    try {
+        const response = await fetch(`/api/series/${seriesId}/preview-pages`);
+        const data = await response.json();
+        if (!response.ok || !data.success || !(data.pages || []).length) return;
+        const label = data.volume_number != null ? `Tome ${data.volume_number}` : 'Premier tome';
+        // Galerie : la couverture de la fiche, puis les pages (navigation dans la visionneuse).
+        const cover = document.querySelector('.series-detail-cover.clickable-cover');
+        const items = [];
+        if (cover) items.push({ url: cover.currentSrc || cover.src, title: cover.alt || 'Couverture' });
+        const firstPage = items.length;
+        // Vrai numéro de la page dans l'album (couverture = page 1), pas son rang dans l'aperçu.
+        const pageNumbers = data.pages.map((_, index) => (data.page_numbers || [])[index] ?? index + 1);
+        data.pages.forEach((url, index) => items.push({ url, title: `${label} - page ${pageNumbers[index]}` }));
+        _seriesPreviewGallery = { seriesId, items };
+        slot.replaceChildren();
+        data.pages.forEach((url, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'series-preview-page';
+            button.setAttribute('aria-label', `${label}, page ${pageNumbers[index]} : agrandir`);
+            button.dataset.tooltip = `${label} - page ${pageNumbers[index]}`;
+            // Sur mobile, seule la première vignette est visible, avec le nombre de pages en plus.
+            if (index === 0 && data.pages.length > 1) button.dataset.more = `+${data.pages.length - 1}`;
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = '';
+            img.loading = 'lazy';
+            button.appendChild(img);
+            button.addEventListener('click', () => openCoverModal(url, items[firstPage + index].title,
+                { items, index: firstPage + index }));
+            slot.appendChild(button);
+        });
+        slot.hidden = false;
+        // Série de plusieurs albums : « Lire » ouvre le tome de l'aperçu (premier tome possédé).
+        const readSlot = document.getElementById(`series-read-slot-${seriesId}`);
+        if (readSlot && data.volume_id) {
+            const read = document.createElement('button');
+            read.type = 'button';
+            read.className = 'series-read-btn';
+            read.setAttribute('aria-label', `Lire ${label.toLowerCase()}`);
+            read.dataset.tooltip = `Lire ${label.toLowerCase()}`;
+            read.innerHTML = `${svgIcon('play')} Lire`;
+            read.addEventListener('click', () => openComicReader(Number(data.volume_id)));
+            readSlot.replaceWith(read);
+        }
+    } catch (error) {
+        console.warn('Aperçu des pages indisponible:', error);
+    }
+}
+
 async function renderSeriesDetail(seriesId) {
     const modalBody = document.getElementById('modal-body');
 
@@ -3900,6 +4026,7 @@ async function renderSeriesDetail(seriesId) {
             metaCells.push(['Statut', escapeHtml(`${bd.status}${years}`)]);
         }
         if (bd.total_volumes) metaCells.push(['Parus', escapeHtml(`${bd.total_volumes} tome${bd.total_volumes > 1 ? 's' : ''}`)]);
+        if (bd.origin) metaCells.push(['Origine', bedethequeOriginHtml(bd.origin, true)]);
         const bdMetaHtml = metaCells.length
             ? `<div class="series-detail-meta-grid">${metaCells.map(([k, v]) =>
                 `<div class="series-detail-meta-cell"><span class="k">${escapeHtml(k)}</span><span class="v">${v}</span></div>`
@@ -3915,6 +4042,10 @@ async function renderSeriesDetail(seriesId) {
                     ${detailCoverPath
                         ? `<img class="series-detail-cover clickable-cover" src="${escapeHtml(detailCoverUrl)}" alt="${escapeHtml(data.title)}" tabindex="0" role="button" title="Afficher la couverture">`
                         : `<div class="series-detail-cover series-detail-cover-placeholder">📚</div>`}
+                    <div class="series-preview-pages" id="series-preview-pages-${seriesId}" hidden></div>
+                    ${(data.is_oneshot && oneshotFile && oneshotFile.filepath) ? `
+                    <button type="button" class="series-read-btn" onclick="openComicReader(${Number(oneshotFile.id)})" aria-label="Lire cet album">${svgIcon('play')} Lire</button>` : `
+                    <span class="series-read-slot" id="series-read-slot-${seriesId}"></span>`}
                 </div>
                 <div class="series-detail-info">
                     <div class="series-detail-title-row">
@@ -4083,7 +4214,10 @@ async function renderSeriesDetail(seriesId) {
             const showDetailCover = event => {
                 event.preventDefault();
                 event.stopPropagation();
-                openCoverModal(detailCover.currentSrc || detailCover.src, detailCover.alt);
+                // Avec l'aperçu des pages chargé, la couverture ouvre la galerie (couverture puis pages).
+                const gallery = _seriesPreviewGallery && _seriesPreviewGallery.seriesId === seriesId
+                    ? { items: _seriesPreviewGallery.items, index: 0 } : null;
+                openCoverModal(detailCover.currentSrc || detailCover.src, detailCover.alt, gallery);
             };
             detailCover.addEventListener('click', showDetailCover);
             detailCover.addEventListener('keydown', event => {
@@ -4094,6 +4228,7 @@ async function renderSeriesDetail(seriesId) {
         initClearableSearchInputs(modalBody);
         loadSeriesUniverse(seriesId);
         loadSeriesAuthorPhotos(authorLinks);
+        loadSeriesPreviewPages(seriesId);
 
         // Attacher écouteurs au badge "Non possédé" cliquable des tomes placeholder de la
         // liste principale (voir buildVolumeItemHtml) - évite des handlers inline cassés
@@ -7598,11 +7733,13 @@ document.addEventListener('click', function(event) {
 });
 
 document.addEventListener('keydown', function(event) {
+    const coverModal = document.getElementById('cover-image-modal');
+    if (!coverModal || !coverModal.classList.contains('active')) return;
     if (event.key === 'Escape') {
-        const coverModal = document.getElementById('cover-image-modal');
-        if (coverModal && coverModal.classList.contains('active')) {
-            closeCoverModal();
-        }
+        closeCoverModal();
+    } else if (_coverGallery && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        stepCoverGallery(event.key === 'ArrowLeft' ? -1 : 1);
     }
 });
 

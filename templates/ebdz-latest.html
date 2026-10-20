@@ -87,6 +87,20 @@
                                                 </span>
                                             </div>
                                         </th>
+                                        <th class="volume-table-sortable" data-sort-column="genre" onclick="setNouveautesSort('genre')">
+                                            <div class="th-filterable-row">
+                                                <span class="th-filterable-label" style="cursor:pointer;">Genre<span class="nouveautes-sort-arrow"></span></span>
+                                                <span class="th-filterable-filter" onclick="event.stopPropagation()">
+                                                    <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></svg></span>
+                                                    <select id="nouveautesGenreFilter" class="th-filterable-control" aria-label="Filtrer par genre" onchange="_syncFilterControlActive(this); renderNouveautesEvents()">
+                                                        <option value="">Tous</option>
+                                                        <option value="bd">BD</option>
+                                                        <option value="comics">Comics</option>
+                                                        <option value="manga">Manga</option>
+                                                    </select>
+                                                </span>
+                                            </div>
+                                        </th>
                                         <th class="volume-table-sortable" data-sort-column="matched" onclick="setNouveautesSort('matched')">
                                             <div class="th-filterable-row">
                                                 <span class="th-filterable-label" style="cursor:pointer;" onclick="setNouveautesSort('matched')">Série<span class="nouveautes-sort-arrow"></span></span>

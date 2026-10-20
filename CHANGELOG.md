@@ -1,5 +1,36 @@
 # Changements
 
+## v8.1 — 2026-10-20
+
+[Comparer v8.0 et v8.1](https://github.com/gwenvador/bullarr/compare/v8.0...v8.1)
+
+Mise à jour directe depuis v8.0, sans migration manuelle. Une table de cache (`bedetheque_origin_cache`) est créée au premier besoin.
+
+### Lecteur de BD intégré
+
+- Lecture des albums directement dans Bullarr, depuis leur fichier (CBZ, CBR ou PDF).
+- Bouton ▶ « Lire » sur chaque tome qui a un fichier (à côté du panier) et sous la couverture de la fiche série.
+- Clic sur la moitié droite pour la page suivante, gauche pour la précédente ; molette, touches ← → / Espace / Début / Fin, glissement du doigt, curseur de position, plein écran (bouton ou touche F).
+- Pages suivantes préchargées, dernière page lue mémorisée pour chaque tome.
+- API : `GET /api/volumes/<id>/reader` et `GET /api/volumes/<id>/reader/page/<n>`.
+
+### Fiche série
+
+- Aperçu : 4 pages du premier tome possédé, prises dans l'album (vers 20, 40, 60 et 75 %), sous la couverture, avec leur vrai numéro de page.
+- La visionneuse d'images devient une galerie : couverture puis pages, flèches ‹ ›, touches ← →, glissement.
+- Origine Bédéthèque de la série : BD (Europe), Comics (USA) ou Manga (Asie), avec drapeau.
+
+### Genre BD / Comics / Manga
+
+- Bibliothèque : colonne « Type » dans le tableau (triable, filtrable), étiquette dans les vues aperçu et affiches.
+- Nouveautés : colonne « Genre » triable, avec filtre BD / Comics / Manga, pour les lignes RSS, Telegram et EBDZ.
+- Configuration → Indexeurs → Flux RSS : choix des genres affichés dans Nouveautés pour les flux RSS (affichage seulement, la surveillance n'est pas modifiée).
+- API : `POST /api/bedetheque/origins` (origine lue dans la bibliothèque, puis en cache, puis sur la fiche Bédéthèque).
+
+### Application Android
+
+- **bullarr-android-1.1.apk** joint à cette release : lecteur de BD, mode hors ligne (albums copiés sur le téléphone, état lu / non lu, suppression par série), champs de recherche compacts, vérification des mises à jour sur GitHub. L'application 1.0 propose cette mise à jour d'elle-même.
+
 ## v8.0 — 2026-10-19
 
 [Comparer v7.1 et v8.0](https://github.com/gwenvador/bullarr/compare/v7.1...v8.0)

@@ -2947,3 +2947,32 @@ def convert_volumes_batch():
 
     threading.Thread(target=_run_batch, daemon=True).start()
     return jsonify({'success': True, 'count': len(volume_ids)})
+
+
+@bedetheque_bp.route('/origins', methods=['POST'])
+def bedetheque_series_origins():
+    """Origine (Europe, USA, Asie, Autre) de fiches séries Bédéthèque, pour marquer BD /
+    Comics / Manga dans Nouveautés. Corps : {"urls": [...]} (200 au plus). Réponse :
+    {"success", "origins": {url: {"origin", "kind": "bd"|"comics"|"manga"|null}}, "pending"}
+    - pending : adresses pas encore lues (au plus 6 pages lues par appel), à redemander."""
+    from .origins import resolve_origins, origin_kind, normalize_series_url
+    data = request.get_json(silent=True) or {}
+    urls = data.get('urls') or []
+    if not isinstance(urls, list):
+        return jsonify({'success': False, 'error': 'urls doit être une liste'}), 400
+    scraper = BedethequeScraper()
+
+    def fetch_page(url):
+        return _fetch_bedetheque_page(scraper, url).decode('utf-8', errors='replace')
+
+    try:
+        origins, pending = resolve_origins(current_app.config['DATABASE'], urls[:200], fetch_page)
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, "Lecture de l'origine impossible")}), 500
+    # Réponse indexée par les adresses telles qu'envoyées (la page retrouve ainsi ses lignes).
+    answered = {}
+    for url in urls[:200]:
+        canonical = normalize_series_url(url)
+        if canonical in origins:
+            answered[url] = {'origin': origins[canonical], 'kind': origin_kind(origins[canonical])}
+    return jsonify({'success': True, 'pending': pending, 'origins': answered})

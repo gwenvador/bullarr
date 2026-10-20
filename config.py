@@ -32,7 +32,7 @@ class Config:
 
     # Version publiée (release GitHub et image ghcr.io/gwenvador/bullarr), affichée dans
     # Configuration → Vue d'ensemble → À propos.
-    APP_VERSION = '8.0'
+    APP_VERSION = '8.1'
     SOURCE_URL = 'https://github.com/gwenvador/bullarr'
     COVERS_DIR = os.path.join(DATA_DIR, 'covers')
     

@@ -2231,3 +2231,34 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
+
+
+// Origine Bédéthèque d'une série (Europe / USA / Asie / Autre) -> drapeau BD, Comics ou
+// Manga. withLabel : drapeau + libellé (fiche série) ; sinon petite étiquette colorée
+// « BD » / « Comics » / « Manga » (listes : les drapeaux gris de 16 px s'y lisent mal).
+const BEDETHEQUE_ORIGIN_KINDS = {
+    europe: ['bd', 'BD', '/static/img/origin-bd.svg'],
+    usa: ['comics', 'Comics', '/static/img/origin-comics.svg'],
+    asie: ['manga', 'Manga', '/static/img/origin-manga.svg'],
+};
+
+// Libellé texte (BD / Comics / Manga, sinon l'origine brute ou « — ») : tri et filtres.
+function bedethequeOriginLabel(origin) {
+    const value = String(origin || '').trim();
+    if (!value) return '—';
+    const kind = BEDETHEQUE_ORIGIN_KINDS[value.toLowerCase()];
+    return kind ? kind[1] : value;
+}
+
+function bedethequeOriginHtml(origin, withLabel = false) {
+    const value = String(origin || '').trim();
+    if (!value) return '';
+    const kind = BEDETHEQUE_ORIGIN_KINDS[value.toLowerCase()];
+    if (!kind) return withLabel ? escapeHtml(value) : '';
+    const [, label, flag] = kind;
+    const tooltip = `${label} (origine : ${value})`;
+    const img = `<img src="${flag}" alt="" class="origin-flag" width="18" height="12">`;
+    return withLabel
+        ? `<span class="origin-badge" data-tooltip="${escapeHtml(tooltip)}">${img} ${escapeHtml(label)} <span class="origin-badge-detail">(${escapeHtml(value)})</span></span>`
+        : `<span class="origin-pill origin-pill-${kind[0]}" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(label)}"><img src="${flag}" alt="" class="origin-flag" width="15" height="10">${escapeHtml(label)}</span>`;
+}
