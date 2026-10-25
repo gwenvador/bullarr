@@ -104,6 +104,24 @@ class KomgaClient:
         if response.status_code not in (200, 202, 204):
             raise KomgaError(f"Erreur HTTP Komga {response.status_code}: {response.text[:200]}")
 
+    def update_read_progress(self, book_id, page, completed=False):
+        """Enregistre l'état de lecture d'un livre pour le compte de la clé API
+        (PATCH /api/v1/books/{id}/read-progress). `completed` marque le livre comme lu ;
+        sinon `page` (à partir de 1) est la dernière page lue."""
+        payload = {'completed': True} if completed else {'page': int(page)}
+        try:
+            response = requests.patch(
+                f"{self.base_url}/api/v1/books/{book_id}/read-progress",
+                headers={**self.headers, 'Content-Type': 'application/json'},
+                json=payload,
+                timeout=15
+            )
+        except requests.exceptions.RequestException as e:
+            raise KomgaError(f"Impossible de contacter Komga: {e}")
+
+        if response.status_code not in (200, 204):
+            raise KomgaError(f"Erreur HTTP Komga {response.status_code}: {response.text[:200]}")
+
     def search_series(self, query, size=40):
         """Recherche des séries par titre. Retourne une liste de dicts simplifiés."""
         try:

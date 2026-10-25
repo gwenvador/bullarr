@@ -251,6 +251,28 @@ def fetch_vk_feed(_feed=None, max_age_days=VK_MAX_AGE_DAYS):
     return entries
 
 
+def check_vk_file_available(url):
+    """Vérifie que VK sert bien le document avant de lancer le téléchargement en arrière-plan
+    (sinon l'échec — ex. HTTP 504 côté VK — n'apparaissait que dans l'historique). Lève
+    RuntimeError avec un message lisible ; seuls les en-têtes sont lus."""
+    if not is_vk_doc_url(url):
+        raise ValueError('Lien VK non autorisé (vk.com/doc… attendu)')
+    headers = dict(_HEADERS, Referer='https://vk.com/', Range='bytes=0-0')
+    try:
+        with safe_external_get(url, headers=headers, timeout=30) as response:
+            status = response.status_code
+            content_type = (response.headers.get('Content-Type') or '').lower()
+    except Exception as exc:
+        raise RuntimeError(f'VK injoignable : {exc}') from exc
+    if status not in (200, 206):
+        raise RuntimeError(
+            f'Fichier indisponible sur VK (HTTP {status}) : le fichier ne répond pas côté VK, réessaie plus tard'
+            if status in (404, 410, 502, 503, 504)
+            else f'Téléchargement VK impossible (HTTP {status})')
+    if content_type.startswith('text/html'):
+        raise RuntimeError('VK a renvoyé une page HTML au lieu du fichier')
+
+
 def download_vk_file(url, filename, target_dir, progress_callback=None, attempts=3):
     """Télécharge un document VK dans target_dir. Le fichier s'écrit dans « .part » (ignoré
     par l'import automatique) et reprend là où il s'est arrêté (en-tête Range) après une
@@ -406,7 +428,7 @@ VK_TOPIC_DOCS_TTL_SECONDS = 1800
 # « Titre lien ». Le lien peut viser un message précis (?post=N) : plusieurs séries
 # partagent alors un même sujet (Champignac, Super Groom… dans SPIROU ET FANTASIO).
 def _index_link_pattern(group):
-    return re.compile(r'https?://(?:m\.)?vk\.(?:com|ru)/topic-' + group + r'_(?P<topic>\d+)(?:\?post=(?P<post>\d+))?')
+    return re.compile(r'https?://(?:m\.)?vk\.(?:com|ru)/topic-' + re.escape(group) + r'_(?P<topic>\d+)(?:\?post=(?P<post>\d+))?')
 
 
 _INDEX_LINK = _index_link_pattern(VK_GROUP_ID)

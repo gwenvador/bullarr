@@ -204,8 +204,11 @@ def _entry_links(entry, description, source_url):
     return page_link, comments_link, downloads[:10]
 
 
-def parse_feed(payload, source_url):
-    _validate_url(source_url)
+def parse_feed(payload, source_url, validate_url=True):
+    # validate_url=False : adresse fixée par le serveur (Prowlarr configuré), pas saisie par
+    # l'utilisateur ; elle est légitimement interne (ex. prowlarr.<domaine> -> 192.168.x.x).
+    if validate_url:
+        _validate_url(source_url)
     root = ET.fromstring(payload)
     channel = root.find('channel')
     entries = list(channel.findall('item')) if channel is not None else []
@@ -290,7 +293,7 @@ def _fetch_prowlarr_indexer(indexer, base_url, api_key, category_ids=None):
         payload = response.read(MAX_FEED_BYTES + 1)
     if len(payload) > MAX_FEED_BYTES:
         raise ValueError('Flux Prowlarr trop volumineux')
-    entries = parse_feed(payload, endpoint)
+    entries = parse_feed(payload, endpoint, validate_url=False)
     for entry in entries:
         entry['feed_title'] = f"Prowlarr · {indexer.get('name') or indexer['id']}"
         entry['prowlarr_indexer_id'] = indexer['id']

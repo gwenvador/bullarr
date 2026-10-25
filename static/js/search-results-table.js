@@ -722,7 +722,7 @@ function buildSearchResultRowHtml(result) {
     return `
         <tr class="replace-results-row${isOwned ? ' replace-results-row-owned' : ''}">
             <td class="replace-results-select"><input type="checkbox" class="search-result-select" data-result-action="toggleSelection" data-selection-key="${escapeHtml(_searchResultSelectionKey(result))}" aria-label="Sélectionner ce résultat" ${isSelected ? 'checked=""' : ''}></td>
-            <td class="replace-results-best-marker">${isOwned ? `<span class="icon-owned" data-tooltip="En bibliothèque">${svgIcon('check')}</span>` : ''}</td>
+            <td class="replace-results-best-marker">${isOwned ? `<span class="icon-owned" data-tooltip="En bibliothèque">${libraryIconHtml()}</span>` : ''}</td>
             <td class="replace-results-filename" title="${escapeHtml(displayName)}">
                 ${unconfirmedVolumeHtml} ${escapeHtml(displayName)}
                 ${unconfirmedReasonText ? `<div style="color:#e67e22; font-size:0.8em; margin-top:2px;">${escapeHtml(unconfirmedReasonText)}</div>` : ''}
@@ -952,6 +952,9 @@ function _renderSearchResultsTbody() {
     _replaceSearchResultsTbody(tbody, filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
         : '<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>');
+    // Les lignes viennent d'être recréées : sans nouveaux écouteurs, cocher une case ne
+    // mettait pas à jour « Télécharger la sélection » (seul « Tout sélectionner » marchait).
+    bindSearchResultsTableActions(tbody);
     _updateSearchBatchDownloadToolbar();
 }
 

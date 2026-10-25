@@ -37,7 +37,19 @@ let selectedSeriesIds = new Set();
 // 'genre:Histoire', 'author:Alcante', 'year:2020'. Plusieurs filtres d'une même catégorie
 // se combinent en OU (ex: genre:Histoire OU genre:Guerre), les catégories entre elles en ET
 let activeFilters = new Set();
-let seriesSortMode = 'alpha'; // 'alpha', 'volumes'
+let seriesSortMode = 'alpha'; // voir SERIES_SORT_MODES
+// Inverse le sens par défaut du critère (un second clic sur le même critère le bascule).
+let seriesSortReversed = false;
+// Ordre d'affichage des affiches / de l'aperçu (la vue tableau trie par en-tête de colonne).
+// desc : sens par défaut ; value : valeur comparée (null = donnée absente, toujours en fin).
+const SERIES_SORT_MODES = {
+    alpha: { label: 'Alphabétique', desc: false, value: s => (s.title || '').toLowerCase() },
+    votes: { label: 'Popularité', desc: true, value: s => s.total_votes || null },
+    added: { label: "Date d'ajout", desc: true, value: s => s.id || null },
+    year: { label: 'Année', desc: true, value: s => parseInt(s.year, 10) || null },
+    size: { label: 'Taille', desc: true, value: s => s.total_size || null },
+    volumes: { label: 'Tomes', desc: true, value: s => s.total_volumes || null },
+};
 let seriesViewMode = localStorage.getItem('seriesViewMode') || 'poster'; // 'poster', 'overview', 'table'
 // Tri par en-tête cliquable de la vue tableau (remplace le menu "Ordonner" retiré de la
 // toolbar) - appliqué en plus de/par-dessus seriesSortMode, uniquement pour cette vue
@@ -646,6 +658,9 @@ const TABLE_OPTIONAL_COLUMNS = [
       render: s => (s.missing_volumes && s.missing_volumes.length) ? String(s.missing_volumes.length) : '0' },
     { key: 'ebdzMatch', label: 'Matching EBDZ', icon: '<img class="table-header-source-logo" src="/static/img/ebdz-logo.png" alt="EBDZ">', header: '<img class="table-header-source-logo" src="/static/img/ebdz-logo.png" alt="EBDZ"> EBDZ', render: s => _matchStatusHtml(s.ebdz_match_status === 'matched') },
     { key: 'komgaMatch', label: 'Matching Komga', icon: '<img class="table-header-source-logo" src="/static/img/komga-logo.svg" alt="Komga">', header: '<img class="table-header-source-logo" src="/static/img/komga-logo.svg" alt="Komga"> Komga', render: s => _matchStatusHtml(s.komga_match_status === 'matched') },
+    // Popularité : somme des votes Bédéthèque de tous les tomes (clic sur l'en-tête pour trier).
+    { key: 'votes', label: 'Votes', icon: '⭐', header: 'Votes', filterType: 'text',
+      render: s => s.total_votes ? Number(s.total_votes).toLocaleString('fr-FR') : '—' },
     { key: 'path', label: 'Chemin', icon: '📁', header: 'Chemin', filterType: 'text', render: s => s.path || '—' }
 ];
 
@@ -704,6 +719,74 @@ function renderTableColumnsMenu() {
     `).join('');
 }
 
+// Cellule Titre du tableau : au survol, la couverture de la série s'affiche en vignette
+// (voir _bindSeriesCoverPreview). Sans couverture, on garde l'infobulle texte habituelle.
+function _seriesTableTitleCellHtml(s) {
+    const coverPath = pickPosterCoverPath(s);
+    const hint = coverPath ? `data-cover="${escapeHtml('/' + coverPath)}"` : `data-tooltip="${escapeHtml(s.title)}"`;
+    return `<td class="series-table-title" ${hint} data-cover-title="${escapeHtml(s.title)}"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></td>`;
+}
+
+let _seriesCoverPreviewEl = null;
+let _seriesCoverPreviewTimer = null;
+
+function _hideSeriesCoverPreview() {
+    clearTimeout(_seriesCoverPreviewTimer);
+    if (_seriesCoverPreviewEl) _seriesCoverPreviewEl.classList.remove('visible');
+}
+
+function _showSeriesCoverPreview(cell, event) {
+    if (!_seriesCoverPreviewEl) {
+        _seriesCoverPreviewEl = document.createElement('div');
+        _seriesCoverPreviewEl.className = 'series-cover-preview';
+        _seriesCoverPreviewEl.setAttribute('aria-hidden', 'true');
+        _seriesCoverPreviewEl.innerHTML = '<img alt=""><div class="series-cover-preview-title"></div>';
+        document.body.appendChild(_seriesCoverPreviewEl);
+    }
+    const box = _seriesCoverPreviewEl;
+    const image = box.querySelector('img');
+    if (image.getAttribute('src') !== cell.dataset.cover) image.setAttribute('src', cell.dataset.cover);
+    box.querySelector('.series-cover-preview-title').textContent = cell.dataset.coverTitle || '';
+    box.classList.add('visible');
+    _positionSeriesCoverPreview(event);
+}
+
+function _positionSeriesCoverPreview(event) {
+    const box = _seriesCoverPreviewEl;
+    if (!box) return;
+    const margin = 16;
+    const width = box.offsetWidth;
+    const height = box.offsetHeight;
+    // À droite du pointeur, ou à gauche s'il n'y a pas la place ; toujours dans l'écran.
+    let left = event.clientX + margin;
+    if (left + width > window.innerWidth - 8) left = Math.max(8, event.clientX - margin - width);
+    let top = event.clientY - height / 2;
+    top = Math.min(Math.max(8, top), Math.max(8, window.innerHeight - height - 8));
+    box.style.left = `${left}px`;
+    box.style.top = `${top}px`;
+}
+
+function _bindSeriesCoverPreview() {
+    document.addEventListener('mouseover', event => {
+        const cell = event.target.closest && event.target.closest('.series-table-title[data-cover]');
+        if (!cell) return;
+        if (event.relatedTarget && cell.contains(event.relatedTarget)) return;
+        clearTimeout(_seriesCoverPreviewTimer);
+        // Court délai : pas de vignette qui clignote quand la souris traverse le tableau.
+        _seriesCoverPreviewTimer = setTimeout(() => _showSeriesCoverPreview(cell, event), 150);
+    });
+    document.addEventListener('mousemove', event => {
+        if (_seriesCoverPreviewEl && _seriesCoverPreviewEl.classList.contains('visible')) _positionSeriesCoverPreview(event);
+    });
+    document.addEventListener('mouseout', event => {
+        const cell = event.target.closest && event.target.closest('.series-table-title[data-cover]');
+        if (!cell || (event.relatedTarget && cell.contains(event.relatedTarget))) return;
+        _hideSeriesCoverPreview();
+    });
+    window.addEventListener('scroll', _hideSeriesCoverPreview, true);
+}
+_bindSeriesCoverPreview();
+
 // Construit une ligne de la vue "tableau" (façon vue Table de Radarr). Colonnes par
 // défaut: Titre/Tomes/Statut/Année/Genre/Actions - Statut en texte simple (pas d'icône,
 // pas de couleur par statut, voir _seriesStatusLabel) plutôt que le badge coloré de la
@@ -723,7 +806,7 @@ function buildTableRowHtml(s) {
     return `
     <tr class="series-table-row" data-series-id="${s.id}" onclick="viewSeries(${s.id})">
         <td class="volume-table-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="series-select-checkbox series-table-row-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onchange="toggleSeriesSelection(${s.id}, this.checked)" aria-label="Sélectionner ${escapeHtml(s.title)}"></td>
-        ${_isTableColumnVisible('title') ? `<td class="series-table-title" data-tooltip="${escapeHtml(s.title)}"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></td>` : ''}
+        ${_isTableColumnVisible('title') ? _seriesTableTitleCellHtml(s) : ''}
         ${_isTableColumnVisible('volumes') ? `<td class="series-table-pill">${volumeLabel}</td>` : ''}
         ${_isTableColumnVisible('status') ? `<td class="series-table-pill">${escapeHtml(statusLabel)}</td>` : ''}
         ${_isTableColumnVisible('year') ? `<td class="series-table-pill">${escapeHtml(s.year || '—')}</td>` : ''}
@@ -853,6 +936,7 @@ function _seriesTableSortValue(s, column) {
         case 'year': return s.year || null;
         case 'genre': return (s.local_genre || '').toLowerCase() || null;
         case 'type': return bedethequeOriginLabel(s.bedetheque_origin);
+        case 'votes': return s.total_votes || null;
         default: {
             const col = _availableTableOptionalColumns().find(c => c.key === column);
             return col ? col.render(s) : null;
@@ -983,6 +1067,9 @@ function updateViewSwitcherButtons() {
     });
     const columnsSection = document.getElementById('table-columns-section');
     if (columnsSection) columnsSection.style.display = seriesViewMode === 'table' ? '' : 'none';
+    // Le tableau se trie par ses en-têtes de colonnes ; affiches et aperçu ont le menu « Trier ».
+    const sortSection = document.getElementById('series-sort-section');
+    if (sortSection) sortSection.style.display = seriesViewMode === 'table' ? 'none' : '';
 }
 
 function displaySeries(series) {
@@ -1317,15 +1404,23 @@ function filterSeries() {
 // muter le tableau d'origine (seriesData doit rester dans son ordre alphabétique de référence)
 function sortSeriesList(list) {
     const sorted = [...list];
-    if (seriesSortMode === 'volumes') {
-        sorted.sort((a, b) => (b.total_volumes || 0) - (a.total_volumes || 0));
-    } else if (seriesSortMode === 'added') {
-        // Pas de colonne "date d'ajout" dédiée: l'id (auto-incrémenté, jamais réutilisé)
-        // reflète déjà fidèlement l'ordre d'ajout, y compris pour les séries existantes
-        sorted.sort((a, b) => (b.id || 0) - (a.id || 0));
-    } else {
-        sorted.sort((a, b) => a.title.localeCompare(b.title, 'fr'));
-    }
+    const mode = SERIES_SORT_MODES[seriesSortMode] || SERIES_SORT_MODES.alpha;
+    const descending = mode.desc !== seriesSortReversed;
+    // "Date d'ajout" : pas de colonne dédiée, l'id (auto-incrémenté, jamais réutilisé)
+    // reflète fidèlement l'ordre d'ajout, y compris pour les séries existantes.
+    sorted.sort((a, b) => {
+        const va = mode.value(a);
+        const vb = mode.value(b);
+        // Donnée absente (série sans vote, sans année...) : toujours à la fin, quel que soit le sens.
+        if (va === null && vb !== null) return 1;
+        if (vb === null && va !== null) return -1;
+        let cmp = 0;
+        if (va !== null) {
+            cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'fr', { numeric: true });
+            if (descending) cmp = -cmp;
+        }
+        return cmp || (a.title || '').localeCompare(b.title || '', 'fr');
+    });
     return sorted;
 }
 
@@ -1555,6 +1650,7 @@ function saveFilterState() {
     try {
         localStorage.setItem(getFilterStorageKey('active'), JSON.stringify([...activeFilters]));
         localStorage.setItem(getFilterStorageKey('sort'), seriesSortMode);
+        localStorage.setItem(getFilterStorageKey('sortReversed'), seriesSortReversed ? '1' : '0');
     } catch (e) {
         // localStorage indisponible (navigation privée, quota...): pas bloquant, on
         // continue simplement sans persistance
@@ -1569,7 +1665,8 @@ function restoreFilterState() {
         const savedFilters = JSON.parse(localStorage.getItem(getFilterStorageKey('active')) || '[]');
         activeFilters = new Set(Array.isArray(savedFilters) ? savedFilters : []);
         const savedSort = localStorage.getItem(getFilterStorageKey('sort'));
-        if (savedSort) seriesSortMode = savedSort;
+        if (savedSort && SERIES_SORT_MODES[savedSort]) seriesSortMode = savedSort;
+        seriesSortReversed = localStorage.getItem(getFilterStorageKey('sortReversed')) === '1';
     } catch (e) {
         activeFilters = new Set();
     }
@@ -1622,12 +1719,22 @@ function refreshFilterDropdownUI() {
 // seriesSortMode, sans ouvrir/fermer le menu (utilisé à la fois par setSeriesSortMode et
 // par restoreFilterState au chargement de la page)
 function updateSortDropdownActiveButton() {
+    const mode = SERIES_SORT_MODES[seriesSortMode] || SERIES_SORT_MODES.alpha;
+    const descending = mode.desc !== seriesSortReversed;
+    const arrow = descending ? '↓' : '↑';
     document.querySelectorAll('#sort-dropdown-menu .toolbar-dropdown-item').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.sort === seriesSortMode);
+        const active = btn.dataset.sort === seriesSortMode;
+        btn.classList.toggle('active', active);
+        btn.querySelector('.sort-direction')?.remove();
+        if (active) btn.insertAdjacentHTML('beforeend', ` <span class="sort-direction">${arrow}</span>`);
     });
+    const label = document.getElementById('series-sort-label');
+    if (label) label.textContent = `${mode.label} ${arrow}`;
 }
 
 function setSeriesSortMode(mode) {
+    // Même critère recliqué : on inverse le sens (plus populaire / moins populaire...).
+    seriesSortReversed = mode === seriesSortMode ? !seriesSortReversed : false;
     seriesSortMode = mode;
     updateSortDropdownActiveButton();
     toggleToolbarDropdown('sort-dropdown-menu');

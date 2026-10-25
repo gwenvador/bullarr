@@ -94,5 +94,45 @@ class ComicReaderWiringTest(unittest.TestCase):
         self.assertIn('requestFullscreen', js)               # plein écran
 
 
+class ComicReaderThumbnailTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        reader._index_cache.clear()
+        self.covers = os.path.join(self.tmp.name, 'covers')
+        self.path = os.path.join(self.tmp.name, 'album.cbz')
+        with zipfile.ZipFile(self.path, 'w') as archive:
+            for number in range(1, 4):
+                buffer = io.BytesIO()
+                Image.new('RGB', (1200, 1800), (number * 60, 0, 0)).save(buffer, 'PNG')
+                archive.writestr(f'p{number}.png', buffer.getvalue())
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_thumbnail_is_small_and_cached(self):
+        path = reader.thumbnail_path(self.path, 'cbz', 2, self.covers)
+        size = Image.open(path).size
+        self.assertLessEqual(size[0], reader.THUMB_MAX_SIZE[0])
+        self.assertLessEqual(size[1], reader.THUMB_MAX_SIZE[1])
+        mtime = os.path.getmtime(path)
+        self.assertEqual(reader.thumbnail_path(self.path, 'cbz', 2, self.covers), path)
+        self.assertEqual(os.path.getmtime(path), mtime)
+
+    def test_out_of_range_and_old_versions_removed(self):
+        with self.assertRaises(IndexError):
+            reader.thumbnail_path(self.path, 'cbz', 9, self.covers)
+        old = reader.thumbnail_path(self.path, 'cbz', 1, self.covers)
+        os.utime(self.path, (1, 1))
+        new = reader.thumbnail_path(self.path, 'cbz', 1, self.covers)
+        self.assertNotEqual(old, new)
+        self.assertFalse(os.path.exists(old))
+
+    def test_reader_has_fit_modes_and_thumbnail_strip(self):
+        js = (ROOT / 'static/js/reader.js').read_text()
+        for needle in ("page: { label: 'Page entière'", "width: { label: 'Largeur'", "height: { label: 'Hauteur'",
+                       '/reader/thumb/', 'loading="lazy"', "comic-reader-fit", "comic-reader-thumbs"):
+            self.assertIn(needle, js)
+
+
 if __name__ == '__main__':
     unittest.main()

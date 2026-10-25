@@ -2241,6 +2241,10 @@ const BEDETHEQUE_ORIGIN_KINDS = {
     usa: ['comics', 'Comics', '/static/img/origin-comics.svg'],
     asie: ['manga', 'Manga', '/static/img/origin-manga.svg'],
 };
+// Libellés affichés par Bédéthèque depuis octobre 2026 (séries ajoutées depuis).
+BEDETHEQUE_ORIGIN_KINDS['franco-belge'] = BEDETHEQUE_ORIGIN_KINDS.europe;
+BEDETHEQUE_ORIGIN_KINDS.comics = BEDETHEQUE_ORIGIN_KINDS.usa;
+BEDETHEQUE_ORIGIN_KINDS.manga = BEDETHEQUE_ORIGIN_KINDS.asie;
 
 // Libellé texte (BD / Comics / Manga, sinon l'origine brute ou « — ») : tri et filtres.
 function bedethequeOriginLabel(origin) {

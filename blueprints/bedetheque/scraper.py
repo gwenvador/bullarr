@@ -358,6 +358,15 @@ def _anti_bot_delay():
     time.sleep(random.uniform(0.8, 1.2))
 
 
+
+def _canonical_origin(value):
+    """Origine telle que le reste de l'application la comprend (Europe / USA / Asie / Autre) :
+    la fiche affiche désormais « Franco-Belge », « Comics » ou « Manga » au lieu de ces noms."""
+    from .origins import ORIGIN_LABELS
+    text = (value or '').strip()
+    return ORIGIN_LABELS.get(text.lower(), text) or None
+
+
 class BedethequeScraper:
     """Scraper pour rechercher des séries et récupérer leurs infos sur Bedetheque"""
 
@@ -780,7 +789,7 @@ class BedethequeScraper:
                 elif key == 'Tomes':
                     info['total_volumes'] = int(value) if value.isdigit() else None
                 elif key == 'Origine':
-                    info['origin'] = value or None
+                    info['origin'] = _canonical_origin(value)
                 elif key == 'Langue':
                     info['language'] = value or None
 
@@ -798,7 +807,7 @@ class BedethequeScraper:
                     if match:
                         info['total_volumes'] = int(match.group())
                 elif 'origine' in label:
-                    info['origin'] = value or None
+                    info['origin'] = _canonical_origin(value)
                 elif 'langue' in label:
                     info['language'] = value or None
 

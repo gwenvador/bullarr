@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from blueprints.bedetheque import origins
@@ -16,8 +17,30 @@ class OriginParsingTest(unittest.TestCase):
         self.assertEqual(origins.parse_origin(PAGE), 'USA')
         self.assertEqual(origins.parse_origin('<li><label>Origine : </label>Asie</li>'), 'Asie')
         self.assertIsNone(origins.parse_origin('<html>rien</html>'))
+        # Mise en page actuelle : une icône précède le libellé.
+        self.assertEqual(origins.parse_origin(
+            '<li title="Origine de la série"><i class="fa-solid bdt-ori bdt-ori-2" aria-hidden="true"></i> Manga</li>'),
+            'Asie')
+        self.assertEqual(origins.parse_origin(
+            '<li title="Origine de la série"><i class="fa-solid bdt-ori bdt-ori-1"></i> Franco-Belge</li>'),
+            'Europe')
+        self.assertEqual(origins.origin_kind(origins.parse_origin(
+            '<li title="Origine de la série"><i class="bdt-ori"></i> Manga</li>')), 'manga')
         self.assertEqual([origins.origin_kind(v) for v in ('Europe', 'USA', 'asie', 'Autre', None)],
                          ['bd', 'comics', 'manga', None, None])
+
+    def test_new_bedetheque_labels_are_understood_everywhere(self):
+        # La fiche affiche « Franco-Belge » / « Comics » / « Manga » : rattachement d'une
+        # série, Nouveautés et bibliothèque doivent donner le même drapeau qu'avec Europe/USA/Asie.
+        from blueprints.bedetheque.scraper import _canonical_origin
+        self.assertEqual(_canonical_origin(' Franco-Belge '), 'Europe')
+        self.assertEqual(_canonical_origin('Manga'), 'Asie')
+        self.assertEqual(_canonical_origin('Autre'), 'Autre')
+        self.assertIsNone(_canonical_origin(''))
+        for label, kind in (('Franco-Belge', 'bd'), ('Comics', 'comics'), ('Manga', 'manga'), ('Europe', 'bd')):
+            self.assertEqual(origins.origin_kind(label), kind)
+        script = (Path(__file__).resolve().parents[1] / 'static/js/nav.js').read_text()
+        self.assertIn("BEDETHEQUE_ORIGIN_KINDS['franco-belge']", script)
 
     def test_only_bedetheque_series_urls(self):
         self.assertEqual(origins.normalize_series_url('http://bedetheque.com/serie-500-BD-Blacksad.html?x=1#y'),

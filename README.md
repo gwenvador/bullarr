@@ -32,7 +32,11 @@ tomes manquants.
   fichier partiel pour Telegram et VK). Priorité « en premier » et pause depuis la page Import
   pour Telegram, qBittorrent et aMule
 - 🗄️ **Intégration Komga** : rescan automatique déclenché à chaque import/renommage/
-  écriture de métadonnées
+  écriture de métadonnées ; la page lue dans le lecteur de Bullarr est envoyée à Komga
+  (réglable dans la configuration Komga)
+- 📖 **Lecteur de BD intégré** : lecture des CBZ, CBR et PDF directement dans Bullarr, une ou
+  deux pages côte à côte, zoom, ajustement (page, largeur, hauteur), bande de miniatures, plein
+  écran ; la touche `?` affiche les raccourcis
 - ✏️ **Renommage configurable** : templates de nommage fichiers/dossiers à partir des
   métadonnées Bédéthèque
 - ✅ **Vérification de bibliothèque** : détection des séries sans métadonnées, noms non

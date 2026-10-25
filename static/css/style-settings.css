@@ -1239,3 +1239,16 @@ input[type="checkbox"].switch-input:disabled {
 .rss-genres-setting { margin: 16px 0; display: flex; flex-direction: column; gap: 6px; }
 .rss-genres-options { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .rss-genres-options label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+
+/* Catégories Prowlarr : groupes parent / sous-catégories en retrait, autres catégories repliées. */
+.prowlarr-categories { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border, #e0e0e0); }
+.prowlarr-categories-title { display: block; margin-bottom: 8px; font-size: 0.9em; }
+.prowlarr-category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px 16px; align-items: start; }
+.prowlarr-category-group { display: flex; flex-direction: column; gap: 3px; }
+.prowlarr-category { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85em; line-height: 1.3; }
+.prowlarr-category input { flex: none; margin: 0; }
+.prowlarr-category-parent { font-weight: 600; }
+.prowlarr-category-sub { margin-left: 22px; padding-left: 10px; border-left: 2px solid var(--color-border, #e0e0e0); font-weight: 400; }
+.prowlarr-other-categories { margin-top: 12px; }
+.prowlarr-other-categories > summary { cursor: pointer; font-size: 0.85em; color: var(--color-text-muted, #666); margin-bottom: 8px; }
+.prowlarr-no-categories { margin-top: 6px; padding: 8px 10px; border-left: 3px solid #ffc107; font-size: 0.85em; color: var(--color-text-muted, #666); }

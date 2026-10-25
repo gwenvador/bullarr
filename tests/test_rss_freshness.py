@@ -36,6 +36,36 @@ class RssFreshnessTests(unittest.TestCase):
         self.assertEqual(result['entries'][0]['title'], 'New')
         fetch.assert_called_once_with(self.feed, force_refresh=True)
 
+    def test_page_load_gets_stale_cache_at_once_and_refresh_runs_in_background(self):
+        # Prowlarr peut être lent : Nouveautés affiche le cache périmé tout de suite, la mise à
+        # jour se fait ensuite en arrière-plan (et la page redemande le flux).
+        self.seed([{'title': 'Old'}])
+        app = Flask(__name__)
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_fetch(feed, force_refresh=False):
+            started.set()
+            release.wait(5)
+            return [{'title': 'New'}]
+
+        with patch.object(routes, 'fetch_feed', side_effect=slow_fetch):
+            began = time.monotonic()
+            _, result, error = routes._read_rss_feed(self.feed, self.path, allow_stale=True, app=app)
+            elapsed = time.monotonic() - began
+            self.assertIsNone(error)
+            self.assertEqual(result['entries'][0]['title'], 'Old')
+            self.assertLess(elapsed, 1)
+            self.assertTrue(started.wait(2))
+            self.assertTrue(routes._rss_refresh_in_progress(self.feed, self.path))
+            release.set()
+            for _ in range(50):
+                if not routes._rss_refresh_in_progress(self.feed, self.path):
+                    break
+                time.sleep(0.05)
+        _, refreshed, _ = routes._read_rss_feed(self.feed, self.path)
+        self.assertEqual(refreshed['entries'][0]['title'], 'New')
+
     def test_explicit_refresh_bypasses_fresh_persistent_cache(self):
         self.seed([{'title': 'Old'}], time.time())
         with patch.object(routes, 'fetch_feed', return_value=[{'title': 'New'}]):
@@ -87,7 +117,7 @@ class RssFreshnessTests(unittest.TestCase):
         with app.test_request_context('/rss/latest?' + query), \
                 patch.object(routes, 'load_feeds', return_value=feeds), \
                 patch.object(routes, '_rss_persistent_cache_path', return_value=self.path), \
-                patch.object(routes, '_read_rss_feed', side_effect=lambda f, *a: next(row for row in snapshots if row[0] == f)), \
+                patch.object(routes, '_read_rss_feed', side_effect=lambda f, *a, **kw: next(row for row in snapshots if row[0] == f)), \
                 patch.object(routes, '_annotate_rss_entries', side_effect=annotate or (lambda entries: entries)):
             return routes.rss_latest().get_json()
 

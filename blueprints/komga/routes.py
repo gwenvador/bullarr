@@ -21,6 +21,7 @@ def komga_config():
         return jsonify({
             'enabled': config.get('enabled', False),
             'url': config.get('url', ''),
+            'sync_read_progress': config.get('sync_read_progress', True) is not False,
             'api_key': '****' if config.get('api_key') else ''
         })
 
@@ -31,6 +32,7 @@ def komga_config():
 
             config['enabled'] = new_config.get('enabled', False)
             config['url'] = new_config.get('url', '').strip()
+            config['sync_read_progress'] = bool(new_config.get('sync_read_progress', True))
 
             # Ne change la clé API que si elle n'est pas masquée
             new_api_key = new_config.get('api_key', '')

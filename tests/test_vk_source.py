@@ -129,6 +129,31 @@ class VkRssAndMonitorWiringTest(unittest.TestCase):
             self.assertEqual(fetch_feed(feeds[0]), [{'title': 'a'}])
         fetch.assert_called_once()
 
+    def test_unavailable_file_is_reported_before_the_download_starts(self):
+        # VK répond 504 pour certains documents : l'erreur doit remonter à l'écran, pas
+        # seulement dans l'historique d'un téléchargement lancé en arrière-plan.
+        class Response:
+            def __init__(self, status, content_type='application/pdf'):
+                self.status_code = status
+                self.headers = {'Content-Type': content_type}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        url = 'https://vk.com/doc1_2?hash=x&api=1&no_preview=1'
+        with patch.object(vk, 'safe_external_get', return_value=Response(504, 'text/html')):
+            with self.assertRaises(RuntimeError) as caught:
+                vk.check_vk_file_available(url)
+        self.assertIn('HTTP 504', str(caught.exception))
+        with patch.object(vk, 'safe_external_get', return_value=Response(206)):
+            vk.check_vk_file_available(url)
+        with patch.object(vk, 'safe_external_get', return_value=Response(200, 'text/html; charset=utf-8')):
+            with self.assertRaises(RuntimeError):
+                vk.check_vk_file_available(url)
+
     def test_monitor_sends_vk_rss_file_to_vk_downloader(self):
         from flask import Flask
         from blueprints.missing_monitor import new_file_handler

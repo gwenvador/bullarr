@@ -425,6 +425,7 @@ async function loadKomgaSettings() {
 
         document.getElementById('komgaEnabled').checked = config.enabled;
         document.getElementById('komgaUrl').value = config.url || '';
+        document.getElementById('komgaSyncReadProgress').checked = config.sync_read_progress !== false;
 
         // Voir le commentaire équivalent dans loadSettings (aMule) - même correctif
         if (config.api_key) {
@@ -439,6 +440,7 @@ async function saveKomgaSettings() {
     const config = {
         enabled: document.getElementById('komgaEnabled').checked,
         url: document.getElementById('komgaUrl').value.trim(),
+        sync_read_progress: document.getElementById('komgaSyncReadProgress').checked,
         api_key: document.getElementById('komgaApiKey').value
     };
 
@@ -683,6 +685,7 @@ function resetKomgaSettings() {
     if (!confirm('Voulez-vous réinitialiser la configuration Komga ?')) return;
     document.getElementById('komgaEnabled').checked = false;
     document.getElementById('komgaUrl').value = '';
+    document.getElementById('komgaSyncReadProgress').checked = true;
     document.getElementById('komgaApiKey').value = '';
     showMessage('komgaMessage', '🔄 Configuration réinitialisée', 'info');
 }
@@ -1422,6 +1425,67 @@ async function loadProwlarrIndexers() {
     }
 }
 
+// Catégories d'un indexeur : regroupées par catégorie parente (sous-catégories en retrait).
+// Seules Books / Livres / Comics / BD sont visibles ; les autres catégories du tracker
+// (films, jeux, audio…) sont repliées dans « Autres catégories ».
+const PROWLARR_RELEVANT_CATEGORY = /\b(books?|livres?|comics?|bd|bandes? dessinees?|mangas?|ebooks?|mags?|magazines?)\b/;
+
+function _prowlarrEsc(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function _prowlarrCategoryMatches(name) {
+    const plain = String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    return PROWLARR_RELEVANT_CATEGORY.test(plain);
+}
+
+function _prowlarrCategoryGroups(categories) {
+    const groups = [];
+    categories.forEach(category => {
+        const isSub = String(category.name).trimStart().startsWith('↳');
+        const entry = { ...category, label: String(category.name).replace(/^\s*↳\s*/, '') };
+        if (isSub && groups.length) groups[groups.length - 1].subs.push(entry);
+        else groups.push({ parent: entry, subs: [] });
+    });
+    return groups;
+}
+
+function _prowlarrCategoryGroupHtml(group, indexerId) {
+    const box = (category, extraClass) => `
+        <label class="prowlarr-category ${extraClass}">
+            <input type="checkbox" class="category-checkbox" data-indexer-id="${_prowlarrEsc(indexerId)}" data-category-id="${_prowlarrEsc(category.id)}" ${category.selected ? 'checked' : ''}>
+            <span>${_prowlarrEsc(category.label)}</span>
+        </label>`;
+    return `<div class="prowlarr-category-group">${box(group.parent, 'prowlarr-category-parent')}${group.subs.map(sub => box(sub, 'prowlarr-category-sub')).join('')}</div>`;
+}
+
+function buildProwlarrCategoriesHtml(indexer) {
+    if (!indexer.categories || indexer.categories.length === 0) {
+        return '<div class="prowlarr-no-categories">⚠️ Pas de catégories trouvées pour cet indexeur</div>';
+    }
+    const groups = _prowlarrCategoryGroups(indexer.categories);
+    const relevant = [];
+    const others = [];
+    groups.forEach(group => {
+        const matches = _prowlarrCategoryMatches(group.parent.label) || group.subs.some(sub => _prowlarrCategoryMatches(sub.label));
+        (matches ? relevant : others).push(group);
+    });
+    const render = list => list.map(group => _prowlarrCategoryGroupHtml(group, indexer.id)).join('');
+    const checkedOthers = others.reduce((total, group) => total + [group.parent, ...group.subs].filter(c => c.selected).length, 0);
+    const othersHtml = others.length ? `
+        <details class="prowlarr-other-categories">
+            <summary>Autres catégories (${others.length}${checkedOthers ? `, ${checkedOthers} cochée${checkedOthers > 1 ? 's' : ''}` : ''})</summary>
+            <div class="prowlarr-category-grid">${render(others)}</div>
+        </details>` : '';
+    return `
+        <div class="prowlarr-categories">
+            <strong class="prowlarr-categories-title">Catégories :</strong>
+            ${relevant.length ? `<div class="prowlarr-category-grid">${render(relevant)}</div>`
+                : '<div class="prowlarr-no-categories">Aucune catégorie Livres / Comics / BD sur cet indexeur.</div>'}
+            ${othersHtml}
+        </div>`;
+}
+
 function displayIndexers(indexers) {
     const list = document.getElementById('indexersList');
     
@@ -1432,27 +1496,7 @@ function displayIndexers(indexers) {
     
     let html = '';
     indexers.forEach(indexer => {
-        let categoriesHtml = '';
-        
-        if (indexer.categories && indexer.categories.length > 0) {
-            categoriesHtml = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">';
-            categoriesHtml += '<strong style="display: block; margin-bottom: 8px; font-size: 0.9em;">Catégories:</strong>';
-            categoriesHtml += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;">';
-            
-            indexer.categories.forEach(category => {
-                const isSubcategory = category.name.startsWith('  ↳');
-                categoriesHtml += `
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85em; padding: ${isSubcategory ? '2px 0 2px 10px' : '0'};">
-                        <input type="checkbox" class="category-checkbox" data-indexer-id="${indexer.id}" data-category-id="${category.id}" ${category.selected ? 'checked' : ''}>
-                        <span>${category.name}</span>
-                    </label>
-                `;
-            });
-            
-            categoriesHtml += '</div></div>';
-        } else {
-            categoriesHtml = '<div style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 3px; border-left: 3px solid #ffc107; font-size: 0.85em; color: #666;">⚠️ Pas de catégories trouvées pour cet indexeur</div>';
-        }
+        const categoriesHtml = buildProwlarrCategoriesHtml(indexer);
         
         html += `
             <div class="prowlarr-indexer-row ${indexer.selected ? 'indexer-active' : 'indexer-inactive'}" style="padding: 15px; border: 1px solid var(--color-border, #e0e0e0); border-radius: 5px; margin-bottom: 15px; opacity: ${indexer.selected ? '1' : '0.45'}; background: ${indexer.selected ? 'var(--color-surface-alt, #fafafa)' : 'transparent'};">

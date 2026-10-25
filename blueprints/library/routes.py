@@ -1930,7 +1930,8 @@ def _reader_volume(volume_id):
     try:
         row = conn.execute('''
             SELECT v.id, v.filepath, v.format, v.volume_number, v.is_integral, v.integral_number,
-                   v.is_hs, v.hs_number, v.filename, v.comicinfo, s.id AS series_id, s.title AS series_title
+                   v.is_hs, v.hs_number, v.filename, v.comicinfo, v.komga_book_id,
+                   s.id AS series_id, s.title AS series_title
             FROM volumes v JOIN series s ON s.id = v.series_id WHERE v.id = ?
         ''', (volume_id,)).fetchone()
     finally:
@@ -1970,6 +1971,35 @@ def get_volume_reader_info(volume_id):
                     'title': comicinfo_title or row['filename'], 'page_count': count})
 
 
+@library_bp.route('/api/volumes/<int:volume_id>/reader/progress', methods=['POST'])
+def post_volume_reader_progress(volume_id):
+    """Lecteur intégré : envoie à Komga la page lue (état de lecture du compte de la clé API).
+    Sans effet (synced=false, jamais une erreur bloquante) si Komga est désactivé, si l'envoi
+    est coupé dans sa configuration ou si le tome n'y est pas rattaché."""
+    from blueprints.komga.client import KomgaClient, KomgaError
+    from blueprints.komga.config_store import load_komga_config
+    row, error = _reader_volume(volume_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    try:
+        page = int(data.get('page'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Page invalide'}), 400
+    if page < 1:
+        return jsonify({'success': False, 'error': 'Page invalide'}), 400
+    config = load_komga_config()
+    if not config.get('enabled') or config.get('sync_read_progress', True) is False:
+        return jsonify({'success': True, 'synced': False, 'reason': 'disabled'})
+    if not row['komga_book_id']:
+        return jsonify({'success': True, 'synced': False, 'reason': 'no_komga_book'})
+    try:
+        KomgaClient().update_read_progress(row['komga_book_id'], page, bool(data.get('completed')))
+    except KomgaError as e:
+        return jsonify({'success': True, 'synced': False, 'reason': 'komga_error', 'error': error_message(e)})
+    return jsonify({'success': True, 'synced': True})
+
+
 @library_bp.route('/api/volumes/<int:volume_id>/reader/page/<int:number>', methods=['GET'])
 def get_volume_reader_page(volume_id, number):
     """Lecteur intégré : image de la page `number` (à partir de 1) d'un tome."""
@@ -1980,11 +2010,30 @@ def get_volume_reader_page(volume_id, number):
     try:
         data, mimetype = read_page(row['filepath'], row['format'], number)
     except IndexError as e:
-        return jsonify({'success': False, 'error': str(e)}), 404
+        return jsonify({'success': False, 'error': error_message(e)}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': error_message(e, 'Lecture de la page impossible')}), 500
     response = current_app.response_class(data, mimetype=mimetype)
     response.headers['Cache-Control'] = 'private, max-age=3600'
+    return response
+
+
+@library_bp.route('/api/volumes/<int:volume_id>/reader/thumb/<int:number>', methods=['GET'])
+def get_volume_reader_thumbnail(volume_id, number):
+    """Lecteur intégré : miniature (180x270 au plus, JPEG, en cache) de la page `number`."""
+    from flask import send_file
+    from .reader import thumbnail_path
+    row, error = _reader_volume(volume_id)
+    if error:
+        return error
+    try:
+        path = thumbnail_path(row['filepath'], row['format'], number, current_app.config['COVERS_DIR'])
+    except IndexError as e:
+        return jsonify({'success': False, 'error': error_message(e)}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Miniature impossible')}), 500
+    response = send_file(path, mimetype='image/jpeg')
+    response.headers['Cache-Control'] = 'private, max-age=86400'
     return response
 
 
@@ -2292,6 +2341,13 @@ def get_library_series(library_id):
                    s.komga_cover_path,
                    s.bedetheque_url, s.bedetheque_cover_path, s.bedetheque_total_volumes, s.bedetheque_status,
                    s.bedetheque_editeurs, s.bedetheque_origin,
+                   (SELECT COALESCE(SUM(v.file_size), 0) FROM volumes v
+                     WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.filepath != ''
+                       AND COALESCE(v.filesystem_present, 1) = 1) AS total_size,
+                (SELECT COALESCE(SUM(CASE WHEN json_valid(v.comicinfo)
+                                          THEN CAST(json_extract(v.comicinfo, '$.communityratingcount') AS INTEGER)
+                                          ELSE 0 END), 0)
+                   FROM volumes v WHERE v.series_id = s.id) AS total_votes,
                    s.local_cover_path, s.local_summary, s.local_genre, s.local_author, s.is_oneshot,
                    CAST(COALESCE(s.manual_year_start, s.bedetheque_year_start, s.local_year) AS TEXT) AS year,
                    s.volumes_without_metadata, s.oneshot_is_integral,
@@ -2348,6 +2404,9 @@ def get_library_series(library_id):
                 'bedetheque_total_volumes': row['bedetheque_total_volumes'],
                 'bedetheque_editeurs': row['bedetheque_editeurs'],
                 'bedetheque_origin': row['bedetheque_origin'],
+                # Octets des tomes présents sur le disque (filtre « Taille » de l'app Android).
+                'total_size': row['total_size'] or 0,
+                'total_votes': row['total_votes'] or 0,
                 'local_cover_path': row['local_cover_path'],
                 'local_summary': row['local_summary'],
                 'local_genre': row['local_genre'],
@@ -8416,12 +8475,8 @@ def _build_auto_import_series_match_index(all_series):
     soit un coût fichiers × variantes × séries. L'index conserve exactement les mêmes
     règles d'unicité, y compris les titres locaux dupliqués.
     """
-    by_title = {}
-    for row in all_series:
-        key = _normalize_title_for_match(row[3])
-        if key:
-            by_title.setdefault(key, []).append(row)
-    return by_title
+    from series_title_match import index_series_by_title
+    return index_series_by_title(all_series, lambda row: row[3], _normalize_title_for_match)
 
 
 def _match_series_for_auto_import(normalized_title, all_series, normalized_series_index=None):

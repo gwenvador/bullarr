@@ -3,6 +3,19 @@ from pathlib import Path
 from blueprints.settings.rss import normalize_feeds, parse_feed, sanitize_prowlarr_entries
 
 class RssParserTests(unittest.TestCase):
+    def test_configured_prowlarr_may_live_on_a_private_address(self):
+        # prowlarr.<domaine> résout vers une adresse du réseau local : le contrôle
+        # d'adresses internes vaut pour les flux saisis par l'utilisateur, pas pour le
+        # Prowlarr configuré côté serveur (sinon « actualisation impossible » partout).
+        from unittest.mock import patch
+        payload = b'<rss><channel><item><title>Demo</title><link>https://example/a</link></item></channel></rss>'
+        private = [(2, 1, 6, '', ('10.0.0.5', 443))]
+        with patch('blueprints.settings.rss.socket.getaddrinfo', return_value=private):
+            with self.assertRaises(ValueError):
+                parse_feed(payload, 'https://prowlarr.example/api/v1/indexer/1/newznab')
+            entries = parse_feed(payload, 'https://prowlarr.example/api/v1/indexer/1/newznab', validate_url=False)
+        self.assertEqual(entries[0]['title'], 'Demo')
+
     def test_parses_rss_items_and_atom_links(self):
         payload = b'''<?xml version="1.0"?><rss><channel><title>DupeFR</title><item><title>Livre A</title><link>https://dupefr.com/a</link><pubDate>Tue, 24 Sep 2026 12:00:00 GMT</pubDate><description><![CDATA[Desc]]></description></item></channel></rss>'''
         self.assertEqual(parse_feed(payload, "https://dupefr.com/feed")[0]["title"], "Livre A")

@@ -16,6 +16,14 @@ class SearchResultsSelectAllTest(unittest.TestCase):
         start = self.library.index('searchModalBody.innerHTML = html;')
         self.assertIn('bindSearchResultsTableControls(searchModalBody)', self.library[start:start + 300])
 
+    def test_rows_are_rebound_after_tbody_rerender(self):
+        # Filtres, tri et rafraîchissements asynchrones recréent les lignes : leurs cases
+        # doivent être reliées de nouveau, sinon cocher une seule case ne fait rien.
+        start = self.table.index('function _renderSearchResultsTbody(')
+        body = self.table[start:self.table.index('function _applySearchTableFilter(', start)]
+        self.assertIn('bindSearchResultsTableActions(tbody)', body)
+        self.assertLess(body.index('_replaceSearchResultsTbody('), body.index('bindSearchResultsTableActions(tbody)'))
+
     def test_inline_handlers_are_not_bound_twice(self):
         start = self.table.index('function bindSearchResultsTableActions(')
         body = self.table[start:self.table.index('function bindSearchResultsTableControls(', start)]

@@ -333,7 +333,7 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null) {
     target._autoAddTriggered = true;
     button.disabled = true;
     button.innerHTML = svgIcon('loader-circle', 'icon-spin');
-    showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'envoi du téléchargement' : 'ajout de la série et téléchargement'} en cours…`, { icon: 'loader-circle' });
+    showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'lancement de la recherche de la série' : 'ajout de la série et recherche de tous ses tomes'} en cours…`, { icon: 'loader-circle' });
     const restore = () => { target._autoAddTriggered = false; button.disabled = false; button.innerHTML = original; };
     if (!seriesId) {
         try {
@@ -353,17 +353,33 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null) {
         }
     }
     try {
-        const destination = await _downloadNouveautesRelease(ev, seriesId, linkIndex);
-        showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'téléchargement envoyé à ' : 'série ajoutée, téléchargement envoyé à '}${destination}.`,
-            { icon: 'check', autoHideMs: 6000, href: `/series/${seriesId}` });
+        // L'éclair vise toute la série : recherche automatique de TOUS ses tomes manquants
+        // (celui de cette release compris), comme le bouton « Recherche auto » de la fiche.
+        const data = await _startSeriesAutoAcquire(seriesId);
+        const added = seriesWasKnown ? '' : 'série ajoutée, ';
+        const message = data.started
+            ? `${added}recherche de ${data.count} tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée (${data.sources_count} source${data.sources_count > 1 ? 's' : ''}).`
+            : `${added}aucun tome manquant à télécharger.`;
+        showToast('nouveautes-auto-add', `« ${title} » : ${message}`,
+            { icon: 'check', autoHideMs: 7000, href: `/series/${seriesId}` });
         button.innerHTML = svgIcon('check');
         button.style.color = 'var(--color-accent)';
     } catch (error) {
-        // La série reste ajoutée: seul le téléchargement est à relancer.
+        // La série reste ajoutée: seule la recherche est à relancer.
         showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? '' : 'série ajoutée, mais '}${error.message}`,
             { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
         restore();
     }
+}
+
+async function _startSeriesAutoAcquire(seriesId) {
+    const response = await fetch('/api/bedetheque/auto-acquire/run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ series_id: seriesId })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || `Recherche automatique impossible (HTTP ${response.status})`);
+    return data;
 }
 
 async function _attachSeriesToPendingDownload(client, seriesId, identity) {
@@ -649,8 +665,8 @@ function _nouveautesMatchedHtml(event) {
         ? `Déjà dans votre bibliothèque : ${escapeForAttribute(matchedSeriesTitle)}`
         : 'Déjà dans votre bibliothèque';
     const checkHtml = seriesId
-        ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${checkTooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${svgIcon('check')}</a>`
-        : `<span class="icon-owned" data-tooltip="${checkTooltip}">${svgIcon('check')}</span>`;
+        ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${checkTooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${libraryIconHtml()}</a>`
+        : `<span class="icon-owned" data-tooltip="${checkTooltip}">${libraryIconHtml()}</span>`;
     if (event.type === 'ebdz') {
         const missing = event.missing_links_count || 0;
         if (missing > 0) {
@@ -894,8 +910,8 @@ function _nouveautesEbdzLinkMatchedHtml(event, link) {
         ? `Déjà dans votre bibliothèque : ${escapeForAttribute(event.matched_series_title)}`
         : 'Déjà dans votre bibliothèque';
     const checkHtml = seriesId
-        ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${tooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${svgIcon('check')}</a>`
-        : `<span class="icon-owned" data-tooltip="${tooltip}">${svgIcon('check')}</span>`;
+        ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${tooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${libraryIconHtml()}</a>`
+        : `<span class="icon-owned" data-tooltip="${tooltip}">${libraryIconHtml()}</span>`;
     const missingHtml = link.already_owned === false
         ? ` <span class="badge-missing" data-tooltip="Ce fichier n'est pas encore dans votre bibliothèque">manquant</span>`
         : '';
@@ -925,7 +941,7 @@ function _nouveautesEbdzRowHtml(event, index) {
             ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesEbdzLink(${index}, ${linkIndex}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
             : `<button class="btn-icon-only result-action-emule" type="button" onclick="addToEmuleFromNouveautesLink('${escapeForAttribute(link.link)}', this, '${escapeForAttribute(filename)}', allNouveautesEvents[${index}])" data-tooltip="Ajouter à eMule/aMule" aria-label="Ajouter à eMule/aMule"><img src="/static/img/emule-logo.svg" alt="" class="torrent-client-logo"></button>`;
         const zapHtml = owned || link._autoAddTriggered ? ''
-            : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${index}, this, ${linkIndex})" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger ce fichier" aria-label="Ajouter la série et télécharger ce fichier">${svgIcon('zap')}</button>`;
+            : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${index}, this, ${linkIndex})" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants" aria-label="Ajouter la série et télécharger tous ses tomes manquants">${svgIcon('zap')}</button>`;
         const discoverHtml = seriesMatched ? ''
             : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`;
         return `<tr class="nouveautes-event-row${(ownedRowClass + newRowClass)}" style="border-bottom:1px solid var(--color-border);">
@@ -1006,7 +1022,7 @@ function _nouveautesRssRowHtml(event) {
     const replaceOwned = event.already_owned === true && !!event.series_id;
     const addButton = event.title ? (replaceOwned
         ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesRssFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
-        : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger cette release" aria-label="Ajouter la série et télécharger cette release">${svgIcon('zap')}</button>`}${_nouveautesMatched(event) ? '' : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
+        : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants" aria-label="Ajouter la série et télécharger tous ses tomes manquants">${svgIcon('zap')}</button>`}${_nouveautesMatched(event) ? '' : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
     const matchedSeriesHtml = _nouveautesSeriesHtml(event);
     // Ligne VK : le titre ouvre déjà le message sur VK ; le bouton télécharge dans Bullarr.
     const downloadButtons = event.vk ? '' : (event.download_links || []).map(item => {
@@ -1018,7 +1034,9 @@ function _nouveautesRssRowHtml(event) {
         : (event.download_links || []).map((item, itemIndex) => _nouveautesRssTorrentClientButtons(event, item, itemIndex)).join('');
     const rssMonitoredHtml = event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : '';
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
-    return `<tr class="nouveautes-event-row ${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${matchedSeriesHtml}${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
+    // Release déjà possédée : ligne verte, comme les lignes EBDZ et Telegram.
+    const ownedRowClass = event.already_owned === true ? 'volume-table-row-owned ' : '';
+    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${matchedSeriesHtml}${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
@@ -1035,7 +1053,7 @@ function _nouveautesTelegramRowHtml(event) {
     const seriesMatched = _nouveautesMatched(event);
     const showReplace = !!event.series_id && event.already_owned === true;
     const addToLibraryHtml = `
-        ${showReplace ? `<button class="btn-icon-only" onclick="replaceNouveautesTelegramFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>` : event._autoAddTriggered ? '' : `<button class="btn-icon-only" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger ce fichier">${svgIcon('zap')}</button>`}
+        ${showReplace ? `<button class="btn-icon-only" onclick="replaceNouveautesTelegramFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>` : event._autoAddTriggered ? '' : `<button class="btn-icon-only" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants">${svgIcon('zap')}</button>`}
         ${seriesMatched ? '' : `<button class="btn-icon-only" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(addToLibraryQuery)}')" data-tooltip="Ajouter la série dans Découvrir">${svgIcon('plus')}</button>`}
     `;
     return `
@@ -1451,6 +1469,35 @@ function _nouveautesEventKey(event) {
     return `ebdz:${event.thread_id || event.url || event.title || ''}:${event.date || ''}`;
 }
 
+// Flux RSS en cours d'actualisation côté serveur (cache périmé) : la page affiche d'abord les
+// données en cache puis redemande le flux quelques secondes plus tard (3 essais au plus).
+let nouveautesRssRefreshing = false;
+let nouveautesRssRefetchTimer = null;
+
+function _scheduleNouveautesRssRefetch(generation, limit, attempt = 1) {
+    clearTimeout(nouveautesRssRefetchTimer);
+    if (attempt > 3) return;
+    nouveautesRssRefetchTimer = setTimeout(async () => {
+        if (generation !== nouveautesLoadGeneration) return;
+        try {
+            const response = await fetch(`/api/ebdz/rss/latest?limit=${limit || 100}`);
+            if (!response.ok) return;
+            const data = await response.json();
+            if (generation !== nouveautesLoadGeneration || !data.success) return;
+            const fresh = (data.entries || []).map(entry => ({ type: 'rss', ...entry }));
+            const merged = [...allNouveautesEvents.filter(event => event.type !== 'rss'), ...fresh]
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+            _mergeNouveautesClientState(merged);
+            allNouveautesEvents = merged;
+            renderNouveautesEvents(false);
+            _saveNouveautesCache();
+            if (data.refreshing) _scheduleNouveautesRssRefetch(generation, limit, attempt + 1);
+        } catch (error) {
+            console.warn('Actualisation RSS Nouveautés impossible:', error);
+        }
+    }, 4000 * attempt);
+}
+
 async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays = null, appendEvents = false, refreshRss = false) {
     const limitParam = limit ? `&limit=${limit}` : '';
     const olderRangeParam = olderThanDays == null ? '' : `&older_than_days=${olderThanDays}`;
@@ -1461,7 +1508,7 @@ async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays 
     let telegramEvents = allNouveautesEvents.filter(event => event.type === 'telegram');
     let rssEvents = allNouveautesEvents.filter(event => event.type === 'rss');
 
-    const renderBatch = () => {
+    const renderBatch = (pageReset = resetPage) => {
         if (generation !== nouveautesLoadGeneration) return;
         const refreshedEvents = [...ebdzEvents, ...telegramEvents, ...rssEvents]
             .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -1473,7 +1520,7 @@ async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays 
         } else {
             allNouveautesEvents = refreshedEvents;
         }
-        renderNouveautesEvents(resetPage);
+        renderNouveautesEvents(pageReset);
         _saveNouveautesCache();
     };
 
@@ -1504,6 +1551,7 @@ async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays 
             .catch(() => ({ success: false }))
             .then(rssData => {
                 if (generation !== nouveautesLoadGeneration) return;
+                nouveautesRssRefreshing = !!rssData.refreshing;
                 if (rssData.success) {
                     rssEvents = (rssData.entries || []).map(entry => ({ type: 'rss', ...entry }));
                     nouveautesRssGenres = new Set(rssData.genres && rssData.genres.length ? rssData.genres : ['bd', 'comics', 'manga']);
@@ -1516,9 +1564,16 @@ async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays 
                 }
             });
 
-    await Promise.all([ebdzPromise, telegramPromise, rssPromise]);
+    // EBDZ et Telegram viennent de la base : on affiche tout de suite, sans attendre
+    // Prowlarr (RSS, plus lent). Les lignes RSS déjà connues restent à l'écran et la
+    // liste est complétée dès que le flux répond.
+    await Promise.all([ebdzPromise, telegramPromise]);
     if (generation !== nouveautesLoadGeneration) return;
     renderBatch();
+    await rssPromise;
+    if (generation !== nouveautesLoadGeneration) return;
+    if (rssEvents.length || nouveautesRssRefreshing) renderBatch(false);
+    if (nouveautesRssRefreshing) _scheduleNouveautesRssRefetch(generation, limit);
 
     try {
         localStorage.setItem('nouveautesLastSeenAt', new Date().toISOString());

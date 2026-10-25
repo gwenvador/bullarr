@@ -82,6 +82,20 @@
                     </button>
                 </div>
                 <div class="search-row-view-switcher">
+                <div class="toolbar-dropdown" id="series-sort-section">
+                    <button class="toolbar-btn" id="series-sort-btn" onclick="toggleToolbarDropdown('sort-dropdown-menu', this)" title="Ordre d'affichage des séries">
+                        <span class="toolbar-btn-icon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 16-4 4-4-4" /><path d="M17 20V4" /><path d="m3 8 4-4 4 4" /><path d="M7 4v16" /></svg></span>
+                        <span class="toolbar-btn-label" id="series-sort-label">Trier</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu toolbar-dropdown-menu-right" id="sort-dropdown-menu" style="display: none;">
+                        <button class="toolbar-dropdown-item" data-sort="alpha" onclick="setSeriesSortMode('alpha')">🔤 Alphabétique</button>
+                        <button class="toolbar-dropdown-item" data-sort="votes" onclick="setSeriesSortMode('votes')">⭐ Popularité (votes)</button>
+                        <button class="toolbar-dropdown-item" data-sort="added" onclick="setSeriesSortMode('added')">🕒 Date d'ajout</button>
+                        <button class="toolbar-dropdown-item" data-sort="year" onclick="setSeriesSortMode('year')">📅 Année de parution</button>
+                        <button class="toolbar-dropdown-item" data-sort="size" onclick="setSeriesSortMode('size')">💾 Taille</button>
+                        <button class="toolbar-dropdown-item" data-sort="volumes" onclick="setSeriesSortMode('volumes')">📚 Nombre de tomes</button>
+                    </div>
+                </div>
                 <div class="view-switcher">
                     <button class="view-switch-btn" data-view="poster" onclick="setSeriesViewMode('poster')" title="Vue affiches"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></svg> Affiches</button>
                     <button class="view-switch-btn" data-view="overview" onclick="setSeriesViewMode('overview')" title="Vue aperçu"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h.01" /><path d="M3 12h.01" /><path d="M3 19h.01" /><path d="M8 5h13" /><path d="M8 12h13" /><path d="M8 19h13" /></svg> Aperçu</button>

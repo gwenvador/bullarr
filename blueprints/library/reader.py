@@ -6,6 +6,9 @@ celles d'un PDF sont rendues en JPEG à la demande.
 La liste des pages d'un fichier est gardée en mémoire (clé : chemin + date de
 modification), pour ne pas relire l'index de l'archive à chaque page tournée.
 """
+import glob
+import hashlib
+import io
 import os
 import threading
 import zipfile
@@ -83,3 +86,33 @@ def read_page(filepath, fmt, number):
     with _archive_opener(real)(filepath) as archive:
         data = archive.read(name)
     return data, _MIME_BY_EXT.get(os.path.splitext(name)[1].lower(), 'application/octet-stream')
+
+
+THUMB_MAX_SIZE = (180, 270)
+
+
+def thumbnail_path(filepath, fmt, number, covers_dir):
+    """Chemin d'une miniature de la page `number` (bande de miniatures du lecteur), créée au
+    premier appel puis gardée dans covers/reader-thumbs/ (clé : chemin + date du fichier ;
+    les miniatures d'une ancienne version du fichier sont supprimées)."""
+    from PIL import Image
+    thumbs_dir = os.path.join(covers_dir, 'reader-thumbs')
+    os.makedirs(thumbs_dir, exist_ok=True)
+    file_key = hashlib.md5(filepath.encode('utf-8')).hexdigest()
+    version = str(int(os.path.getmtime(filepath)))
+    path = os.path.join(thumbs_dir, f'{file_key}-{version}-{int(number)}.jpg')
+    if os.path.exists(path):
+        return path
+    data, _mimetype = read_page(filepath, fmt, number)  # IndexError hors limites
+    for old in glob.glob(os.path.join(thumbs_dir, f'{file_key}-*.jpg')):
+        if not os.path.basename(old).startswith(f'{file_key}-{version}-'):
+            try:
+                os.remove(old)
+            except OSError:
+                pass
+    image = Image.open(io.BytesIO(data)).convert('RGB')
+    image.thumbnail(THUMB_MAX_SIZE)
+    temporary = f'{path}.{threading.get_ident()}.tmp'
+    image.save(temporary, 'JPEG', quality=78)
+    os.replace(temporary, path)
+    return path

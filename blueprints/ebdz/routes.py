@@ -4,7 +4,9 @@ Routes pour le scraper ebdz.net
 from flask import request, jsonify, current_app
 from . import ebdz_bp
 import json
+import logging
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -305,34 +307,14 @@ def _build_nouveautes_title_match_index(series_rows, title_match_key):
     """Indexe les séries locales par clé de titre, sans jamais choisir entre deux
     candidates. Les nouveautés peuvent alors ouvrir une fiche et son lien Bédéthèque
     lorsque le titre correspond de façon certaine, même si le sujet EBDZ précis n'a pas
-    encore été attaché à la série. Aucun champ de la base n'est modifié ici.
+    encore été attaché à la série. Aucun champ de la base n'est modifié ici. Même règle
+    d'identification que RSS, Telegram et l'import automatique (series_title_match).
     """
-    candidates = {}
-    for series_id, _thread_id, bedetheque_url, series_title in series_rows:
-        if not series_title:
-            continue
-        key = title_match_key(series_title)
-        candidates.setdefault(key, []).append((series_id, bedetheque_url, series_title))
+    from series_title_match import index_series_by_title
+    candidates = index_series_by_title(series_rows, lambda row: row[3], title_match_key)
     return {
-        key: matches[0] if len({match[0] for match in matches}) == 1 else None
-        for key, matches in candidates.items()
-    }
-
-
-def _build_nouveautes_title_match_index(series_rows, title_match_key):
-    """Indexe les séries locales par clé de titre, sans jamais choisir entre deux
-    candidates. Les nouveautés peuvent alors ouvrir une fiche et son lien Bédéthèque
-    lorsque le titre correspond de façon certaine, même si le sujet EBDZ précis n'a pas
-    encore été attaché à la série. Aucun champ de la base n'est modifié ici.
-    """
-    candidates = {}
-    for series_id, _thread_id, bedetheque_url, series_title in series_rows:
-        if not series_title:
-            continue
-        key = title_match_key(series_title)
-        candidates.setdefault(key, []).append((series_id, bedetheque_url, series_title))
-    return {
-        key: matches[0] if len({match[0] for match in matches}) == 1 else None
+        key: (matches[0][0], matches[0][2], matches[0][3])
+        if len({match[0] for match in matches}) == 1 else None
         for key, matches in candidates.items()
     }
 
@@ -400,14 +382,15 @@ def latest_scrape():
 
         library_conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
         library_cursor = library_conn.cursor()
+        from series_title_match import title_keys
         library_cursor.execute("SELECT title FROM series")
-        local_titles = {_title_match_key(row[0]) for row in library_cursor.fetchall() if row[0]}
+        local_titles = set().union(*(title_keys(row[0], _title_match_key) for row in library_cursor.fetchall() if row[0]))
         library_cursor.execute('''
             SELECT s.title FROM series s
             JOIN missing_volume_monitor mm ON mm.series_id = s.id
             WHERE mm.enabled = 1
         ''')
-        monitored_titles = {_title_match_key(row[0]) for row in library_cursor.fetchall() if row[0]}
+        monitored_titles = set().union(*(title_keys(row[0], _title_match_key) for row in library_cursor.fetchall() if row[0]))
         library_cursor.execute("SELECT id, ebdz_thread_id, bedetheque_url, title FROM series")
         all_series_rows = library_cursor.fetchall()
         title_to_unambiguous_series = _build_nouveautes_title_match_index(all_series_rows, _title_match_key)
@@ -788,15 +771,21 @@ def _annotate_rss_entries(events):
     }
     conn.close()
 
-    by_title = {}
-    for series_id, title, bedetheque_url in rows:
-        title_key = normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title or '')))
-        if not title_key:
-            continue
-        if title_key in by_title:
-            by_title[title_key] = None  # titre ambigu: ne pas deviner
-        else:
-            by_title[title_key] = (series_id, title, bedetheque_url)
+    from series_title_match import index_series_by_title
+    from blueprints.library.routes import (
+        _normalize_title_for_match, _match_series_for_auto_import, _build_auto_import_series_match_index)
+
+    def rss_title_key(title):
+        return normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title or '')))
+
+    by_title = {
+        key: (matches[0][0], matches[0][1], matches[0][2]) if len({m[0] for m in matches}) == 1 else None
+        for key, matches in index_series_by_title(rows, lambda row: row[1], rss_title_key).items()
+    }
+    # Repli : même identification que Telegram et l'import automatique, pour qu'une release
+    # reconnue dans une source ne soit pas ignorée dans une autre.
+    auto_rows = [(sid, None, None, title, 0, url) for sid, title, url in rows]
+    auto_index = _build_auto_import_series_match_index(auto_rows)
 
     # Le statut de téléchargement ne doit jamais reposer sur une variante de titre
     # raccourcie (par exemple "le"), sinon toute release commençant par cet article
@@ -895,6 +884,10 @@ def _annotate_rss_entries(events):
     for event in events:
         event_keys = keys(event.get('title'))
         match = next((by_title.get(candidate) for candidate in event_keys if by_title.get(candidate) is not None), None)
+        if match is None:
+            parsed_title = LibraryScanner.parse_filename(str(event.get('title') or '')).get('title') or ''
+            auto = _match_series_for_auto_import(_normalize_title_for_match(parsed_title), auto_rows, auto_index)
+            match = (auto[0], auto[3], auto[5]) if auto else None
         override_id = rss_overrides.get(event.get('link')) or rss_overrides.get(event.get('title'))
         if override_id is not None:
             try:
@@ -955,7 +948,7 @@ def _annotate_rss_entries(events):
 _rss_persistent_cache_lock = threading.Lock()
 RSS_PERSISTENT_CACHE_TTL_SECONDS = 300
 RSS_PERSISTENT_CACHE_MAX_ENTRIES = 500
-RSS_ANNOTATION_VERSION = 8
+RSS_ANNOTATION_VERSION = 9
 
 
 def _rss_persistent_cache_path():
@@ -1063,7 +1056,39 @@ def _refresh_rss_persistent_feed(feed, path):
     return snapshot
 
 
-def _read_rss_feed(feed, path, force_refresh=False):
+_rss_refreshing = set()
+_rss_refreshing_lock = threading.Lock()
+
+
+def _rss_refresh_in_progress(feed, path):
+    with _rss_refreshing_lock:
+        return (path, feed_cache_key(feed)) in _rss_refreshing
+
+
+def _refresh_rss_in_background(feed, path, app):
+    """Actualise un flux dont le cache est périmé sans faire attendre la page : Prowlarr peut
+    mettre plusieurs secondes (voire dizaines) à répondre, alors que les données déjà
+    en cache suffisent à afficher Nouveautés immédiatement."""
+    key = (path, feed_cache_key(feed))
+    with _rss_refreshing_lock:
+        if key in _rss_refreshing:
+            return
+        _rss_refreshing.add(key)
+
+    def run():
+        try:
+            with app.app_context():
+                _read_rss_feed(feed, path, force_refresh=True)
+        except Exception as exc:
+            logging.getLogger(__name__).warning('RSS %s : actualisation en arrière-plan impossible : %s', feed.get('name'), exc)
+        finally:
+            with _rss_refreshing_lock:
+                _rss_refreshing.discard(key)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _read_rss_feed(feed, path, force_refresh=False, allow_stale=False, app=None):
     key = feed_cache_key(feed)
     requested_at = time.time()
     with _rss_persistent_cache_lock:
@@ -1076,10 +1101,16 @@ def _read_rss_feed(feed, path, force_refresh=False):
         if usable and ((not force_refresh and time.time() - fetched_at < RSS_PERSISTENT_CACHE_TTL_SECONDS)
                        or fetched_at >= requested_at):
             return feed, cached, None
+        if usable and allow_stale and not force_refresh and app is not None:
+            # Cache périmé mais utilisable : on répond tout de suite, la mise à jour suit.
+            _refresh_rss_in_background(feed, path, app)
+            return feed, cached, None
         try:
             return feed, _refresh_rss_persistent_feed(feed, path), None
-        except Exception:
-            # Do not expose provider URLs/API credentials in client-visible exceptions.
+        except Exception as exc:
+            # Do not expose provider URLs/API credentials in client-visible exceptions;
+            # the real cause goes to the server log only.
+            logging.getLogger(__name__).warning('RSS %s : %s', feed.get('name') or feed.get('provider'), exc)
             return feed, cached if usable else {'entries': []}, 'Actualisation RSS impossible; dernières données disponibles conservées.'
 
 
@@ -1232,8 +1263,10 @@ def rss_latest():
     force_refresh = request.args.get('refresh') == '1'
     limit = min(max(request.args.get('limit', default=100, type=int), 1), 500)
     events, errors, feed_states = [], [], []
+    app = current_app._get_current_object()
+
     def read(feed):
-        return _read_rss_feed(feed, cache_path, force_refresh)
+        return _read_rss_feed(feed, cache_path, force_refresh, allow_stale=True, app=app)
     with ThreadPoolExecutor(max_workers=min(5, max(1, len(feeds)))) as executor:
         snapshots = list(executor.map(read, feeds))
     for feed, cached, error in snapshots:
@@ -1290,5 +1323,8 @@ def rss_latest():
         ]
         events.extend({**entry, 'type': 'rss', 'feed_name': name} for entry in entries)
     events.sort(key=lambda item: item.get('date', ''), reverse=True)
+    # refreshing : un flux est en cours d'actualisation en arrière-plan (la page redemande bientôt).
+    refreshing = any(_rss_refresh_in_progress(feed, cache_path) for feed, _cached, _error in snapshots)
     return jsonify({'success': True, 'entries': events, 'errors': errors, 'feeds': feed_states,
+                    'refreshing': refreshing,
                     'genres': load_genres(current_app.config['RSS_CONFIG_FILE'])})

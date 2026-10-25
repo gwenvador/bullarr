@@ -93,6 +93,11 @@ const ICON_PATHS = {
     'loader-circle': '<path d="M21 12a9 9 0 1 1-6.219-8.56" />',
 };
 
+// Pastille « déjà dans la bibliothèque » : le logo de Bullarr (vert, voir .icon-owned).
+function libraryIconHtml() {
+    return '<img class="icon-bullarr" src="/static/img/bullarr-icon.png" alt="" width="14" height="14">';
+}
+
 function svgIcon(name, extraClass) {
     const inner = ICON_PATHS[name];
     if (!inner) return '';

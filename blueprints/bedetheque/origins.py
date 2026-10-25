@@ -14,15 +14,21 @@ import time
 from urllib.parse import urlparse
 
 ORIGIN_KINDS = {'europe': 'bd', 'usa': 'comics', 'asie': 'manga'}
+# Libellés affichés par Bédéthèque (ex. « Franco-Belge » pour Europe, « Manga » pour Asie).
+ORIGIN_LABELS = {'franco-belge': 'Europe', 'europe': 'Europe', 'comics': 'USA', 'usa': 'USA',
+                 'manga': 'Asie', 'asie': 'Asie', 'autre': 'Autre'}
 ORIGIN_RETRY_DAYS = 7
 ORIGIN_FETCH_INTERVAL_SECONDS = 0.5
-_ORIGIN_RE = re.compile(r'title="Origine de la s(?:é|&eacute;|e)rie"[^>]*>\s*([^<]+?)\s*<', re.IGNORECASE)
+# Mise en page actuelle : <li title="Origine de la série"><i class="… bdt-ori-N"></i> Manga</li>
+_ORIGIN_RE = re.compile(r'title="Origine de la s(?:é|&eacute;|e)rie"[^>]*>(?:\s*<i[^>]*></i>)?\s*([^<]+?)\s*<',
+                        re.IGNORECASE)
 _LABEL_RE = re.compile(r'<label>\s*Origine\s*:\s*</label>\s*([^<]+?)\s*<', re.IGNORECASE)
 
 
 def origin_kind(origin):
     """'bd', 'comics', 'manga' ou None (Autre, inconnue)."""
-    return ORIGIN_KINDS.get((origin or '').strip().lower())
+    value = (origin or '').strip().lower()
+    return ORIGIN_KINDS.get(ORIGIN_LABELS.get(value, value).lower())
 
 
 def parse_origin(html):
@@ -33,7 +39,7 @@ def parse_origin(html):
         if match:
             value = match.group(1).strip()
             if value:
-                return value
+                return ORIGIN_LABELS.get(value.lower(), value)
     return None
 
 

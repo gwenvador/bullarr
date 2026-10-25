@@ -57,7 +57,7 @@ class PollRssTest(unittest.TestCase):
     def poll(self, stats=None):
         with self.app.app_context(), \
                 mock.patch.object(routes, "_prepared_rss_feeds", return_value=[{"name": "C411"}]), \
-                mock.patch.object(routes, "_read_rss_feed", side_effect=lambda feed, path, *a: (feed, {"entries": list(self.entries)}, None)), \
+                mock.patch.object(routes, "_read_rss_feed", side_effect=lambda feed, path, *a, **kw: (feed, {"entries": list(self.entries)}, None)), \
                 mock.patch("blueprints.missing_monitor.new_file_handler.process_new_monitor_files", return_value=stats or {"downloads_sent": 1}) as process:
             routes.poll_rss_for_monitoring()
         return process

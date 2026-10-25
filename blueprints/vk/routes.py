@@ -5,8 +5,9 @@ import time
 
 from flask import current_app, jsonify, request
 
+from error_utils import error_message
 from . import vk_bp
-from .scraper import download_vk_file_background, is_vk_doc_url, safe_filename
+from .scraper import check_vk_file_available, download_vk_file_background, is_vk_doc_url, safe_filename
 
 
 @vk_bp.route('/download', methods=['POST'])
@@ -23,6 +24,10 @@ def download_vk_file():
     target_dir = current_app.config.get('VK_IMPORT_DIRECTORY')
     if not target_dir:
         return jsonify({'success': False, 'error': "Répertoire d'import VK non configuré"}), 500
+    try:
+        check_vk_file_available(url)
+    except RuntimeError as exc:
+        return jsonify({'success': False, 'error': f'{filename} : {error_message(exc)}'}), 502
     download_vk_file_background(
         url, filename, target_dir, app=current_app._get_current_object(), pending_title=filename,
         series_id=data.get('series_id'), volume_id=data.get('volume_id'),
@@ -57,7 +62,7 @@ def vk_config():
         try:
             config['base_url'] = normalize_base_url(data.get('base_url'))
         except ValueError as exc:
-            return jsonify({'success': False, 'error': str(exc)}), 400
+            return jsonify({'success': False, 'error': error_message(exc)}), 400
         configure(config['base_url'])
         path = current_app.config['VK_CONFIG_FILE']
         temp = path + '.tmp'
@@ -90,4 +95,4 @@ def test_vk():
             return jsonify({'success': False, 'error': 'Forum VK joignable, mais aucun sujet lisible sur la page publique'}), 502
         return jsonify({'success': True, 'topics': total, 'seconds': round(time.monotonic() - started, 1)})
     except Exception as exc:
-        return jsonify({'success': False, 'error': f'Forum VK injoignable : {exc}'}), 502
+        return jsonify({'success': False, 'error': error_message(exc, 'Forum VK injoignable')}), 502

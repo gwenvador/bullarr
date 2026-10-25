@@ -96,7 +96,7 @@ Règles :
 | Route | Rôle |
 |---|---|
 | `GET /api/libraries` | Bibliothèques, avec `series_count` et `volumes_count`. |
-| `GET /api/library/<library_id>/series` | Séries d'une bibliothèque (liste). |
+| `GET /api/library/<library_id>/series` | Séries d'une bibliothèque (liste), avec `total_size` (octets des fichiers) et `total_votes` (somme des votes Bédéthèque de leurs tomes, pour trier par popularité). |
 | `GET /api/library/<library_id>/stats` | Statistiques. |
 | `GET /api/series/<series_id>` | Détail d'une série, avec les données Bédéthèque. |
 | `GET /api/series/<series_id>/volumes` | Tomes : fichier, format, numéro, métadonnées. |
@@ -105,6 +105,10 @@ Règles :
 | `POST /api/scan/series/<series_id>` | Scan d'une seule série. |
 | `GET /api/volumes/<volume_id>/download` | Télécharge le fichier d'un tome. |
 | `GET /api/series/<series_id>/download` | Archive ZIP de toute la série. |
+| `GET /api/volumes/<volume_id>/reader` | Lecteur : titre et nombre de pages d'un tome (CBZ, CBR ou PDF). |
+| `GET /api/volumes/<volume_id>/reader/page/<n>` | Lecteur : image de la page `n` (à partir de 1). |
+| `GET /api/volumes/<volume_id>/reader/thumb/<n>` | Lecteur : miniature de la page `n`. |
+| `POST /api/volumes/<volume_id>/reader/progress` | Envoie à Komga la page lue (`{"page": 12, "completed": false}`). Répond `synced: false` si Komga est désactivé, si l'envoi est coupé ou si le tome n'y est pas rattaché. |
 
 ### Ajouter une série
 

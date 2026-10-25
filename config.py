@@ -32,7 +32,7 @@ class Config:
 
     # Version publiée (release GitHub et image ghcr.io/gwenvador/bullarr), affichée dans
     # Configuration → Vue d'ensemble → À propos.
-    APP_VERSION = '8.1'
+    APP_VERSION = '9.0'
     SOURCE_URL = 'https://github.com/gwenvador/bullarr'
     COVERS_DIR = os.path.join(DATA_DIR, 'covers')
     
@@ -92,7 +92,9 @@ class Config:
     KOMGA_CONFIG = {
         'enabled': False,
         'url': 'http://127.0.0.1:25600',
-        'api_key': ''
+        'api_key': '',
+        # Le lecteur de Bullarr envoie la page lue à Komga (état de lecture du compte de la clé API)
+        'sync_read_progress': True
     }
 
     # Telegram par défaut - branché à deux événements pour l'instant (voir

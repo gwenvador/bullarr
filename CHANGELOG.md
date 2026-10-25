@@ -1,5 +1,55 @@
 # Changements
 
+## v9.0 — 2026-10-25
+
+[Comparer v8.1 et v9.0](https://github.com/gwenvador/bullarr/compare/v8.1...v9.0)
+
+Mise à jour directe depuis v8.1, sans migration manuelle. Les dépendances Python changent (Pillow 13.0.0, pypdf 6.21.2) : reconstruisez l'image.
+
+### Lecteur de BD
+
+- Zoom : boutons − / +, touches `+` `-` `0`, Ctrl ou ⌘ + molette, pincement (pavé tactile ou doigts) ; l'image zoomée se déplace à la souris ou au doigt.
+- Ajustement de l'image (touche `Z`) : page entière, largeur ou hauteur de l'écran.
+- Bande de miniatures de toutes les pages (touche `M`).
+- Deux pages côte à côte (bouton ▯▯ ou touche `D`) : la couverture seule, puis les doubles pages 2-3, 4-5…
+- Bouton `?` (ou touche `?` / `H`) : liste des raccourcis.
+- Komga : la page lue est envoyée à Komga 2,5 secondes après le dernier changement de page, et l'album est marqué lu à la dernière page. Rien n'est envoyé à l'ouverture. Case « Envoyer ma lecture à Komga » dans Configuration → Komga (activée par défaut ; seuls les albums rattachés à Komga sont concernés).
+- API : `GET /api/volumes/<id>/reader/thumb/<n>` et `POST /api/volumes/<id>/reader/progress`.
+
+### Bibliothèque
+
+- Menu « Trier » pour les vues affiches et aperçu : alphabétique, popularité (votes), date d'ajout, année, taille, nombre de tomes ; un second clic inverse le sens, qui est mémorisé par bibliothèque.
+- Colonne « Votes » dans le tableau (somme des votes Bédéthèque des tomes de la série, triable).
+- Au survol du titre dans le tableau, la couverture de la série s'affiche en vignette.
+- API : la liste des séries renvoie `total_size` (octets) et `total_votes`.
+
+### Nouveautés
+
+- Affichage immédiat : EBDZ et Telegram s'affichent sans attendre Prowlarr ; un cache RSS périmé est servi tout de suite et actualisé en arrière-plan (la page redemande le flux quelques secondes plus tard).
+- L'éclair ⚡ ajoute la série si besoin et lance la recherche de tous ses tomes manquants, comme « Recherche auto » sur la fiche série.
+- Série déjà en bibliothèque : logo de Bullarr sans pastille ; les lignes RSS possédées sont vertes, comme celles d'EBDZ et de Telegram.
+- Une seule identification de la série pour EBDZ, RSS, Telegram et l'import automatique. Un titre « Série (Préfixe) » se lit aussi « Préfixe Série » : « Alix (Les Voyages d') » n'est plus confondu avec « Alix », et leurs releases sont reconnues.
+- Les lignes RSS prennent en compte les libellés d'origine « Franco-Belge », « Comics » et « Manga » (Bédéthèque).
+
+### Prowlarr
+
+- Le flux RSS fonctionne avec un Prowlarr sur une adresse du réseau local (il était rejeté par le contrôle d'adresses internes, d'où « actualisation impossible »). La vraie cause d'un échec est maintenant écrite dans les journaux.
+- Catégories des indexeurs regroupées par catégorie parente, sous-catégories en retrait ; seules Livres / Comics / BD sont visibles, le reste est replié dans « Autres catégories ».
+
+### Bédéthèque
+
+- Les libellés d'origine « Franco-Belge », « Comics » et « Manga » (nouvelle mise en page des fiches) sont reconnus : drapeaux de la bibliothèque et de Nouveautés, genre manga dans Nouveautés.
+
+### Recherche et forum VK
+
+- Recherche d'un tome : cocher une seule case active « Télécharger la sélection » (seul « Tout sélectionner » fonctionnait après un filtre ou un tri).
+- Forum VK : un fichier indisponible chez VK (erreur 502 ou 504) est signalé à l'écran avant le lancement du téléchargement.
+
+### Sécurité et dépendances
+
+- Pillow 13.0.0 et pypdf 6.21.2 : corrige les alertes Dependabot ouvertes.
+- Analyse de code : adresse du forum VK échappée dans l'expression régulière, messages d'erreur des routes VK et du lecteur passés par `error_message`.
+
 ## v8.1 — 2026-10-20
 
 [Comparer v8.0 et v8.1](https://github.com/gwenvador/bullarr/compare/v8.0...v8.1)
