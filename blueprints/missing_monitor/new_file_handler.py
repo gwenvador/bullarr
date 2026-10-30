@@ -198,6 +198,20 @@ def _send_monitor_download(source, item, downloader, series_title, volume_number
     raise ValueError(f'Source non prise en charge: {source}')
 
 
+def _has_missing_regular_volume(series_id):
+    """Vrai si la série a encore un tome numéroté sans fichier (hors-séries, intégrales,
+    épisodes et spéciaux exclus)."""
+    from blueprints.library.routes import get_db_connection
+    conn = get_db_connection()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM volumes WHERE series_id = ? AND (filepath IS NULL OR filepath = '') "
+            "AND COALESCE(is_integral, 0) = 0 AND COALESCE(is_hs, 0) = 0 AND COALESCE(is_episode, 0) = 0 "
+            "AND COALESCE(is_special, 0) = 0 LIMIT 1", (series_id,)).fetchone() is not None
+    finally:
+        conn.close()
+
+
 def _process_typed_monitor_file(source, item, filename, parsed, typed, match, series_id, thread_match, hint,
                                 bedetheque_url_by_series, action, downloader, stats, log_action):
     """Nouveau fichier hors-série/intégrale/épisode d'une série surveillée: téléchargé s'il
@@ -215,6 +229,11 @@ def _process_typed_monitor_file(source, item, filename, parsed, typed, match, se
             f"AND {typed[0]} = 1 AND {typed[1]} IS ?", (series_id, typed[2])).fetchone()
     finally:
         conn.close()
+    if typed[0] == 'is_integral' and not _has_missing_regular_volume(series_id):
+        # Une intégrale réunit des tomes déjà tous possédés: ce n'est pas un album manquant,
+        # inutile de la télécharger ou de la proposer en validation.
+        stats['skipped_complete'] = stats.get('skipped_complete', 0) + 1
+        return
     candidate = {
         'source': source, 'filename': item.get('filename'), 'link': item.get('link'),
         'thread_url': item.get('thread_url'), 'channel': item.get('channel'),

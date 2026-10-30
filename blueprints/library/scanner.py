@@ -542,7 +542,9 @@ class LibraryScanner:
                 # « INTEGRALE » sans numéro est aussi utilisé comme nom de pack
                 # complet (et parfois comme nom de dossier). Il doit être sélectionnable
                 # par la recherche série entière, sans transformer INT01/INT02 en packs.
-                or bool(re.search(r'\bint[eé]grale\b(?!\s*[-#.]?\s*\d)', filename, re.IGNORECASE))
+                # Un numéro compte 1 à 3 chiffres : « Integrale.2016-2018 » (années de
+                # parution) reste le pack complet, « Integrale 2 » une intégrale numérotée.
+                or bool(re.search(r'\bint[eé]grale\b(?!\s*[-#.]?\s*\d{1,3}(?!\d))', filename, re.IGNORECASE))
             )
         }
 

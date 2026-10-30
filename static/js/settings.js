@@ -2749,6 +2749,30 @@ function _formatBedethequeCatalogIndexStatus(data) {
     return `<p style="margin:0;"><strong>${data.count}</strong> séries indexées - dernière construction: ${escapeHtml(data.built_at || '?')}</p>`;
 }
 
+// Appels vers Bédéthèque / BDGest : compteurs, limite des 24 h et pause éventuelle (voir guard.py).
+async function loadBedethequeGuardStatus() {
+    const el = document.getElementById('bedethequeGuardStatus');
+    if (!el) return;
+    try {
+        const data = await (await fetch('/api/bedetheque/guard/status')).json();
+        if (!data.success) throw new Error('statut indisponible');
+        const until = data.blocked_until ? new Date(data.blocked_until * 1000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+        const pause = data.blocked
+            ? ` <span style="color:#dc3545;">Pause jusqu'à ${escapeHtml(until)} (${escapeHtml(data.blocked_reason || 'blocage du site')})</span> <button type="button" class="btn btn-small" onclick="resetBedethequeGuard()">Lever la pause</button>`
+            : '';
+        el.innerHTML = `<p style="margin:0;">Appels vers Bédéthèque : <strong>${data.calls_last_hour}</strong> dernière heure, <strong>${data.calls_last_24h}</strong> sur 24 h (limite ${data.daily_limit}), écart minimum ${data.min_interval_seconds} s.${pause}</p>`;
+    } catch (error) {
+        el.innerHTML = '';
+    }
+}
+
+async function resetBedethequeGuard() {
+    await fetch('/api/bedetheque/guard/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: true })
+    });
+    loadBedethequeGuardStatus();
+}
+
 async function loadBedethequeCatalogIndexStatus() {
     const el = document.getElementById('bedethequeCatalogIndexStatus');
     const btn = document.getElementById('bedethequeCatalogIndexBuildBtn');
@@ -2860,6 +2884,7 @@ window.addEventListener('load', () => {
 
     try {
         loadBedethequeCatalogIndexStatus();
+        loadBedethequeGuardStatus();
     } catch (e) {
         console.error('Erreur loadBedethequeCatalogIndexStatus:', e);
     }

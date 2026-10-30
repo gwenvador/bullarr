@@ -617,6 +617,9 @@ async function loadNouveautesOrigins(urls) {
                 const answered = Object.entries(data.origins || {});
                 answered.forEach(([url, value]) => { _nouveautesOriginCache[url] = value; });
                 _fillNouveautesGenreSlots();
+                // Budget horaire épuisé ou Bédéthèque en pause : on n'insiste pas, ces adresses
+                // seront reprises à la prochaine ouverture de la page (rien n'est marqué inconnu).
+                if (data.limited) return;
                 // Rien de lu et rien en attente côté serveur : adresses non reconnues, on les écarte.
                 if (!answered.length && !data.pending) {
                     missing.slice(0, 100).forEach(url => { _nouveautesOriginCache[url] = { origin: null, kind: null }; });

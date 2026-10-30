@@ -71,7 +71,8 @@ def match_pending_download_by_name(client_pending_rows, item_name):
 
 def find_pending_download_duplicate(title: Optional[str], series_id: Optional[int] = None,
                                     volume_number: Optional[int] = None) -> Optional[Dict]:
-    """Retourne un suivi ``pending`` qui désigne déjà ce résultat.
+    """Retourne un suivi en cours (``pending``, ou ``completed``/``importing``: fini mais pas
+    encore importé) qui désigne déjà ce résultat.
 
     Une recherche automatique peut être relancée pendant que le client traite encore
     le même fichier. Le nom réel est le signal commun aux sources; série/tome évitent
@@ -85,7 +86,7 @@ def find_pending_download_duplicate(title: Optional[str], series_id: Optional[in
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT id, title, client, series_id, volume_number "
-            "FROM active_downloads WHERE status = 'pending' ORDER BY id DESC"
+            "FROM active_downloads WHERE status IN ('pending', 'completed', 'importing') ORDER BY id DESC"
         ).fetchall()
         conn.close()
         for row in rows:

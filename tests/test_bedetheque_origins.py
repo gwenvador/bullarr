@@ -88,7 +88,7 @@ class ResolveOriginsTest(unittest.TestCase):
         result, pending = origins.resolve_origins(self.db, urls, None)
         self.assertEqual((len(result), pending), (2, 3))
 
-    def test_page_without_origin_is_retried_after_a_week(self):
+    def test_page_without_origin_is_retried_after_a_month(self):
         url = 'https://www.bedetheque.com/serie-9-BD-Sans.html'
         calls = []
         with patch.object(origins, 'ORIGIN_FETCH_INTERVAL_SECONDS', 0):
@@ -96,7 +96,7 @@ class ResolveOriginsTest(unittest.TestCase):
             origins.resolve_origins(self.db, [url], lambda u: calls.append(u) or '<html></html>')
             self.assertEqual(len(calls), 1)
             conn = sqlite3.connect(self.db)
-            conn.execute('UPDATE bedetheque_origin_cache SET fetched_at = ?', (time.time() - 8 * 86400,))
+            conn.execute('UPDATE bedetheque_origin_cache SET fetched_at = ?', (time.time() - 31 * 86400,))
             conn.commit()
             conn.close()
             origins.resolve_origins(self.db, [url], lambda u: calls.append(u) or PAGE)

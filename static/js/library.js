@@ -845,7 +845,9 @@ function _seriesStatusLabel(s) {
 // y est bien moins pratique qu'un champ où taper directement. Comparé par label (voir
 // header ci-dessous) plutôt que par clé de colonne: les 5 colonnes par défaut n'ont pas
 // de clé propre dans ce fichier, seulement un libellé.
-const _TEXT_FILTER_TABLE_COLUMN_LABELS = new Set(['Titre', 'Genre', 'Auteur', 'Éditeur']);
+// Genre est revenu en liste déroulante (« dans bibliothèque genre devrait être un dropdown ») : peu
+// de valeurs distinctes, découpées une à une quand une série en cumule plusieurs (multi: true).
+const _TEXT_FILTER_TABLE_COLUMN_LABELS = new Set(['Titre', 'Auteur', 'Éditeur']);
 
 function _tableFilterColumns(series) {
     const fixed = TABLE_FIXED_COLUMNS.filter(col => _isTableColumnVisible(col.key));
@@ -864,10 +866,9 @@ function _tableFilterColumns(series) {
         // humour, jeunesse. ca devrait etre 2 genres differents" - local_genre (comme
         // local_author) peut combiner plusieurs valeurs ComicInfo.xml dans une seule
         // chaîne ("Humour, Jeunesse"), même format multi-valeur que la section de filtre
-        // Genre du menu principal (voir splitMultiValue/DYNAMIC_FILTER_SECTIONS). Passé en
-        // filtre texte ci-dessous (voir _TEXT_FILTER_TABLE_COLUMN_LABELS): une recherche en
-        // sous-chaîne retrouve quand même "Jeunesse" dans "Humour, Jeunesse" sans avoir
-        // besoin de la liste déroulante ni de ce découpage.
+        // Genre du menu principal (voir splitMultiValue/DYNAMIC_FILTER_SECTIONS). Liste déroulante
+        // pour Genre (chaque genre listé une seule fois) ; Auteur et Éditeur restent en filtre
+        // texte (voir _TEXT_FILTER_TABLE_COLUMN_LABELS).
         ...optional.map(col => ({
             label: col.header,
             type: col.filterType || 'select',
@@ -1369,13 +1370,21 @@ function seriesMatchesFilterKey(s, key) {
     return true;
 }
 
+// Compteurs absents (données d'une ancienne réponse) : on garde la série plutôt que de la masquer.
+function seriesHasAlbums(s) {
+    const counts = [s.owned_tomes, s.owned_integrals, s.owned_hs, s.owned_episodes, s.owned_specials];
+    if (counts.every(c => c === undefined || c === null)) return true;
+    return counts.some(c => Number(c) > 0);
+}
+
 function filterSeries() {
     const searchInput = document.getElementById('search');
     const searchTerm = normalizeForSearch(searchInput ? searchInput.value : '');
     // Recherche sur titre + auteur + genre + tags (texte pré-normalisé et mis en cache
     // dans _searchHaystack par loadLibraryData/buildSearchHaystack), pas seulement le titre
+    // Une série sans aucun album (ajoutée depuis Enrichir mais encore rien reçu) n'a pas sa place dans la grille.
     let filtered = seriesData.filter(s =>
-        (s._searchHaystack || buildSearchHaystack(s)).includes(searchTerm)
+        seriesHasAlbums(s) && (s._searchHaystack || buildSearchHaystack(s)).includes(searchTerm)
     );
 
 
@@ -3363,7 +3372,7 @@ function buildVolumesSectionHtml(data) {
     // Vue "tableau" (nom/format/taille/emplacement): à plat, ignore volontairement le
     // regroupement par partie (data.parts) - un tableau reste lisible sans sections,
     // contrairement à la vue aperçu où le regroupement aide à s'y retrouver visuellement
-    if (!data.is_oneshot && (data.volumes || []).length > 0) {
+    if ((data.volumes || []).length > 0) {
         volumesViewSwitcherHtml = buildVolumesViewSwitcherHtml();
     }
 
@@ -3372,13 +3381,13 @@ function buildVolumesSectionHtml(data) {
     // maintenant dans les deux vues ("dans la bibliothèque il n'y a pas moyen de
     // sélectionner plusieurs volumes... vue aperçu" - la case à cocher en vue cartes,
     // voir buildVolumeItemHtml, alimente le même Set selectedVolumeIds que la vue tableau).
-    let volumeBulkActionsBarHtml = (!data.is_oneshot && (data.volumes || []).length > 0)
+    let volumeBulkActionsBarHtml = ((data.volumes || []).length > 0)
         ? `<div id="volume-bulk-actions-bar" class="volume-bulk-actions-bar" style="display:none;"></div>`
         : '';
 
-    if (!data.is_oneshot && volumesViewMode === 'table' && (data.volumes || []).length > 0) {
-        volumesHtml = buildVolumesTableHtml(filteredVolumes, data.is_oneshot);
-    } else if (!data.is_oneshot && data.has_parts && data.parts) {
+    if (volumesViewMode === 'table' && (data.volumes || []).length > 0) {
+        volumesHtml = buildVolumesTableHtml(filteredVolumes, false);
+    } else if (data.has_parts && data.parts) {
         const partNumbers = Object.keys(data.parts).sort((a, b) => parseInt(a) - parseInt(b));
 
         if (partNumbers.length > 0) {
@@ -3393,7 +3402,7 @@ function buildVolumesSectionHtml(data) {
                             <span class="part-count">${partVolumes.length} ${pluralize(partVolumes.length, 'volume')}</span>
                         </div>
                         <div class="volume-list">
-                            ${partVolumes.map(v => buildVolumeItemHtml(v, data.is_oneshot, data.title, data.id)).join('')}
+                            ${partVolumes.map(v => buildVolumeItemHtml(v, false, data.title, data.id)).join('')}
                         </div>
                     </div>
                 `;
@@ -3401,16 +3410,12 @@ function buildVolumesSectionHtml(data) {
         }
     }
 
-    // Si pas de parties ou pas de volumes (et pas un one-shot), afficher la liste
-    // simple. Un one-shot n'affiche pas de carte volume (un seul fichier, déjà
-    // représenté par la couverture/le titre en haut): ses tags/auteur/genre sont
-    // affichés directement dans le header (voir oneshotMetaHtml plus bas) plutôt
-    // que dans une carte qui redirait le nom de fichier/la couverture
-    if (!volumesHtml && !data.is_oneshot) {
+    // Un one-shot est présenté comme une série de plusieurs albums: même tableau, mêmes cartes.
+    if (!volumesHtml) {
         volumesHtml = _groupVolumesByType(filteredVolumes, data.is_oneshot).map(g => _volumeGroupSectionHtml(g, data)).join('');
     }
 
-    if (!volumesHtml && !data.is_oneshot && (data.volumes || []).length > 0) {
+    if (!volumesHtml && (data.volumes || []).length > 0) {
         volumesHtml = '<p class="help-text" style="padding:12px 0;">Aucun tome ne correspond à ce filtre.</p>';
     }
 
@@ -4150,9 +4155,7 @@ async function renderSeriesDetail(seriesId) {
                         ? `<img class="series-detail-cover clickable-cover" src="${escapeHtml(detailCoverUrl)}" alt="${escapeHtml(data.title)}" tabindex="0" role="button" title="Afficher la couverture">`
                         : `<div class="series-detail-cover series-detail-cover-placeholder">📚</div>`}
                     <div class="series-preview-pages" id="series-preview-pages-${seriesId}" hidden></div>
-                    ${(data.is_oneshot && oneshotFile && oneshotFile.filepath) ? `
-                    <button type="button" class="series-read-btn" onclick="openComicReader(${Number(oneshotFile.id)})" aria-label="Lire cet album">${svgIcon('play')} Lire</button>` : `
-                    <span class="series-read-slot" id="series-read-slot-${seriesId}"></span>`}
+                    <span class="series-read-slot" id="series-read-slot-${seriesId}"></span>
                 </div>
                 <div class="series-detail-info">
                     <div class="series-detail-title-row">
@@ -4171,15 +4174,13 @@ async function renderSeriesDetail(seriesId) {
                             // hors-série, lui, reste un one-shot valide (une parution spéciale
                             // publiée seule n'est pas contradictoire) : il ne supprime pas ce
                             // libellé
-                            (data.is_oneshot && !(oneshotFile && oneshotFile.is_integral)) ? ' 🔸 One-shot' : ''
+                            ''
                         }${data.has_parts ? ' • arcs/parties' : ''}</span>
                         <span>💾 ${formatBytes(totalSize)}</span>
                         <span class="series-location-tooltip" data-tooltip="${escapeHtml(data.path)}" tabindex="0">📁 ${escapeHtml(data.path)} <button type="button" class="btn-icon-only" style="vertical-align:middle;" data-tooltip="Corriger l'emplacement enregistré" aria-label="Corriger l'emplacement enregistré" onclick="openSeriesPathCorrection(${seriesId})">${svgIcon('pencil')}</button></span>
-                        ${oneshotFile ? `<span>📄 ${escapeHtml(oneshotFile.filename)}</span>` : ''}
                         ${seriesLinksHtml}
                     </div>
                     ${bdMetaHtml}
-                    ${oneshotMetaHtml}
                     <div id="series-universe-section-${seriesId}"></div>
                     ${detailSummary ? `<p class="series-detail-summary">${escapeHtml(detailSummary)}</p>` : ''}
                 </div>
@@ -5693,6 +5694,14 @@ async function confirmEbdzMatch(seriesId, payload) {
 
         closeEbdzMatchModal();
         updateCachedEbdzStatus(seriesId, data);
+        if (data.live_scraped) {
+            // Sujet relu en direct (jamais scrapé, ou liens ajoutés après coup).
+            const found = data.links_found || 0;
+            showToast('ebdz-live-thread', found
+                ? `Sujet EBDZ relu : ${found} lien${found > 1 ? 's' : ''} ed2k trouvé${found > 1 ? 's' : ''}.`
+                : 'Sujet EBDZ relu : aucun lien ed2k visible pour le moment (la série est rapprochée, les liens viendront avec le sujet).',
+                { icon: found ? 'check' : 'info', autoHideMs: 8000 });
+        }
 
         // context 'modal' = fiche série (soit via son propre menu Métadonnées, soit via
         // les boutons Matcher de "Éditer manuellement") - un rafraîchissement complet
@@ -6658,16 +6667,22 @@ async function loadEbdzThreadFiles(threadId, missingVolumes) {
             const rowStyle = isMissing
                 ? 'border-bottom: 1px solid var(--color-border);'
                 : 'border-bottom: 1px solid var(--color-border);';
+            // Fichier retiré du sujet (relecture du sujet) : gardé dans la liste, grisé, sans bouton.
+            const removed = !!f.removed_at;
+            const removedDate = removed ? new Date(String(f.removed_at).replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR') : '';
+            const removedStyle = removed ? ' opacity: 0.55;' : '';
+            const removedNote = removed
+                ? `<div style="font-size: 0.85em; color: #c0392b;">Retiré du sujet le ${escapeHtml(removedDate)}</div>` : '';
             return `
-                <tr class="${isMissing ? 'ebdz-modal-missing-row' : ''}" style="${rowStyle}">
+                <tr class="${isMissing && !removed ? 'ebdz-modal-missing-row' : ''}" style="${rowStyle}${removedStyle}">
                     <td class="${isMissing ? 'ebdz-modal-missing-cell' : ''}" style="padding: 8px; text-align: center; white-space: nowrap; ${isMissing ? 'font-weight: 600;' : ''}">${escapeHtml(buildEbdzVolumeLabel(f))}${isMissing ? ' ❌' : ''}</td>
-                    <td style="padding: 8px; word-break: break-word;">${escapeHtml(decodedFilename)}</td>
+                    <td style="padding: 8px; word-break: break-word;${removed ? ' text-decoration: line-through;' : ''}">${escapeHtml(decodedFilename)}${removedNote}</td>
                     <td style="padding: 8px; white-space: nowrap;">${f.resolution ? escapeHtml(f.resolution) : '-'}</td>
                     <td style="padding: 8px; white-space: nowrap;">${f.year || '-'}</td>
                     <td style="padding: 8px; white-space: nowrap;">${f.format ? escapeHtml(f.format.toUpperCase()) : '-'}</td>
                     <td style="padding: 8px; white-space: nowrap;">${formatBytes(parseInt(f.filesize, 10) || 0)}</td>
                     <td style="padding: 8px; white-space: nowrap; text-align: center;">
-                        <button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}', this, '${escapeForAttribute(decodedFilename)}', ${seriesId ?? 'null'}, null, ${volumeForAdd ?? 'null'})">${svgIcon('plus')} Ajouter</button>
+                        ${removed ? '<span style="font-size: 0.85em;">Retiré</span>' : `<button class="btn" onclick="addToEmule('${escapeForAttribute(f.link)}', this, '${escapeForAttribute(decodedFilename)}', ${seriesId ?? 'null'}, null, ${volumeForAdd ?? 'null'})">${svgIcon('plus')} Ajouter</button>`}
                     </td>
                 </tr>
             `;

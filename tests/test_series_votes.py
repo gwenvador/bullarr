@@ -36,5 +36,17 @@ class SeriesVotesTest(unittest.TestCase):
         self.assertIn("case 'votes': return s.total_votes || null;", script)
 
 
+class LibraryGenreFilterTest(unittest.TestCase):
+    """Colonne Genre du tableau de la bibliothèque : liste déroulante, un genre par option."""
+
+    def test_genre_is_a_multi_value_dropdown_while_title_author_publisher_stay_text(self):
+        script = (ROOT / 'static/js/library.js').read_text()
+        labels = re.search(r"const _TEXT_FILTER_TABLE_COLUMN_LABELS = new Set\(\[(.*?)\]\)", script).group(1)
+        self.assertNotIn("'Genre'", labels)
+        for label in ("'Titre'", "'Auteur'", "'Éditeur'"):
+            self.assertIn(label, labels)
+        self.assertIn("genre: { label: 'Genre', type: 'select', getValue: s => s.local_genre || '—', multi: true }", script)
+
+
 if __name__ == '__main__':
     unittest.main()

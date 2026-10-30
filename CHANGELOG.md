@@ -1,5 +1,44 @@
 # Changements
 
+## v9.1 — 2026-10-30
+
+[Comparer v9.0 et v9.1](https://github.com/gwenvador/bullarr/compare/v9.0...v9.1)
+
+Mise à jour directe depuis v9.0, sans migration manuelle (la base gagne seule la colonne `removed_at` dans `ed2k_links`).
+
+### Bédéthèque et BDGest
+
+- Une garde commune limite tous les appels vers bedetheque.com et bdgest.com : un appel toutes les 1,5 s, 2 000 par 24 h, et une pause de 30 minutes (jusqu'à 4 heures) dès qu'un défi Cloudflare ou un 429 est détecté. Réglages et état dans Configuration ; les messages d'erreur indiquent la pause en cours plutôt que « série introuvable ».
+- Les origines (Franco-belge, Comics, Manga) lues sur les fiches sont plafonnées à 60 pages par heure ; les nouveaux libellés de Bédéthèque (Europe, USA, Asie) sont reconnus.
+- Enrichir : nouvel onglet « Sorties BDGest », le calendrier des sorties par catégorie et par mois, avec une colonne « En bibliothèque » et un bouton + pour ajouter la série.
+
+### Bibliothèque
+
+- Les séries sans aucun album ne s'affichent plus dans la grille.
+- Un one-shot a le même tableau d'albums qu'une série de plusieurs volumes.
+- Tableau : le filtre Genre est de nouveau une liste déroulante.
+
+### Activités (anciennement Import)
+
+- La page et son lien de menu s'appellent « Activités ».
+- Import : une coche « déjà en bibliothèque » apparaît à côté des albums déjà possédés quand on choisit les volumes.
+- Un téléchargement terminé qui est un dossier d'images en vrac (.jpg) est signalé « Non importable automatiquement » au lieu d'annoncer un import prochain.
+
+### Recherche automatique
+
+- Un pack d'intégrale daté (« Intégrale 2016-2018 ») est reconnu comme pack ; entre plusieurs packs qui couvrent la série, le meilleur format passe avant le nombre de sources.
+- Un fichier déjà envoyé au client (en cours, terminé en attente d'import, ou refusé par qBittorrent avec un 409) ne crée plus d'entrée en validation.
+- Une intégrale n'est plus proposée en validation quand tous les tomes numérotés sont déjà possédés.
+
+### EBDZ
+
+- Coller l'adresse d'un sujet dans la recherche de métadonnées relit le sujet tout de suite.
+- Un lien qui disparaît d'un sujet relu est conservé, marqué « retiré » avec sa date, grisé dans la liste des fichiers et ignoré par les compteurs, la recherche, Nouveautés et le téléchargement automatique.
+
+### Application Android
+
+- Connexion SSO par le navigateur du téléphone : code à usage unique échangé contre une session (`bullarr://auth`).
+
 ## v9.0 — 2026-10-25
 
 [Comparer v8.1 et v9.0](https://github.com/gwenvador/bullarr/compare/v8.1...v9.0)

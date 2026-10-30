@@ -63,7 +63,7 @@ class AutoAcquirePackReviewTests(unittest.TestCase):
             'auto_acquire_pack_search_enabled': True,
         }), patch('blueprints.missing_monitor.searcher.MissingVolumeSearcher', Searcher), \
              patch('blueprints.bedetheque.auto_acquire._enrich_ed2k_availability', side_effect=lambda items: items), \
-             patch('blueprints.bedetheque.auto_acquire._best_pack_result', side_effect=lambda items, _title: items[0] if select_pack and len(items) > 1 else None), \
+             patch('blueprints.bedetheque.auto_acquire._best_pack_result', side_effect=lambda items, _title, **_kw: items[0] if select_pack and len(items) > 1 else None), \
              patch('blueprints.bedetheque.auto_acquire._best_confident_result', side_effect=best), \
              patch('blueprints.bedetheque.auto_acquire._download_result', download), \
              patch('blueprints.library.action_history.log_action'):

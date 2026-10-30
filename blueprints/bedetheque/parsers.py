@@ -234,6 +234,38 @@ def parse_bdgest_top(soup):
     return items
 
 
+def parse_bdgest_sorties(soup, year):
+    """Calendrier des sorties BDGest (vue liste): une section par jour (id « jJJMM »), chaque
+    album porte un lien vers sa fiche Bédéthèque. L'année n'apparaît pas dans la page."""
+    items = []
+    for section in soup.select('section.bdg-cal-day'):
+        match = re.fullmatch(r'j(\d{2})(\d{2})', section.get('id') or '')
+        if not match:
+            continue
+        day, month = int(match.group(1)), int(match.group(2))
+        for li in section.select('ol.bdg-cal-list > li'):
+            link = li.select_one('.t a')
+            if not link or not link.get('href'):
+                continue
+            title = own_text(link)
+            if not title:
+                continue
+            cover = li.select_one('a.cv img')
+            subtitle = li.select_one('.t small.ti')
+            credits = [clean_text(small) for small in li.select('.t small') if 'ti' not in (small.get('class') or [])]
+            items.append({
+                'date': f'{year:04d}-{month:02d}-{day:02d}',
+                'title': title,
+                'volume_label': clean_text(link.select_one('em')),
+                'subtitle': clean_text(subtitle),
+                'url': link['href'].strip(),
+                'cover': cover.get('src', '').strip() if cover else None,
+                'authors': credits[0] if credits else '',
+                'publisher': clean_text(li.select_one('.ed')),
+            })
+    return items
+
+
 def parse_related_series(soup):
     """« Séries liées » d'une fiche série: [{'title', 'url'}] dans l'ordre d'apparition,
     dédupliqué par URL. Nouvelle mise en page (bloc .bdt-box-liees, octobre 2026) et ancienne

@@ -177,6 +177,8 @@ class MissingVolumeSearcher:
                     keyword = 'int' if label.lower().startswith('int') else 'hs'
                     sql += ' AND (LOWER(filename) LIKE ? OR LOWER(thread_title) LIKE ?)'
                     params.extend([f'%{keyword}%', f'%{keyword}%'])
+                from blueprints.ebdz.removed import active_and
+                sql += active_and(cursor)  # jamais un fichier retiré du sujet
                 sql += f' ORDER BY thread_id DESC LIMIT {10 if volume_num is not None else 100}'
 
                 cursor.execute(sql, params)

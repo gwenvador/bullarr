@@ -944,7 +944,8 @@ def _bulk_ebdz_autodetect(library_id):
         conn.close()
         return
 
-    ebdz_cursor.execute('SELECT volume, thread_url, thread_id, thread_title, filename FROM ed2k_links')
+    from blueprints.ebdz.removed import active_where
+    ebdz_cursor.execute('SELECT volume, thread_url, thread_id, thread_title, filename FROM ed2k_links' + active_where(ebdz_cursor))
     # (volume, thread_url, thread_id, thread_title, norm_title, norm_filename)
     normalized_rows = [
         (volume, thread_url, thread_id, thread_title,
@@ -1042,7 +1043,7 @@ def _ebdz_enrich_series(series_id):
     if matched_thread_id is not None:
         # Série déjà matchée à un thread précis: comparaison directe, sans recherche floue
         ebdz_cursor.execute('''
-            SELECT volume, thread_url, thread_title FROM ed2k_links WHERE thread_id = ?
+            SELECT volume, thread_url, thread_title FROM ed2k_links WHERE thread_id = ?''' + __import__('blueprints.ebdz.removed', fromlist=['active_and']).active_and(ebdz_cursor) + '''
         ''', (matched_thread_id,))
         rows = ebdz_cursor.fetchall()
         matched_title = next((row[2] for row in rows if row[2]), None)
@@ -1068,9 +1069,10 @@ def _ebdz_enrich_series(series_id):
         # de fichier sans rapport, tag de collection partagé entre plusieurs séries...
         # voir "Sagesse"/"Echecs"): on ne s'y replie que si AUCUN titre ne correspond
         title_where_clause = ' OR '.join(['search_normalize(thread_title) LIKE ?'] * len(normalized_terms))
+        from blueprints.ebdz.removed import active_and
         ebdz_cursor.execute(f'''
             SELECT volume, thread_url, thread_id, thread_title FROM ed2k_links
-            WHERE {title_where_clause}
+            WHERE ({title_where_clause}){active_and(ebdz_cursor)}
         ''', normalized_terms)
         all_rows = ebdz_cursor.fetchall()
 
@@ -1078,7 +1080,7 @@ def _ebdz_enrich_series(series_id):
             filename_where_clause = ' OR '.join(['search_normalize(filename) LIKE ?'] * len(normalized_terms))
             ebdz_cursor.execute(f'''
                 SELECT volume, thread_url, thread_id, thread_title FROM ed2k_links
-                WHERE {filename_where_clause}
+                WHERE ({filename_where_clause}){active_and(ebdz_cursor)}
             ''', normalized_terms)
             all_rows = ebdz_cursor.fetchall()
 
@@ -1248,16 +1250,33 @@ def ebdz_match_series(series_id):
         ebdz_conn = sqlite3.connect(current_app.config['DB_FILE'], timeout=30.0)
         ebdz_cursor = ebdz_conn.cursor()
         ebdz_cursor.execute('''
-            SELECT volume, thread_url, thread_title FROM ed2k_links WHERE thread_id = ?
+            SELECT volume, thread_url, thread_title FROM ed2k_links WHERE thread_id = ?''' + __import__('blueprints.ebdz.removed', fromlist=['active_and']).active_and(ebdz_cursor) + '''
         ''', (thread_id,))
         rows = ebdz_cursor.fetchall()
         ebdz_conn.close()
 
+        # Sujet jamais scrapé, ou scrapé sans lien (liens ajoutés ensuite en modifiant le premier
+        # message : le nombre de réponses n'a pas changé, le scraper ne le relit pas) : on le lit
+        # en direct, on enregistre ses liens et son titre, puis on rapproche la série.
+        live = None
         if not rows:
+            from blueprints.ebdz.live_thread import EbdzThreadError, scrape_thread_now
+            from blueprints.ebdz.routes import load_ebdz_config
+            try:
+                live = scrape_thread_now(thread_id, load_ebdz_config(), current_app.config['DB_FILE'])
+            except EbdzThreadError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 502
+            ebdz_conn = sqlite3.connect(current_app.config['DB_FILE'], timeout=30.0)
+            rows = ebdz_conn.execute('''
+                SELECT volume, thread_url, thread_title FROM ed2k_links WHERE thread_id = ?''' + __import__('blueprints.ebdz.removed', fromlist=['active_and']).active_and(ebdz_conn) + '''
+            ''', (thread_id,)).fetchall()
+            ebdz_conn.close()
+
+        if not rows and not live:
             return jsonify({'success': False, 'error': 'Thread EBDZ introuvable'}), 404
 
-        matched_title = next((row[2] for row in rows if row[2]), None)
-        ebdz_thread_url = next((row[1] for row in rows if row[1]), None)
+        matched_title = next((row[2] for row in rows if row[2]), None) or (live or {}).get('title')
+        ebdz_thread_url = next((row[1] for row in rows if row[1]), None) or (live or {}).get('url')
 
         ebdz_volumes = sorted({row[0] for row in rows if row[0] is not None})
         ebdz_has_unnumbered = any(row[0] is None for row in rows)
@@ -1286,7 +1305,10 @@ def ebdz_match_series(series_id):
             'ebdz_count': ebdz_count,
             'missing_volumes': missing_volumes,
             'unnumbered_missing': unnumbered_missing,
-            'ebdz_thread_url': ebdz_thread_url
+            'ebdz_thread_url': ebdz_thread_url,
+            # Sujet relu en direct : nombre de liens ed2k trouvés (0 = rapproché, mais sans fichier connu).
+            'live_scraped': bool(live),
+            'links_found': (live or {}).get('links', 0)
         })
 
     except Exception as e:
@@ -2060,6 +2082,15 @@ def get_series_preview_pages(series_id):
                     'page_numbers': [number for _path, number in pages]})
 
 
+def _with_ownership(volumes):
+    """Ajoute is_owned à chaque tome : un fichier est présent (les tomes seulement connus de
+    Bédéthèque, sans fichier, ne le sont pas). Lu par les listes de choix de tome (import,
+    déplacement d'un tome) pour marquer ✓ ou griser ceux qui sont déjà en bibliothèque."""
+    for volume in volumes:
+        volume['is_owned'] = bool((volume.get('filepath') or '').strip()) and volume.get('filesystem_present') != 0
+    return volumes
+
+
 @library_bp.route('/api/series/<int:series_id>/volumes', methods=['GET'])
 def get_series_volumes(series_id):
     ""
@@ -2079,7 +2110,7 @@ def get_series_volumes(series_id):
 
     bd_albums = json.loads(series_row[0]) if series_row and series_row[0] else []
     if not bd_albums:
-        return jsonify(owned_volumes)
+        return jsonify(_with_ownership(owned_volumes))
 
     from blueprints.bedetheque.scraper import _index_bedetheque_volumes
     by_number, by_integral, by_hs, by_episode = _index_bedetheque_volumes(bd_albums)
@@ -2203,7 +2234,7 @@ def get_series_volumes(series_id):
             v['bedetheque_title'] = album.get('title')
         merged.append(v)
 
-    return jsonify(merged)
+    return jsonify(_with_ownership(merged))
 
 
 def trigger_new_series_bedetheque_fetch(series_id, series_title, bedetheque_url):
@@ -5291,6 +5322,16 @@ def _scan_tracked_import_files(validate_files=True):
                 for extracted_dir in info['extracted_dirs']:
                     _collect_download_folder_files(
                         extracted_dir, import_path, download, destination, scanner,
+                        supported_extensions, manual_override_filepaths,
+                        import_config, files_found, incompatible_folders,
+                        validate_files=validate_files, manual_destinations=manual_destinations
+                    )
+                if not info['files'] and not info['extracted_dirs'] and entry.is_dir():
+                    # Liste du client sans aucun fichier importable (dossier d'images en vrac):
+                    # le dossier est parcouru quand même pour être signalé comme incompatible
+                    # plutôt que d'être ignoré en silence, annoncé « import automatique sous peu ».
+                    _collect_download_folder_files(
+                        entry.path, import_path, download, destination, scanner,
                         supported_extensions, manual_override_filepaths,
                         import_config, files_found, incompatible_folders,
                         validate_files=validate_files, manual_destinations=manual_destinations

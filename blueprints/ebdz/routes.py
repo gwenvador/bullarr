@@ -446,7 +446,7 @@ def latest_scrape():
                    is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
             FROM ed2k_links
             WHERE date_scraped >= ?
-        ''' + (' AND date_scraped < ?' if upper_cutoff else '') + '''
+        ''' + (' AND date_scraped < ?' if upper_cutoff else '') + __import__('blueprints.ebdz.removed', fromlist=['active_and']).active_and(cursor) + '''
             ORDER BY date_scraped DESC
         ''' + limit_sql, tuple(
             [cutoff] + ([upper_cutoff] if upper_cutoff else []) + ([limit] if limit else [])

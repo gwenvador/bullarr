@@ -30,6 +30,15 @@ Règles :
 - **Gestion de la clé :** la clé ne peut pas se lire, se régénérer ni se supprimer elle-même. Ces actions (`GET`, `POST` et `DELETE` `/api/auth/api-key`) demandent une session ouverte dans le navigateur.
 - **Stockage :** la clé est chiffrée sur le disque, dans `data/oidc_config.json`. La régénérer coupe immédiatement l'ancienne.
 
+### Connexion SSO d'une application (sans clé API)
+
+Pour une application mobile qui doit passer par le SSO du navigateur (passkeys) :
+
+1. Ouvrez `GET /login/redirect?app=1` dans le navigateur du téléphone. À la fin du SSO, Bullarr redirige vers `bullarr://auth?code=<code>` (adresse fixe, jamais fournie par le client).
+2. Échangez le code : `POST /api/auth/app-login` avec `{"code": "<code>"}`. La réponse `{"success": true, "user": {...}}` porte le cookie de session ; `GET /api/auth/csrf` donne ensuite le jeton des requêtes d'écriture.
+
+Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà utilisé : `400`. Après 10 échecs en une minute depuis la même adresse : `429`. Réponse `400` aussi si le SSO n'est pas activé.
+
 ## Conventions
 
 - **Corps de requête :** JSON, avec l'en-tête `Content-Type: application/json`.

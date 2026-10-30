@@ -153,6 +153,8 @@ class MyBBScraper:
                 ('hs_number', 'INTEGER'),
                 ('is_episode', 'INTEGER DEFAULT 0'),
                 ('episode_number', 'INTEGER'),
+                # Lien qui n'est plus dans le sujet (voir removed.py) : gardé, marqué retiré.
+                ('removed_at', 'TIMESTAMP'),
             ]:
                 if col_name not in existing_columns:
                     cursor.execute(f"ALTER TABLE ed2k_links ADD COLUMN {col_name} {col_type}")
@@ -198,6 +200,11 @@ class MyBBScraper:
                     PRIMARY KEY (thread_id, forum_category)
                 )
             """)
+            # Titre et adresse du sujet gardés même sans lien ed2k (voir live_thread.py).
+            state_columns = {row[1] for row in cursor.execute("PRAGMA table_info(ebdz_thread_state)")}
+            for column in ('thread_title', 'thread_url'):
+                if column not in state_columns:
+                    cursor.execute(f"ALTER TABLE ebdz_thread_state ADD COLUMN {column} TEXT")
             connection.commit()
             cursor.close()
             connection.close()
@@ -215,18 +222,24 @@ class MyBBScraper:
         cursor.close()
         return known
 
-    def _save_thread_state(self, thread_id, reply_count):
+    def _save_thread_state(self, thread_id, reply_count, title=None, url=None):
         connection = self.connect_db()
         if not connection:
             return
         cursor = connection.cursor()
+        state_columns = {row[1] for row in cursor.execute("PRAGMA table_info(ebdz_thread_state)")}
+        for column in ('thread_title', 'thread_url'):
+            if column not in state_columns:
+                cursor.execute(f"ALTER TABLE ebdz_thread_state ADD COLUMN {column} TEXT")
         cursor.execute("""
-            INSERT INTO ebdz_thread_state (thread_id, forum_category, reply_count, last_scraped_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO ebdz_thread_state (thread_id, forum_category, reply_count, last_scraped_at, thread_title, thread_url)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
             ON CONFLICT(thread_id, forum_category) DO UPDATE SET
                 reply_count = excluded.reply_count,
-                last_scraped_at = excluded.last_scraped_at
-        """, (thread_id, self.forum_category, reply_count))
+                last_scraped_at = excluded.last_scraped_at,
+                thread_title = COALESCE(excluded.thread_title, thread_title),
+                thread_url = COALESCE(excluded.thread_url, thread_url)
+        """, (thread_id, self.forum_category, reply_count, title, url))
         connection.commit()
         cursor.close()
         connection.close()
@@ -446,6 +459,49 @@ class MyBBScraper:
             print(f"    ✗ Erreur téléchargement couverture: {e}")
             return None
     
+    @staticmethod
+    def _page_lists_all_links(soup):
+        """La page lue est bien un sujet (pas la page de connexion) et il tient sur une seule
+        page : ses liens sont alors tous visibles, on peut savoir lesquels ont disparu."""
+        is_thread = soup.select_one('.post_body, .post_content, div.post, [id^="pid_"]') is not None
+        paginated = soup.select_one('.pagination_page, .pagination a.pagination_next, div.pagination a') is not None
+        return is_thread and not paginated
+
+    def _sync_removed_links(self, thread_id, present_links):
+        """Marque retirés (sans les supprimer) les liens du sujet qui n'y figurent plus, et réactive
+        ceux qui y sont revenus. Les liens sont comparés par leur lien exact ou leur empreinte ed2k."""
+        if not thread_id:
+            return
+        present_hashes = {h for h in (self.ed2k_file_hash(link) for link in present_links) if h}
+        present = set(present_links)
+        connection = self.connect_db()
+        if not connection:
+            return
+        try:
+            cursor = connection.cursor()
+            columns = {row[1] for row in cursor.execute("PRAGMA table_info(ed2k_links)")}
+            if 'removed_at' not in columns:
+                cursor.execute("ALTER TABLE ed2k_links ADD COLUMN removed_at TIMESTAMP")
+            to_remove, to_restore = [], []
+            for row_id, link, removed_at in cursor.execute(
+                    "SELECT id, link, removed_at FROM ed2k_links WHERE thread_id = ?", (str(thread_id),)).fetchall():
+                file_hash = self.ed2k_file_hash(link)
+                still_there = link in present or (file_hash is not None and file_hash in present_hashes)
+                if still_there and removed_at is not None:
+                    to_restore.append(row_id)
+                elif not still_there and removed_at is None:
+                    to_remove.append(row_id)
+            for ids, value in ((to_remove, 'CURRENT_TIMESTAMP'), (to_restore, 'NULL')):
+                for offset in range(0, len(ids), 500):
+                    chunk = ids[offset:offset + 500]
+                    cursor.execute(
+                        f"UPDATE ed2k_links SET removed_at = {value} WHERE id IN ({','.join('?' * len(chunk))})", chunk)
+            connection.commit()
+            if to_remove or to_restore:
+                print(f"  → sujet {thread_id}: {len(to_remove)} lien(s) retiré(s), {len(to_restore)} de retour")
+        finally:
+            connection.close()
+
     def scrape_thread(self, thread_url, thread_title):
         """Scrappe la première page d'un thread pour extraire les liens ed2k"""
         ed2k_data = []
@@ -483,6 +539,8 @@ class MyBBScraper:
                 print(f"  → Description trouvée ({len(description)} caractères)")
             
             links = self.extract_ed2k_links(html)
+            if self._page_lists_all_links(soup):
+                self._sync_removed_links(thread_id, links)
             for link in links:
                 filename, filesize = self.parse_ed2k_link(link)
 
@@ -634,7 +692,7 @@ class MyBBScraper:
             # Marqué à jour même si ce passage n'a trouvé aucun lien ed2k (thread de
             # discussion sans release, ou lien retiré) - c'est le nombre de réponses qui
             # définit "à jour", pas le nombre de liens trouvés.
-            self._save_thread_state(thread_id, reply_count)
+            self._save_thread_state(thread_id, reply_count, title=thread_title, url=thread_url)
             time.sleep(1)  # Politesse envers le serveur
 
         # Sauvegarde dans la base

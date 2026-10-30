@@ -372,7 +372,10 @@ class BedethequeScraper:
 
     def __init__(self):
         self.base_url = "https://www.bedetheque.com"
-        self.session = requests.Session()
+        # GuardedSession : écart minimum partagé, limite des 24 h et pause en cas de blocage
+        # pour TOUS les appels vers Bédéthèque (voir guard.py).
+        from .guard import GuardedSession
+        self.session = GuardedSession()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -381,6 +384,19 @@ class BedethequeScraper:
         })
         self.csrf_token = None
         self.cache = {}  # Cache pour éviter les rechutes sur une même série
+
+    def _remember_origin(self, url, origin):
+        """Garde l'origine lue sur la fiche : Nouveautés n'aura plus à relire cette page."""
+        if not origin:
+            return
+        try:
+            from flask import current_app, has_app_context
+            if not has_app_context():
+                return
+            from .origins import store_origin
+            store_origin(current_app.config['DATABASE'], url, origin)
+        except Exception as exc:
+            logger.debug(f"Origine non mémorisée: {exc}")
 
     def _ensure_session(self):
         """Visite la page d'accueil pour obtenir le cookie de session et le jeton CSRF
@@ -938,6 +954,7 @@ class BedethequeScraper:
 
             logger.debug(f"Infos extraites: {info['title']} - {len(info['volumes'])} albums")
 
+            self._remember_origin(series_url, info.get('origin'))
             return info
 
         except Exception as e:

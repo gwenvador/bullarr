@@ -514,6 +514,10 @@ def _result_source_link(result):
     return result.get('thread_url') or ''  # VK : le message du forum
 
 
+# Préfixe du message d'un fichier déjà envoyé au client: rien à valider, il est déjà pris en charge.
+ALREADY_ADDED_PREFIX = "Déjà ajouté"
+
+
 def _download_result(app, result, series_id, title, vol_num):
     ""
     filename = result.get('filename') or result.get('title')
@@ -525,7 +529,7 @@ def _download_result(app, result, series_id, title, vol_num):
         duplicate = find_pending_download_duplicate(filename or title, series_id, vol_num)
     if duplicate:
         client_label = duplicate.get('client') or 'client'
-        return False, f"Déjà ajouté ({client_label}), téléchargement en cours ou en attente"
+        return False, f"{ALREADY_ADDED_PREFIX} ({client_label}), téléchargement en cours ou en attente"
 
     source = result.get('source')
     if source == 'telegram':
@@ -579,10 +583,14 @@ def _download_result(app, result, series_id, title, vol_num):
     if not link:
         return False, "Aucun lien de téléchargement"
     from blueprints.missing_monitor.downloader import MissingVolumeDownloader
-    return MissingVolumeDownloader().send_torrent_download(
+    sent, message = MissingVolumeDownloader().send_torrent_download(
         link, title, vol_num, series_id=series_id, filename=filename,
         source=source, source_link=_result_source_link(result)
     )
+    if not sent and '409' in str(message):
+        # qBittorrent répond 409 (conflit) quand le torrent est déjà dans le client.
+        return False, f"{ALREADY_ADDED_PREFIX} (qBittorrent), torrent déjà présent dans le client"
+    return sent, message
 
 
 # Articles français déplacés en fin de nom par beaucoup de releases/Telegram
@@ -947,8 +955,31 @@ def _review_candidate_matches_series(result, series_title, volume_number):
             or BedethequeScraper._match_score(series_title, title) >= 0.45)
 
 
-def _best_pack_result(results, title):
-    """Technical rationale and compatibility constraints for this code path."""
+# Marqueur d'un lot partiel dans un titre sans plage de tomes (« Intégrale Cycle 1 », « Partie 2 »…).
+_PARTIAL_BUNDLE_MARKER = re.compile(r'(?i)\b(?:cycle|partie|part|saison|season|volumes?|tomes?)[\s._-]*\d|\bt\d')
+
+
+def _pack_covers_series(item_title, size, missing_count):
+    """Le lot couvre-t-il toute la série cherchée ?
+
+    Oui si sa plage de tomes confirmée est au moins aussi large que le nombre de tomes à
+    récupérer, ou si c'est une « Intégrale » sans plage ni marqueur partiel (cycle, partie…).
+    Deux lots qui couvrent tout se départagent ensuite par le format puis par la disponibilité
+    (seeders), pas par le nombre de tomes que leur titre annonce."""
+    if size:
+        return bool(missing_count) and size >= missing_count
+    title = unquote(item_title or '')
+    if not re.search(r'(?i)\bint[eé]grale\b', title) or _PARTIAL_BUNDLE_MARKER.search(title):
+        return False
+    from blueprints.library.scanner import LibraryScanner
+    return bool(LibraryScanner.parse_filename(title).get('is_pack'))
+
+
+def _best_pack_result(results, title, missing_count=None):
+    """Meilleur lot (pack ou intégrale) parmi les résultats éligibles.
+
+    Ordre : couvre toute la série, puis (sinon) plage de tomes la plus large, puis mot-clé pack,
+    couleur, format (CBZ avant CBR avant PDF) et enfin la disponibilité (seeders, sources)."""
     from blueprints.library.routes import get_format_priority
     from blueprints.bedetheque.scraper import BedethequeScraper
 
@@ -976,16 +1007,19 @@ def _best_pack_result(results, title):
         # primer sur has_pack, mais deux résultats sans AUCUNE plage détectée (size=0
         # tous les deux) ne doivent pas se départager sur cette taille égale avant que
         # has_pack n'ait eu sa chance de trancher.
+        covers_all = _pack_covers_series(item_title, size, missing_count)
         packs.append((
-            bool(size), size or 0, has_pack,
+            covers_all,
+            # Les lots qui couvrent tout ne se comparent pas sur la taille annoncée.
+            False if covers_all else bool(size), 0 if covers_all else (size or 0), has_pack,
             not _is_black_and_white_release(item_title),
             -get_format_priority(fmt), _availability_count(r), r,
         ))
 
     if not packs:
         return None
-    packs.sort(key=lambda t: t[:6], reverse=True)
-    return packs[0][6]
+    packs.sort(key=lambda t: t[:7], reverse=True)
+    return packs[0][7]
 
 
 def run_auto_acquire_for_series(app, series_id, title, missing_volumes, gate_on_global_setting=False, label=None, search_mode='series'):
@@ -1085,7 +1119,7 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
             individual_results = [result for result, kind in bundle_rows if kind is None]
             best_pack = None
             if pack_search_enabled:
-                best_pack = _best_pack_result(results, title)
+                best_pack = _best_pack_result(results, title, missing_count=len(missing_volumes))
                 if best_pack:
                     pack_size = _detect_pack_size(best_pack.get('filename') or best_pack.get('title') or '')
                     pack_label = f"Pack ({pack_size} tomes)" if pack_size else "Pack"
@@ -1120,8 +1154,10 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
 
                 if best:
                     success = False
+                    already_added = False
                     try:
                         success, msg = _download_result(app, best, series_id, title, vol_num)
+                        already_added = not success and str(msg).startswith(ALREADY_ADDED_PREFIX)
                         print(f"  Tome {vol_num}: {msg}")
                         if success:
                             downloaded_count += 1
@@ -1133,7 +1169,7 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
                             download_lines.append(f"{vol_label} : {filename} ({source_label})")
                     except Exception as e:
                         print(f"Erreur téléchargement auto-acquire {title} vol {vol_num}: {e}")
-                    if not success:
+                    if not success and not already_added:
                         queue_manual_review(
                             series_id, title, vol_num, f'Tome {vol_num}', candidates,
                             'Résultat identifié, mais le téléchargement a échoué. Vérifiez le candidat.',
@@ -1194,8 +1230,10 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
 
                 if best:
                     success = False
+                    already_added = False
                     try:
                         success, msg = _download_result(app, best, series_id, title, vol_num)
+                        already_added = not success and str(msg).startswith(ALREADY_ADDED_PREFIX)
                         print(f"  Tome {vol_num}: {msg}")
                         if success:
                             downloaded_count += 1
@@ -1206,7 +1244,7 @@ def _run_auto_acquire_for_series_locked(app, series_id, title, missing_volumes, 
                             download_lines.append(f"{vol_label} : {filename} ({source_label})")
                     except Exception as e:
                         print(f"Erreur téléchargement auto-acquire {title} vol {vol_num}: {e}")
-                    if not success:
+                    if not success and not already_added:
                         queue_manual_review(
                             series_id, title, vol_num,
                             label or (f'Tome {vol_num}' if vol_num is not None else 'Album'),

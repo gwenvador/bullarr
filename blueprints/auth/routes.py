@@ -8,6 +8,8 @@ from authlib.integrations.flask_client import OAuth
 from werkzeug.security import check_password_hash, generate_password_hash
 import hmac
 import secrets
+import threading
+import time
 import requests
 
 from . import auth_bp
@@ -17,10 +19,60 @@ from .config_store import AUTH_MODES, load_oidc_config, save_oidc_config, normal
 # Endpoints toujours accessibles, même quand le SSO/OIDC est activé (sans quoi
 # l'utilisateur ne pourrait jamais atteindre le flux de connexion ou les assets statiques)
 _PUBLIC_ENDPOINTS = {
-    'auth.login', 'auth.login_password', 'auth.login_redirect', 'auth.callback',
+    'auth.login', 'auth.login_password', 'auth.login_redirect', 'auth.callback', 'auth.app_login',
     'auth.logout', 'auth.logout_provider',
     'static', 'serve_cover',
 }
+
+
+# Connexion SSO de l'application Android. Le fournisseur (passkeys) ne fonctionne pas dans une
+# WebView : l'app ouvre /login/redirect?app=1 dans le navigateur du téléphone ; à la fin du SSO,
+# Bullarr redirige vers l'adresse FIXE bullarr://auth avec un code à usage unique (jamais une
+# adresse fournie par le client), que l'app échange contre une session via POST /api/auth/app-login.
+# Un seul worker gunicorn (voir gunicorn.conf.py) : un dictionnaire en mémoire suffit ; au
+# redémarrage les codes en attente (60 s de validité) sont perdus, l'app recommence.
+APP_LOGIN_REDIRECT = 'bullarr://auth'
+APP_LOGIN_CODE_TTL_SECONDS = 60
+APP_LOGIN_MAX_PENDING_CODES = 100
+APP_LOGIN_MAX_FAILURES_PER_MINUTE = 10
+_app_login_codes = {}
+_app_login_failures = {}
+_app_login_lock = threading.Lock()
+
+
+def _purge_app_login_state(now):
+    for code in [code for code, (expires, _user) in _app_login_codes.items() if expires <= now]:
+        del _app_login_codes[code]
+    for address in [a for a, times in _app_login_failures.items() if not [t for t in times if now - t < 60]]:
+        del _app_login_failures[address]
+
+
+def _issue_app_login_code(user):
+    now = time.monotonic()
+    code = secrets.token_urlsafe(32)
+    with _app_login_lock:
+        _purge_app_login_state(now)
+        if len(_app_login_codes) >= APP_LOGIN_MAX_PENDING_CODES:
+            oldest = min(_app_login_codes, key=lambda key: _app_login_codes[key][0])
+            del _app_login_codes[oldest]
+        _app_login_codes[code] = (now + APP_LOGIN_CODE_TTL_SECONDS, dict(user))
+    return code
+
+
+def _consume_app_login_code(code, address):
+    """Utilisateur lié au code (le code est détruit), None si inconnu/expiré, False si trop d'échecs."""
+    now = time.monotonic()
+    with _app_login_lock:
+        _purge_app_login_state(now)
+        failures = [t for t in _app_login_failures.get(address, []) if now - t < 60]
+        if len(failures) >= APP_LOGIN_MAX_FAILURES_PER_MINUTE:
+            return False
+        entry = _app_login_codes.pop(code, None) if isinstance(code, str) and code else None
+        if entry is None or entry[0] <= now:
+            failures.append(now)
+            _app_login_failures[address] = failures
+            return None
+        return entry[1]
 
 
 def _auth_mode(config):
@@ -181,6 +233,12 @@ def login_redirect():
     if not _oidc_ready(config):
         return _render_login(config, status=500)
 
+    # Connexion depuis l'application Android : à la fin du SSO, retour vers l'app (voir callback).
+    if request.args.get('app') == '1':
+        session['app_login'] = True
+    else:
+        session.pop('app_login', None)
+
     try:
         oidc_client = _get_oidc_client(config)
         redirect_uri = url_for('auth.callback', _external=True)
@@ -201,16 +259,43 @@ def callback():
         token = oidc_client.authorize_access_token()
         userinfo = token.get('userinfo') or oidc_client.userinfo(token=token)
 
-        session['user'] = {
+        user = {
             'sub': userinfo.get('sub'),
             'email': userinfo.get('email'),
             'name': userinfo.get('name') or userinfo.get('preferred_username') or userinfo.get('email'),
         }
 
+        if session.pop('app_login', False):
+            # Application Android : pas de session dans le navigateur, un code à usage unique
+            # vers l'adresse fixe de l'app (jamais une adresse venant de la requête).
+            return redirect(f'{APP_LOGIN_REDIRECT}?code={_issue_app_login_code(user)}')
+
+        session['user'] = user
         next_url = session.pop('next_url', None) or '/'
         return redirect(next_url)
     except Exception as e:
         return _render_login(config, error=f"Erreur lors de l'authentification SSO : {e}", status=500)
+
+
+@auth_bp.route('/api/auth/app-login', methods=['POST'])
+def app_login():
+    """Échange le code reçu par l'application Android (bullarr://auth?code=...) contre une session.
+
+    Publique, sans jeton CSRF : le code est la preuve, valable 60 s et utilisable une seule fois.
+    La réponse porte le cookie de session ; /api/auth/csrf donne ensuite le jeton des écritures."""
+    config = load_oidc_config()
+    if not _oidc_enabled(config):
+        return jsonify({'success': False, 'error': 'Connexion SSO non activée'}), 400
+    data = request.get_json(silent=True) or {}
+    user = _consume_app_login_code(data.get('code'), request.remote_addr or '-')
+    if user is False:
+        return jsonify({'success': False, 'error': 'Trop de tentatives, réessayez dans une minute'}), 429
+    if user is None:
+        return jsonify({'success': False, 'error': 'Code invalide ou expiré'}), 400
+    session.clear()
+    session['user'] = {**user, 'auth_method': 'oidc-app'}
+    session['csrf_token'] = secrets.token_urlsafe(32)
+    return jsonify({'success': True, 'user': session['user']})
 
 
 @auth_bp.route('/logout')

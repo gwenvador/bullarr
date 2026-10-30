@@ -35,7 +35,8 @@ def _warmed_bdgest_session():
     mais pour bdgest.com - domaine différent, cookie Cloudflare distinct de
     bedetheque.com malgré le site jumeau (confirmé en pratique: 403 sur un fetch nu ici
     aussi, 200 une fois la page d'accueil visitée d'abord)."""
-    session = requests.Session()
+    from blueprints.bedetheque.guard import GuardedSession
+    session = GuardedSession()
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -47,6 +48,29 @@ def _warmed_bdgest_session():
     except Exception:
         pass
     return session
+
+
+def _fetch_bdgest_page(url):
+    """Page BDGest (adresse fixée par le code, pas par l'utilisateur) lue avec la session
+    réchauffée elle-même: sa connexion et ses cookies Cloudflare servent à la requête, et la
+    garde espace l'accueil et la page (1,5 s). Via safe_external_get, la page partait sur une
+    nouvelle connexion 0,16 s après l'accueil et Cloudflare la refusait (403)."""
+    response = _warmed_bdgest_session().get(url, timeout=20)
+    response.raise_for_status()
+    if len(response.content) > 12 * 1024 * 1024:
+        raise ValueError('Page BDGest trop volumineuse')
+    return response
+
+
+def _upstream_error_response(exc):
+    """Message lisible quand BDGest refuse ou que la garde anti-blocage est en pause."""
+    from blueprints.bedetheque.guard import BedethequeGuardError
+    if isinstance(exc, BedethequeGuardError):
+        return jsonify({'success': False, 'error': str(exc)}), 503
+    status = getattr(getattr(exc, 'response', None), 'status_code', None)
+    if status in (403, 429):
+        return jsonify({'success': False, 'error': f"BDGest a refusé la requête (HTTP {status}, protection anti-robot) - réessayez plus tard"}), 502
+    return None
 
 
 @bdgest_bp.route('/top-annuel', methods=['GET'])
@@ -87,8 +111,7 @@ def top_annuel():
                 url += f'&Origine={origine_param}'
             # Voir _warmed_bdgest_session plus haut - même 403 Cloudflare qu'un fetch nu
             # vers bedetheque.com sans session réchauffée.
-            response = safe_external_get(url, session=_warmed_bdgest_session(), timeout=20, max_bytes=12 * 1024 * 1024)
-            response.raise_for_status()
+            response = _fetch_bdgest_page(url)
             soup = BeautifulSoup(response.content, 'html.parser')
             items = parse_bdgest_top(soup)
             if not items:
@@ -109,4 +132,81 @@ def top_annuel():
         items = [dict(item, already_owned=_match_series_id(item) is not None, series_id=_match_series_id(item)) for item in items]
         return jsonify({'success': True, 'annee': annee, 'origine': origine, 'items': items, 'cached': was_cached})
     except Exception as exc:
+        known = _upstream_error_response(exc)
+        if known:
+            return known
+        return jsonify({'success': False, 'error': 'Erreur interne'}), 502
+
+
+_SORTIES_PAGES = {'bd': 'sorties_bd', 'manga': 'sorties_manga', 'comics': 'sorties_comics'}
+
+
+@bdgest_bp.route('/sorties', methods=['GET'])
+def sorties():
+    """Calendrier des sorties BDGest (https://www.bdgest.com/sorties_bd?vue=liste), par
+    catégorie et par mois (« MM/AAAA »; vide = « ces jours-ci »), avec détection « série déjà
+    en bibliothèque » par titre. Mis en cache comme les autres onglets d'Enrichir (rafraîchi
+    à la demande: ?refresh=1)."""
+    categorie = request.args.get('categorie', 'bd').strip().lower()
+    if categorie not in _SORTIES_PAGES:
+        return jsonify({'success': False, 'error': 'Catégorie inconnue'}), 400
+    mois = request.args.get('mois', '').strip()
+    year = time.gmtime().tm_year
+    if mois:
+        match = re.fullmatch(r'(0[1-9]|1[0-2])/(20\d{2})', mois)
+        if not match:
+            return jsonify({'success': False, 'error': 'Mois invalide'}), 400
+        year = int(match.group(2))
+
+    from bs4 import BeautifulSoup
+    from blueprints.bedetheque.catalog_index import get_cached_scrape, save_scrape_cache
+    from blueprints.bedetheque.parsers import parse_bdgest_sorties
+    cache_key = f'bdgest:sorties:{categorie}:{mois or "courant"}'
+    force_refresh = request.args.get('refresh') in ('1', 'true')
+    try:
+        cached_items = None if force_refresh else get_cached_scrape(cache_key)
+        if cached_items is not None:
+            items = list(cached_items)
+            was_cached = True
+        else:
+            url = f'https://www.bdgest.com/{_SORTIES_PAGES[categorie]}?vue=liste'
+            if mois:
+                url += '&DL=' + mois.replace('/', '%2F')
+            response = _fetch_bdgest_page(url)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            if not mois:
+                # « Ces jours-ci » enjambe parfois deux années (décembre -> janvier): on
+                # déduit l'année de chaque jour par rapport à aujourd'hui.
+                today = time.gmtime()
+                items = []
+                for item in parse_bdgest_sorties(soup, today.tm_year):
+                    month = int(item['date'][5:7])
+                    if month - today.tm_mon > 6:
+                        item['date'] = f"{today.tm_year - 1:04d}{item['date'][4:]}"
+                    elif today.tm_mon - month > 6:
+                        item['date'] = f"{today.tm_year + 1:04d}{item['date'][4:]}"
+                    items.append(item)
+            else:
+                items = parse_bdgest_sorties(soup, year)
+            if not items:
+                return jsonify({'success': False, 'error': "Aucune sortie trouvée - la mise en page de BDGest a peut-être changé"}), 502
+            save_scrape_cache(cache_key, items)
+            was_cached = False
+
+        from series_title_match import index_series_by_title
+        conn = sqlite3.connect(current_app.config['DATABASE'])
+        rows = conn.execute("SELECT id, title FROM series WHERE title IS NOT NULL").fetchall()
+        conn.close()
+        index = index_series_by_title(rows, lambda r: r[1], _normalize_title)
+        owned = []
+        for item in items:
+            candidates = index.get(_normalize_title(item['title'])) or []
+            series_id = candidates[0][0] if candidates else None
+            owned.append(dict(item, already_owned=series_id is not None, series_id=series_id))
+        return jsonify({'success': True, 'categorie': categorie, 'mois': mois, 'items': owned, 'cached': was_cached})
+    except Exception as exc:
+        known = _upstream_error_response(exc)
+        if known:
+            return known
+        logger.exception('Calendrier des sorties BDGest')
         return jsonify({'success': False, 'error': 'Erreur interne'}), 502

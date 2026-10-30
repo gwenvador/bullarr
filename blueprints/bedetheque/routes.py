@@ -777,6 +777,17 @@ def get_bedetheque_info():
         }), 500
 
 
+SERIES_NOT_FOUND = 'Impossible de trouver la série sur Bedetheque'
+
+
+def _series_not_found_error():
+    """Message d'échec d'un match Bédéthèque. Pendant une pause de la garde, la recherche échoue
+    sans avoir eu lieu: on le dit plutôt que d'annoncer une série introuvable. Le texte normal
+    reste identique, l'interface s'en sert pour proposer le choix manuel de la fiche."""
+    from blueprints.bedetheque.guard import get_guard
+    return get_guard().blocked_message() or SERIES_NOT_FOUND
+
+
 def _perform_series_match(series_id, series_title, search_by, value, write_volumes=True):
     """Cœur de enrich_series (recherche Bédéthèque + sauvegarde + alignement titre/dossier)
     - factorisé pour être appelé directement par un appelant non-HTTP (voir
@@ -806,7 +817,7 @@ def _perform_series_match(series_id, series_title, search_by, value, write_volum
                 break
 
     if not info:
-        return False, None, 'Impossible de trouver la série sur Bedetheque'
+        return False, None, _series_not_found_error()
 
     db_manager = BedethequeDatabase(current_app.config['DATABASE'])
     save_result = db_manager.update_series_bedetheque_info(series_id, info)
@@ -1563,7 +1574,7 @@ def update_metadata_series(series_id):
 
         info = _ensure_bedetheque_match(series_id, series['title'], series['bedetheque_url'], db_manager, scraper, volume_web_hint)
         if not info:
-            return jsonify({'success': False, 'error': 'Impossible de trouver la série sur Bedetheque'}), 404
+            return jsonify({'success': False, 'error': _series_not_found_error()}), 404
 
         db_manager.update_series_bedetheque_info(series_id, info)
 
@@ -1633,7 +1644,7 @@ def _resolve_volume_bedetheque_fields(cursor, vol, prefer_cache=False):
         volume_web_hint = _find_volume_bedetheque_web_hint(cursor, series_id) if not vol['bedetheque_url'] else None
         info = _ensure_bedetheque_match(series_id, vol['series_title'], vol['bedetheque_url'], db_manager, scraper, volume_web_hint)
         if not info:
-            return {}, 'Impossible de trouver la série sur Bedetheque', None
+            return {}, _series_not_found_error(), None
         bd_volume = match_bedetheque_volume(info.get('volumes') or [], dict(vol))
     # Résumé propre à ce tome depuis la page de son album (voir update_metadata_series -
     # même choix de ne plus restreindre la récupération au format réinscriptible)
@@ -2955,7 +2966,7 @@ def bedetheque_series_origins():
     Comics / Manga dans Nouveautés. Corps : {"urls": [...]} (200 au plus). Réponse :
     {"success", "origins": {url: {"origin", "kind": "bd"|"comics"|"manga"|null}}, "pending"}
     - pending : adresses pas encore lues (au plus 6 pages lues par appel), à redemander."""
-    from .origins import resolve_origins, origin_kind, normalize_series_url
+    from .origins import resolve_origins, origin_kind, normalize_series_url, origin_fetch_limited
     data = request.get_json(silent=True) or {}
     urls = data.get('urls') or []
     if not isinstance(urls, list):
@@ -2975,4 +2986,25 @@ def bedetheque_series_origins():
         canonical = normalize_series_url(url)
         if canonical in origins:
             answered[url] = {'origin': origins[canonical], 'kind': origin_kind(origins[canonical])}
-    return jsonify({'success': True, 'pending': pending, 'origins': answered})
+    # limited : budget horaire épuisé ou pause du site - la page n'insiste pas, elle réessaiera plus tard.
+    return jsonify({'success': True, 'pending': pending, 'origins': answered,
+                    'limited': bool(pending) and origin_fetch_limited()})
+
+
+@bedetheque_bp.route('/guard/status', methods=['GET'])
+def bedetheque_guard_status():
+    """Appels vers Bédéthèque / BDGest : compteurs (1 h, 24 h), limite et pause éventuelle."""
+    from .guard import get_guard
+    return jsonify({'success': True, **get_guard().status()})
+
+
+@bedetheque_bp.route('/guard/config', methods=['POST'])
+def bedetheque_guard_config():
+    """Réglages de la garde (min_interval_seconds, daily_limit, block_pause_minutes) ; reset=true lève la pause."""
+    from .guard import get_guard
+    data = request.get_json(silent=True) or {}
+    guard = get_guard()
+    if data.get('reset'):
+        guard.reset_block()
+    guard.save_config({key: data[key] for key in ('min_interval_seconds', 'daily_limit', 'block_pause_minutes') if key in data})
+    return jsonify({'success': True, **guard.status()})

@@ -243,12 +243,13 @@ def search_ebdz_threads(query, limit=40):
         ebdz_conn.close()
         return []
 
+    from blueprints.ebdz.removed import active_and
     placeholders = ','.join('?' * len(matched_ids))
     ebdz_cursor.execute(f'''
         SELECT thread_id, thread_title, thread_url, forum_category,
                COUNT(*) AS file_count, GROUP_CONCAT(DISTINCT volume)
         FROM ed2k_links
-        WHERE id IN ({placeholders})
+        WHERE id IN ({placeholders}){active_and(ebdz_cursor)}
         GROUP BY thread_id
         ORDER BY thread_title
         LIMIT ?
@@ -309,9 +310,13 @@ def search_ed2k():
             # Vérifier si la table ed2k_links existe
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ed2k_links'")
             if cursor.fetchone() is not None:
+                from blueprints.ebdz.removed import active_and, has_removed_column
+                # removed_at : fichier retiré du sujet. Un sujet ciblé (thread_id) les montre, marqués ;
+                # une recherche libre ne propose que les fichiers encore présents.
                 sql = '''
                     SELECT thread_id, thread_title, thread_url, forum_category, cover_image,
-                           link, filename, filesize, volume, description
+                           link, filename, filesize, volume, description''' + (
+                    ', removed_at' if has_removed_column(cursor) else ', NULL') + '''
                     FROM ed2k_links
                     WHERE 1=1
                 '''
@@ -351,6 +356,8 @@ def search_ed2k():
                     sql += ' AND forum_category = ?'
                     params.append(category)
 
+                if not thread_id:
+                    sql += active_and(cursor)
                 sql += ' ORDER BY thread_id, volume' + limit_clause
 
                 if no_match:
@@ -399,6 +406,7 @@ def search_ed2k():
                         'filesize': row[7],
                         'volume': row[8],
                         'description': row[9],
+                        'removed_at': row[10],
                         'parsed_volume': parsed_volume_label,
                         'resolution': parsed['resolution'],
                         'author': parsed['author'],

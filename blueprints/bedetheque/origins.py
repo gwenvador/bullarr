@@ -10,19 +10,63 @@ retentée après ORIGIN_RETRY_DAYS.
 """
 import re
 import sqlite3
+import threading
 import time
+from collections import deque
 from urllib.parse import urlparse
 
 ORIGIN_KINDS = {'europe': 'bd', 'usa': 'comics', 'asie': 'manga'}
 # Libellés affichés par Bédéthèque (ex. « Franco-Belge » pour Europe, « Manga » pour Asie).
 ORIGIN_LABELS = {'franco-belge': 'Europe', 'europe': 'Europe', 'comics': 'USA', 'usa': 'USA',
                  'manga': 'Asie', 'asie': 'Asie', 'autre': 'Autre'}
-ORIGIN_RETRY_DAYS = 7
+ORIGIN_RETRY_DAYS = 30
 ORIGIN_FETCH_INTERVAL_SECONDS = 0.5
+# Lectures de fiches au plus par heure pour cet usage (Nouveautés) ; le reste attend l'heure suivante.
+ORIGIN_FETCH_MAX_PER_HOUR = 60
+_recent_fetches = deque()
+_recent_fetches_lock = threading.Lock()
 # Mise en page actuelle : <li title="Origine de la série"><i class="… bdt-ori-N"></i> Manga</li>
 _ORIGIN_RE = re.compile(r'title="Origine de la s(?:é|&eacute;|e)rie"[^>]*>(?:\s*<i[^>]*></i>)?\s*([^<]+?)\s*<',
                         re.IGNORECASE)
 _LABEL_RE = re.compile(r'<label>\s*Origine\s*:\s*</label>\s*([^<]+?)\s*<', re.IGNORECASE)
+
+
+def origin_budget_left(now=None):
+    """Lectures de fiches encore permises cette heure pour les origines."""
+    now = time.time() if now is None else now
+    with _recent_fetches_lock:
+        while _recent_fetches and now - _recent_fetches[0] > 3600:
+            _recent_fetches.popleft()
+        return max(0, ORIGIN_FETCH_MAX_PER_HOUR - len(_recent_fetches))
+
+
+def origin_fetch_limited():
+    """True si les origines manquantes ne seront pas lues maintenant : budget horaire épuisé,
+    pause du site ou limite des 24 h (voir guard.py)."""
+    if origin_budget_left() <= 0:
+        return True
+    try:
+        from .guard import get_guard
+        return get_guard().is_limited()
+    except Exception:
+        return False
+
+
+def store_origin(database, url, origin):
+    """Mémorise l'origine d'une fiche déjà lue pour une autre raison (ajout, mise à jour)."""
+    canonical = normalize_series_url(url)
+    value = ORIGIN_LABELS.get((origin or '').strip().lower(), (origin or '').strip())
+    if not canonical or not value:
+        return False
+    conn = sqlite3.connect(database, timeout=30.0)
+    try:
+        _ensure_cache(conn)
+        conn.execute('INSERT OR REPLACE INTO bedetheque_origin_cache (url, origin, fetched_at) VALUES (?, ?, ?)',
+                     (canonical, value, time.time()))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
 def origin_kind(origin):
@@ -89,14 +133,20 @@ def resolve_origins(database, urls, fetch_page=None, fetch_limit=6):
                 result[url] = origin or None
         missing = [url for url in wanted if url not in result]
         fetched = 0
+        allowed = min(fetch_limit, origin_budget_left())
+        from .guard import BedethequeGuardError
         for url in missing:
-            if fetch_page is None or fetched >= fetch_limit:
+            if fetch_page is None or fetched >= allowed:
                 break
             if fetched:
                 time.sleep(ORIGIN_FETCH_INTERVAL_SECONDS)
             fetched += 1
+            with _recent_fetches_lock:
+                _recent_fetches.append(time.time())
             try:
                 origin = parse_origin(fetch_page(url))
+            except BedethequeGuardError:
+                break  # pause du site ou limite atteinte : on s'arrête, rien n'est mémorisé
             except Exception:
                 continue  # réessayé au prochain appel
             conn.execute('INSERT OR REPLACE INTO bedetheque_origin_cache (url, origin, fetched_at) VALUES (?, ?, ?)',

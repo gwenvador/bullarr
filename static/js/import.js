@@ -540,6 +540,24 @@ function _pendingImportingNow(pending) {
     return pending.status === 'importing' && (importingFilepaths.size > 0 || !!currentlyProcessingFile);
 }
 
+// Téléchargement terminé dont le contenu est un dossier de fichiers que Bullarr ne sait pas
+// importer (images en vrac): il ne sera jamais repris seul. Retourne le dossier concerné, sauf si
+// des fichiers importables du même téléchargement existent déjà.
+function _pendingIncompatibleFolder(pending) {
+    if (pending.status !== 'completed') return null;
+    const folder = incompatibleFolders.find(f => f.pack_download_id === pending.id);
+    if (!folder) return null;
+    const hasImportable = importFiles.some(file => file.pack_download_id === pending.id
+        || (file.destination && file.destination.tracking_id === pending.id));
+    return hasImportable ? null : folder;
+}
+
+function _incompatibleFolderStatusHtml(folder) {
+    const extensions = (folder.sample_extensions || []).join(', ') || 'fichiers inconnus';
+    const label = `Dossier de ${folder.file_count || '?'} fichier(s) (${extensions})`;
+    return `<span class="import-download-error" data-tooltip="${escapeHtml(label)} : non importable automatiquement - convertir en CBZ puis le placer dans le dossier d'import">${svgIcon('alert-triangle')} Non importable automatiquement</span>`;
+}
+
 function _pendingDownloadRowHtml(pending) {
     const hasProgress = !!pending.bytes_total;
     const progressPct = hasProgress ? Math.min(100, Math.max(0, (pending.bytes_downloaded || 0) * 100 / pending.bytes_total)) : 0;
@@ -554,6 +572,8 @@ function _pendingDownloadRowHtml(pending) {
             // (openTrackingEditModal, déjà existant) reste le seul moyen de le corriger.
             : pending.status === 'completed' && pending.needs_volume_correction
             ? `<span class="import-download-error" data-tooltip="Le numéro de tome n'a pas pu être identifié - correction manuelle nécessaire (crayon)">${svgIcon('alert-triangle')} Tome à préciser</span>`
+            : _pendingIncompatibleFolder(pending)
+            ? _incompatibleFolderStatusHtml(_pendingIncompatibleFolder(pending))
             : pending.status === 'completed' && pending.needs_series_correction
             ? `<span class="import-download-error" data-tooltip="Aucune série identifiée pour ce téléchargement - le scan automatique ne peut pas le reprendre, rattachement manuel nécessaire (crayon)">${svgIcon('alert-triangle')} Série à préciser</span>`
             : _localCopyStatusHtml(pending) && !pending.awaiting_closure

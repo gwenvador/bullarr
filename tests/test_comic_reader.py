@@ -80,10 +80,10 @@ class ComicReaderTest(unittest.TestCase):
 
 
 class ComicReaderWiringTest(unittest.TestCase):
-    def test_read_icon_next_to_buy_and_oneshot_button(self):
+    def test_read_icon_next_to_buy_and_series_read_button(self):
         js = (ROOT / 'static/js/library.js').read_text()
         self.assertIn('${buildVolumeReadIconHtml(v)}\n        ${buildVolumeBuyItemsHtml(v)}', js)
-        self.assertIn('class="series-read-btn" onclick="openComicReader(', js)
+        self.assertIn("read.className = 'series-read-btn'", js)
         for template in ('templates/series-detail.html', 'templates/library.html'):
             self.assertIn("js/reader.js", (ROOT / template).read_text())
 
