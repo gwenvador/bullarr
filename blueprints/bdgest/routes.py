@@ -12,6 +12,7 @@ Routes pour le Top 100 annuel BDGest (https://www.bdgest.com/top/annuel)
 from flask import request, jsonify, current_app
 from . import bdgest_bp
 from network_safety import safe_external_get
+from error_utils import error_message
 import requests
 import sqlite3
 import time
@@ -66,7 +67,7 @@ def _upstream_error_response(exc):
     """Message lisible quand BDGest refuse ou que la garde anti-blocage est en pause."""
     from blueprints.bedetheque.guard import BedethequeGuardError
     if isinstance(exc, BedethequeGuardError):
-        return jsonify({'success': False, 'error': str(exc)}), 503
+        return jsonify({'success': False, 'error': error_message(exc)}), 503
     status = getattr(getattr(exc, 'response', None), 'status_code', None)
     if status in (403, 429):
         return jsonify({'success': False, 'error': f"BDGest a refusé la requête (HTTP {status}, protection anti-robot) - réessayez plus tard"}), 502

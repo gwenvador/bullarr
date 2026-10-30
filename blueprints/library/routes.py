@@ -1265,7 +1265,7 @@ def ebdz_match_series(series_id):
             try:
                 live = scrape_thread_now(thread_id, load_ebdz_config(), current_app.config['DB_FILE'])
             except EbdzThreadError as exc:
-                return jsonify({'success': False, 'error': str(exc)}), 502
+                return jsonify({'success': False, 'error': error_message(exc)}), 502
             ebdz_conn = sqlite3.connect(current_app.config['DB_FILE'], timeout=30.0)
             rows = ebdz_conn.execute('''
                 SELECT volume, thread_url, thread_title FROM ed2k_links WHERE thread_id = ?''' + __import__('blueprints.ebdz.removed', fromlist=['active_and']).active_and(ebdz_conn) + '''
