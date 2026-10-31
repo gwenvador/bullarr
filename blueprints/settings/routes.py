@@ -25,6 +25,13 @@ def settings_page():
     return render_template('settings.html')
 
 
+@settings_bp.route('/api/updates')
+def api_updates():
+    """Version installée et dernières versions publiées (Bullarr, application Android)."""
+    from .updates import update_status
+    return jsonify({'success': True, **update_status(current_app.config.get('APP_VERSION', ''))})
+
+
 @settings_bp.route('/history')
 def history_page():
     """Page Historique: imports + téléchargements automatiques, page à part entière

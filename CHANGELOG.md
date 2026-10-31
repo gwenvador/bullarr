@@ -1,5 +1,36 @@
 # Changements
 
+## v9.2 — 2026-10-31
+
+[Comparer v9.1 et v9.2](https://github.com/gwenvador/bullarr/compare/v9.1...v9.2)
+
+Mise à jour directe depuis v9.1, sans manipulation : au premier démarrage, la base gagne la colonne `series.added_at` (remplie depuis l'historique des actions), l'ancien cache RSS (`rss_entries_cache.json`) est repris dans une base SQLite (`rss_entries_cache.db`) et le catalogue Bédéthèque reçoit sa table d'origines. Les dépendances changent (pypdf 6.21.4, Authlib 1.9.1) : reconstruisez l'image. La v9.1 affichait « 9.0 » dans « À propos » : corrigé.
+
+### Nouveautés
+
+- Affichage en moins d'une seconde (6 à 7 s auparavant) : les lignes RSS sont lues directement en base (les 100 plus récentes de l'ensemble des flux, et non 100 par flux), les nouvelles releases sont annotées en arrière-plan (elles s'affichent d'abord sans annotation puis se complètent), les titres déjà normalisés sont mémorisés et les fichiers en attente d'import sont lus en base au lieu d'un scan complet des dossiers.
+- Le cache RSS est une vraie base SQLite, une ligne par release et par flux, annotation comprise : le site et l'application Android lisent la même réponse.
+- Origines Bédéthèque (BD, Comics, Manga) : chaque origine lue est ajoutée au catalogue local, séparément de l'index des séries pour survivre à sa reconstruction, et reprise au démarrage depuis la bibliothèque et l'ancien cache ; elles sont aussi gardées dans le navigateur. Bédéthèque n'est appelée que pour une série jamais vue.
+- Les fenêtres « Matcher la série » (EBDZ, Telegram, RSS) reprennent le sélecteur de la page Import : champ « Série » avec recherche, entrée « ➕ Créer une nouvelle série », « Nom de la nouvelle série » avec la fenêtre de recherche Bédéthèque (couvertures, collage d'adresse), puis Annuler / Valider.
+
+### Bibliothèque
+
+- Tableau : nouvelle colonne « Date d'ajout » et colonne « Dernière update » (date du dernier changement de la série : album importé ou remplacé, renommage, conversion, suppression d'album) à la place de « Dernier scan ».
+- Tableau sur petit écran : le tableau n'est plus un second conteneur défilant et les colonnes de droite sont atteignables ; la barre de défilement du haut suit la largeur réelle du tableau, même après un tri ou un filtre.
+
+### Activités (Import)
+
+- La reconnaissance du format d'une archive ne relit plus les fichiers en cours de copie en entier : le scan de la page pouvait durer plusieurs minutes et n'affichait rien.
+- Un lien de téléchargement qui n'est pas un fichier torrent (page web, erreur de l'indexeur) est signalé clairement au lieu d'un « HTTP 415 » de qBittorrent.
+
+### Configuration
+
+- « À propos » : version de Bullarr, dernière version de l'application Android à côté (la version est le lien vers l'APK) et, quand une version plus récente est publiée, un bouton « Mise à jour disponible » vers la release. Lecture de l'API publique de GitHub, mise en cache 6 heures.
+
+### Dépendances
+
+- pypdf 6.21.4 et Authlib 1.9.1.
+
 ## v9.1 — 2026-10-30
 
 [Comparer v9.0 et v9.1](https://github.com/gwenvador/bullarr/compare/v9.0...v9.1)

@@ -3,6 +3,7 @@ Routes pour le scraper ebdz.net
 """
 from flask import request, jsonify, current_app
 from . import ebdz_bp
+import functools
 import json
 import logging
 import os
@@ -303,6 +304,16 @@ def auto_scrape_config():
             return jsonify({'success': False, 'error': 'Erreur interne'}), 500
 
 
+@functools.lru_cache(maxsize=50000)
+def _cached_title_match_key(title):
+    """Clé de rapprochement d'un titre (normalisation, article final...). Fonction pure: mémorisée, car les
+    mêmes titres de la bibliothèque et des sujets étaient renormalisés plusieurs fois à chaque ouverture
+    de Nouveautés (2 500 appels, ~0,14 s)."""
+    from blueprints.search.routes import normalize_search_text, ebdz_core_title
+    from blueprints.library.scanner import LibraryScanner
+    return normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title)))
+
+
 def _build_nouveautes_title_match_index(series_rows, title_match_key):
     """Indexe les séries locales par clé de titre, sans jamais choisir entre deux
     candidates. Les nouveautés peuvent alors ouvrir une fiche et son lien Bédéthèque
@@ -377,8 +388,7 @@ def latest_scrape():
         # utilisés ici pour already_owned mais jamais renvoyés au frontend).
         from blueprints.missing_monitor.searcher import MissingVolumeSearcher
 
-        def _title_match_key(title):
-            return normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title)))
+        _title_match_key = _cached_title_match_key
 
         library_conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
         library_cursor = library_conn.cursor()
@@ -956,34 +966,118 @@ def _rss_persistent_cache_path():
     return os.path.join(os.path.dirname(config_path), 'rss_entries_cache.json')
 
 
-def _load_rss_persistent_cache(path):
+def _rss_db_path(path):
+    """Base SQLite du cache RSS, à côté du chemin historique en .json (data/rss_entries_cache.db)."""
+    return os.path.splitext(path)[0] + '.db'
+
+
+def _rss_db_connect(path):
+    conn = sqlite3.connect(_rss_db_path(path), timeout=30.0)
+    conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('CREATE TABLE IF NOT EXISTS rss_feeds (feed_key TEXT PRIMARY KEY, fetched_at REAL NOT NULL)')
+    # Une ligne par release et par flux, dans l'ordre du flux (position); l'annotation calculée
+    # (série reconnue, tome possédé, origine...) est rangée sur la même ligne.
+    conn.execute('''CREATE TABLE IF NOT EXISTS rss_entries (
+        feed_key TEXT NOT NULL, position INTEGER NOT NULL, entry_key TEXT NOT NULL, date TEXT,
+        entry_json TEXT NOT NULL, annotated_json TEXT, PRIMARY KEY (feed_key, position))''')
+    conn.execute('CREATE INDEX IF NOT EXISTS rss_entries_key ON rss_entries (feed_key, entry_key)')
+    return conn
+
+
+def _read_rss_db(conn):
+    cache = {}
+    for feed_key, fetched_at in conn.execute('SELECT feed_key, fetched_at FROM rss_feeds'):
+        cache[feed_key] = {'fetched_at': fetched_at, 'entries': []}
+    annotated = {}
+    for feed_key, entry_json, annotated_json in conn.execute(
+            'SELECT feed_key, entry_json, annotated_json FROM rss_entries ORDER BY feed_key, position'):
+        feed = cache.setdefault(feed_key, {'fetched_at': 0, 'entries': []})
+        feed['entries'].append(json.loads(entry_json))
+        if annotated_json:
+            annotated.setdefault(feed_key, []).append(json.loads(annotated_json))
+    for feed_key, items in annotated.items():
+        cache[feed_key]['annotated_entries'] = items
+    return cache
+
+
+def _write_rss_feed(conn, feed_key, feed):
+    annotated_by_key = {}
+    for item in feed.get('annotated_entries') or []:
+        if isinstance(item, dict):
+            annotated_by_key.setdefault(_rss_entry_key(item), item)
+    conn.execute('DELETE FROM rss_entries WHERE feed_key = ?', (feed_key,))
+    conn.execute('INSERT OR REPLACE INTO rss_feeds (feed_key, fetched_at) VALUES (?, ?)',
+                 (feed_key, float(feed.get('fetched_at') or 0)))
+    rows = []
+    used = set()
+    for position, entry in enumerate(feed.get('entries') or []):
+        if not isinstance(entry, dict):
+            continue
+        entry_key = _rss_entry_key(entry)
+        annotation = annotated_by_key.get(entry_key) if entry_key not in used else None
+        used.add(entry_key)
+        rows.append((feed_key, position, entry_key, str(entry.get('date') or ''),
+                     json.dumps(entry, ensure_ascii=False),
+                     json.dumps(annotation, ensure_ascii=False) if annotation is not None else None))
+    conn.executemany('INSERT INTO rss_entries (feed_key, position, entry_key, date, entry_json, annotated_json) '
+                     'VALUES (?, ?, ?, ?, ?, ?)', rows)
+
+
+def _migrate_rss_json(path, conn):
+    """Reprend l'ancien fichier JSON dans la base, une seule fois, puis le met de côté."""
+    if not os.path.exists(path) or conn.execute('SELECT 1 FROM rss_feeds LIMIT 1').fetchone():
+        return
     try:
         with open(path, encoding='utf-8') as handle:
-            value = json.load(handle)
-        return value if isinstance(value, dict) else {}
-    except (FileNotFoundError, OSError, ValueError, TypeError):
+            legacy = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        return
+    if isinstance(legacy, dict):
+        for feed_key, feed in legacy.items():
+            if isinstance(feed, dict):
+                _write_rss_feed(conn, feed_key, feed)
+        conn.commit()
+    try:
+        os.replace(path, path + '.migrated')
+    except OSError:
+        pass
+
+
+def _load_rss_persistent_cache(path):
+    try:
+        conn = _rss_db_connect(path)
+        try:
+            _migrate_rss_json(path, conn)
+            return _read_rss_db(conn)
+        finally:
+            conn.close()
+    except (sqlite3.Error, OSError, ValueError, TypeError):
         return {}
 
 
 def _update_rss_persistent_cache(path, update):
-    """Merge against the latest cache under a thread AND process lock."""
-    import fcntl
-    import tempfile
-    with _rss_persistent_cache_lock, open(path + '.lock', 'a') as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        cache = _load_rss_persistent_cache(path)
-        update(cache)
-        temp_path = None
+    """Merge against the latest cache in one write transaction (thread and process safe)."""
+    with _rss_persistent_cache_lock:
+        conn = _rss_db_connect(path)
         try:
-            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
-                                             dir=os.path.dirname(path), delete=False) as handle:
-                temp_path = handle.name
-                json.dump(cache, handle, ensure_ascii=False)
-            os.replace(temp_path, path)
+            conn.execute('BEGIN IMMEDIATE')
+            _migrate_rss_json(path, conn)
+            before = _read_rss_db(conn)
+            cache = json.loads(json.dumps(before))
+            update(cache)
+            for feed_key in set(before) - set(cache):
+                conn.execute('DELETE FROM rss_entries WHERE feed_key = ?', (feed_key,))
+                conn.execute('DELETE FROM rss_feeds WHERE feed_key = ?', (feed_key,))
+            for feed_key, feed in cache.items():
+                if isinstance(feed, dict) and before.get(feed_key) != feed:
+                    _write_rss_feed(conn, feed_key, feed)
+            conn.commit()
+            return cache
+        except Exception:
+            conn.rollback()
+            raise
         finally:
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
-        return cache
+            conn.close()
 
 
 _rss_feed_locks = {}
@@ -1088,13 +1182,53 @@ def _refresh_rss_in_background(feed, path, app):
     threading.Thread(target=run, daemon=True).start()
 
 
-def _read_rss_feed(feed, path, force_refresh=False, allow_stale=False, app=None):
+def _load_rss_feed_state(path, key):
+    """État d'un seul flux (date de dernière lecture), sans charger ses lignes: {} si le flux est inconnu."""
+    try:
+        conn = _rss_db_connect(path)
+        try:
+            _migrate_rss_json(path, conn)
+            row = conn.execute('SELECT fetched_at FROM rss_feeds WHERE feed_key = ?', (key,)).fetchone()
+        finally:
+            conn.close()
+    except (sqlite3.Error, OSError):
+        return {}
+    return {'fetched_at': row[0], 'entries': []} if row else {}
+
+
+def _rss_latest_rows(path, key, limit, blocked_extensions):
+    """Les `limit` releases visibles les plus récentes d'un flux et leurs annotations, lues directement en
+    base (une ligne par release, triée par date): plus besoin de relire et décoder tout le cache pour en
+    garder 100."""
+    entries, annotated = [], {}
+    conn = _rss_db_connect(path)
+    try:
+        cursor = conn.execute('SELECT entry_json, annotated_json FROM rss_entries WHERE feed_key = ? '
+                              'ORDER BY date DESC, position ASC', (key,))
+        for entry_json, annotated_json in cursor:
+            entry = json.loads(entry_json)
+            if not _visible_rss_entries([entry], blocked_extensions):
+                continue
+            entries.append(entry)
+            if annotated_json:
+                item = json.loads(annotated_json)
+                if item.get('_rss_annotation_version') == RSS_ANNOTATION_VERSION:
+                    annotated[_rss_entry_key(entry)] = item
+            if len(entries) >= limit:
+                break
+    finally:
+        conn.close()
+    return entries, annotated
+
+
+def _read_rss_feed(feed, path, force_refresh=False, allow_stale=False, app=None, light=False):
     key = feed_cache_key(feed)
     requested_at = time.time()
     with _rss_persistent_cache_lock:
         lock = _rss_feed_locks.setdefault((path, key), threading.Lock())
     with lock:
-        cached = _load_rss_persistent_cache(path).get(key) or {}
+        # light: seule la date de lecture est nécessaire (rss_latest relit ensuite ses lignes en SQL).
+        cached = (_load_rss_feed_state(path, key) if light else _load_rss_persistent_cache(path).get(key)) or {}
         fetched_at = float(cached.get('fetched_at') or 0)
         usable = isinstance(cached.get('entries'), list)
         # Concurrent requests share the successful refresh that completed while waiting.
@@ -1253,6 +1387,60 @@ def poll_rss_for_monitoring():
     return totals
 
 
+_rss_reannotating = set()
+_rss_reannotating_lock = threading.Lock()
+
+
+def _save_rss_annotations(cache_path, key, fetched_at, new_annotations):
+    """Enregistre des annotations dans le cache persistant du flux (base de la page Nouveautés).
+    Les anciennes annotations restent en place tant qu'elles ne sont pas remplacées: elles servent
+    d'affichage immédiat pendant qu'un recalcul tourne."""
+    def save(latest):
+        current = latest.get(key)
+        # Never restore old entries after another request has refreshed this feed.
+        if isinstance(current, dict) and current.get('fetched_at') == fetched_at:
+            combined = {
+                _rss_entry_key(item): item
+                for item in current.get('annotated_entries') or []
+                if isinstance(item, dict) and item.get('_rss_annotation_version') == RSS_ANNOTATION_VERSION
+            }
+            combined.update({_rss_entry_key(item): item for item in new_annotations})
+            current['annotated_entries'] = [
+                {**combined[_rss_entry_key(entry)], **entry}
+                for entry in current.get('entries') or []
+                if _rss_entry_key(entry) in combined
+            ]
+    _update_rss_persistent_cache(cache_path, save)
+
+
+def _rss_reannotation_in_progress():
+    with _rss_reannotating_lock:
+        return bool(_rss_reannotating)
+
+
+def _reannotate_rss_in_background(app, cache_path, key, name, fetched_at, entries):
+    """Recalcule en arrière-plan les annotations périmées (la bibliothèque a changé depuis): la page
+    affiche tout de suite les dernières annotations connues, sans attendre le recalcul."""
+    marker = (cache_path, key)
+    with _rss_reannotating_lock:
+        if marker in _rss_reannotating:
+            return
+        _rss_reannotating.add(marker)
+
+    def run():
+        try:
+            with app.app_context():
+                new_annotations = _annotate_rss_entries([{**entry, 'type': 'rss', 'feed_name': name} for entry in entries])
+                _save_rss_annotations(cache_path, key, fetched_at, new_annotations)
+        except Exception as exc:
+            logging.getLogger(__name__).warning('RSS %s : recalcul des annotations impossible : %s', name, exc)
+        finally:
+            with _rss_reannotating_lock:
+                _rss_reannotating.discard(marker)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 @ebdz_bp.route('/rss/latest', methods=['GET'])
 def rss_latest():
     from blueprints.library.routes import load_library_import_config
@@ -1266,65 +1454,45 @@ def rss_latest():
     app = current_app._get_current_object()
 
     def read(feed):
-        return _read_rss_feed(feed, cache_path, force_refresh, allow_stale=True, app=app)
+        return _read_rss_feed(feed, cache_path, force_refresh, allow_stale=True, app=app, light=True)
     with ThreadPoolExecutor(max_workers=min(5, max(1, len(feeds)))) as executor:
         snapshots = list(executor.map(read, feeds))
+    # `limit` s'applique à l'ensemble des flux (les `limit` releases les plus récentes), pas à chacun:
+    # trois flux renvoyaient 3 x limit lignes. Les lignes retenues sont choisies AVANT toute annotation.
+    visible_by_feed, annotations_by_feed = [], []
     for feed, cached, error in snapshots:
+        rows, annotations = _rss_latest_rows(cache_path, feed_cache_key(feed), limit, blocked_extensions)
+        visible_by_feed.append(rows)
+        annotations_by_feed.append(annotations)
+    newest = sorted((entry for visible in visible_by_feed for entry in visible),
+                    key=lambda item: item.get('date', ''), reverse=True)[:limit]
+    selected = {id(entry) for entry in newest}
+    fingerprint = _rss_library_fingerprint()
+    for (feed, cached, error), visible, annotated_by_key in zip(snapshots, visible_by_feed, annotations_by_feed):
         name = feed.get('name') or 'RSS'
         key = feed_cache_key(feed)
         if error:
             errors.append({'name': name, 'error': error})
         feed_states.append({'name': name, 'fetched_at': cached.get('fetched_at'), 'stale': bool(error)})
-        # Select the requested recent rows before matching against the local library.
-        # A Prowlarr poll may contain hundreds of releases across its indexers, while
-        # the client initially requests only 100.  Previously all rows were enriched
-        # before this slice, making a small incremental refresh take minutes.
-        requested_entries = sorted(_visible_rss_entries(cached.get('entries') or [], blocked_extensions),
-                                   key=lambda item: item.get('date', ''),
-                                   reverse=True)[:limit]
-        fingerprint = _rss_library_fingerprint()
-        annotated_by_key = {
-            _rss_entry_key(item): item
-            for item in cached.get('annotated_entries') or []
-            if isinstance(item, dict)
-            and item.get('_rss_annotation_version') == RSS_ANNOTATION_VERSION
-            and item.get('_library_fingerprint') == fingerprint
-        }
-        missing = [entry for entry in requested_entries
-                   if _rss_entry_key(entry) not in annotated_by_key]
-        if missing:
-            new_annotations = _annotate_rss_entries([
-                {**entry, 'type': 'rss', 'feed_name': name} for entry in missing
-            ])
-            annotated_by_key.update({_rss_entry_key(item): item for item in new_annotations})
-
-            def save_annotations(latest):
-                current = latest.get(key)
-                # Never restore old entries after another request has refreshed this feed.
-                if isinstance(current, dict) and current.get('fetched_at') == cached.get('fetched_at'):
-                    combined = {
-                        _rss_entry_key(item): item
-                        for item in current.get('annotated_entries') or []
-                        if isinstance(item, dict)
-                        and item.get('_rss_annotation_version') == RSS_ANNOTATION_VERSION
-                        and item.get('_library_fingerprint') == fingerprint
-                    }
-                    combined.update({_rss_entry_key(item): item for item in new_annotations})
-                    current['annotated_entries'] = [
-                        {**combined[_rss_entry_key(entry)], **entry}
-                        for entry in current.get('entries') or []
-                        if _rss_entry_key(entry) in combined
-                    ]
-            _update_rss_persistent_cache(cache_path, save_annotations)
-        entries = [
-            {**annotated_by_key[_rss_entry_key(entry)], **entry}
-            for entry in requested_entries
+        requested_entries = [entry for entry in visible if id(entry) in selected]
+        # Tout vient de la base: annotations déjà calculées (même périmées) affichées tout de suite.
+        # Les releases jamais annotées sont renvoyées telles quelles (annotation_pending) et, comme celles
+        # dont l'annotation date d'avant un changement de la bibliothèque, calculées en arrière-plan: la
+        # page ne attend jamais ce calcul, elle se complète au rafraîchissement suivant.
+        to_annotate = [entry for entry in requested_entries
+                       if _rss_entry_key(entry) not in annotated_by_key
+                       or annotated_by_key[_rss_entry_key(entry)].get('_library_fingerprint') != fingerprint]
+        if to_annotate:
+            _reannotate_rss_in_background(app, cache_path, key, name, cached.get('fetched_at'), to_annotate)
+        events.extend(
+            {**annotated_by_key[_rss_entry_key(entry)], **entry, 'type': 'rss', 'feed_name': name}
             if _rss_entry_key(entry) in annotated_by_key
-        ]
-        events.extend({**entry, 'type': 'rss', 'feed_name': name} for entry in entries)
+            else {**entry, 'type': 'rss', 'feed_name': name, 'annotation_pending': True}
+            for entry in requested_entries)
     events.sort(key=lambda item: item.get('date', ''), reverse=True)
     # refreshing : un flux est en cours d'actualisation en arrière-plan (la page redemande bientôt).
-    refreshing = any(_rss_refresh_in_progress(feed, cache_path) for feed, _cached, _error in snapshots)
+    refreshing = _rss_reannotation_in_progress() or any(e.get('annotation_pending') for e in events) or any(
+        _rss_refresh_in_progress(feed, cache_path) for feed, _cached, _error in snapshots)
     return jsonify({'success': True, 'entries': events, 'errors': errors, 'feeds': feed_states,
                     'refreshing': refreshing,
                     'genres': load_genres(current_app.config['RSS_CONFIG_FILE'])})

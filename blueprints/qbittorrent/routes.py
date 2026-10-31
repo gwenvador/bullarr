@@ -654,6 +654,15 @@ def add_torrent():
                 # Télécharger le fichier torrent
                 torrent_bytes = _download_torrent_bytes(torrent_url, source)
 
+                # Un fichier torrent est un dictionnaire bencodé (« d… 4:info »). Une page web, un
+                # message d'erreur ou un lien de fiche donnerait un « HTTP 415 » peu parlant de qBittorrent.
+                if not (torrent_bytes[:1] == b'd' and b'4:info' in torrent_bytes[:200000]):
+                    return jsonify({
+                        'success': False,
+                        'error': "Le lien n'est pas un fichier torrent (page web ou erreur de l'indexeur reçue "
+                                 "à la place) : cette release n'a pas de lien de téléchargement direct."
+                    }), 400
+
                 # Créer un fichier temporaire
                 temp_dir = tempfile.gettempdir()
                 torrent_file_path = os.path.join(temp_dir, 'bullarr_torrent.torrent')

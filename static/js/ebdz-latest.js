@@ -562,7 +562,21 @@ function _nouveautesSeriesHtml(event) {
 // fiches par appel, le serveur répond « pending » tant qu'il en reste). Gardée en mémoire
 // pour la page ; le filtre Genre charge les origines de toutes les lignes, pas seulement des
 // lignes affichées.
-const _nouveautesOriginCache = {};
+const NOUVEAUTES_ORIGINS_KEY = 'bullarr:nouveautes:origins:v1';
+// Les origines ne changent pas: gardées dans le navigateur, elles ne sont redemandées au serveur
+// (puis à Bédéthèque) que pour les séries jamais vues.
+const _nouveautesOriginCache = (() => {
+    try { return JSON.parse(localStorage.getItem(NOUVEAUTES_ORIGINS_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+})();
+
+function _saveNouveautesOrigins() {
+    try {
+        const known = {};
+        Object.entries(_nouveautesOriginCache).forEach(([url, value]) => { if (value && value.origin) known[url] = value; });
+        localStorage.setItem(NOUVEAUTES_ORIGINS_KEY, JSON.stringify(known));
+    } catch (e) { /* stockage indisponible ou plein: les origines seront redemandées */ }
+}
 let _nouveautesOriginRun = null;
 
 // Genres RSS à voir (Configuration > Indexeurs > Flux RSS) : une ligne RSS dont le genre
@@ -617,6 +631,7 @@ async function loadNouveautesOrigins(urls) {
                 const answered = Object.entries(data.origins || {});
                 answered.forEach(([url, value]) => { _nouveautesOriginCache[url] = value; });
                 _fillNouveautesGenreSlots();
+                _saveNouveautesOrigins();
                 // Budget horaire épuisé ou Bédéthèque en pause : on n'insiste pas, ces adresses
                 // seront reprises à la prochaine ouverture de la page (rien n'est marqué inconnu).
                 if (data.limited) return;
@@ -683,6 +698,206 @@ function _nouveautesMatchedHtml(event) {
     return checkHtml;
 }
 
+// Création d'une série depuis une fenêtre de rattachement de Nouveautés, avec l'interface de la page Import
+// (voir _renderMatchSeriesPicker plus bas): le bouton Bédéthèque du champ « Nom de la nouvelle série » ouvre la
+// fenêtre de recherche avec couvertures (match-modal.js) et mémorise la fiche choisie pour la série à créer.
+const _nouveautesNewSeriesPicks = {};
+let _nouveautesMatchTargetPrefix = null;
+
+function _nouveautesTitleToSeriesName(title) {
+    return String(title || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function _updateNewSeriesBedethequeIndicator(prefix) {
+    const pick = _nouveautesNewSeriesPicks[prefix];
+    const img = document.querySelector(`#${prefix}-new-series-bedetheque-btn img`);
+    if (img) { img.style.filter = pick ? 'none' : 'grayscale(1)'; img.style.opacity = pick ? '1' : '.55'; }
+    const status = document.getElementById(`${prefix}-new-series-status`);
+    if (status) status.textContent = pick ? `Matché Bédéthèque : ${pick.title || pick.url}` : '';
+}
+
+// Fenêtre « Matcher sur Bédéthèque » (recherche par titre ou adresse, couvertures), comme sur Import.
+function openNouveautesBedethequeMatchModal(prefix) {
+    _nouveautesMatchTargetPrefix = prefix;
+    const input = document.getElementById(`${prefix}-new-series-name`);
+    let modal = document.getElementById('nouveautes-bedetheque-match-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'nouveautes-bedetheque-match-modal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:700px;">
+                <span class="close-modal" onclick="closeNouveautesBedethequeMatchModal()">×</span>
+                <div id="nouveautes-bedetheque-match-body"></div>
+            </div>`;
+    }
+    // Replacée en fin de <body> à chaque ouverture: elle doit passer au-dessus de la fenêtre de rattachement.
+    document.body.appendChild(modal);
+    modal.classList.add('active');
+    document.getElementById('nouveautes-bedetheque-match-body').innerHTML = buildMatchModalBodyHtml({
+        logoSrc: '/static/img/bedetheque-logo.png',
+        title: 'Matcher sur Bedetheque',
+        helpText: "Cherchez par titre ou collez directement l'URL de la fiche série Bedetheque.",
+        queryId: 'nouveautes-bedetheque-match-query',
+        queryPlaceholder: 'Entrez le nom de série ou adresse Bedetheque...',
+        prefillValue: input ? input.value.trim() : '',
+        resultsId: 'nouveautes-bedetheque-match-results',
+        searchOnclick: 'searchNouveautesBedethequeCandidates()',
+        autoSearch: true,
+    });
+    wireMatchModalEnterKeys('nouveautes-bedetheque-match-query', searchNouveautesBedethequeCandidates);
+    searchNouveautesBedethequeCandidates();
+}
+
+function closeNouveautesBedethequeMatchModal() {
+    document.getElementById('nouveautes-bedetheque-match-modal')?.classList.remove('active');
+}
+
+async function searchNouveautesBedethequeCandidates() {
+    const resultsEl = document.getElementById('nouveautes-bedetheque-match-results');
+    const query = document.getElementById('nouveautes-bedetheque-match-query').value.trim();
+    if (!query) { resultsEl.innerHTML = ''; return; }
+    resultsEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+        const data = await (await fetch(`/api/bedetheque/search?q=${encodeURIComponent(query)}`)).json();
+        if (!data.success) { resultsEl.innerHTML = matchModalErrorHtml(data.error || 'Erreur inconnue'); return; }
+        if (!data.results || !data.results.length) { resultsEl.innerHTML = matchModalNoResultsHtml('Aucune série trouvée sur Bedetheque'); return; }
+        resultsEl.innerHTML = data.results.map((result, index) => bedethequeMatchCandidateCardHtml(
+            `pickNouveautesBedethequeMatch('${escapeForAttribute(result.url)}', '${escapeForAttribute(result.title)}')`,
+            result.title, escapeHtml(result.genre || ''), index, 'nouveautes-bedetheque-match'
+        )).join('');
+        loadBedethequeMatchCandidateCovers(data.results, 'nouveautes-bedetheque-match');
+    } catch (error) {
+        resultsEl.innerHTML = matchModalErrorHtml(error.message);
+    }
+}
+
+function pickNouveautesBedethequeMatch(url, title) {
+    const prefix = _nouveautesMatchTargetPrefix;
+    closeNouveautesBedethequeMatchModal();
+    const input = prefix && document.getElementById(`${prefix}-new-series-name`);
+    if (!input) return;
+    // La série sera créée sous le nom de la fiche choisie, aligné avec son match.
+    if (title) input.value = _nouveautesTitleToSeriesName(title);
+    _nouveautesNewSeriesPicks[prefix] = { url, title };
+    _updateNewSeriesBedethequeIndicator(prefix);
+}
+
+// Sélecteur de série des fenêtres « Matcher la série »: même interface que « Sélectionner la destination » sur la
+// page Import (import.js): champ « Série » avec recherche et liste déroulante dont la première entrée est
+// « ➕ Créer une nouvelle série »; cette entrée fait apparaître « Nom de la nouvelle série » avec le bouton
+// Bédéthèque; Annuler / Valider en bas. La série n'est créée qu'à la validation.
+function _renderMatchSeriesPicker(prefix, { container, candidates, currentSeriesId, defaultNewName, onChosen, onCancel }) {
+    delete _nouveautesNewSeriesPicks[prefix];
+    container.innerHTML = `
+        <div class="destination-selector">
+            <div class="form-group">
+                <label for="${prefix}-series-search">Série</label>
+                <div class="series-combobox">
+                    <input type="text" id="${prefix}-series-search" autocomplete="off" placeholder="Tapez pour rechercher une série...">
+                    <div class="series-combobox-list" id="${prefix}-series-list"></div>
+                </div>
+            </div>
+            <div class="form-group" id="${prefix}-new-series-group" style="display:none;">
+                <label for="${prefix}-new-series-name">Nom de la nouvelle série</label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" id="${prefix}-new-series-name" placeholder="Nom de la série" style="flex:1;" value="${escapeHtml(defaultNewName || '')}">
+                    <button type="button" class="btn-icon-only" id="${prefix}-new-series-bedetheque-btn" data-tooltip="Matcher sur Bédéthèque">
+                        <img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:18px; height:18px; vertical-align:middle; filter:grayscale(1); opacity:.55;">
+                    </button>
+                </div>
+                <small id="${prefix}-new-series-status" style="display:block; margin-top:4px; color:var(--color-text-muted);"></small>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn" id="${prefix}-cancel">Annuler</button>
+                <button type="button" class="btn btn-success" id="${prefix}-validate">Valider</button>
+            </div>
+        </div>`;
+    const input = document.getElementById(`${prefix}-series-search`);
+    const list = document.getElementById(`${prefix}-series-list`);
+    const newGroup = document.getElementById(`${prefix}-new-series-group`);
+    const nameInput = document.getElementById(`${prefix}-new-series-name`);
+    const NEW_VALUE = '__new__';
+    const NEW_LABEL = '➕ Créer une nouvelle série';
+    let selected = null;
+
+    const placeList = () => {
+        const rect = input.getBoundingClientRect();
+        list.style.left = `${rect.left}px`;
+        list.style.top = `${rect.bottom + 4}px`;
+        list.style.width = `${rect.width}px`;
+    };
+    const renderList = query => {
+        const needle = navNormalizeSearch((query || '').trim());
+        const items = [];
+        if (!needle || navNormalizeSearch(NEW_LABEL).includes(needle)) items.push({ value: NEW_VALUE, label: NEW_LABEL });
+        candidates
+            .filter(candidate => navNormalizeSearch(candidate.title).includes(needle))
+            .sort((a, b) => Number(b.id === currentSeriesId) - Number(a.id === currentSeriesId))
+            .slice(0, 50)
+            .forEach(candidate => items.push({
+                value: String(candidate.id), title: candidate.title,
+                label: candidate.title + (candidate.id === currentSeriesId ? ' ✅ Match actuel' : ''),
+            }));
+        list.innerHTML = items.length
+            ? items.map((item, index) => `<button type="button" class="series-combobox-item${selected && selected.value === item.value ? ' active' : ''}" data-item-index="${index}">${escapeHtml(item.label)}</button>`).join('')
+            : '<div class="series-combobox-empty">Aucune série ne correspond</div>';
+        list._items = items;
+        placeList();
+        list.style.display = 'block';
+    };
+    const choose = item => {
+        selected = item;
+        input.value = item.value === NEW_VALUE ? NEW_LABEL : item.title;
+        list.style.display = 'none';
+        newGroup.style.display = item.value === NEW_VALUE ? 'block' : 'none';
+        if (item.value === NEW_VALUE) nameInput.focus();
+    };
+
+    input.addEventListener('focus', () => renderList(''));
+    input.addEventListener('input', () => renderList(input.value));
+    input.addEventListener('blur', () => { list.style.display = 'none'; });
+    // mousedown (et non click): le champ garde le focus, sinon sa perte ferme la liste avant le choix.
+    list.addEventListener('mousedown', event => {
+        const button = event.target.closest('[data-item-index]');
+        if (!button) return;
+        event.preventDefault();
+        choose(list._items[Number(button.dataset.itemIndex)]);
+    });
+    nameInput.addEventListener('input', () => {
+        // Un nom modifié à la main n'est plus celui de la fiche choisie.
+        const pick = _nouveautesNewSeriesPicks[prefix];
+        if (pick && _nouveautesTitleToSeriesName(pick.title) !== nameInput.value.trim()) {
+            delete _nouveautesNewSeriesPicks[prefix];
+            _updateNewSeriesBedethequeIndicator(prefix);
+        }
+    });
+    document.getElementById(`${prefix}-new-series-bedetheque-btn`).addEventListener('click', () => openNouveautesBedethequeMatchModal(prefix));
+    document.getElementById(`${prefix}-cancel`).addEventListener('click', onCancel);
+
+    const validateButton = document.getElementById(`${prefix}-validate`);
+    validateButton.addEventListener('click', async () => {
+        if (!selected) { alert('Veuillez sélectionner une série'); return; }
+        if (selected.value !== NEW_VALUE) { await onChosen(Number(selected.value), selected.title); return; }
+        const name = nameInput.value.trim();
+        if (!name) { alert('Veuillez entrer un nom pour la nouvelle série'); return; }
+        const label = validateButton.textContent;
+        validateButton.disabled = true;
+        validateButton.textContent = 'Création de la série…';
+        try {
+            // Sans fiche choisie, la meilleure fiche Bédéthèque du nom est cherchée (comme pour l'éclair ⚡).
+            const pick = _nouveautesNewSeriesPicks[prefix];
+            const created = await _resolveSeriesForAutoAdd(name, null, pick ? pick.url : null, true);
+            if (!created || !created.seriesId) throw new Error('Création impossible');
+            await onChosen(created.seriesId, name);
+        } catch (error) {
+            validateButton.disabled = false;
+            validateButton.textContent = label;
+            alert('❌ ' + error.message);
+        }
+    });
+}
+
 // "dans nouveautés ca a match une mauvaise serie... changer ca et selectionner
 // manuellement la série" côté Telegram (voir changeMatchHtml, _nouveautesMatchedHtml
 // ci-dessus) - même principe de liste filtrable que openMergeSeriesModal (library.js),
@@ -713,50 +928,16 @@ async function openTelegramMatchOverrideModal(filename, currentSeriesId, source 
                 <span class="close-modal" onclick="closeTelegramMatchOverrideModal()">×</span>
                 <h2 class="modal-title" style="margin-bottom: 10px;">✏️ Matcher la série</h2>
                 <p class="modal-subtitle">Choisissez la série pour <strong>${escapeHtml(filename)}</strong>.</p>
-                <input type="text" id="telegram-match-override-filter" class="search-box" placeholder="Filtrer les séries..."
-                       style="width: 100%; margin-bottom: 12px;">
-                <div id="telegram-match-override-candidates" style="max-height: 50vh; overflow-y: auto;"></div>
+                <div id="telegram-match-override-candidates"></div>
             </div>
         `;
-
-        const candidatesEl = document.getElementById('telegram-match-override-candidates');
-        const filterInput = document.getElementById('telegram-match-override-filter');
-
-        const renderCandidates = () => {
-            // "les filtres de l'application ne devrait pas avoir a différencier les
-            // accents" - même normalisation que le filtre Nouveautés ci-dessus.
-            const needle = navNormalizeSearch(filterInput.value.trim());
-            const matches = candidates.filter(c => navNormalizeSearch(c.title).includes(needle)).slice(0, 50);
-            // Le match courant remonte en tête de liste plutôt que de rester noyé dans
-            // l'ordre alphabétique/API par défaut - on ouvre cette modale précisément
-            // parce que le match est faux, mais le vérifier d'un coup d'œil (avant de le
-            // remplacer) reste utile, surtout si le nom exact du candidat correct diffère
-            // légèrement du filename affiché.
-            matches.sort((a, b) => {
-                const aCurrent = currentSeriesId != null && a.id === currentSeriesId;
-                const bCurrent = currentSeriesId != null && b.id === currentSeriesId;
-                if (aCurrent !== bCurrent) return aCurrent ? -1 : 1;
-                return 0;
-            });
-            // "quand la série courante s'affiche" (voir demande utilisateur) - marque
-            // visuellement le candidat qui EST déjà le match courant (currentSeriesId,
-            // reçu via openTelegramMatchOverrideModal), le sélectionner reste un no-op sûr
-            // côté API mais confirme juste qu'on n'a pas à re-choisir un candidat identique.
-            candidatesEl.innerHTML = matches.length ? matches.map(c => {
-                const isCurrent = currentSeriesId != null && c.id === currentSeriesId;
-                return `
-                <div class="series-card${isCurrent ? ' series-card-current-match' : ''}" style="cursor: pointer; margin-bottom: 8px;${isCurrent ? ' border: 2px solid var(--color-primary, #2563eb);' : ''}"
-                     onclick="confirmTelegramMatchOverride('${escapeForAttribute(filename)}', ${c.id}, '${escapeForAttribute(c.title)}', '${escapeForAttribute(source)}', '${escapeForAttribute(sourceIdentity || '')}')">
-                    <div class="series-title">${escapeHtml(c.title)}${isCurrent ? ' <span class="badge-current-match" data-tooltip="C\'est la série actuellement associée à ce fichier">✅ Match actuel</span>' : ''}</div>
-                    <div class="series-info">${c.total_volumes || 0} album${(c.total_volumes || 0) > 1 ? 's' : ''}</div>
-                </div>
-            `;
-            }).join('') : '<div class="no-data"><p>😕 Aucune série ne correspond</p></div>';
-        };
-
-        filterInput.addEventListener('input', renderCandidates);
-        renderCandidates();
-        filterInput.focus();
+        _renderMatchSeriesPicker('telegram-match', {
+            container: document.getElementById('telegram-match-override-candidates'),
+            candidates, currentSeriesId,
+            defaultNewName: String(filename || '').replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[._]+/g, ' ').trim(),
+            onChosen: (seriesId, title) => confirmTelegramMatchOverride(filename, seriesId, title, source, sourceIdentity || ''),
+            onCancel: closeTelegramMatchOverrideModal,
+        });
     } catch (error) {
         modal.innerHTML = `
             <div class="modal-content">
@@ -820,23 +1001,15 @@ async function openEbdzThreadMatchModal(threadId, threadTitle, currentSeriesId) 
                 <span class="close-modal" onclick="closeEbdzThreadMatchModal()">×</span>
                 <h2 class="modal-title" style="margin-bottom:10px;">✏️ Matcher la série</h2>
                 <p class="modal-subtitle">Choisissez la série pour <strong>${escapeHtml(threadTitle)}</strong>.</p>
-                <input type="text" id="ebdz-thread-match-filter" class="search-box" placeholder="Filtrer les séries..." style="width:100%; margin-bottom:12px;">
-                <div id="ebdz-thread-match-candidates" style="max-height:50vh; overflow-y:auto;"></div>
+                <div id="ebdz-thread-match-candidates"></div>
             </div>`;
-        const candidatesEl = document.getElementById('ebdz-thread-match-candidates');
-        const filterInput = document.getElementById('ebdz-thread-match-filter');
-        const renderCandidates = () => {
-            const needle = navNormalizeSearch(filterInput.value.trim());
-            const matches = candidates.filter(c => navNormalizeSearch(c.title).includes(needle)).slice(0, 50);
-            matches.sort((a, b) => Number(b.id === currentSeriesId) - Number(a.id === currentSeriesId));
-            candidatesEl.innerHTML = matches.length ? matches.map(c => {
-                const isCurrent = c.id === currentSeriesId;
-                return `<div class="series-card${isCurrent ? ' series-card-current-match' : ''}" style="cursor:pointer; margin-bottom:8px;" onclick="confirmEbdzThreadMatch('${escapeForAttribute(threadId)}', ${c.id})"><div class="series-title">${escapeHtml(c.title)}${isCurrent ? ' <span class="badge-current-match">✅ Match actuel</span>' : ''}</div><div class="series-info">${c.total_volumes || 0} album${(c.total_volumes || 0) > 1 ? 's' : ''}</div></div>`;
-            }).join('') : '<div class="no-data"><p>😕 Aucune série ne correspond</p></div>';
-        };
-        filterInput.addEventListener('input', renderCandidates);
-        renderCandidates();
-        filterInput.focus();
+        _renderMatchSeriesPicker('ebdz-match', {
+            container: document.getElementById('ebdz-thread-match-candidates'),
+            candidates, currentSeriesId,
+            defaultNewName: String(threadTitle || '').replace(/\s*[\[(].*$/, '').trim(),
+            onChosen: seriesId => confirmEbdzThreadMatch(threadId, seriesId),
+            onCancel: closeEbdzThreadMatchModal,
+        });
     } catch (error) {
         modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeEbdzThreadMatchModal()">×</span><div class="no-data"><p>❌ ${escapeHtml(error.message)}</p></div></div>`;
     }
@@ -1357,8 +1530,9 @@ function _restoreNouveautesCache() {
         const cached = JSON.parse(localStorage.getItem(NOUVEAUTES_CACHE_KEY) || 'null');
         if (!cached || !Array.isArray(cached.events) || !cached.events.length) return false;
         if (Date.now() - Number(cached.savedAt || 0) > NOUVEAUTES_CACHE_MAX_AGE_MS) return false;
-        // RSS depends on the current disabled-extension settings; wait for the filtered API response.
-        allNouveautesEvents = cached.events.filter(event => event.type !== 'rss');
+        // Les lignes RSS en cache s'affichent aussi tout de suite (annotations et origines comprises);
+        // la réponse du serveur, filtrée selon les réglages actuels, les remplace aussitôt après.
+        allNouveautesEvents = cached.events;
         if (!allNouveautesEvents.length) return false;
         renderNouveautesEvents(true);
         return true;
@@ -1430,12 +1604,14 @@ async function loadNouveautesEvents(forceScrape, resetPage = true, olderThanDays
         // Le scan d'import peut parcourir le stockage et ne doit jamais retarder
         // les trois sources de Nouveautés. Il met à jour les marqueurs ensuite.
         if (resetPage) {
-            const pendingScanPromise = fetch('/api/import/scan', { method: 'POST' })
+            // Fichiers en attente lus en base (état déjà tenu à jour par l'import automatique): le scan complet
+            // du disque (/api/import/scan, ~4 s) saturait le serveur et ralentissait les trois sources.
+            const pendingScanPromise = fetch('/api/import/pending-count')
                 .then(r => r.json()).catch(() => ({ success: false }));
             pendingScanPromise.then(pendingScanData => {
                 if (generation !== nouveautesLoadGeneration) return;
                 nouveautesPendingFilenames = new Set(
-                    pendingScanData.success ? (pendingScanData.files || []).map(f => f.filename) : []
+                    pendingScanData.success ? (pendingScanData.items || []).map(item => item.filename) : []
                 );
                 if (allNouveautesEvents.length) renderNouveautesEvents(false);
             });

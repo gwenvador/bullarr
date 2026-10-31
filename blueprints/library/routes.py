@@ -2343,6 +2343,25 @@ def create_series():
         return jsonify({'success': False, 'error': error_message(e)}), 500
 
 
+def _series_last_change_dates(cursor):
+    """{id de série: date (UTC) de son dernier changement}: dernier album importé ou remplacé, ou
+    dernière action sur la série (renommage, conversion, suppression d'album...). Les recherches et les
+    tentatives d'acquisition automatique ne changent rien à la série et ne comptent pas."""
+    cursor.execute("""
+        WITH changes AS (
+            SELECT series_id, MAX(created_at) AS at FROM import_history_files
+            WHERE series_id IS NOT NULL AND status = 'success' AND action IN ('imported', 'replaced')
+            GROUP BY series_id
+            UNION ALL
+            SELECT series_id, MAX(created_at) FROM action_history
+            WHERE series_id IS NOT NULL AND action_type NOT IN ('search', 'auto_acquire')
+            GROUP BY series_id
+        )
+        SELECT series_id, MAX(at) FROM changes GROUP BY series_id
+    """)
+    return {row[0]: row[1] for row in cursor.fetchall()}
+
+
 @library_bp.route('/api/library/<int:library_id>/series')
 def get_library_series(library_id):
     try:
@@ -2365,7 +2384,7 @@ def get_library_series(library_id):
             return jsonify(series_list)
 
         cursor.execute('''
-            SELECT s.id, s.title, s.path, s.total_volumes, s.missing_volumes, s.has_parts, s.last_scanned,
+            SELECT s.id, s.title, s.path, s.total_volumes, s.missing_volumes, s.has_parts, s.last_scanned, s.added_at,
                    s.ebdz_volumes_count, s.ebdz_missing_volumes, s.ebdz_checked_at, s.ebdz_thread_url,
                    s.ebdz_thread_id, s.ebdz_matched_title, s.ebdz_match_status,
                    s.komga_series_id, s.komga_match_status, s.komga_matched_title, s.komga_url,
@@ -2399,8 +2418,14 @@ def get_library_series(library_id):
             ORDER BY s.title
         ''', (library_id,))
 
+        series_rows = cursor.fetchall()
+        try:
+            last_changes = _series_last_change_dates(cursor)
+        except sqlite3.Error:
+            last_changes = {}  # historique absent (base neuve): la date d'ajout fait office de dernier changement
+
         series_list = []
-        for row in cursor.fetchall():
+        for row in series_rows:
             try:
                 tags = json.loads(row['tags']) if row['tags'] else []
             except (ValueError, TypeError):
@@ -2414,6 +2439,8 @@ def get_library_series(library_id):
                 'missing_volumes': json.loads(row['missing_volumes']) if row['missing_volumes'] else [],
                 'has_parts': bool(row['has_parts']),
                 'last_scanned': row['last_scanned'],
+                'added_at': row['added_at'],
+                'last_changed_at': max(filter(None, (last_changes.get(row['id']), row['added_at'])), default=None),
                 'bedetheque_status': row['bedetheque_status'],
                 'bedetheque_total_volumes': row['bedetheque_total_volumes'],
                 'bedetheque_url': row['bedetheque_url'],

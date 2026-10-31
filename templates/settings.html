@@ -115,12 +115,13 @@
                             <h3>À propos</h3>
                             <p class="about-version">
                                 <strong>Bullarr</strong>{% if app_version %} <span class="about-version-number">v{{ app_version }}</span>{% endif %}
+                                <span id="about-android" hidden>· <strong>Application Android</strong> <a id="about-android-link" class="about-version-number" href="https://github.com/gwenvador/bullarr-android/releases/latest" target="_blank" rel="noopener noreferrer" data-tooltip="Télécharger l'APK"></a></span>
                                 — gestionnaire de bibliothèque BD.
                                 Code source : <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url | replace('https://', '') }}</a>
                                 · <a href="{{ source_url }}/releases" target="_blank" rel="noopener noreferrer">Versions</a>
                                 · <a href="/api/docs" target="_blank" rel="noopener">API</a>
-                                · <a href="https://github.com/gwenvador/bullarr-android/releases/latest" target="_blank" rel="noopener noreferrer" data-tooltip="Dernière version de l'application Android (APK)">Application Android (APK)</a>
                             </p>
+                            <p class="about-update" id="about-update" hidden></p>
                             <div class="about-links">
                                 <div class="about-links-group">
                                     <h4>Métadonnées</h4>

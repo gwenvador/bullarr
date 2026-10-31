@@ -80,6 +80,16 @@ def _connect_db():
             built_at TEXT NOT NULL
         )
     ''')
+    # Origine (Europe, USA, Asie, Autre) de chaque fiche série lue ou connue. Table À PART de
+    # bedetheque_series: celle-ci est entièrement vidée et reconstruite avec l'index, alors qu'une
+    # origine ne change jamais et ne doit plus être redemandée à Bédéthèque.
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS bedetheque_series_origin (
+            url TEXT PRIMARY KEY,
+            origin TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )
+    ''')
     conn.commit()
     return conn
 
@@ -337,3 +347,37 @@ def build_bedetheque_catalog_index_sync(scraper):
         print(f"⚠️ Échec construction index catalogue Bédéthèque: {e}")
     finally:
         _build_progress['running'] = False
+
+
+def get_catalog_origins(urls):
+    """{url canonique: origine} pour les fiches dont l'origine est déjà dans le catalogue."""
+    urls = [u for u in urls or [] if u]
+    if not urls:
+        return {}
+    conn = _connect_db()
+    try:
+        result = {}
+        for start in range(0, len(urls), 500):
+            chunk = urls[start:start + 500]
+            placeholders = ','.join('?' * len(chunk))
+            result.update(conn.execute(
+                f'SELECT url, origin FROM bedetheque_series_origin WHERE url IN ({placeholders})', chunk))
+        return result
+    finally:
+        conn.close()
+
+
+def save_catalog_origins(pairs):
+    """Ajoute des origines au catalogue: [(url canonique, origine)]. Retourne le nombre d'écritures."""
+    rows = [(url, origin, time.time()) for url, origin in pairs or [] if url and origin]
+    if not rows:
+        return 0
+    conn = _connect_db()
+    try:
+        conn.executemany(
+            'INSERT INTO bedetheque_series_origin (url, origin, updated_at) VALUES (?, ?, ?) '
+            'ON CONFLICT(url) DO UPDATE SET origin = excluded.origin, updated_at = excluded.updated_at', rows)
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()

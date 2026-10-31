@@ -2050,11 +2050,31 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
         top.appendChild(spacer);
         wrapper.parentNode.insertBefore(top, wrapper);
 
-        const syncWidth = () => { spacer.style.width = `${table.scrollWidth}px`; top.scrollLeft = wrapper.scrollLeft; };
+        // Le tableau est reconstruit à chaque affichage (filtre, tri, colonnes): on relit TOUJOURS le tableau
+        // présent dans le wrapper. Garder l'élément du premier rendu laissait la barre miroir sur une largeur
+        // périmée (sans débordement), alors que la barre native du bas est masquée: plus aucune barre à la souris.
+        let observed = null;
+        const syncWidth = () => {
+            const current = wrapper.querySelector('table');
+            if (!current) return;
+            spacer.style.width = `${current.scrollWidth}px`;
+            top.scrollLeft = wrapper.scrollLeft;
+        };
+        const resizeObserver = window.ResizeObserver ? new ResizeObserver(syncWidth) : null;
+        const observeCurrentTable = () => {
+            const current = wrapper.querySelector('table');
+            if (resizeObserver && current && current !== observed) {
+                if (observed) resizeObserver.unobserve(observed);
+                resizeObserver.observe(current);
+                observed = current;
+            }
+            syncWidth();
+        };
         top.addEventListener('scroll', () => { wrapper.scrollLeft = top.scrollLeft; });
         wrapper.addEventListener('scroll', () => { if (top.scrollLeft !== wrapper.scrollLeft) top.scrollLeft = wrapper.scrollLeft; });
-        if (window.ResizeObserver) new ResizeObserver(syncWidth).observe(table);
-        syncWidth();
+        if (resizeObserver) resizeObserver.observe(wrapper);
+        new MutationObserver(observeCurrentTable).observe(wrapper, { childList: true });
+        observeCurrentTable();
     }
 
     function scan(root = document) {

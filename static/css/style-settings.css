@@ -1252,3 +1252,7 @@ input[type="checkbox"].switch-input:disabled {
 .prowlarr-other-categories { margin-top: 12px; }
 .prowlarr-other-categories > summary { cursor: pointer; font-size: 0.85em; color: var(--color-text-muted, #666); margin-bottom: 8px; }
 .prowlarr-no-categories { margin-top: 6px; padding: 8px 10px; border-left: 3px solid #ffc107; font-size: 0.85em; color: var(--color-text-muted, #666); }
+
+.about-update { margin: 0 0 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; color: var(--color-text-muted); }
+.about-update-button { text-decoration: none; padding: 6px 12px; border-radius: 6px; color: #fff !important; }
+.about-uptodate { color: var(--color-success, #2e7d32); }

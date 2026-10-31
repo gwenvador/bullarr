@@ -31,8 +31,8 @@ class Config:
     DATA_DIR = os.path.join(BASE_DIR, 'data')
 
     # Version publiée (release GitHub et image ghcr.io/gwenvador/bullarr), affichée dans
-    # Configuration → Vue d'ensemble → À propos.
-    APP_VERSION = '9.0'
+    # Configuration → Vue d'ensemble → À propos. À relever à chaque release (v9.1 était restée affichée « 9.0 »).
+    APP_VERSION = '9.2'
     SOURCE_URL = 'https://github.com/gwenvador/bullarr'
     COVERS_DIR = os.path.join(DATA_DIR, 'covers')
     
@@ -360,6 +360,7 @@ class Config:
             ('filesystem_checked_at', 'TIMESTAMP'),
             ('filesystem_missing_count', 'INTEGER DEFAULT 0'),
             ('filesystem_verification_error', 'TEXT'),
+            ('added_at', 'TIMESTAMP'),  # date d'ajout de la série à la bibliothèque (UTC)
         ]
 
         # Vérifier quelles colonnes existent
@@ -374,6 +375,24 @@ class Config:
                 except sqlite3.OperationalError as e:
                     if 'already exists' not in str(e):
                         print(f"⚠️  Impossible d'ajouter {col_name}: {e}")
+
+        # Toute nouvelle série reçoit sa date d'ajout, quel que soit l'endroit du code qui l'insère.
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS series_set_added_at AFTER INSERT ON series
+            WHEN NEW.added_at IS NULL
+            BEGIN
+                UPDATE series SET added_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+            END
+        """)
+        # Séries déjà présentes: première trace connue dans l'historique des actions (l'ajout lui-même
+        # s'il y est, sinon la première action). Sans trace, la date reste vide plutôt qu'inventée.
+        if cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='action_history'").fetchone():
+            cursor.execute("""
+                UPDATE series SET added_at = COALESCE(
+                    (SELECT MIN(created_at) FROM action_history WHERE series_id = series.id AND action_type = 'add_series'),
+                    (SELECT MIN(created_at) FROM action_history WHERE series_id = series.id))
+                WHERE added_at IS NULL
+            """)
 
         conn.commit()
 

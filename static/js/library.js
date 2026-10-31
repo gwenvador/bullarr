@@ -646,8 +646,11 @@ function _matchStatusHtml(matched) {
 
 const TABLE_OPTIONAL_COLUMNS = [
     { key: 'summary', label: 'Résumé', icon: '📝', header: 'Résumé', filterType: 'text', render: s => s.local_summary || '—' },
-    { key: 'scanDate', label: 'Dernier scan', icon: '🕓', header: 'Dernier scan', filterType: 'text',
-      render: s => parseDbUtcDate(s.last_scanned)?.toLocaleDateString('fr-FR', { timeZone: BULLARR_DISPLAY_TZ }) ?? '—' },
+    // Dernier changement de la série (album importé ou remplacé, renommage, conversion...), pas la date d'un scan.
+    { key: 'lastChange', label: 'Dernière update', icon: '🕓', header: 'Dernière update', filterType: 'text',
+      render: s => parseDbUtcDate(s.last_changed_at)?.toLocaleDateString('fr-FR', { timeZone: BULLARR_DISPLAY_TZ }) ?? '—' },
+    { key: 'addedAt', label: "Date d'ajout", icon: '➕', header: "Date d'ajout", filterType: 'text',
+      render: s => parseDbUtcDate(s.added_at)?.toLocaleDateString('fr-FR', { timeZone: BULLARR_DISPLAY_TZ }) ?? '—' },
     // multi: true - "Humour, Jeunesse" est 2 valeurs (ComicInfo.xml multi-auteurs/genres),
     // pas une seule chaîne combinée (voir _tableFilterColumns/splitMultiValue).
     { key: 'author', label: 'Auteur', icon: '✍️', header: 'Auteur', render: s => s.local_author || '—', multi: true },
@@ -938,6 +941,9 @@ function _seriesTableSortValue(s, column) {
         case 'genre': return (s.local_genre || '').toLowerCase() || null;
         case 'type': return bedethequeOriginLabel(s.bedetheque_origin);
         case 'votes': return s.total_votes || null;
+        // Dates triées sur la valeur brute (AAAA-MM-JJ…), pas sur le texte « jj/mm/aaaa » affiché.
+        case 'addedAt': return s.added_at || null;
+        case 'lastChange': return s.last_changed_at || null;
         default: {
             const col = _availableTableOptionalColumns().find(c => c.key === column);
             return col ? col.render(s) : null;

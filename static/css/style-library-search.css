@@ -3455,3 +3455,16 @@ body.comic-reader-open { overflow: hidden; }
 .comic-reader-help-keys { flex: 0 0 11.5em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; color: #fff; background: rgba(255, 255, 255, 0.1); padding: 2px 8px; border-radius: 5px; }
 .comic-reader-help-close { margin: 16px 0 0; text-align: center; font-size: 0.8rem; color: #999; }
 @media (max-width: 600px) { .comic-reader-help-keys { flex-basis: 8em; } }
+
+
+/* Tableau de la bibliothèque sur petit écran: la règle globale `table { display: block; overflow-x: auto }`
+   (style.css, max-width 768px) en faisait un second conteneur défilant DANS .series-table-wrapper. Le
+   tableau (900 px minimum) défilait seul, la barre miroir du haut suivait une autre largeur et les colonnes
+   de droite (optionnelles comprises) restaient hors d'atteinte. Le tableau garde sa mise en page normale:
+   le wrapper est le seul à défiler, sur toute la largeur utile des colonnes. */
+@media (max-width: 768px) {
+    .series-list.series-table-wrapper .series-table:not(.series-table-compact) {
+        display: table;
+        overflow: visible;
+    }
+}

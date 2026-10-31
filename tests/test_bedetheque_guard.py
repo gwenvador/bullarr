@@ -180,6 +180,14 @@ class OriginsSavingCallsTest(unittest.TestCase):
         origins._recent_fetches.clear()
         self.addCleanup(lambda: os.remove(self.db))
         self.addCleanup(origins._recent_fetches.clear)
+        # Catalogue d'origines isolé: un test ne doit jamais lire ce qu'un autre y a écrit.
+        from blueprints.bedetheque import catalog_index
+        self._catalog_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._catalog_tmp.cleanup)
+        catalog_patch = patch.object(catalog_index, 'CATALOG_DB', os.path.join(self._catalog_tmp.name, 'catalog.db'))
+        catalog_patch.start()
+        self.addCleanup(catalog_patch.stop)
+        origins._catalog_seeded_for.clear()
         self.urls = [f'https://www.bedetheque.com/serie-{n}-BD-Test.html' for n in range(1, 8)]
 
     def _page(self, label='Manga'):

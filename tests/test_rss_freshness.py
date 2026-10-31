@@ -23,6 +23,10 @@ class RssFreshnessTests(unittest.TestCase):
         patcher = patch.object(routes, '_rss_library_fingerprint', return_value='fp')
         patcher.start()
         self.addCleanup(patcher.stop)
+        # Pas de thread d'annotation réel dans ces tests (il écrirait dans un dossier déjà supprimé).
+        background_patcher = patch.object(routes, '_reannotate_rss_in_background')
+        background_patcher.start()
+        self.addCleanup(background_patcher.stop)
 
     def seed(self, entries, fetched_at=1):
         routes._update_rss_persistent_cache(self.path, lambda c: c.update({
@@ -114,19 +118,26 @@ class RssFreshnessTests(unittest.TestCase):
         app.config['LIBRARY_IMPORT_CONFIG_FILE'] = str(Path(self.tmp.name) / 'import_config.json')
         app.config['LIBRARY_IMPORT_CONFIG'] = {'blocked_search_extensions': []}
         feeds = [row[0] for row in snapshots]
+        # rss_latest lit ses lignes en base: on y range chaque instantané, comme le ferait le rafraîchissement.
+        routes._update_rss_persistent_cache(self.path, lambda cache: cache.update({
+            rss.feed_cache_key(feed): {'fetched_at': snapshot.get('fetched_at', 1), 'entries': snapshot.get('entries', []),
+                                       **({'annotated_entries': snapshot['annotated_entries']}
+                                          if snapshot.get('annotated_entries') else {})}
+            for feed, snapshot, _error in snapshots}))
         with app.test_request_context('/rss/latest?' + query), \
                 patch.object(routes, 'load_feeds', return_value=feeds), \
                 patch.object(routes, '_rss_persistent_cache_path', return_value=self.path), \
-                patch.object(routes, '_read_rss_feed', side_effect=lambda f, *a, **kw: next(row for row in snapshots if row[0] == f)), \
+                patch.object(routes, '_read_rss_feed', side_effect=lambda f, *a, **kw: next(
+                    (f, {'fetched_at': row[1].get('fetched_at', 1), 'entries': []}, row[2]) for row in snapshots if row[0] == f)), \
                 patch.object(routes, '_annotate_rss_entries', side_effect=annotate or (lambda entries: entries)):
             return routes.rss_latest().get_json()
 
-    def test_limit_is_per_feed_even_with_identical_names(self):
+    def test_limit_applies_to_all_feeds_together_even_with_identical_names(self):
         other = {'name': 'Demo', 'url': 'https://other.test/rss'}
         rows = [(self.feed, {'entries': [{'title': 'New', 'date': '2026-09-29'}, {'title': 'Also new', 'date': '2026-09-28'}]}, None),
-                (other, {'entries': [{'title': 'Older feed', 'date': '2026-09-01'}]}, None)]
-        result = self.call_latest(rows)
-        self.assertEqual([e['title'] for e in result['entries']], ['New', 'Older feed'])
+                (other, {'entries': [{'title': 'Older feed', 'date': '2026-09-01'}, {'title': 'Middle', 'date': '2026-09-15'}]}, None)]
+        result = self.call_latest(rows, query='limit=3')
+        self.assertEqual([e['title'] for e in result['entries']], ['New', 'Also new', 'Middle'])
 
     def test_disabled_extensions_are_hidden_before_limit_and_use_current_settings(self):
         entries = [
@@ -147,15 +158,14 @@ class RssFreshnessTests(unittest.TestCase):
     def test_annotation_write_does_not_restore_a_stale_snapshot(self):
         self.seed([{'title': 'Old'}])
         old = routes._load_rss_persistent_cache(self.path)[self.key]
-        def annotate(entries):
-            self.seed([{'title': 'Fresh'}], 2)
-            return entries
-        self.call_latest([(self.feed, old, None)], annotate)
+        self.seed([{'title': 'Fresh'}], 2)
+        late = {'title': 'Old', '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION, '_library_fingerprint': 'fp'}
+        routes._save_rss_annotations(self.path, self.key, old['fetched_at'], [late])
         cached = routes._load_rss_persistent_cache(self.path)[self.key]
         self.assertEqual(cached['entries'][0]['title'], 'Fresh')
         self.assertNotIn('annotated_entries', cached)
 
-    def test_only_requested_and_unseen_entries_are_annotated(self):
+    def test_new_releases_are_returned_at_once_and_annotated_in_background(self):
         old = {'title': 'Old', 'link': 'https://example.test/old', 'date': '2026-09-28'}
         annotated_old = {**old, 'series_id': 7,
                          '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION,
@@ -165,19 +175,39 @@ class RssFreshnessTests(unittest.TestCase):
                          'date': '2026-09-27'}
         snapshot = {'entries': [new, old, outside_limit],
                     'annotated_entries': [annotated_old], 'fetched_at': 1}
-        annotated_calls = []
+        background = []
 
-        def annotate(entries):
-            annotated_calls.append(entries)
-            return [{**entry, 'series_id': 9,
-                     '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION,
-                         '_library_fingerprint': 'fp'}
-                    for entry in entries]
+        def refuse_sync(entries):
+            self.fail('annotation synchrone inattendue')
 
-        result = self.call_latest([(self.feed, snapshot, None)], annotate, 'limit=2')
-        self.assertEqual([[e['title'] for e in call] for call in annotated_calls], [['New']])
+        with patch.object(routes, '_reannotate_rss_in_background', side_effect=lambda *a: background.append(a)):
+            result = self.call_latest([(self.feed, snapshot, None)], refuse_sync, 'limit=2')
+        # Seule la release jamais vue est (re)calculée, et seulement dans la limite demandée.
+        self.assertEqual([[e['title'] for e in call[-1]] for call in background], [['New']])
         self.assertEqual([e['title'] for e in result['entries']], ['New', 'Old'])
-        self.assertEqual([e['series_id'] for e in result['entries']], [9, 7])
+        self.assertTrue(result['entries'][0]['annotation_pending'])
+        self.assertTrue(result['refreshing'])  # la page redemande tant qu'une ligne n'est pas annotée
+        self.assertNotIn('series_id', result['entries'][0])
+        self.assertEqual(result['entries'][1]['series_id'], 7)
+
+    def test_outdated_annotations_are_served_at_once_and_recomputed_in_background(self):
+        # La bibliothèque a changé depuis l'annotation: la page affiche l'ancienne tout de suite,
+        # le recalcul se fait en arrière-plan (pas d'attente, pas de nouveau calcul à chaque visite).
+        entry = {'title': 'Old', 'link': 'https://example.test/old', 'date': '2026-09-28'}
+        stale = {**entry, 'series_id': 7,
+                 '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION,
+                 '_library_fingerprint': 'older'}
+        snapshot = {'entries': [entry], 'annotated_entries': [stale], 'fetched_at': 1}
+        background = []
+
+        def refuse_sync(entries):
+            self.fail('annotation synchrone inattendue')
+
+        with patch.object(routes, '_reannotate_rss_in_background', side_effect=lambda *a: background.append(a)):
+            result = self.call_latest([(self.feed, snapshot, None)], refuse_sync)
+        self.assertEqual([e['series_id'] for e in result['entries']], [7])
+        self.assertEqual(len(background), 1)
+        self.assertEqual([e['title'] for e in background[0][-1]], ['Old'])
 
     def test_iso_and_malformed_dates_do_not_discard_feed(self):
         payload = b'<rss><channel><item><title>A</title><pubDate>2026-09-29T08:00:00Z</pubDate></item><item><title>B</title><pubDate>invalid</pubDate></item></channel></rss>'

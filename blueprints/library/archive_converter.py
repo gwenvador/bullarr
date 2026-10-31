@@ -12,12 +12,33 @@ _MAX_MEMBER_BYTES = 500 * 1024 * 1024
 _CHUNK = 1024 * 1024
 
 
-def classify_archive(path):
+_TAR_COMPRESSION_MAGICS = (b'\x1f\x8b', b'BZh', b'\xfd7zXZ\x00')
+_classify_cache = {}
+
+
+def _classify_uncached(path):
     if zipfile.is_zipfile(path): return 'zip'
-    if tarfile.is_tarfile(path): return 'tar'
-    with open(path, 'rb') as fh: magic = fh.read(7)
-    if magic.startswith(b'Rar!'): return 'rar'
+    with open(path, 'rb') as fh: head = fh.read(512)
+    if head.startswith(b'Rar!'): return 'rar'
+    # tarfile.is_tarfile essaie de décompresser tout le fichier: un fichier encore en cours de copie
+    # (octets nuls préalloués) y passait plusieurs secondes par album et bloquait la page Import.
+    # On ne l'appelle donc que si l'en-tête annonce un tar (ustar) ou une compression connue.
+    looks_like_tar = head[257:262] == b'ustar' or any(head.startswith(magic) for magic in _TAR_COMPRESSION_MAGICS)
+    if looks_like_tar and tarfile.is_tarfile(path): return 'tar'
     return 'unknown'
+
+
+def classify_archive(path):
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return _classify_uncached(path)
+    key = (path, stat.st_size, stat.st_mtime_ns)
+    cached = _classify_cache.get(key)
+    if cached is None:
+        if len(_classify_cache) > 2000: _classify_cache.clear()
+        cached = _classify_cache[key] = _classify_uncached(path)
+    return cached
 
 
 def _output_path(source):

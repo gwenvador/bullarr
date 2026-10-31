@@ -64,9 +64,10 @@ def store_origin(database, url, origin):
         conn.execute('INSERT OR REPLACE INTO bedetheque_origin_cache (url, origin, fetched_at) VALUES (?, ?, ?)',
                      (canonical, value, time.time()))
         conn.commit()
-        return True
     finally:
         conn.close()
+    _save_to_catalog([(canonical, value)])
+    return True
 
 
 def origin_kind(origin):
@@ -103,6 +104,36 @@ def _ensure_cache(conn):
         url TEXT PRIMARY KEY, origin TEXT, fetched_at REAL NOT NULL)''')
 
 
+def _save_to_catalog(pairs):
+    """Ajoute des origines au catalogue Bédéthèque local (voir catalog_index.save_catalog_origins)."""
+    try:
+        from .catalog_index import save_catalog_origins
+        save_catalog_origins(pairs)
+    except Exception:
+        pass  # le catalogue est un confort: une écriture ratée ne bloque jamais la lecture
+
+
+_catalog_seeded_for = set()
+
+
+def seed_catalog_origins(database, conn):
+    """Une fois par processus et par base: verse au catalogue les origines déjà connues ailleurs
+    (séries de la bibliothèque, ancien cache d'origines), pour ne jamais les relire sur Bédéthèque."""
+    if database in _catalog_seeded_for:
+        return
+    pairs = []
+    for url, origin in conn.execute("SELECT bedetheque_url, bedetheque_origin FROM series "
+                                    "WHERE COALESCE(bedetheque_origin, '') != '' AND bedetheque_url IS NOT NULL"):
+        canonical = normalize_series_url(url)
+        value = ORIGIN_LABELS.get((origin or '').strip().lower(), (origin or '').strip())
+        if canonical and value:
+            pairs.append((canonical, value))
+    for url, origin in conn.execute("SELECT url, origin FROM bedetheque_origin_cache WHERE COALESCE(origin, '') != ''"):
+        pairs.append((url, origin))
+    _save_to_catalog(pairs)
+    _catalog_seeded_for.add(database)
+
+
 def resolve_origins(database, urls, fetch_page=None, fetch_limit=6):
     """{url: origine ou None} pour chaque adresse de série valide, et le nombre d'adresses
     restées sans réponse faute d'avoir pu les lire dans cet appel (« pending »).
@@ -124,6 +155,13 @@ def resolve_origins(database, urls, fetch_page=None, fetch_limit=6):
                 f"SELECT bedetheque_url, bedetheque_origin FROM series WHERE bedetheque_url IN ({placeholders}) "
                 "AND COALESCE(bedetheque_origin, '') != ''", wanted):
             result[url] = origin
+        seed_catalog_origins(database, conn)
+        try:
+            from .catalog_index import get_catalog_origins
+            for url, origin in get_catalog_origins([u for u in wanted if u not in result]).items():
+                result[url] = origin
+        except Exception:
+            pass  # catalogue indisponible: repli sur le cache puis sur la page
         retry_before = time.time() - ORIGIN_RETRY_DAYS * 86400
         for url, origin, fetched_at in conn.execute(
                 f"SELECT url, origin, fetched_at FROM bedetheque_origin_cache WHERE url IN ({placeholders})", wanted):
@@ -152,6 +190,8 @@ def resolve_origins(database, urls, fetch_page=None, fetch_limit=6):
             conn.execute('INSERT OR REPLACE INTO bedetheque_origin_cache (url, origin, fetched_at) VALUES (?, ?, ?)',
                          (url, origin, time.time()))
             conn.commit()
+            if origin:
+                _save_to_catalog([(url, origin)])
             result[url] = origin
         pending = len([url for url in wanted if url not in result])
         return result, pending

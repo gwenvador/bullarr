@@ -3073,3 +3073,30 @@ async function restoreBackup() {
         messageEl.innerHTML = `<span style="color:#dc2626;">❌ Erreur de connexion: ${escapeHtml(error.message)}</span>`;
     }
 }
+
+
+// À propos: bouton « Mise à jour disponible » (vers la release) et dernière version de l'application Android,
+// affichée à côté de la version de Bullarr, la version elle-même servant de lien vers l'APK.
+async function loadAboutUpdates() {
+    const box = document.getElementById('about-update');
+    if (!box) return;
+    try {
+        const data = await (await fetch('/api/updates')).json();
+        if (!data.success) return;
+        const android = data.android;
+        if (android) {
+            const link = document.getElementById('about-android-link');
+            link.textContent = `v${android.latest}`;
+            link.href = android.apk_url || android.url;
+            document.getElementById('about-android').hidden = false;
+        }
+        const bullarr = data.bullarr;
+        if (bullarr) {
+            box.innerHTML = bullarr.update_available
+                ? `<a class="btn btn-success about-update-button" href="${escapeHtml(bullarr.url)}" target="_blank" rel="noopener noreferrer">⬆️ Mise à jour disponible : v${escapeHtml(bullarr.latest)}</a>`
+                : '<span class="about-uptodate">✓ Bullarr est à jour</span>';
+            box.hidden = false;
+        }
+    } catch (error) { /* GitHub injoignable: la carte reste sans ligne de mise à jour */ }
+}
+document.addEventListener('DOMContentLoaded', loadAboutUpdates);

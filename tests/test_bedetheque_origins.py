@@ -51,6 +51,14 @@ class OriginParsingTest(unittest.TestCase):
 
 class ResolveOriginsTest(unittest.TestCase):
     def setUp(self):
+        # Catalogue d'origines isolé: un test ne doit jamais lire ce qu'un autre y a écrit.
+        from blueprints.bedetheque import catalog_index
+        self._catalog_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._catalog_tmp.cleanup)
+        catalog_patch = patch.object(catalog_index, 'CATALOG_DB', os.path.join(self._catalog_tmp.name, 'catalog.db'))
+        catalog_patch.start()
+        self.addCleanup(catalog_patch.stop)
+        origins._catalog_seeded_for.clear()
         self.tmp = tempfile.TemporaryDirectory()
         self.db = os.path.join(self.tmp.name, 'bullarr.db')
         conn = sqlite3.connect(self.db)
@@ -105,3 +113,57 @@ class ResolveOriginsTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CatalogOriginsTest(unittest.TestCase):
+    """Chaque origine lue est ajoutée au catalogue; celles déjà connues de la bibliothèque aussi."""
+
+    def setUp(self):
+        from blueprints.bedetheque import catalog_index
+        self.catalog_index = catalog_index
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = os.path.join(self.tmp.name, 'bullarr.db')
+        conn = sqlite3.connect(self.db)
+        conn.execute('CREATE TABLE series (id INTEGER PRIMARY KEY, bedetheque_url TEXT, bedetheque_origin TEXT)')
+        conn.execute("INSERT INTO series (bedetheque_url, bedetheque_origin) VALUES "
+                     "('https://www.bedetheque.com/serie-1-BD-Alix.html', 'Franco-Belge')")
+        conn.commit()
+        conn.close()
+        patcher = patch.object(catalog_index, 'CATALOG_DB', os.path.join(self.tmp.name, 'catalog.db'))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        origins._catalog_seeded_for.clear()
+
+    def test_library_origins_are_added_to_the_catalog(self):
+        origins.resolve_origins(self.db, ['https://www.bedetheque.com/serie-1-BD-Alix.html'])
+        self.assertEqual(self.catalog_index.get_catalog_origins(['https://www.bedetheque.com/serie-1-BD-Alix.html']),
+                         {'https://www.bedetheque.com/serie-1-BD-Alix.html': 'Europe'})
+
+    def test_page_read_is_added_to_the_catalog_and_not_read_twice(self):
+        url = 'https://www.bedetheque.com/serie-2-BD-Akira.html'
+        pages = []
+
+        def fetch(u):
+            pages.append(u)
+            return '<li title="Origine de la série"><i class="x"></i> Manga</li>'
+
+        origins.resolve_origins(self.db, [url], fetch)
+        self.assertEqual(self.catalog_index.get_catalog_origins([url]), {url: 'Asie'})
+        # Autre base (cache d'origines vide), même catalogue: plus aucune lecture réseau.
+        other = os.path.join(self.tmp.name, 'other.db')
+        conn = sqlite3.connect(other)
+        conn.execute('CREATE TABLE series (id INTEGER PRIMARY KEY, bedetheque_url TEXT, bedetheque_origin TEXT)')
+        conn.commit()
+        conn.close()
+        result, pending = origins.resolve_origins(other, [url], fetch)
+        self.assertEqual((result, pending, len(pages)), ({url: 'Asie'}, 0, 1))
+
+    def test_series_index_rebuild_keeps_the_origins(self):
+        url = 'https://www.bedetheque.com/serie-3-BD-Blake.html'
+        self.catalog_index.save_catalog_origins([(url, 'Europe')])
+        conn = self.catalog_index._connect_db()
+        conn.execute('DELETE FROM bedetheque_series')  # ce que fait la reconstruction de l\'index
+        conn.commit()
+        conn.close()
+        self.assertEqual(self.catalog_index.get_catalog_origins([url]), {url: 'Europe'})

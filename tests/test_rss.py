@@ -89,7 +89,8 @@ class RssParserTests(unittest.TestCase):
             path = str(Path(directory) / "rss_entries_cache.json")
             with patch("blueprints.ebdz.routes.fetch_feed", return_value=[{"title": "Fresh"}]):
                 _refresh_rss_persistent_feed(feed, path)
-            cache = json.loads(Path(path).read_text())
+            from blueprints.ebdz.routes import _load_rss_persistent_cache
+            cache = _load_rss_persistent_cache(path)
         self.assertEqual(cache["provider:prowlarr:Prowlarr"]["entries"][0]["title"], "Fresh")
 
     def test_accepts_server_side_prowlarr_feed_without_exposing_credentials(self):
