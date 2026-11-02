@@ -2,6 +2,8 @@
 
 > **Gestionnaire self-hosted de bibliothèque BD : métadonnées Bédéthèque, intégration Komga, recherche multi-sources et acquisition automatique façon Sonarr/Radarr**
 
+🌐 **[Site de présentation et captures d'écran →](https://gwenvador.github.io/bullarr/)**
+
 Bullarr est une application web Flask (interface en français) qui gère une bibliothèque
 personnelle de bandes dessinées sur disque : elle scanne vos dossiers, associe
 chaque série à sa fiche [Bédéthèque](https://www.bedetheque.com/) (référence unique pour
