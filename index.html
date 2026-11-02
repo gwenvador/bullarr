@@ -43,7 +43,7 @@
   }
   header.top nav a:hover { color: var(--accent-ink); }
 
-  .carousel { max-width: 340px; margin: 28px auto 0; }
+  .carousel { max-width: 640px; margin: 28px auto 0; }
   .slide { display: none; margin: 0; }
   .slide.active { display: block; }
   .slide img {
@@ -124,11 +124,15 @@
   <div class="carousel" aria-label="Captures d'écran de Bullarr">
     <div class="slides">
       <figure class="slide active">
-        <img src="demo-bibliotheque.jpg" alt="Bibliothèque de démonstration avec douze séries (données inventées, images du domaine public)">
+        <img src="demo-bibliotheque-entete.jpg" alt="En-tête de la bibliothèque de démonstration">
         <figcaption>Bibliothèque : séries, nombre de tomes, liste « favori ». Données de démonstration inventées.</figcaption>
       </figure>
       <figure class="slide">
-        <img src="demo-fiche.jpg" alt="Fiche d'une série de démonstration avec ses volumes">
+        <img src="demo-recherche.jpg" alt="Recherche du haut de page : une série et un tag correspondants">
+        <figcaption>Recherche : séries et tags, depuis la barre du haut. Données de démonstration inventées.</figcaption>
+      </figure>
+      <figure class="slide">
+        <img src="demo-fiche-entete.jpg" alt="En-tête de la fiche d'une série de démonstration">
         <figcaption>Fiche de série : volumes, métadonnées, tags et listes. Données de démonstration inventées.</figcaption>
       </figure>
     </div>
@@ -137,6 +141,7 @@
       <div class="dots">
         <button type="button" class="on" aria-label="Capture 1"></button>
         <button type="button" aria-label="Capture 2"></button>
+        <button type="button" aria-label="Capture 3"></button>
       </div>
       <button type="button" data-dir="1" aria-label="Capture suivante">›</button>
     </div>
