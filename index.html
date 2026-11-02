@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bullarr — gestionnaire de bibliothèque BD</title>
+<meta name="description" content="Bullarr gère votre bibliothèque de BD : métadonnées Bédéthèque, import automatique, tomes manquants, lecteur intégré, API, application Android et serveur MCP pour Claude et ChatGPT.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --ink: #1d1d1f;
+    --muted: #5b5b61;
+    --paper: #f6f5f2;
+    --card: #ffffff;
+    --line: #e4e1da;
+    --accent: #e8891c;
+    --accent-ink: #b5600a;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.55;
+  }
+  a { color: var(--accent-ink); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 0;
+  }
+  header.top img { height: 40px; display: block; }
+  header.top nav a {
+    margin-left: 18px; color: var(--ink); text-decoration: none; font-weight: 500;
+  }
+  header.top nav a:hover { color: var(--accent-ink); }
+
+  .hero { padding: 36px 0 28px; text-align: center; }
+  .hero img { width: min(520px, 90%); height: auto; }
+  .hero h1 {
+    font-size: clamp(1.9rem, 4.2vw, 2.8rem); line-height: 1.15; margin: 22px 0 12px; font-weight: 750;
+  }
+  .hero p { font-size: 1.12rem; color: var(--muted); max-width: 640px; margin: 0 auto; }
+  .cta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .btn {
+    display: inline-block; padding: 11px 20px; border-radius: 999px; text-decoration: none;
+    font-weight: 600; border: 2px solid var(--ink); color: var(--ink); background: transparent;
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+  .btn:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+
+  section { padding: 44px 0; }
+  section h2 { font-size: 1.6rem; margin: 0 0 6px; }
+  section > .wrap > p.lead { color: var(--muted); margin: 0 0 24px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+  }
+  .card .icon { font-size: 1.6rem; line-height: 1; margin-bottom: 10px; }
+  .card h3 { font-size: 1.05rem; margin: 0 0 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.97rem; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+  pre {
+    background: #1f1f23; color: #f2f2f2; padding: 16px 18px; border-radius: 12px;
+    overflow-x: auto; font-size: 0.92rem; margin: 10px 0 0;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .band { background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; background: var(--card); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 0.97rem; }
+  th { background: #faf9f6; }
+  tr:last-child td { border-bottom: none; }
+
+  footer { padding: 28px 0 40px; color: var(--muted); font-size: 0.94rem; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <img src="logo.png" alt="Bullarr">
+    <nav>
+      <a href="#fonctions">Fonctions</a>
+      <a href="#installer">Installer</a>
+      <a href="#claude">Claude</a>
+      <a href="https://github.com/gwenvador/bullarr">GitHub</a>
+    </nav>
+  </header>
+</div>
+
+<div class="wrap hero">
+  <h1>Votre bibliothèque de BD, à jour et complète.</h1>
+  <p>Bullarr range vos albums sur disque, retrouve les métadonnées sur Bédéthèque, repère les tomes manquants et vous laisse tout lire depuis le navigateur. Auto-hébergé, sans base externe.</p>
+  <div class="cta">
+    <a class="btn primary" href="#installer">Installer Bullarr</a>
+    <a class="btn" href="https://github.com/gwenvador/bullarr/releases/tag/v10.0">Version 10.0</a>
+    <a class="btn" href="https://github.com/gwenvador/bullarr">Code source</a>
+  </div>
+</div>
+
+<section id="fonctions" class="band">
+  <div class="wrap">
+    <h2>Ce que Bullarr fait</h2>
+    <p class="lead">Un outil pensé pour les collections de BD francophones : vous gardez la main sur vos fichiers.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="icon">🏷️</div>
+        <h3>Métadonnées Bédéthèque</h3>
+        <p>Chaque série est rattachée à sa fiche Bédéthèque : résumé, auteur, éditeur, couverture, et écriture du ComicInfo.xml dans les archives.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📥</div>
+        <h3>Import automatique</h3>
+        <p>Surveillance des dossiers aMule, torrents, Telegram et sources web. Détection de la série et du tome, conversion en CBZ, historique annulable.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📊</div>
+        <h3>Tomes manquants</h3>
+        <p>Un suivi façon Sonarr : Bullarr voit ce qui manque dans chaque série et peut lancer la recherche et le téléchargement.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📖</div>
+        <h3>Lecteur intégré</h3>
+        <p>CBZ, CBR et PDF lus dans le navigateur : deux pages, zoom, miniatures, plein écran et raccourcis clavier.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🏷️</div>
+        <h3>Tags et listes</h3>
+        <p>Des tags par série, éditables et recherchables. Une liste « à lire plus tard » et des favoris pour ce que vous ne lisez pas encore.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔌</div>
+        <h3>API et application Android</h3>
+        <p>Toutes les fonctions sont pilotables par une clé API. Une application Android s'appuie dessus pour la bibliothèque, les téléchargements et l'import.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="installer">
+  <div class="wrap">
+    <h2>Installer</h2>
+    <p class="lead">Bullarr tourne dans Docker, avec une base SQLite : rien d'autre à installer.</p>
+    <div class="split">
+      <div class="card">
+        <h3>Avec Docker Compose</h3>
+        <p>Clonez le dépôt, copiez le modèle de configuration, puis démarrez. Le guide complet est dans le README.</p>
+        <pre><code>git clone https://github.com/gwenvador/bullarr.git
+cd bullarr
+cp docker-compose.example.yml docker-compose.yml
+# renseignez SECRET_KEY dans .env puis :
+docker compose up -d</code></pre>
+      </div>
+      <div class="card">
+        <h3>Application Android</h3>
+        <p>L'application pilote Bullarr depuis votre téléphone : bibliothèque, recherche, téléchargements, import. Elle s'installe depuis le dépôt F-Droid de l'auteur.</p>
+        <p style="margin-top:12px"><a class="btn" href="https://gwenvador.github.io/bullarr-android/repo/">Dépôt F-Droid</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="claude" class="band">
+  <div class="wrap">
+    <h2>Claude et ChatGPT</h2>
+    <p class="lead">Bullarr expose un serveur MCP. Posez vos questions en langage naturel : « une BD des années 70 sur les chats », « quelles séries parlent de Nietzsche ? », « tague cette série ».</p>
+    <table>
+      <tr><th>Outil</th><th>Rôle</th></tr>
+      <tr><td><code>search_series</code></td><td>Chercher par mots, tags et année.</td></tr>
+      <tr><td><code>get_series</code></td><td>Lire la fiche d'une série.</td></tr>
+      <tr><td><code>list_tags</code></td><td>Lister les tags et leur nombre de séries.</td></tr>
+      <tr><td><code>set_series_tags</code></td><td>Remplacer les tags d'une série.</td></tr>
+      <tr><td><code>set_reading_lists</code></td><td>Gérer « à lire plus tard » et les favoris.</td></tr>
+    </table>
+    <p class="lead" style="margin-top:16px">Il ne supprime rien et ne modifie aucun fichier. L'accès se fait par un jeton dédié, à configurer dans votre instance.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Bullarr est un projet personnel, auto-hébergé.</span>
+    <span><a href="https://github.com/gwenvador/bullarr">github.com/gwenvador/bullarr</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
