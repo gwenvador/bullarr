@@ -43,11 +43,11 @@
   }
   header.top nav a:hover { color: var(--accent-ink); }
 
-  .carousel { max-width: 640px; margin: 28px auto 0; }
+  .carousel { width: 100%; margin: 28px auto 0; }
   .slide { display: none; margin: 0; }
   .slide.active { display: block; }
   .slide img {
-    display: block; width: 100%; height: auto; background: #fff;
+    display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #fff;
     border: 1px solid var(--line); border-radius: 14px;
   }
   .slide figcaption { color: var(--muted); font-size: 0.93rem; text-align: center; margin-top: 10px; }
