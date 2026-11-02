@@ -4654,9 +4654,18 @@ document.addEventListener('DOMContentLoaded', () => loadImportHistorySection());
 // loadActiveDownloads(), seul capable de refléter ça correctement (recalcule aussi les
 // lignes "pending" simples/regroupées en pack) - rare comparé au tic de progression
 // normal.
+// Pas de court-circuit « rien en cours »: un téléchargement lancé pendant que la page est
+// ouverte doit apparaître sans « Actualiser ». Son premier passage n'a encore ni
+// bytes_total ni ligne avec barre de progression: il faut donc sonder aussi dans ce cas.
+function _pendingStructureKey(p) {
+    // Une ligne sans bytes_total s'affiche sans barre: passer à un total connu change sa
+    // structure (la barre n'existe pas encore dans le tableau) et force un rendu complet.
+    return `pending:${p.id}:${p.bytes_total != null ? 1 : 0}`;
+}
+
 function refreshDownloadingProgress() {
-    const oldDownloadingPending = pendingDownloads.filter(p => p.status !== 'completed' && p.bytes_total != null);
-    if (activeDownloads.length === 0 && oldDownloadingPending.length === 0) return; // rien à mettre à jour, pas d'appel réseau inutile
+    if (document.hidden) return;
+    const oldDownloadingPending = pendingDownloads.filter(p => p.status !== 'completed');
     fetch('/api/activity/status')
         .then(r => readJsonResponse(r))
         .then(data => {
@@ -4667,15 +4676,15 @@ function refreshDownloadingProgress() {
                     newActive.push({ clientKey: client.client, item });
                 }
             }
-            const newDownloadingPending = (data.pending || []).filter(p => p.status !== 'completed' && p.bytes_total != null);
+            const newDownloadingPending = (data.pending || []).filter(p => p.status !== 'completed');
 
             const oldKeys = new Set([
                 ...activeDownloads.map(a => _activeDownloadKey(a.clientKey, a.item)),
-                ...oldDownloadingPending.map(p => `pending:${p.id}`),
+                ...oldDownloadingPending.map(_pendingStructureKey),
             ]);
             const newKeys = new Set([
                 ...newActive.map(a => _activeDownloadKey(a.clientKey, a.item)),
-                ...newDownloadingPending.map(p => `pending:${p.id}`),
+                ...newDownloadingPending.map(_pendingStructureKey),
             ]);
             const structurallyChanged = oldKeys.size !== newKeys.size || [...oldKeys].some(k => !newKeys.has(k));
             if (structurallyChanged) {

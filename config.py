@@ -32,7 +32,7 @@ class Config:
 
     # Version publiée (release GitHub et image ghcr.io/gwenvador/bullarr), affichée dans
     # Configuration → Vue d'ensemble → À propos. À relever à chaque release (v9.1 était restée affichée « 9.0 »).
-    APP_VERSION = '9.2'
+    APP_VERSION = '10.0'
     SOURCE_URL = 'https://github.com/gwenvador/bullarr'
     COVERS_DIR = os.path.join(DATA_DIR, 'covers')
     
@@ -361,6 +361,8 @@ class Config:
             ('filesystem_missing_count', 'INTEGER DEFAULT 0'),
             ('filesystem_verification_error', 'TEXT'),
             ('added_at', 'TIMESTAMP'),  # date d'ajout de la série à la bibliothèque (UTC)
+            ('to_read_later', 'INTEGER DEFAULT 0'),  # 1 = à lire plus tard (liste « À lire »)
+            ('is_favorite', 'INTEGER DEFAULT 0'),  # 1 = favori (liste « Favoris »)
         ]
 
         # Vérifier quelles colonnes existent

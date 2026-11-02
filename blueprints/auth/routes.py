@@ -22,6 +22,8 @@ _PUBLIC_ENDPOINTS = {
     'auth.login', 'auth.login_password', 'auth.login_redirect', 'auth.callback', 'auth.app_login',
     'auth.logout', 'auth.logout_provider',
     'static', 'serve_cover',
+    # Serveur MCP : authentifié par son propre jeton (BULLARR_MCP_TOKEN), pas par la session
+    'mcp.mcp_endpoint',
 }
 
 

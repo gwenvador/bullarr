@@ -1251,13 +1251,14 @@ class LibraryScanner:
                     and os.path.isfile(os.path.join(item_path, name))
                     for name in child_names
                 )
-                has_subdirs = any(os.path.isdir(os.path.join(item_path, name)) for name in child_names)
+                # Dossiers cachés ignorés (ex.: .bullarr-upload, réception d'un fichier envoyé): jamais une série.
+                has_subdirs = any(os.path.isdir(os.path.join(item_path, name)) for name in child_names if not name.startswith('.'))
 
                 if not has_direct_file and has_subdirs:
                     # Dossier d'univers: chaque sous-dossier est une série à part
                     for sub_name in child_names:
                         sub_path = os.path.join(item_path, sub_name)
-                        if not os.path.isdir(sub_path):
+                        if sub_name.startswith('.') or not os.path.isdir(sub_path):
                             continue
                         series_title = sub_name
                         series_data[series_title]['path'] = sub_path

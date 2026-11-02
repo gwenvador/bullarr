@@ -577,7 +577,7 @@ function buildPosterCardHtml(s) {
                         title="Éditer: renommer, matcher EBDZ, matcher Komga" aria-label="Éditer: renommer, matcher EBDZ, matcher Komga">${svgIcon('settings')}</button>
             </div>
             <div class="poster-overlay">
-                <div class="poster-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
+                <div class="poster-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}${seriesListIconsHtml(s)}</div>
                 <div class="poster-subtitle">${bedethequeOriginHtml(s.bedetheque_origin)} ${volumeLabel}</div>
             </div>
         </div>
@@ -603,12 +603,15 @@ function buildOverviewRowHtml(s) {
         <input type="checkbox" class="series-select-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSeriesSelection(${s.id}, this.checked)" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;" title="Sélectionner" aria-label="Sélectionner ${escapeHtml(s.title)}">
         ${imageHtml}
         <div class="overview-info">
-            <div class="overview-title"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></div>
+            <div class="overview-title"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a>${seriesListIconsHtml(s)}</div>
             ${summary ? `<p class="overview-summary">${escapeHtml(summary)}</p>` : ''}
             <div class="overview-tags">
                 ${bedethequeOriginHtml(s.bedetheque_origin)}
                 ${statusInfo ? `<span class="overview-tag">${svgIcon(statusInfo.icon)} ${escapeHtml(statusInfo.label)}</span>` : ''}
                 <span class="overview-tag">📖 ${volumeLabel}</span>
+                ${s.to_read_later ? '<span class="overview-tag">📚 À lire</span>' : ''}
+                ${s.is_favorite ? '<span class="overview-tag">⭐ Favori</span>' : ''}
+                ${(s.tags || []).map(tag => `<span class="overview-tag">${escapeHtml(tag)}</span>`).join('')}
             </div>
         </div>
         <div class="overview-actions">${buildQuickActionsHtml(s, 'poster-action-btn poster-action-btn-light')}</div>
@@ -664,7 +667,8 @@ const TABLE_OPTIONAL_COLUMNS = [
     // Popularité : somme des votes Bédéthèque de tous les tomes (clic sur l'en-tête pour trier).
     { key: 'votes', label: 'Votes', icon: '⭐', header: 'Votes', filterType: 'text',
       render: s => s.total_votes ? Number(s.total_votes).toLocaleString('fr-FR') : '—' },
-    { key: 'path', label: 'Chemin', icon: '📁', header: 'Chemin', filterType: 'text', render: s => s.path || '—' }
+    { key: 'path', label: 'Chemin', icon: '📁', header: 'Chemin', filterType: 'text', render: s => s.path || '—' },
+    { key: 'tags', label: 'Tags', icon: '🏷️', header: 'Tags', filterType: 'text', render: s => (s.tags || []).join(', ') || '—' }
 ];
 
 const TABLE_FIXED_COLUMNS = [
@@ -722,12 +726,19 @@ function renderTableColumnsMenu() {
     `).join('');
 }
 
+// Icônes des listes personnelles, affichées à côté du titre quand la série y figure
+function seriesListIconsHtml(s) {
+    const readLater = s.to_read_later ? '<span class="series-list-icon" data-tooltip="À lire plus tard : cette série est dans ta liste à lire" aria-label="À lire plus tard">📚</span>' : '';
+    const favorite = s.is_favorite ? '<span class="series-list-icon" data-tooltip="Favori : cette série est dans tes favoris" aria-label="Favori">⭐</span>' : '';
+    return readLater || favorite ? `<span class="series-list-icons">${readLater}${favorite}</span>` : '';
+}
+
 // Cellule Titre du tableau : au survol, la couverture de la série s'affiche en vignette
 // (voir _bindSeriesCoverPreview). Sans couverture, on garde l'infobulle texte habituelle.
 function _seriesTableTitleCellHtml(s) {
     const coverPath = pickPosterCoverPath(s);
     const hint = coverPath ? `data-cover="${escapeHtml('/' + coverPath)}"` : `data-tooltip="${escapeHtml(s.title)}"`;
-    return `<td class="series-table-title" ${hint} data-cover-title="${escapeHtml(s.title)}"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a></td>`;
+    return `<td class="series-table-title" ${hint} data-cover-title="${escapeHtml(s.title)}"><a class="series-title-link" href="/series/${s.id}" onclick="event.stopPropagation()">${escapeHtml(s.title)}</a>${seriesListIconsHtml(s)}</td>`;
 }
 
 let _seriesCoverPreviewEl = null;
@@ -1360,7 +1371,7 @@ function buildSearchHaystack(s) {
 // clés d'une même catégorie (ex: deux genres) se combinent en OU, les catégories
 // différentes (ex: genre + année) se combinent en ET
 function getFilterCategory(key) {
-    if (key === 'missing' || key === 'oneshot' || key === 'ebdz-unmatched' || key === 'missing-metadata') return key;
+    if (key === 'missing' || key === 'oneshot' || key === 'ebdz-unmatched' || key === 'missing-metadata' || key === 'to-read' || key === 'favorite') return key;
     const idx = key.indexOf(':');
     return idx === -1 ? key : key.slice(0, idx);
 }
@@ -1370,9 +1381,15 @@ function seriesMatchesFilterKey(s, key) {
     if (key === 'oneshot') return s.is_oneshot;
     if (key === 'ebdz-unmatched') return s.ebdz_match_status === 'unmatched';
     if (key === 'missing-metadata') return s.volumes_without_metadata > 0;
+    if (key === 'to-read') return !!s.to_read_later;
+    if (key === 'favorite') return !!s.is_favorite;
     if (key.startsWith('genre:')) return splitMultiValue(s.local_genre).includes(key.slice('genre:'.length));
     if (key.startsWith('author:')) return splitMultiValue(s.local_author).includes(key.slice('author:'.length));
     if (key.startsWith('year:')) return (s.year || '') === key.slice('year:'.length);
+    if (key.startsWith('tag:')) {
+        const wanted = normalizeForSearch(key.slice('tag:'.length)).replace(/-/g, ' ');
+        return (s.tags || []).some(tag => normalizeForSearch(tag).replace(/-/g, ' ') === wanted);
+    }
     return true;
 }
 
@@ -1618,6 +1635,9 @@ function getFilterKeyLabel(key) {
     if (key === 'oneshot') return '🔸 One-Shot';
     if (key === 'ebdz-unmatched') return '🎯 Matching EBDZ';
     if (key === 'missing-metadata') return '📄 Sans métadonnées';
+    if (key === 'to-read') return '📚 À lire plus tard';
+    if (key === 'favorite') return '⭐ Favoris';
+    if (key.startsWith('tag:')) return '🏷️ ' + key.slice('tag:'.length);
     for (const section of DYNAMIC_FILTER_SECTIONS) {
         if (key.startsWith(section.prefix)) {
             return `${section.icon} ${key.slice(section.prefix.length)}`;
@@ -1679,6 +1699,13 @@ function restoreFilterState() {
     try {
         const savedFilters = JSON.parse(localStorage.getItem(getFilterStorageKey('active')) || '[]');
         activeFilters = new Set(Array.isArray(savedFilters) ? savedFilters : []);
+        // Lien depuis la recherche du haut de page (?tag=...): filtre sur ce tag seul
+        const tagFromUrl = new URLSearchParams(window.location.search).get('tag');
+        if (tagFromUrl) {
+            activeFilters = new Set([...activeFilters].filter(key => !key.startsWith('tag:')));
+            activeFilters.add('tag:' + tagFromUrl);
+            saveFilterState();
+        }
         const savedSort = localStorage.getItem(getFilterStorageKey('sort'));
         if (savedSort && SERIES_SORT_MODES[savedSort]) seriesSortMode = savedSort;
         seriesSortReversed = localStorage.getItem(getFilterStorageKey('sortReversed')) === '1';
@@ -1711,6 +1738,7 @@ function clearSeriesFilters() {
 // bouton lui-même dès qu'un filtre de sa catégorie est actif, même dropdown fermé
 const FILTER_TOOLBAR_BUTTONS = [
     { id: 'status-filter-btn', match: key => key === 'missing' || key === 'oneshot' || key === 'ebdz-unmatched' || key === 'missing-metadata' },
+    { id: 'lists-filter-btn', match: key => key === 'to-read' || key === 'favorite' },
     { id: 'genre-filter-btn', match: key => key.startsWith('genre:') },
     { id: 'author-filter-btn', match: key => key.startsWith('author:') },
     { id: 'year-filter-btn', match: key => key.startsWith('year:') }
@@ -2040,6 +2068,43 @@ async function _confirmUploadVolumeSlot(seriesId, fileData) {
     });
 }
 
+// Envoi d'un fichier avec progression (fetch n'expose pas l'avancement d'un envoi): XMLHttpRequest, mise à jour au
+// plus quatre fois par seconde et seulement quand le pourcentage change (le toast est persisté à chaque mise à jour).
+async function _uploadWithProgress(url, formData, onProgress) {
+    // XMLHttpRequest ne passe pas par le fetch de nav.js qui ajoute le jeton de sécurité: on l'ajoute ici
+    // (sans lui, le serveur répond « Jeton de sécurité manquant ou invalide »).
+    const csrfToken = await window.getCsrfToken();
+    return new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        let lastPercent = -1;
+        let lastUpdate = 0;
+        request.upload.onprogress = event => {
+            if (!event.lengthComputable) return;
+            const percent = Math.min(100, Math.floor(event.loaded * 100 / event.total));
+            const now = Date.now();
+            if (percent === lastPercent || (percent < 100 && now - lastUpdate < 250)) return;
+            lastPercent = percent;
+            lastUpdate = now;
+            onProgress({ loaded: event.loaded, total: event.total, percent });
+        };
+        request.onload = () => {
+            try {
+                resolve(JSON.parse(request.responseText));
+            } catch (error) {
+                // Réponse non JSON: souvent le serveur web devant Bullarr (taille maximale, délai dépassé).
+                reject(new Error(request.status === 413
+                    ? 'fichier trop volumineux pour le serveur web'
+                    : `réponse inattendue du serveur (HTTP ${request.status})`));
+            }
+        };
+        request.onerror = () => reject(new Error('connexion interrompue pendant l\'envoi'));
+        request.ontimeout = () => reject(new Error('délai dépassé pendant l\'envoi'));
+        request.open('POST', url);
+        request.setRequestHeader('X-CSRF-Token', csrfToken);
+        request.send(formData);
+    });
+}
+
 async function uploadSeriesFile(seriesId, file, forcedVolumeOverride) {
     setSeriesActionsGearBusy(seriesId, true);
     showToast('series-upload', `Envoi de « ${file.name} »...`, { icon: 'upload' });
@@ -2048,11 +2113,12 @@ async function uploadSeriesFile(seriesId, file, forcedVolumeOverride) {
         const formData = new FormData();
         formData.append('file', file);
 
-        const uploadResponse = await fetch(`/api/series/${seriesId}/upload-file`, {
-            method: 'POST',
-            body: formData
+        const uploadData = await _uploadWithProgress(`/api/series/${seriesId}/upload-file`, formData, progress => {
+            const sizes = `${formatBytes(progress.loaded)} / ${formatBytes(progress.total)}`;
+            showToast('series-upload', progress.percent >= 100
+                ? `« ${file.name} » envoyé (${sizes}) : traitement par le serveur...`
+                : `Envoi de « ${file.name} » : ${progress.percent} % (${sizes})`, { icon: 'upload' });
         });
-        const uploadData = await uploadResponse.json();
 
         if (!uploadData.success) {
             alert('❌ Erreur: ' + (uploadData.error || "Échec de l'envoi"));
@@ -2107,6 +2173,94 @@ async function uploadSeriesFile(seriesId, file, forcedVolumeOverride) {
     } finally {
         dismissToast('series-upload');
         setSeriesActionsGearBusy(seriesId, false);
+    }
+}
+
+// Enregistre la liste complète des tags d'une série, puis met à jour la fiche et la liste
+async function saveSeriesTags(seriesId, tags) {
+    const response = await fetch(`/api/series/${seriesId}/tags`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags })
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || 'Erreur inconnue');
+    const item = seriesData.find(s => s.id === seriesId);
+    if (item) item.tags = data.tags;
+    if (currentSeriesDetail && currentSeriesDetail.id === seriesId) currentSeriesDetail.tags = data.tags;
+    return data.tags;
+}
+
+// Chips « tag × » de la fenêtre des tags d'une série
+function _seriesTagChipsHtml(seriesId, tags) {
+    return tags.map(tag => `<span class="overview-tag series-tag-editable">${escapeHtml(tag)}<button type="button" class="series-tag-remove" onclick="removeSeriesTag(${seriesId}, '${escapeForAttribute(tag)}', event)" data-tooltip="Supprimer le tag « ${escapeHtml(tag)} »" aria-label="Supprimer le tag ${escapeHtml(tag)}">×</button></span>`).join('');
+}
+
+// Met à jour la fenêtre des tags et le compteur « Tags (n) » sans reconstruire la fiche:
+// la page ne bouge pas, la fenêtre reste ouverte.
+function _refreshSeriesTagsEditor(seriesId, tags) {
+    const menu = document.getElementById(`series-tags-menu-${seriesId}`);
+    if (!menu) return;
+    const list = menu.querySelector('.series-detail-tags-list');
+    if (list) list.innerHTML = _seriesTagChipsHtml(seriesId, tags);
+    const trigger = menu.parentElement && menu.parentElement.querySelector('.series-detail-links-trigger');
+    if (trigger) trigger.innerHTML = `${svgIcon('tag')} Tags (${tags.length})`;
+    const input = document.getElementById(`series-tag-input-${seriesId}`);
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+}
+
+async function addSeriesTag(seriesId, event) {
+    if (event) event.stopPropagation();
+    const input = document.getElementById(`series-tag-input-${seriesId}`);
+    const tag = String(input ? input.value : '').trim().toLowerCase().replace(/\s+/g, '-');
+    if (!tag) return;
+    const current = (currentSeriesDetail && currentSeriesDetail.id === seriesId ? currentSeriesDetail.tags : null) || [];
+    if (current.includes(tag)) {
+        if (input) input.value = '';
+        return;
+    }
+    try {
+        const updated = await saveSeriesTags(seriesId, [...current, tag]);
+        _refreshSeriesTagsEditor(seriesId, updated);
+    } catch (error) {
+        alert('❌ Erreur: ' + error.message);
+    }
+}
+
+async function removeSeriesTag(seriesId, tag, event) {
+    if (event) event.stopPropagation();
+    const current = (currentSeriesDetail && currentSeriesDetail.id === seriesId ? currentSeriesDetail.tags : null) || [];
+    try {
+        const updated = await saveSeriesTags(seriesId, current.filter(existing => existing !== tag));
+        _refreshSeriesTagsEditor(seriesId, updated);
+    } catch (error) {
+        alert('❌ Erreur: ' + error.message);
+    }
+}
+
+// Bascule « à lire plus tard » ou « favori » d'une série, puis met à jour la fiche et la liste
+async function setSeriesReadingList(seriesId, field, value) {
+    try {
+        const response = await fetch(`/api/series/${seriesId}/reading-lists`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [field]: value })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Erreur inconnue');
+        const item = seriesData.find(s => s.id === seriesId);
+        if (item) {
+            item.to_read_later = data.to_read_later;
+            item.is_favorite = data.is_favorite;
+        }
+        // La grille n'existe que sur la bibliothèque: sur la fiche série seule, filterSeries plante.
+        if (typeof filterSeries === 'function' && document.getElementById('series-grid')) filterSeries();
+        renderSeriesDetail(seriesId);
+    } catch (error) {
+        alert('❌ Erreur: ' + error.message);
     }
 }
 
@@ -4074,10 +4228,33 @@ async function renderSeriesDetail(seriesId) {
         // position:fixed (voir toggleToolbarDropdown) n'a plus ce problème: il s'affiche
         // par-dessus, sans dépendre de l'espace disponible dans la ligne.
         const seriesLinksMenuId = `series-links-menu-${seriesId}`;
+        // États des listes personnelles (libellés des actions dans le menu Actions)
+        const readLaterOn = !!data.to_read_later;
+        const favoriteOn = !!data.is_favorite;
+
+        // Tags de la série (série.tags): popup à côté du menu Liens, sur le même modèle
+        const seriesTagsMenuId = `series-tags-menu-${seriesId}`;
+        const seriesTags = data.tags || [];
+        const seriesTagsHtml = `
+                <div class="toolbar-dropdown series-detail-tags">
+                    <span class="series-detail-links-trigger" onclick="toggleToolbarDropdown('${seriesTagsMenuId}', this)" title="Éditer les tags de la série">${svgIcon('tag')} Tags (${seriesTags.length})</span>
+                    <div class="toolbar-dropdown-menu series-detail-tags-menu" id="${seriesTagsMenuId}" style="display: none;">
+                        <div class="series-detail-tags-list">
+                            ${_seriesTagChipsHtml(seriesId, seriesTags)}
+                        </div>
+                        <div class="series-tag-add">
+                            <input type="text" id="series-tag-input-${seriesId}" class="series-tag-input" placeholder="Nouveau tag" autocomplete="off" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.preventDefault();addSeriesTag(${seriesId}, event);}">
+                            <button type="button" class="series-tag-add-btn" onclick="addSeriesTag(${seriesId}, event)" data-tooltip="Ajouter ce tag" aria-label="Ajouter ce tag">+</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+        const seriesLinkCount = [seriesKomgaLinkHtml, seriesEbdzLinkHtml, seriesBedethequeLinkHtml].filter(Boolean).length;
         const seriesLinksHtml = (seriesKomgaLinkHtml || seriesEbdzLinkHtml || seriesBedethequeLinkHtml)
             ? `
                 <div class="toolbar-dropdown series-detail-links">
-                    <span class="series-detail-links-trigger" onclick="toggleToolbarDropdown('${seriesLinksMenuId}', this)" title="Liens externes">${svgIcon('link')} Liens</span>
+                    <span class="series-detail-links-trigger" onclick="toggleToolbarDropdown('${seriesLinksMenuId}', this)" title="Liens externes">${svgIcon('link')} Liens (${seriesLinkCount})</span>
                     <div class="toolbar-dropdown-menu series-detail-links-menu" id="${seriesLinksMenuId}" style="display: none;">
                         <div class="series-detail-links-icons">
                             ${seriesKomgaLinkHtml}
@@ -4168,6 +4345,7 @@ async function renderSeriesDetail(seriesId) {
                         <div class="series-detail-title-with-icon">
                             <h2 class="series-detail-title">${escapeHtml(data.title)}</h2>
                             ${completenessIconHtml}
+                            ${seriesListIconsHtml(data)}
                         </div>
                         ${navHtml}
                     </div>
@@ -4184,7 +4362,10 @@ async function renderSeriesDetail(seriesId) {
                         }${data.has_parts ? ' • arcs/parties' : ''}</span>
                         <span>💾 ${formatBytes(totalSize)}</span>
                         <span class="series-location-tooltip" data-tooltip="${escapeHtml(data.path)}" tabindex="0">📁 ${escapeHtml(data.path)} <button type="button" class="btn-icon-only" style="vertical-align:middle;" data-tooltip="Corriger l'emplacement enregistré" aria-label="Corriger l'emplacement enregistré" onclick="openSeriesPathCorrection(${seriesId})">${svgIcon('pencil')}</button></span>
-                        ${seriesLinksHtml}
+                        <div class="series-detail-menus">
+                            ${seriesLinksHtml}
+                            ${seriesTagsHtml}
+                        </div>
                     </div>
                     ${bdMetaHtml}
                     <div id="series-universe-section-${seriesId}"></div>
@@ -4216,6 +4397,8 @@ async function renderSeriesDetail(seriesId) {
                             <button class="toolbar-dropdown-item" onclick="updateSeriesMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)" aria-label="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)">${svgIcon('tag')} MAJ métadonnées (série + tomes)</button>
                             <button class="toolbar-dropdown-item" onclick="openMergeSeriesModal(${seriesId})" title="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)" aria-label="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)">${svgIcon('git-merge')} Fusionner</button>
                             <button class="toolbar-dropdown-item" onclick="openManualEditModal(${seriesId})" title="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque" aria-label="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque">${svgIcon('pencil')} Éditer manuellement</button>
+                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">📚 ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
+                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">⭐ ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
                             ${data.is_oneshot ? `
                             <button class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(${seriesId})" title="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé" aria-label="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé">${svgIcon('upload')} Ajouter un fichier</button>
                             ` : ''}
@@ -5215,7 +5398,7 @@ async function openReadAlsoModal(seriesId, seriesTitle) {
                             ? `<button type="button" class="poster-action-btn poster-action-btn-light read-also-added-btn" disabled data-tooltip="Série ajoutée" aria-label="Série ajoutée">Ajouté</button>`
                             : item.series_id
                                 ? `<a href="/series/${item.series_id}" class="poster-action-btn poster-action-btn-light" data-tooltip="Ouvrir dans la bibliothèque">${svgIcon('folder')}</a>`
-                                : `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="addReadAlsoSeries(${index}, ${seriesId}, this)" data-tooltip="Ajouter dans la bibliothèque" aria-label="Ajouter ${escapeForAttribute(item.title)}">${svgIcon('plus')}</button>`}
+                                : `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="addReadAlsoSeries(${index}, ${seriesId}, this)" data-tooltip="Ajouter la série et télécharger ses tomes" aria-label="Ajouter ${escapeForAttribute(item.title)} et la télécharger">${svgIcon('zap')}</button>`}
                     </div>
                 </div>
             `).join('') : '<div class="no-data"><p>Aucune recommandation trouvée sur cette fiche Bédéthèque.</p></div>'}

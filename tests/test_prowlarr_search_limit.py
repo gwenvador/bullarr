@@ -8,14 +8,14 @@ from blueprints.prowlarr.search import search_prowlarr_raw
 class ProwlarrSearchLimitTests(unittest.TestCase):
     def test_exact_torrent_after_first_thirty_raw_results_is_kept(self):
         rows = [
-            {'title': f'Astoria unrelated release {index}', 'seeders': 0,
+            {'title': f'Stern unrelated release {index}', 'seeders': 0,
              'infoUrl': f'https://other.example/torrents/{index}'}
             for index in range(30)
         ]
         rows.append({
-            'title': 'Astoria.Tome.6.Martin.Au.loin.2026.fr.[CBZ]-example',
+            'title': 'Stern.Tome.6.Maffre.Hors.du.monde.2026.fr.[CBZ]-beastieboy',
             'seeders': 8,
-            'infoUrl': 'https://tracker.example/torrents/exact',
+            'infoUrl': 'https://c411.example/torrents/exact',
             'downloadUrl': 'https://prowlarr.example/17/download/exact',
         })
         response = Mock(status_code=200)
@@ -28,9 +28,9 @@ class ProwlarrSearchLimitTests(unittest.TestCase):
                  'volume': None, 'is_integral': False, 'integral_number': None,
                  'is_hs': False, 'hs_number': None, 'resolution': None,
              }):
-            results = search_prowlarr_raw('Astoria', limit=30)
+            results = search_prowlarr_raw('Stern', limit=30)
         self.assertEqual(len(results), 30)
-        self.assertEqual(results[0]['info_url'], 'https://tracker.example/torrents/exact')
+        self.assertEqual(results[0]['info_url'], 'https://c411.example/torrents/exact')
 
 
 if __name__ == '__main__':

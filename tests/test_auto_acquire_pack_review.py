@@ -110,10 +110,10 @@ class AutoAcquirePackReviewTests(unittest.TestCase):
         self.assertEqual(len(json.loads(reviews[0][2])), 3)
 
     def test_validation_shows_torrent_after_many_telegram_results_with_original_index(self):
-        telegram = [{'source': 'telegram', 'title': f'Astoria T6 Telegram {index}'} for index in range(30)]
-        torrent = {'source': 'prowlarr', 'title': 'Astoria T6 Tracker', 'info_url': 'https://tracker.example/torrent/6'}
+        telegram = [{'source': 'telegram', 'title': f'Stern T6 Telegram {index}'} for index in range(30)]
+        torrent = {'source': 'prowlarr', 'title': 'Stern T6 C411', 'info_url': 'https://c411.example/torrent/6'}
         with self.app.app_context():
-            queue_manual_review(1, 'Astoria', 6, 'Tome 6', telegram + [torrent], 'À valider', force_candidates=True)
+            queue_manual_review(1, 'Stern', 6, 'Tome 6', telegram + [torrent], 'À valider', force_candidates=True)
             reviews = get_manual_reviews()
         self.assertEqual(len(reviews), 1)
         shown = reviews[0]['candidates']

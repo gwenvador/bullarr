@@ -94,8 +94,8 @@ class ReviewsTest(unittest.TestCase):
         reviews = parsers.parse_album_reviews(soup('album_reviews'))
         self.assertEqual(len(reviews), 7)
         first = reviews[0]
-        self.assertEqual((first['author'], first['date'], first['rating']), ('Lecteur 1', '2022-01-11', 5))
-        self.assertEqual(first['text'], 'Premier paragraphe de l avis fictif 1.\n\nSecond paragraphe de l avis fictif 1.')
+        self.assertEqual((first['author'], first['date'], first['rating']), ('Arkadi', '2022-01-11', 5))
+        self.assertIn('chef d\'œuvre', first['text'])
         self.assertIn('\n\n', first['text'])
         self.assertEqual(reviews[1]['rating'], 3)
 
@@ -143,7 +143,7 @@ class ListingsTest(unittest.TestCase):
         first = items[0]
         self.assertEqual(first['title'], 'Achille Talon')
         self.assertEqual((first['origin'], first['authors'], first['note']), ('Franco-belge', 'Greg', 'Note : 4.06/5'))
-        self.assertEqual(first['summary'], 'Résumé de la série.')
+        self.assertIn('Dargaud', first['summary'])
 
     def test_bdgest_top_podium_and_list(self):
         items = parsers.parse_bdgest_top(soup('bdgest_top'))

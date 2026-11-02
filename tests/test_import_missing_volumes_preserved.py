@@ -17,7 +17,7 @@ class ImportMissingVolumesTests(unittest.TestCase):
             id INTEGER PRIMARY KEY, series_id INTEGER, volume_number INTEGER,
             filepath TEXT, filesystem_present INTEGER, filesystem_checked_at TEXT)''')
         conn.execute('INSERT INTO series (id, missing_volumes) VALUES (1, ?)', (json.dumps([2, 5, 6]),))
-        conn.execute("INSERT INTO volumes VALUES (10, 1, 1, '/library/example/T1.cbz', 0, NULL)")
+        conn.execute("INSERT INTO volumes VALUES (10, 1, 1, '/BD/Stern/T1.cbz', 0, NULL)")
         for number in (2, 5, 6):
             conn.execute('INSERT INTO volumes (series_id, volume_number) VALUES (1, ?)', (number,))
         _mark_imported_volumes_present(conn, [10])

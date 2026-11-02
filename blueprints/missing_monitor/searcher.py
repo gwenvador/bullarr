@@ -143,7 +143,7 @@ class MissingVolumeSearcher:
                 """Technical rationale and compatibility constraints for this code path."""
                 sql = '''
                     SELECT DISTINCT thread_id, thread_title, thread_url, forum_category,
-                           link, filename, filesize, volume
+                           link, filename, filesize, volume, date_scraped
                     FROM ed2k_links
                     WHERE 1=1
                 '''
@@ -240,6 +240,8 @@ class MissingVolumeSearcher:
                     'size': row[6],
                     'volume': row[7],
                     'forum': row[3],
+                    # Date à laquelle Bullarr a vu ce lien sur le forum (pas la date du message sur EBDZ).
+                    'date': row[8],
                     'thread_url': row[2],  # "voir comment est le fichier source" - lien vers le fil du forum
                     # "ajoute la colonne volume si tu arrives à le parser" - reparsé depuis
                     # le nom de fichier plutôt que d'utiliser `volume` (colonne DB) tel
@@ -492,6 +494,7 @@ class MissingVolumeSearcher:
                     'source': 'telegram',
                     'filename': f['filename'],
                     'size': f.get('file_size'),
+                    'date': f.get('message_date'),
                     'channel': f['channel'],
                     'channel_title': f.get('channel_title') or f['channel'],
                     'message_id': f['message_id'],

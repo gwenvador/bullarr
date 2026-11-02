@@ -81,6 +81,7 @@
                         <span class="toolbar-btn-label">Recharger</span>
                     </button>
                 </div>
+                <div id="active-filter-badges" class="active-filter-badges" style="display: none;"></div>
                 <div class="search-row-view-switcher">
                 <div class="toolbar-dropdown" id="series-sort-section">
                     <button class="toolbar-btn" id="series-sort-btn" onclick="toggleToolbarDropdown('sort-dropdown-menu', this)" title="Ordre d'affichage des séries">
@@ -94,6 +95,15 @@
                         <button class="toolbar-dropdown-item" data-sort="year" onclick="setSeriesSortMode('year')">📅 Année de parution</button>
                         <button class="toolbar-dropdown-item" data-sort="size" onclick="setSeriesSortMode('size')">💾 Taille</button>
                         <button class="toolbar-dropdown-item" data-sort="volumes" onclick="setSeriesSortMode('volumes')">📚 Nombre de tomes</button>
+                    </div>
+                </div>
+                <div class="toolbar-dropdown" id="lists-filter-section">
+                    <button class="toolbar-btn" id="lists-filter-btn" onclick="toggleToolbarDropdown('lists-filter-menu', this)" title="Listes personnelles : à lire plus tard et favoris">
+                        <span class="toolbar-btn-label">📚 Listes</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu toolbar-dropdown-menu-right" id="lists-filter-menu" style="display: none;">
+                        <button class="toolbar-dropdown-item" data-filter="to-read" onclick="toggleSeriesFilter(this.dataset.filter)">📚 À lire plus tard</button>
+                        <button class="toolbar-dropdown-item" data-filter="favorite" onclick="toggleSeriesFilter(this.dataset.filter)">⭐ Favoris</button>
                     </div>
                 </div>
                 <div class="view-switcher">

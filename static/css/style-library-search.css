@@ -432,6 +432,24 @@
     padding: 8px 10px;
 }
 
+.series-detail-menus {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.series-detail-tags-menu {
+    min-width: auto;
+    padding: 8px 10px;
+}
+
+.series-detail-tags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-width: 320px;
+}
+
 .series-detail-links-icons {
     display: flex;
     align-items: center;
@@ -3467,4 +3485,64 @@ body.comic-reader-open { overflow: hidden; }
         display: table;
         overflow: visible;
     }
+}
+
+.series-list-icons {
+    display: inline-flex;
+    gap: 6px;
+    margin-left: 14px;
+    vertical-align: middle;
+}
+
+.series-list-icon {
+    cursor: default;
+}
+
+
+
+/* Édition des tags d'une série: × pour retirer, champ + pour ajouter */
+.series-tag-editable {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.series-tag-remove {
+    background: none;
+    border: none;
+    padding: 0 2px;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    line-height: 1;
+}
+
+.series-detail-tags-menu .series-tag-add {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    min-width: 160px;
+}
+
+.series-tag-input {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8em;
+}
+
+.series-tag-add-btn {
+    padding: 0 8px;
+    border: 1px solid var(--color-border, #ccc);
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8em;
 }
