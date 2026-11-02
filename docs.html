@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation — Bullarr</title>
+<meta name="description" content="Installer, configurer et utiliser Bullarr : bibliothèque, tags, listes, import, API, serveur MCP pour Claude et ChatGPT, application Android.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --ink: #1d1d1f;
+    --muted: #5b5b61;
+    --paper: #f6f5f2;
+    --card: #ffffff;
+    --line: #e4e1da;
+    --accent: #e8891c;
+    --accent-ink: #b5600a;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.55;
+  }
+  a { color: var(--accent-ink); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 0;
+  }
+  header.top img { height: auto; width: min(640px, 62vw); max-width: 100%; display: block; }
+  @media (max-width: 760px) {
+    header.top { flex-direction: column; align-items: flex-start; gap: 10px; }
+    header.top img { width: 100%; }
+  }
+  header.top nav a {
+    margin-left: 18px; color: var(--ink); text-decoration: none; font-weight: 500;
+  }
+  header.top nav a:hover { color: var(--accent-ink); }
+
+  .hero { padding: 36px 0 28px; text-align: center; }
+  .hero img { width: min(520px, 90%); height: auto; }
+  .hero h1 {
+    font-size: clamp(1.9rem, 4.2vw, 2.8rem); line-height: 1.15; margin: 22px 0 12px; font-weight: 750;
+  }
+  .hero p { font-size: 1.12rem; color: var(--muted); max-width: 640px; margin: 0 auto; }
+  .cta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .btn {
+    display: inline-block; padding: 11px 20px; border-radius: 999px; text-decoration: none;
+    font-weight: 600; border: 2px solid var(--ink); color: var(--ink); background: transparent;
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+  .btn:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+
+  section { padding: 44px 0; }
+  section h2 { font-size: 1.6rem; margin: 0 0 6px; }
+  section > .wrap > p.lead { color: var(--muted); margin: 0 0 24px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+  }
+  .card .icon { font-size: 1.6rem; line-height: 1; margin-bottom: 10px; }
+  .card h3 { font-size: 1.05rem; margin: 0 0 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.97rem; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+  pre {
+    background: #1f1f23; color: #f2f2f2; padding: 16px 18px; border-radius: 12px;
+    overflow-x: auto; font-size: 0.92rem; margin: 10px 0 0;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .band { background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; background: var(--card); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 0.97rem; }
+  th { background: #faf9f6; }
+  tr:last-child td { border-bottom: none; }
+
+  footer { padding: 28px 0 40px; color: var(--muted); font-size: 0.94rem; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+
+  .doc { max-width: 820px; margin: 0 auto; padding: 0 20px; }
+  .doc h2 { font-size: 1.5rem; margin: 46px 0 10px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .doc h2:first-of-type { border-top: none; }
+  .doc h3 { font-size: 1.12rem; margin: 26px 0 8px; }
+  .doc p, .doc li { color: #2a2a2e; }
+  .doc ol, .doc ul { padding-left: 22px; }
+  .doc li { margin: 6px 0; }
+  .doc .note { background: #fff7ea; border: 1px solid #f1d3a6; border-radius: 10px; padding: 12px 16px; margin: 16px 0; }
+  .doc table { margin: 10px 0 18px; }
+  .doc code { background: #ececea; padding: 1px 6px; border-radius: 6px; font-size: 0.92em; }
+  .doc pre code { background: none; padding: 0; }
+  .toc { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 22px; margin: 26px auto; max-width: 820px; }
+  .toc a { display: block; padding: 3px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a href="index.html"><img src="logo.png" alt="Bullarr"></a>
+    <nav>
+      <a href="index.html">Accueil</a>
+      <a href="docs.html">Documentation</a>
+      <a href="https://github.com/gwenvador/bullarr">GitHub</a>
+    </nav>
+  </header>
+</div>
+
+<div class="doc" style="padding-top:10px">
+  <h1 style="font-size:2rem;margin:10px 0 6px">Documentation</h1>
+  <p class="lead" style="color:var(--muted)">Bullarr est un gestionnaire de bibliothèque de BD francophone. Cette page couvre l'installation, la configuration, les fonctions, le serveur MCP et l'application Android.</p>
+  <div class="toc">
+    <strong>Sommaire</strong>
+    <a href="#installation">1. Installation</a>
+    <a href="#premier-demarrage">2. Premier démarrage</a>
+    <a href="#fonctions">3. Fonctions</a>
+    <a href="#tags-listes">4. Tags et listes</a>
+    <a href="#import">5. Import automatique</a>
+    <a href="#ai">6. Bullarr et AI (serveur MCP)</a>
+    <a href="#api">7. API</a>
+    <a href="#android">8. Application Android</a>
+    <a href="#securite">9. Sécurité et authentification</a>
+  </div>
+
+  <h2 id="installation">1. Installation</h2>
+  <p>Bullarr tourne dans Docker, avec une base SQLite : rien d'autre à installer. Le guide complet est dans le <a href="https://github.com/gwenvador/bullarr#-démarrage-rapide-docker-compose">README</a>.</p>
+  <ol>
+    <li>Clonez le dépôt : <code>git clone https://github.com/gwenvador/bullarr.git</code></li>
+    <li>Copiez le modèle : <code>cp docker-compose.example.yml docker-compose.yml</code></li>
+    <li>Adaptez les volumes : le dossier de votre bibliothèque (<code>/BD</code>) et vos dossiers d'import.</li>
+    <li>Créez le fichier <code>.env</code> avec une clé secrète : <code>SECRET_KEY=...</code> (une chaîne aléatoire longue).</li>
+    <li>Démarrez : <code>docker compose up -d</code>, puis ouvrez <code>http://localhost:4000</code>.</li>
+  </ol>
+  <pre><code>python3 -c "import secrets; print(secrets.token_urlsafe(48))"</code></pre>
+
+  <h2 id="premier-demarrage">2. Premier démarrage</h2>
+  <ol>
+    <li>Dans <strong>Configuration</strong>, ajoutez une bibliothèque en indiquant son dossier racine.</li>
+    <li>Lancez le scan : Bullarr relève les séries et les tomes présents sur le disque.</li>
+    <li>Rattachez chaque série à sa fiche <strong>Bédéthèque</strong> : résumé, auteur, éditeur, couverture et tomes attendus.</li>
+    <li>La vérification de bibliothèque signale les séries sans métadonnées et les noms non standard.</li>
+  </ol>
+
+  <h2 id="fonctions">3. Fonctions</h2>
+  <h3>Bibliothèque</h3>
+  <ul>
+    <li>Trois vues : affiches, aperçu (une ligne par série) et tableau, avec tri et colonnes optionnelles.</li>
+    <li>Recherche du haut de page : titre, puis tags correspondants.</li>
+    <li>Fiche série : volumes possédés et manquants, badge de complétude, liens externes.</li>
+  </ul>
+  <h3>Tomes manquants</h3>
+  <p>Bullarr compare les tomes attendus à ceux possédés, et peut lancer la recherche et le téléchargement sur les sources configurées.</p>
+  <h3>Lecteur de BD</h3>
+  <p>Lecture des CBZ, CBR et PDF dans le navigateur : deux pages côte à côte, zoom, ajustement, bande de miniatures, plein écran. La touche <code>?</code> affiche les raccourcis.</p>
+  <h3>Renommage et métadonnées</h3>
+  <p>Templates de nommage des fichiers et dossiers à partir des métadonnées Bédéthèque. Écriture du ComicInfo.xml dans les archives.</p>
+  <h3>Historique</h3>
+  <p>Imports et actions (renommage, suppression, déplacement) sont journalisés, avec annulation pour les imports.</p>
+
+  <h2 id="tags-listes">4. Tags et listes</h2>
+  <ul>
+    <li><strong>Tags</strong> : chaque série peut avoir des tags (thèmes, lieux, époques, noms). Ouvrez la fenêtre <em>Tags</em> de la fiche : <code>+</code> pour ajouter, <code>×</code> pour retirer.</li>
+    <li>La colonne <strong>Tags</strong> de la vue tableau affiche tous les tags, avec un filtre texte.</li>
+    <li>La recherche du haut de page trouve les séries par tag ; un clic sur un tag ouvre la bibliothèque filtrée sur ce tag.</li>
+    <li><strong>Listes</strong> : « À lire plus tard » et « Favori » par série, depuis le menu <em>Actions</em> de la fiche. Les icônes 📚 et ⭐ apparaissent à côté du titre, et le menu <em>Listes</em> de la bibliothèque filtre sur l'une ou l'autre.</li>
+  </ul>
+
+  <h2 id="import">5. Import automatique</h2>
+  <p>Bullarr surveille des dossiers de téléchargement : aMule, torrents, Telegram, sources web. Il reconnaît la série et le tome, convertit en CBZ si besoin, et garde un historique annulable. La page <strong>Import</strong> affiche les téléchargements en cours, avec leur progression, et permet de les mettre en pause ou en premier.</p>
+
+  <h2 id="ai">6. Bullarr et AI (serveur MCP)</h2>
+  <p>Bullarr expose un serveur <a href="https://modelcontextprotocol.io">MCP</a> à l'adresse <code>/mcp</code> de votre instance. Il permet à Claude, ou à un autre assistant compatible, de chercher dans votre bibliothèque, de lire une fiche, de lister les tags et de les modifier, et de gérer les listes.</p>
+  <table>
+    <tr><th>Outil</th><th>Rôle</th></tr>
+    <tr><td><code>search_series</code></td><td>Chercher par mots, tags et année.</td></tr>
+    <tr><td><code>get_series</code></td><td>Lire la fiche d'une série.</td></tr>
+    <tr><td><code>list_tags</code></td><td>Lister les tags et le nombre de séries pour chacun.</td></tr>
+    <tr><td><code>set_series_tags</code></td><td>Remplacer les tags d'une série.</td></tr>
+    <tr><td><code>set_reading_lists</code></td><td>Gérer « à lire plus tard » et les favoris.</td></tr>
+  </table>
+  <h3>Activer le serveur</h3>
+  <ol>
+    <li>Dans le <code>.env</code> de Bullarr, définissez <code>BULLARR_MCP_TOKEN</code> avec une chaîne aléatoire, puis redémarrez. Sans ce jeton, <code>/mcp</code> répond <code>503</code>.</li>
+    <li>Ajoutez le serveur dans Claude Code :</li>
+  </ol>
+  <pre><code>claude mcp add --transport http bullarr https://&lt;votre-bullarr&gt;/mcp \
+  --header "Authorization: Bearer &lt;BULLARR_MCP_TOKEN&gt;"</code></pre>
+  <p>Pour ChatGPT ou un autre client, indiquez la même adresse et le même en-tête <code>Authorization: Bearer</code>, si le client le permet.</p>
+  <div class="note"><strong>Important :</strong> le serveur ne supprime rien et ne modifie aucun fichier. Il peut en revanche changer les tags et les listes. Ne partagez pas le jeton. L'adresse doit être joignable depuis le client : un assistant qui tourne sur internet ne peut pas atteindre une instance qui n'est accessible que sur votre réseau local.</div>
+
+  <h2 id="api">7. API</h2>
+  <p>Toutes les fonctions de l'interface sont accessibles par une API HTTP/JSON, avec une clé API envoyée dans l'en-tête <code>X-Api-Key</code>. La clé se crée dans <strong>Configuration</strong>, section <em>Accès API</em>. La documentation détaillée, avec des exemples <code>curl</code> et Python, est dans <a href="https://github.com/gwenvador/bullarr/blob/main/docs/API.md">docs/API.md</a>.</p>
+
+  <h2 id="android">8. Application Android</h2>
+  <p>L'application pilote Bullarr depuis le téléphone : bibliothèque, fiches, recherche, téléchargements, import et réglages.</p>
+  <ol>
+    <li>Installez-la depuis le <a href="https://gwenvador.github.io/bullarr-android/repo/">dépôt F-Droid</a>, ou téléchargez l'<a href="https://github.com/gwenvador/bullarr-android/releases/latest">APK</a>.</li>
+    <li>Au premier lancement, indiquez l'adresse de votre serveur (par exemple <code>http://192.168.1.10:4000</code>) et votre clé API, puis « Tester » et « Enregistrer ».</li>
+  </ol>
+
+  <h2 id="securite">9. Sécurité et authentification</h2>
+  <ul>
+    <li>Les secrets (mots de passe, clés API) sont chiffrés sur disque.</li>
+    <li>L'authentification est facultative et désactivée par défaut. Vous pouvez activer un identifiant et un mot de passe, un SSO OIDC, ou les deux, dans <strong>Configuration</strong> → <em>Login</em>.</li>
+    <li>Le serveur MCP et l'API utilisent chacun leur propre jeton ou clé, distincts de la session du navigateur.</li>
+  </ul>
+  <p style="margin:36px 0 0"><a href="index.html">← Retour à l'accueil</a></p>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Bullarr est un projet personnel, auto-hébergé.</span>
+    <span><a href="https://github.com/gwenvador/bullarr">github.com/gwenvador/bullarr</a></span>
+  </div>
+</footer>
+</body>
+</html>
