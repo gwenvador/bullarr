@@ -43,6 +43,27 @@
   }
   header.top nav a:hover { color: var(--accent-ink); }
 
+  .carousel { max-width: 340px; margin: 28px auto 0; }
+  .slide { display: none; margin: 0; }
+  .slide.active { display: block; }
+  .slide img {
+    display: block; width: 100%; height: auto; background: #fff;
+    border: 1px solid var(--line); border-radius: 14px;
+  }
+  .slide figcaption { color: var(--muted); font-size: 0.93rem; text-align: center; margin-top: 10px; }
+  .carousel-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; }
+  .carousel-nav button {
+    width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); font-size: 1.2rem; cursor: pointer;
+  }
+  .carousel-nav button:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+  .dots { display: flex; gap: 8px; }
+  .dots button {
+    width: 9px; height: 9px; padding: 0; border: none; border-radius: 50%;
+    background: var(--line); cursor: pointer;
+  }
+  .dots button.on { background: var(--accent); }
+
   .hero { padding: 36px 0 28px; text-align: center; }
   .hero img { width: min(520px, 90%); height: auto; }
   .hero h1 {
@@ -94,18 +115,37 @@
   <header class="top">
     <img src="logo-transparent.png" alt="Bullarr">
     <nav>
-      <a href="#fonctions">Fonctions</a>
       <a href="docs.html">Documentation</a>
-      <a href="#installer">Installer</a>
-      <a href="#claude">Claude</a>
-      <a href="https://github.com/gwenvador/bullarr">GitHub</a>
     </nav>
   </header>
 </div>
 
+<div class="wrap">
+  <div class="carousel" aria-label="Captures d'écran de Bullarr">
+    <div class="slides">
+      <figure class="slide active">
+        <img src="demo-bibliotheque.jpg" alt="Bibliothèque de démonstration avec six séries">
+        <figcaption>Bibliothèque : séries, nombre de tomes, liste « favori ». Données de démonstration inventées.</figcaption>
+      </figure>
+      <figure class="slide">
+        <img src="demo-fiche.jpg" alt="Fiche d'une série de démonstration avec ses volumes">
+        <figcaption>Fiche de série : volumes, métadonnées, tags et listes. Données de démonstration inventées.</figcaption>
+      </figure>
+    </div>
+    <div class="carousel-nav">
+      <button type="button" data-dir="-1" aria-label="Capture précédente">‹</button>
+      <div class="dots">
+        <button type="button" class="on" aria-label="Capture 1"></button>
+        <button type="button" aria-label="Capture 2"></button>
+      </div>
+      <button type="button" data-dir="1" aria-label="Capture suivante">›</button>
+    </div>
+  </div>
+</div>
+
 <div class="wrap hero">
   <h1>Votre bibliothèque de BD, à jour et complète.</h1>
-  <p>Bullarr range vos albums sur disque, retrouve les métadonnées sur Bédéthèque, repère les tomes manquants et vous laisse tout lire depuis le navigateur. Auto-hébergé, sans base externe.</p>
+  <p>Bullarr télécharge et met à jour les métadonnées de vos BD grâce à Bédéthèque, repère les tomes manquants et vous laisse tout lire depuis le navigateur. Auto-hébergé, sans base externe.</p>
   <div class="cta">
     <a class="btn primary" href="#installer">Installer Bullarr</a>
     <a class="btn" href="https://github.com/gwenvador/bullarr/releases/tag/v10.0">Version 10.0</a>
@@ -121,8 +161,8 @@
     <div class="grid">
       <div class="card">
         <div class="icon">🏷️</div>
-        <h3>Métadonnées Bédéthèque</h3>
-        <p>Chaque série est rattachée à sa fiche Bédéthèque : résumé, auteur, éditeur, couverture, et écriture du ComicInfo.xml dans les archives.</p>
+        <h3>Matching Bédéthèque</h3>
+        <p>Chaque série est rapprochée de sa fiche Bédéthèque. Bullarr télécharge et met à jour ses métadonnées et couvertures : résumé, auteurs, éditeur, et écriture du ComicInfo.xml dans les archives.</p>
       </div>
       <div class="card">
         <div class="icon">📥</div>
@@ -133,6 +173,11 @@
         <div class="icon">📊</div>
         <h3>Tomes manquants</h3>
         <p>Un suivi façon Sonarr : Bullarr voit ce qui manque dans chaque série et peut lancer la recherche et le téléchargement.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔎</div>
+        <h3>Recherche et téléchargement</h3>
+        <p>Recherche de tomes sur les torrents, EBDZ et Telegram, et téléchargement direct depuis les sources web. Les tomes trouvés arrivent dans la file d'import.</p>
       </div>
       <div class="card">
         <div class="icon">📖</div>
@@ -199,5 +244,21 @@ docker compose up -d</code></pre>
   </div>
 </footer>
 
+<script>
+  (function () {
+    const car = document.querySelector('.carousel');
+    const slides = car.querySelectorAll('.slide');
+    const dots = car.querySelectorAll('.dots button');
+    let current = 0;
+    function show(n) {
+      current = (n + slides.length) % slides.length;
+      slides.forEach((s, k) => s.classList.toggle('active', k === current));
+      dots.forEach((d, k) => d.classList.toggle('on', k === current));
+    }
+    car.querySelectorAll('[data-dir]').forEach(b =>
+      b.addEventListener('click', () => show(current + Number(b.dataset.dir))));
+    dots.forEach((d, k) => d.addEventListener('click', () => show(k)));
+  })();
+</script>
 </body>
 </html>
