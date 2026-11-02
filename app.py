@@ -43,6 +43,7 @@ def create_app(config_name='default'):
     
     # Enregistrer les blueprints
     from blueprints.library import library_bp
+    from blueprints.mcp import mcp_bp
     from blueprints.search import search_bp
     from blueprints.emule import emule_bp
     from blueprints.ebdz import ebdz_bp
@@ -85,6 +86,7 @@ def create_app(config_name='default'):
     app.register_blueprint(annas_archive_bp)
     app.register_blueprint(shelfmark_bp)
     app.register_blueprint(bdgest_bp, url_prefix='/api/bdgest')
+    app.register_blueprint(mcp_bp)
     
     # Initialiser le scheduler EBDZ
     from blueprints.ebdz.scheduler import ebdz_scheduler

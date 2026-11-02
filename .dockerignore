@@ -27,3 +27,6 @@ TEST_PLAN.md
 .pytest_cache/
 _test_data/
 incoming/
+
+# Serveur MCP local (contient la clé API dans .env)
+bullarr-mcp/

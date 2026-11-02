@@ -568,6 +568,28 @@ function downloadSelectedSearchResults() {
     _updateSearchBatchDownloadToolbar();
 }
 
+// Date d'un résultat, en millisecondes: date de publication sur le tracker (Prowlarr), date du message (Telegram),
+// ou date à laquelle Bullarr a vu le lien sur le forum (EBDZ: « vu le », pas la date de publication du fichier).
+// Les dates sans fuseau (format SQLite) sont en UTC.
+function _searchResultDate(result) {
+    let raw = null;
+    if (result.source === 'prowlarr') raw = result.publish_date;
+    else if (result.source === 'telegram' || result.source === 'ebdz') raw = result.date;
+    if (!raw) return null;
+    const text = String(raw).trim();
+    const withZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : text.replace(' ', 'T') + 'Z';
+    const time = Date.parse(withZone);
+    return Number.isNaN(time) ? null : time;
+}
+
+function _searchResultDateHtml(result) {
+    const time = _searchResultDate(result);
+    if (time === null) return '—';
+    const date = new Date(time);
+    const short = date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return `<span data-tooltip="${escapeHtml(date.toLocaleString('fr-FR'))}">${escapeHtml(short)}</span>`;
+}
+
 function buildSearchResultRowHtml(result) {
     // "met une icône quand j'ai déjà le volume. retire l'étoile. c'est inutile" -
     // _searchTableOwnedLabels n'est peuplé que pour une recherche "série entière" (voir
@@ -722,6 +744,7 @@ function buildSearchResultRowHtml(result) {
     return `
         <tr class="replace-results-row${isOwned ? ' replace-results-row-owned' : ''}">
             <td class="replace-results-select"><input type="checkbox" class="search-result-select" data-result-action="toggleSelection" data-selection-key="${escapeHtml(_searchResultSelectionKey(result))}" aria-label="Sélectionner ce résultat" ${isSelected ? 'checked=""' : ''}></td>
+            <td style="white-space:nowrap;">${_searchResultDateHtml(result)}</td>
             <td class="replace-results-best-marker">${isOwned ? `<span class="icon-owned" data-tooltip="En bibliothèque">${libraryIconHtml()}</span>` : ''}</td>
             <td class="replace-results-filename" title="${escapeHtml(displayName)}">
                 ${unconfirmedVolumeHtml} ${escapeHtml(displayName)}
@@ -951,7 +974,7 @@ function _renderSearchResultsTbody() {
     // lgtm [js/xss-through-dom] HTML is assembled from escaped values and fixed markup.
     _replaceSearchResultsTbody(tbody, filtered.length
         ? filtered.map(result => buildSearchResultRowHtml(result)).join('')
-        : '<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>');
+        : '<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--color-text-muted);">Aucun résultat pour ces filtres</td></tr>');
     // Les lignes viennent d'être recréées : sans nouveaux écouteurs, cocher une case ne
     // mettait pas à jour « Télécharger la sélection » (seul « Tout sélectionner » marchait).
     bindSearchResultsTableActions(tbody);
@@ -1074,6 +1097,7 @@ function _searchResultSortValue(result, column) {
         // pourra ordonner par nombre de seed comme pour les torrents"), -1 tant qu'inconnu
         // ou pour Telegram (pas de notion de disponibilité) - retombe en fin de tri
         // croissant plutôt que de se mêler aux vraies valeurs.
+        case 'date': return _searchResultDate(result) || 0;
         case 'seeds':
             if (result.source === 'prowlarr') return result.seeders || 0;
             if (result.source === 'ebdz') return result._ed2kSources ?? -1;
@@ -1241,6 +1265,7 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
                 <thead>
                     <tr>
                         <th class="replace-results-select-header" aria-label="Sélection"><input type="checkbox" id="search-results-select-all" aria-label="Tout sélectionner"></th>
+                        <th>${_searchResultsSortableLabelHtml('date', 'Date')}</th>
                         <th>${ownedColumnHeaderHtml}</th>
                         <th>
                             ${_searchResultsFilterHeaderHtml('filename', 'Fichier',

@@ -6,6 +6,42 @@ import tarfile
 from pathlib import Path
 
 
+_TAR_COMPRESSION_MAGICS = (b'\x1f\x8b', b'BZh', b'\xfd7zXZ\x00')
+
+
+def looks_like_tar(filepath):
+    """Vrai si l'en-tête annonce un tar (« ustar ») ou une compression connue. tarfile.is_tarfile seul prend un
+    fichier rempli d'octets nuls (copie inachevée) pour une archive tar vide et relit tout fichier compressé."""
+    try:
+        with open(filepath, 'rb') as handle:
+            head = handle.read(512)
+    except OSError:
+        return False
+    return head[257:262] == b'ustar' or any(head.startswith(magic) for magic in _TAR_COMPRESSION_MAGICS)
+
+
+def has_archive_signature(filepath):
+    """Vrai si le fichier est une archive lisible (ZIP, RAR ou tar). Une copie encore en cours (Syncthing crée le
+    fichier à sa taille finale, rempli de zéros, puis écrit le contenu par blocs) n'a pas encore son annuaire
+    central en fin de fichier: elle n'est reconnue comme aucune archive."""
+    try:
+        return bool(zipfile.is_zipfile(filepath) or rarfile.is_rarfile(filepath)
+                    or (looks_like_tar(filepath) and tarfile.is_tarfile(filepath)))
+    except (OSError, rarfile.Error):
+        return False
+
+
+def is_blank_file(filepath, sample_size=4096):
+    """Vrai si le début du fichier n'est que du vide (octets nuls) ou si le fichier est vide: copie inachevée
+    (fichier préalloué) ou fichier corrompu, jamais une archive exploitable."""
+    try:
+        with open(filepath, 'rb') as handle:
+            head = handle.read(sample_size)
+    except OSError:
+        return False
+    return not head.strip(b'\x00')
+
+
 def detect_actual_format(filepath, declared_format):
     """Renvoie le format RÉEL ('cbz' ou 'cbr') d'un fichier archive, en se fiant au
     contenu binaire quand il contredit le format déclaré. Retombe sur declared_format
@@ -16,7 +52,7 @@ def detect_actual_format(filepath, declared_format):
         return 'cbz'
     if fmt in ('cbz', 'zip') and rarfile.is_rarfile(filepath):
         return 'cbr'
-    if fmt in ('cbz', 'zip') and tarfile.is_tarfile(filepath):
+    if fmt in ('cbz', 'zip') and looks_like_tar(filepath) and tarfile.is_tarfile(filepath):
         return 'tar'
     return fmt
 

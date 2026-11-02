@@ -8,6 +8,12 @@
         if (target.origin !== window.location.origin || ['GET', 'HEAD', 'OPTIONS'].includes(method)) {
             return originalFetch(input, options);
         }
+        const token = await getToken();
+        const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
+        headers.set('X-CSRF-Token', token);
+        return originalFetch(input, { ...options, headers });
+    };
+    function getToken() {
         if (!tokenPromise) {
             tokenPromise = originalFetch('/api/auth/csrf', { credentials: 'same-origin' })
                 .then(response => {
@@ -17,11 +23,10 @@
                 .then(data => data.token)
                 .catch(error => { tokenPromise = null; throw error; });
         }
-        const token = await tokenPromise;
-        const headers = new Headers(options.headers || (input instanceof Request ? input.headers : undefined));
-        headers.set('X-CSRF-Token', token);
-        return originalFetch(input, { ...options, headers });
-    };
+        return tokenPromise;
+    }
+    // Pour les requêtes qui ne passent pas par fetch (XMLHttpRequest: envoi de fichier avec progression).
+    window.getCsrfToken = getToken;
 })();
 
 // Thème clair/sombre (voir /settings, onglet "🌓 Thème"). Le choix est déjà appliqué
@@ -1463,8 +1468,8 @@ function initHeaderSearch() {
     wrapper.className = 'header-right';
     wrapper.innerHTML = `
         <div class="header-search">
-            <input type="text" id="header-search-input" class="header-search-inline-input" placeholder="Chercher une série..." aria-label="Chercher une série">
-            <button type="button" class="header-search-btn" aria-label="Lancer la recherche" data-tooltip="Chercher une série">${svgIcon('search')}</button>
+            <input type="text" id="header-search-input" class="header-search-inline-input" placeholder="Chercher série et tags..." aria-label="Chercher série et tags">
+            <button type="button" class="header-search-btn" aria-label="Lancer la recherche" data-tooltip="Chercher série et tags">${svgIcon('search')}</button>
         </div>
     `;
     headerContent.appendChild(wrapper);
@@ -1477,16 +1482,40 @@ function initHeaderSearch() {
     contentEl.insertBefore(panel, contentEl.firstChild);
 
     wrapper.querySelector('.header-search-btn').addEventListener('click', toggleHeaderSearch);
-    wrapper.querySelector('#header-search-input').addEventListener('keyup', (e) => {
+    const headerInput = wrapper.querySelector('#header-search-input');
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'header-search-clear-btn';
+    clearBtn.setAttribute('aria-label', 'Effacer la recherche');
+    clearBtn.setAttribute('data-tooltip', 'Effacer la recherche');
+    clearBtn.tabIndex = -1;
+    clearBtn.style.cssText = 'display:none; align-items:center; background:none; border:none; padding:0 4px; cursor:pointer; color:inherit;';
+    clearBtn.innerHTML = svgIcon('x');
+    wrapper.querySelector('.header-search-btn').before(clearBtn);
+    const syncClearButton = () => { clearBtn.style.display = headerInput.value ? 'inline-flex' : 'none'; };
+    clearBtn.addEventListener('click', () => {
+        headerInput.value = '';
+        navHeaderSearchTag = null;
+        handleHeaderSearchInput();
+        syncClearButton();
+        headerInput.focus();
+    });
+    headerInput.addEventListener('input', syncClearButton);
+    headerInput.addEventListener('keyup', (e) => {
         if (e.key === 'Escape') {
             closeHeaderSearch();
+            syncClearButton();
             return;
         }
         handleHeaderSearchInput();
+        syncClearButton();
     });
 
+    // composedPath() est figé au moment du clic: un tag cliqué reconstruit la liste (il
+    // n'est alors plus dans le DOM) et ne doit pas fermer le panneau.
     document.addEventListener('click', (e) => {
-        if (wrapper.contains(e.target) || panel.contains(e.target)) return;
+        const path = e.composedPath ? e.composedPath() : [];
+        if (path.includes(wrapper) || path.includes(panel)) return;
         closeHeaderSearch();
     });
 }
@@ -1530,7 +1559,7 @@ async function ensureHeaderSearchDataLoaded() {
                 const seriesPayload = await response.json();
                 const series = Array.isArray(seriesPayload)
                     ? seriesPayload : (seriesPayload.series || []);
-                series.forEach(s => all.push({ ...s, library_name: lib.name }));
+                series.forEach(s => all.push({ ...s, library_id: lib.id, library_name: lib.name }));
             }
             navHeaderSearchAllSeries = all;
             handleHeaderSearchInput();
@@ -1543,48 +1572,109 @@ async function ensureHeaderSearchDataLoaded() {
     return navHeaderSearchLoadingPromise;
 }
 
+// Recherche du haut de page: deux sections séparées. « Séries » = titres qui correspondent;
+// « Tags » = tags qui correspondent, avec le nombre de séries. Cliquer un tag liste les séries
+// qui le portent. Taper autre chose quitte ce mode.
+let navHeaderSearchTag = null;
+
+function _navSearchFlat(text) {
+    // Les tags s'écrivent avec des tirets: « chat-surdoué » doit trouver « chat surdoué »
+    return navNormalizeSearch(text).replace(/-/g, ' ');
+}
+
+function _navSeriesResultHtml(s) {
+    const cover = s.local_cover_path || s.bedetheque_cover_path || s.komga_cover_path;
+    const coverHtml = cover
+        ? `<img class="header-search-result-cover" src="/${cover}" alt="">`
+        : `<div class="header-search-result-cover"></div>`;
+    return `
+        <div class="header-search-result" onclick="window.location.href='/series/${s.id}'">
+            ${coverHtml}
+            <div class="header-search-result-info">
+                <div class="header-search-result-title" data-tooltip="${navEscapeHtml(s.title)}">${navEscapeHtml(s.title)}</div>
+                <div class="header-search-result-library">${navEscapeHtml(s.library_name)}</div>
+            </div>
+        </div>
+    `;
+}
+
+function _navSectionTitleHtml(text) {
+    return `<div style="grid-column: 1 / -1; padding: 8px 10px 4px; font-size: 0.8em; font-weight: 600; color: var(--color-text-muted, #888); text-transform: uppercase; letter-spacing: 0.04em;">${navEscapeHtml(text)}</div>`;
+}
+
+function selectHeaderSearchTag(tag) {
+    // Ouvre la bibliothèque filtrée sur ce tag: les séries concernées s'affichent là
+    const tagFlat = _navSearchFlat(tag);
+    const first = (navHeaderSearchAllSeries || []).find(s => (s.tags || []).some(t => _navSearchFlat(t) === tagFlat));
+    if (!first || first.library_id == null) return;
+    window.location.href = `/library/${first.library_id}?tag=${encodeURIComponent(tag)}`;
+}
+
 function handleHeaderSearchInput() {
     const rawQuery = document.getElementById('header-search-input').value.trim();
-    const query = navNormalizeSearch(rawQuery);
+    const query = _navSearchFlat(rawQuery);
     const panel = document.getElementById('header-search-panel');
     const resultsEl = document.getElementById('header-search-results');
     if (!navHeaderSearchAllSeries) return;
 
     if (!query) {
+        navHeaderSearchTag = null;
         panel.style.display = 'none';
         resultsEl.innerHTML = '';
         return;
     }
 
     panel.style.display = 'block';
-    const matches = navHeaderSearchAllSeries.filter(s => navNormalizeSearch(s.title).includes(query)).slice(0, 20);
-
     const encodedQuery = encodeURIComponent(rawQuery);
-    const addLinkHtml = `<a href="/discover?q=${encodedQuery}" class="header-search-external-link">${svgIcon('plus')} Ajouter "${navEscapeHtml(rawQuery)}" à la bibliothèque</a>`;
+    const addLinkHtml = `<div style="grid-column: 1 / -1;"><a href="/discover?q=${encodedQuery}" class="header-search-external-link">${svgIcon('plus')} Ajouter "${navEscapeHtml(rawQuery)}" à la bibliothèque</a></div>`;
 
-    if (matches.length === 0) {
+    // Le mode tag se quitte dès que le champ ne correspond plus au tag cliqué
+    if (navHeaderSearchTag !== null && _navSearchFlat(rawQuery) !== _navSearchFlat(navHeaderSearchTag)) {
+        navHeaderSearchTag = null;
+    }
+
+    if (navHeaderSearchTag !== null) {
+        const tagFlat = _navSearchFlat(navHeaderSearchTag);
+        const withTag = navHeaderSearchAllSeries
+            .filter(s => (s.tags || []).some(tag => _navSearchFlat(tag) === tagFlat))
+            .sort((a, b) => String(a.title).localeCompare(String(b.title), 'fr'));
+        resultsEl.innerHTML = _navSectionTitleHtml(`Séries avec le tag « ${navHeaderSearchTag} » (${withTag.length})`)
+            + withTag.slice(0, 50).map(_navSeriesResultHtml).join('')
+            + addLinkHtml;
+        return;
+    }
+
+    const titleMatches = navHeaderSearchAllSeries
+        .filter(s => _navSearchFlat(s.title).includes(query))
+        .slice(0, 20);
+
+    const tagCounts = new Map();
+    navHeaderSearchAllSeries.forEach(s => (s.tags || []).forEach(tag => {
+        if (_navSearchFlat(tag).includes(query)) tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+    }));
+    const tagMatches = [...tagCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr'))
+        .slice(0, 12);
+
+    if (titleMatches.length === 0 && tagMatches.length === 0) {
         resultsEl.innerHTML = `
-            <div style="padding: 10px; color: #888; font-size: 0.9em;">Aucune série trouvée dans la bibliothèque</div>
+            <div style="grid-column: 1 / -1; padding: 10px; color: #888; font-size: 0.9em;">Aucune série trouvée dans la bibliothèque</div>
             ${addLinkHtml}
         `;
         return;
     }
 
-    resultsEl.innerHTML = matches.map(s => {
-        const cover = s.local_cover_path || s.bedetheque_cover_path || s.komga_cover_path;
-        const coverHtml = cover
-            ? `<img class="header-search-result-cover" src="/${cover}" alt="">`
-            : `<div class="header-search-result-cover"></div>`;
-        return `
-            <div class="header-search-result" onclick="window.location.href='/series/${s.id}'">
-                ${coverHtml}
-                <div class="header-search-result-info">
-                    <div class="header-search-result-title" data-tooltip="${navEscapeHtml(s.title)}">${navEscapeHtml(s.title)}</div>
-                    <div class="header-search-result-library">${navEscapeHtml(s.library_name)}</div>
-                </div>
-            </div>
-        `;
-    }).join('') + addLinkHtml;
+    let html = '';
+    if (titleMatches.length) {
+        html += _navSectionTitleHtml(`Séries (${titleMatches.length})`) + titleMatches.map(_navSeriesResultHtml).join('');
+    }
+    if (tagMatches.length) {
+        html += _navSectionTitleHtml('Tags')
+            + `<div style="grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; padding: 4px 10px 10px;">`
+            + tagMatches.map(([tag, count]) => `<button type="button" class="header-search-tag-chip" data-tag="${navEscapeHtml(tag)}" onclick="selectHeaderSearchTag(this.dataset.tag)" style="cursor: pointer; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--color-border, #ccc); border-radius: 999px; padding: 2px 10px; background: transparent; color: inherit; font: inherit; font-size: 0.85em;">${navEscapeHtml(tag)} <span style="opacity: 0.6;">${count}</span></button>`).join('')
+            + `</div>`;
+    }
+    resultsEl.innerHTML = html + addLinkHtml;
 }
 
 // ============================================

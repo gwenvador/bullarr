@@ -109,6 +109,8 @@ Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà
 | `GET /api/library/<library_id>/stats` | Statistiques. |
 | `GET /api/series/<series_id>` | Détail d'une série, avec les données Bédéthèque. |
 | `GET /api/series/<series_id>/volumes` | Tomes : fichier, format, numéro, métadonnées. |
+| `PUT /api/series/<series_id>/tags` | Remplace les tags d'une série (`{"tags": ["famille", "satire"]}`). |
+| `PUT /api/series/<series_id>/reading-lists` | Met à jour les listes d'une série (`{"to_read_later": true, "is_favorite": false}`, clés facultatives). |
 | `POST /api/scan/<library_id>?force=1` | Scan de la bibliothèque. Répond `202` avec `job_id`, ou `409` si un scan tourne déjà. |
 | `GET /api/scan/jobs/<job_id>` | Avancement du scan. |
 | `POST /api/scan/series/<series_id>` | Scan d'une seule série. |

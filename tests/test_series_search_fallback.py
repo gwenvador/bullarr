@@ -7,7 +7,7 @@ from unittest import mock
 from blueprints.bedetheque import catalog_index
 from blueprints.bedetheque.scraper import BedethequeScraper
 
-TITLE = "Le.Gang.De.La.Clef.A.Molette.Jean.Baptiste.Hostache.Edward.Abbey.2026.FR.[CBZ][PDF]-example"
+TITLE = "Le.Gang.De.La.Clef.A.Molette.Jean.Baptiste.Hostache.Edward.Abbey.2026.FR.[CBZ][PDF]-KIKI"
 REAL = {"title": "Gang de la clef à molette (Le)", "url": "https://www.bedetheque.com/serie-99233-BD-Gang-de-la-clef-a-molette.html", "genre": None}
 UNRELATED = [{"title": name, "url": f"https://www.bedetheque.com/serie-{i}-BD-x.html", "genre": None}
              for i, name in enumerate(["Gang de gamins", "La clef des champs", "Mimolette party", "Le Gang des Moustachus"])]

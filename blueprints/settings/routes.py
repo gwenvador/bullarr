@@ -8,7 +8,7 @@ import sqlite3
 import tempfile
 import threading
 import zipfile
-from archive_utils import detect_actual_format
+from archive_utils import detect_actual_format, is_blank_file
 import unicodedata
 from datetime import datetime
 from flask import render_template, request, jsonify, current_app, send_file
@@ -353,7 +353,8 @@ def _load_verification_series_and_volumes():
 
 def _verify_archive_formats(series_rows, volumes_by_series):
     """Report archive files whose declared format disagrees with their binary content."""
-    archive_formats = {'cbz', 'zip', 'cbr', 'rar'}
+    # « tar »: valeur que d'anciennes versions enregistraient pour un fichier vide (octets nuls) pris à tort pour un tar.
+    archive_formats = {'cbz', 'zip', 'cbr', 'rar', 'tar'}
     items = []
     titles = {s['id']: s['title'] for s in series_rows}
     for series_id, volumes in volumes_by_series.items():
@@ -363,10 +364,24 @@ def _verify_archive_formats(series_rows, volumes_by_series):
             declared = (value('format') or '').lower()
             if not filepath or declared not in archive_formats or not os.path.exists(filepath):
                 continue
-            actual = detect_actual_format(filepath, declared)
+            suffix = os.path.splitext(value('filename') or filepath)[1].lower().lstrip('.')
+            if is_blank_file(filepath):
+                # Contenu vide (octets nuls ou fichier vide): copie inachevée ou fichier corrompu, pas une archive.
+                items.append({
+                    'series_id': series_id,
+                    'series_title': titles.get(series_id, ''),
+                    'volume_id': volume['id'],
+                    'filename': value('filename'),
+                    'filepath': filepath,
+                    'declared_format': declared,
+                    'actual_format': 'invalide',
+                    'reason': "Fichier invalide : son contenu est vide (copie inachevée ou fichier corrompu), "
+                              "à télécharger de nouveau",
+                })
+                continue
+            actual = detect_actual_format(filepath, 'cbz' if declared == 'tar' else declared)
             if actual == declared:
                 continue
-            suffix = os.path.splitext(value('filename') or filepath)[1].lower().lstrip('.')
             items.append({
                 'series_id': series_id,
                 'series_title': titles.get(series_id, ''),

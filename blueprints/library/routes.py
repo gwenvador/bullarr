@@ -10,6 +10,7 @@ from .scanner import LibraryScanner, COMICINFO_FIELDS, scan_import_lock
 from blueprints.bedetheque.pdf_converter import convert_pdf_to_cbz, PdfConversionError
 from .zip_converter import convert_zip_to_cbz, package_zip_folders_to_cbz, ZipConversionError, IMAGE_EXTENSIONS as _ZIP_IMAGE_EXTENSIONS
 from .archive_converter import classify_archive, convert_mislabeled_archive_in_place
+from archive_utils import is_blank_file, has_archive_signature
 from blueprints.bedetheque.comicinfo_writer import write_comicinfo_cbz, build_comicinfo_fields, WRITABLE_FORMATS, derive_author_year_from_comicinfo
 from blueprints.bedetheque.scraper import match_bedetheque_volume
 import sqlite3
@@ -2401,7 +2402,7 @@ def get_library_series(library_id):
                    s.local_cover_path, s.local_summary, s.local_genre, s.local_author, s.is_oneshot,
                    CAST(COALESCE(s.manual_year_start, s.bedetheque_year_start, s.local_year) AS TEXT) AS year,
                    s.volumes_without_metadata, s.oneshot_is_integral,
-                   s.tags,
+                   s.tags, s.to_read_later, s.is_favorite,
                    s.manual_complete_override, s.bedetheque_complete, s.bedetheque_complete_reason,
                    s.filesystem_state, s.filesystem_checked_at, s.filesystem_missing_count, s.filesystem_verification_error,
                    (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND COALESCE(v.filesystem_present, 1) = 1
@@ -2474,6 +2475,8 @@ def get_library_series(library_id):
                 'oneshot_is_integral': bool(row['oneshot_is_integral']),
                 'volumes_without_metadata': row['volumes_without_metadata'],
                 'tags': tags,
+                'to_read_later': bool(row['to_read_later']),
+                'is_favorite': bool(row['is_favorite']),
                 'manual_complete_override': bool(row['manual_complete_override']),
                 'bedetheque_complete': row['bedetheque_complete'] if row['bedetheque_complete'] is None else bool(row['bedetheque_complete']),
                 'bedetheque_complete_reason': row['bedetheque_complete_reason'],
@@ -2957,7 +2960,7 @@ def get_series_details(series_id):
                    s.manual_summary, s.manual_genre, s.manual_status, s.manual_author,
                    s.manual_year_start, s.manual_year_end, s.manual_complete_override,
                    s.universe_id, u.name AS universe_name,
-                   s.bedetheque_complete, s.bedetheque_complete_reason,
+                   s.bedetheque_complete, s.bedetheque_complete_reason, s.tags, s.to_read_later, s.is_favorite,
                    s.filesystem_state, s.filesystem_checked_at, s.filesystem_missing_count, s.filesystem_verification_error,
                    mm.enabled AS monitor_enabled, mm.auto_download_enabled AS monitor_auto_download
                    FROM series s
@@ -3066,6 +3069,9 @@ def get_series_details(series_id):
             'has_parts': bool(series_row['has_parts']),
             'is_oneshot': bool(series_row['is_oneshot']),
             'manual_complete_override': bool(series_row['manual_complete_override']),
+            'tags': json.loads(series_row['tags']) if series_row['tags'] else [],
+            'to_read_later': bool(series_row['to_read_later']),
+            'is_favorite': bool(series_row['is_favorite']),
             'bedetheque_complete': series_row['bedetheque_complete'] if series_row['bedetheque_complete'] is None else bool(series_row['bedetheque_complete']),
             'bedetheque_complete_reason': series_row['bedetheque_complete_reason'],
             'filesystem_state': series_row['filesystem_state'],
@@ -4222,6 +4228,41 @@ def download_volumes_zip():
 
 ###### ROUTE IMPORT ########
 
+UPLOAD_STAGING_DIRNAME = '.bullarr-upload'
+
+
+def _series_upload_dir(series_row):
+    """Dossier de réception d'un fichier envoyé: un sous-dossier caché DANS le dossier de la série (même volume
+    que sa destination, aucun dossier d'import ni montage en lecture seule en jeu). Retourne le dossier, ou None
+    s'il n'est pas inscriptible. Le fichier y est ensuite traité sur place par l'import habituel."""
+    library_path = series_row['library_path']
+    series_path = series_row['path'] or os.path.join(library_path, series_row['title'])
+    try:
+        series_dir = resolve_within(series_path, library_path)
+        upload_dir = os.path.join(series_dir, UPLOAD_STAGING_DIRNAME)
+        os.makedirs(upload_dir, exist_ok=True)
+    except (OSError, UnsafePathError):
+        return None
+    return upload_dir if os.access(upload_dir, os.W_OK) else None
+
+
+def _series_upload_roots():
+    """Dossiers de réception actuellement présents dans les dossiers de séries (racines d'import acceptées)."""
+    database = current_app.config.get('DATABASE')
+    if not database:
+        return []
+    try:
+        conn = sqlite3.connect(database, timeout=30.0)
+        try:
+            paths = [row[0] for row in conn.execute("SELECT path FROM series WHERE path IS NOT NULL AND path != ''")]
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return []
+    roots = (os.path.join(path, UPLOAD_STAGING_DIRNAME) for path in paths)
+    return [root for root in roots if os.path.isdir(root)]
+
+
 @library_bp.route('/api/series/<int:series_id>/upload-file', methods=['POST'])
 def upload_series_file(series_id):
     """Upload direct d'un fichier depuis la fiche série ("ajoute une option upload
@@ -4247,14 +4288,10 @@ def upload_series_file(series_id):
     if not uploaded or not uploaded.filename:
         return jsonify({'success': False, 'error': 'Aucun fichier reçu'}), 400
 
-    import_roots = current_app.config['IMPORT_DIRECTORIES']
-    if not import_roots:
-        return jsonify({'success': False, 'error': "Aucun répertoire d'import configuré"}), 500
-
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT series.id, series.title, series.library_id, libraries.name AS library_name,
+        SELECT series.id, series.title, series.path, series.library_id, libraries.name AS library_name,
                libraries.path AS library_path
         FROM series JOIN libraries ON libraries.id = series.library_id
         WHERE series.id = ?
@@ -4280,9 +4317,13 @@ def upload_series_file(series_id):
     if not filename:
         return jsonify({'success': False, 'error': 'Nom de fichier invalide'}), 400
 
-    import_root = import_roots[0]
-    upload_dir = resolve_within(os.path.join(import_root, '_uploads', str(series_id)), import_root)
-    os.makedirs(upload_dir, exist_ok=True)
+    # Le fichier est reçu directement dans le dossier de la série (sous-dossier caché), puis traité sur place par
+    # l'import habituel: plus de dépôt dans un dossier d'import (/downloads/amule, en lecture seule, faisait échouer
+    # l'envoi en « Read-only file system »).
+    upload_dir = _series_upload_dir(series_row)
+    if not upload_dir:
+        return jsonify({'success': False, 'error': "Le dossier de la série n'est pas inscriptible"}), 500
+    import_root = upload_dir
 
     target_path = resolve_within(os.path.join(upload_dir, filename), import_root)
     # Évite d'écraser un envoi précédent resté en place sous le même nom (ex: un premier
@@ -5742,7 +5783,7 @@ def _allowed_import_roots():
     """Répertoires d'import configurés + dossier privé des CBZ empaquetés depuis une archive
     (« Voir le contenu »): ces CBZ s'importent, se convertissent et se suppriment comme
     n'importe quel fichier d'import."""
-    return list(current_app.config['IMPORT_DIRECTORIES']) + [_PACKAGE_TEMP_DIR]
+    return list(current_app.config['IMPORT_DIRECTORIES']) + [_PACKAGE_TEMP_DIR] + _series_upload_roots()
 
 
 @library_bp.route('/api/import/archive-package-folders', methods=['POST'])
@@ -6953,6 +6994,13 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 except UnsafePathError:
                     raise UnsafePathError(f"Fichier source hors des répertoires d'import autorisés: {source_path}")
 
+                # Un CBZ/CBR qui n'est reconnu comme aucune archive (vide, ou copie encore en cours: Syncthing crée le fichier
+                # à sa taille finale rempli de zéros puis écrit son contenu) ne doit jamais entrer dans la bibliothèque:
+                # Sillage 20, 22 et 23 y étaient restés vides, importés avant la fin de leur copie.
+                if (os.path.splitext(safe_source_path)[1].lower() in ('.cbz', '.cbr', '.zip', '.rar')
+                        and (is_blank_file(safe_source_path) or not has_archive_signature(safe_source_path))):
+                    raise ValueError("Fichier corrompu : archive illisible (copie inachevée ou fichier invalide)")
+
                 if not _import_execution_lock.acquire(timeout=lock_timeout):
                     raise TimeoutError("Pré-vérification reportée: un scan/import modifie déjà la bibliothèque")
                 per_file_lock_acquired = True
@@ -7861,6 +7909,36 @@ def execute_import():
     })
 
 
+@library_bp.route('/api/series/<int:series_id>/reading-lists', methods=['PUT'])
+def set_series_reading_lists(series_id):
+    """Met à jour les listes personnelles d'une série: « à lire plus tard » et « favori ».
+    Corps JSON partiel: seules les clés fournies sont modifiées."""
+    data = request.get_json(silent=True) or {}
+    columns = {'to_read_later': 'to_read_later', 'is_favorite': 'is_favorite'}
+    updates = {column: 1 if data[key] else 0 for key, column in columns.items() if key in data}
+    if not updates:
+        return jsonify({'success': False, 'error': 'Aucune liste à modifier'}), 400
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('SELECT 1 FROM series WHERE id = ?', (series_id,))
+        if cursor.fetchone() is None:
+            return jsonify({'success': False, 'error': 'Série introuvable'}), 404
+        assignments = ', '.join(f'{column} = ?' for column in updates)
+        cursor.execute(f'UPDATE series SET {assignments} WHERE id = ?', (*updates.values(), series_id))
+        conn.commit()
+        cursor.execute('SELECT to_read_later, is_favorite FROM series WHERE id = ?', (series_id,))
+        row = cursor.fetchone()
+        return jsonify({
+            'success': True,
+            'to_read_later': bool(row['to_read_later']),
+            'is_favorite': bool(row['is_favorite']),
+        })
+    finally:
+        conn.close()
+
+
 @library_bp.route('/api/series/<int:series_id>/tags', methods=['GET', 'PUT'])
 def manage_series_tags(series_id):
     """Récupère ou met à jour les tags d'une série"""
@@ -7927,6 +8005,13 @@ def cleanup_empty_directories(base_path):
         return 0
 
     deleted_count = 0
+    # Dossier de réception d'un envoi (voir _series_upload_dir): retiré une fois vide.
+    if os.path.basename(base_path) == UPLOAD_STAGING_DIRNAME:
+        try:
+            os.rmdir(base_path)
+            return 1
+        except OSError:
+            pass
 
     # Parcourir en ordre inverse (du plus profond au plus superficiel)
     # pour supprimer les sous-répertoires vides avant les parents

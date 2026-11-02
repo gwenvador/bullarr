@@ -46,6 +46,10 @@ tomes manquants.
 - 🔐 **Sécurité** : secrets (mots de passe/clés API) chiffrés sur disque (Fernet),
   authentification optionnelle (désactivée par défaut) : identifiant/mot de passe, SSO/OIDC,
   ou les deux sur la même page de connexion
+- 🏷️ **Tags et listes** : tags par série (modifiables depuis la fiche, colonne Tags du tableau),
+  recherche par tags dans la barre du haut, listes « à lire plus tard » et « favoris »
+- 🤖 **Claude et ChatGPT (serveur MCP)** : chercher dans la bibliothèque, lire une fiche, créer
+  des tags et gérer les listes, voir [🤖 Serveur MCP](#-serveur-mcp-claude-et-chatgpt)
 - 🐳 **100 % Docker**, base SQLite (aucune base externe à gérer)
 - 🔌 **API** : toutes les fonctions de l'interface pilotables par une application externe
   avec une clé API — voir [📖 la documentation de l'API](docs/API.md)
@@ -297,6 +301,37 @@ et réglages.
   L'adresse et la clé sont chiffrées sur le téléphone.
 - **Code source** : [github.com/gwenvador/bullarr-android](https://github.com/gwenvador/bullarr-android)
   (Kotlin, Jetpack Compose ; identifiant `io.github.gwenvador.bullarr`).
+
+### 🤖 Serveur MCP (Claude et ChatGPT)
+
+Bullarr expose un serveur [MCP](https://modelcontextprotocol.io) à l'adresse `/mcp` de votre
+instance (`https://<votre-bullarr>/mcp`). Claude (Claude Desktop, Claude Code) et ChatGPT peuvent
+s'y connecter pour chercher dans la bibliothèque, lire une fiche, créer des tags et gérer les listes.
+
+| Outil | Rôle |
+|---|---|
+| `search_series` | Cherche des séries par mots (titre, auteur, genre, tags, résumé) et par tags, avec un filtre d'année. |
+| `get_series` | Fiche complète d'une série : résumé, auteur, genre, tags, listes. |
+| `list_tags` | Tous les tags, avec le nombre de séries pour chacun. |
+| `set_series_tags` | Remplace les tags d'une série. |
+| `set_reading_lists` | Ajoute ou retire une série de « à lire plus tard » et des favoris. |
+
+Il n'expose ni suppression, ni modification des fichiers.
+
+**Configuration**
+
+1. Dans le fichier `.env` de Bullarr, définissez `BULLARR_MCP_TOKEN` avec une longue chaîne
+   aléatoire (par exemple `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`), puis
+   redémarrez Bullarr. Sans ce jeton, `/mcp` répond `503`.
+2. Ajoutez le serveur à Claude Code :
+
+   ```bash
+   claude mcp add --transport http bullarr https://<votre-bullarr>/mcp \
+     --header "Authorization: Bearer <BULLARR_MCP_TOKEN>"
+   ```
+
+> Le jeton MCP donne accès à la bibliothèque, et permet de modifier les tags et les listes :
+> ne le partagez pas.
 
 ### 📊 Surveillance des tomes manquants
 
