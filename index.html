@@ -21,6 +21,7 @@
   html { scroll-behavior: smooth; }
   body {
     margin: 0;
+    overflow-x: hidden;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--ink);
     background: var(--paper);
@@ -43,11 +44,11 @@
   }
   header.top nav a:hover { color: var(--accent-ink); }
 
-  .carousel { width: 100%; margin: 28px auto 0; }
+  .carousel { width: 100vw; position: relative; left: 50%; margin: 28px 0 0 -50vw; }
   .slide { display: none; margin: 0; }
   .slide.active { display: block; }
   .slide img {
-    display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: #fff;
+    display: block; width: 100%; max-width: 1200px; margin: 0 auto; aspect-ratio: 16 / 10; object-fit: cover; background: #fff;
     border: 1px solid var(--line); border-radius: 14px;
   }
   .slide figcaption { color: var(--muted); font-size: 0.93rem; text-align: center; margin-top: 10px; }
