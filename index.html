@@ -32,7 +32,11 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 18px 0;
   }
-  header.top img { height: 64px; width: auto; display: block; }
+  header.top img { height: auto; width: min(640px, 62vw); max-width: 100%; display: block; }
+  @media (max-width: 760px) {
+    header.top { flex-direction: column; align-items: flex-start; gap: 10px; }
+    header.top img { width: 100%; }
+  }
   header.top nav a {
     margin-left: 18px; color: var(--ink); text-decoration: none; font-weight: 500;
   }
