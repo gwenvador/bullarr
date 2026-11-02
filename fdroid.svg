@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="72" viewBox="0 0 300 72" role="img" aria-label="Installer Bullarr avec F-Droid">
+  <rect x="1" y="1" width="298" height="70" rx="12" fill="#1f1a17" stroke="#f08a24" stroke-width="2"/>
+  <circle cx="44" cy="36" r="20" fill="#f08a24"/>
+  <path d="M34 28 L44 22 L54 28 L54 40 Q54 48 44 52 Q34 48 34 40 Z" fill="#1f1a17"/>
+  <text x="78" y="31" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#f5e9dc">Installer avec</text>
+  <text x="78" y="53" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">F-Droid</text>
+</svg>
