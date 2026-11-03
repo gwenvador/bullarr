@@ -3,7 +3,7 @@ Point d'entrée principal de l'application Bullarr
 """
 from flask import Flask, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
-from config import config
+from config import config, resolve_secret_key
 import os
 import uuid
 from encryption import ensure_encryption_key
@@ -16,6 +16,7 @@ def create_app(config_name='default'):
 
     app = Flask(__name__)
     app.config.from_object(config[config_name])
+    app.config['SECRET_KEY'] = resolve_secret_key(app.config.get('SECRET_KEY'), app.config['DATA_DIR'])
     if app.config.get('AUTH_BYPASS_LOGIN'):
         print("⚠️ BULLARR_AUTH_BYPASS_LOGIN actif: l'authentification est désactivée. "
               "Corrigez la configuration puis repassez-le à false et redémarrez.")

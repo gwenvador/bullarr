@@ -3,7 +3,7 @@ Routes pour la gestion des bibliothèques
 """
 from flask import render_template, request, jsonify, current_app, redirect, url_for
 from error_utils import error_message
-from path_safety import UnsafePathError, resolve_within, resolve_within_any, configured_root
+from path_safety import UnsafePathError, resolve_within, resolve_within_any, configured_root, series_folder_conflict
 from archive_utils import list_archive_members
 from . import library_bp, import_control
 from .scanner import LibraryScanner, COMICINFO_FIELDS, scan_import_lock
@@ -2498,6 +2498,33 @@ def get_library_series(library_id):
     except Exception as e:
         return jsonify({'error': error_message(e)}), 500
 
+def _series_folder_conflict(conn, series_id, series_path, library_path):
+    """series_folder_conflict (path_safety) avec les dossiers des autres séries en base."""
+    others = [row[0] for row in conn.execute(
+        'SELECT path FROM series WHERE id != ? AND path IS NOT NULL', (series_id,))]
+    return series_folder_conflict(series_path, library_path, others)
+
+
+def _remove_own_series_files(conn, series_id, library_path):
+    """Supprime uniquement les fichiers des tomes de CETTE série (jamais un fichier aussi
+    référencé par une autre série), quand son dossier ne lui appartient pas en propre."""
+    removed = 0
+    rows = conn.execute(
+        'SELECT v.filepath FROM volumes v WHERE v.series_id = ? AND v.filepath IS NOT NULL '
+        'AND NOT EXISTS (SELECT 1 FROM volumes o WHERE o.filepath = v.filepath AND o.series_id != v.series_id)',
+        (series_id,)).fetchall()
+    library_real = os.path.realpath(library_path)
+    for (filepath,) in rows:
+        try:
+            safe_file = resolve_within(filepath, library_path)
+        except UnsafePathError:
+            continue
+        if safe_file != library_real and os.path.isfile(safe_file):
+            os.remove(safe_file)
+            removed += 1
+    return removed
+
+
 @library_bp.route('/api/series/<int:series_id>', methods=['DELETE'])
 def delete_series(series_id):
     """Supprime définitivement une série: supprime d'abord son dossier du disque, puis
@@ -2529,15 +2556,29 @@ def delete_series(series_id):
 
         conn = get_db_connection()
         volume_count = conn.execute('SELECT COUNT(*) FROM volumes WHERE series_id = ?', (series_id,)).fetchone()[0]
+        folder_conflict = _series_folder_conflict(conn, series_id, series_path, library_path) \
+            if series_path and os.path.isdir(series_path) else None
         conn.close()
 
+        kept_folder_note = ''
         if series_path and os.path.isdir(series_path):
             try:
                 safe_path = resolve_within(series_path, library_path)
             except UnsafePathError as e:
                 log_action('delete', series_id, series_title, series_path, success=False, error=str(e))
                 return jsonify({'success': False, 'error': error_message(e, 'Chemin de série invalide')}), 400
-            shutil.rmtree(safe_path)
+            if folder_conflict:
+                # Racine de la bibliothèque ou dossier partagé : un rmtree emporterait les
+                # autres séries (toute la bibliothèque pour la racine). Seuls les fichiers
+                # de cette série partent, le dossier reste.
+                conn = get_db_connection()
+                try:
+                    removed_files = _remove_own_series_files(conn, series_id, library_path)
+                finally:
+                    conn.close()
+                kept_folder_note = f" · dossier conservé ({folder_conflict}), {removed_files} fichier(s) supprimé(s)"
+            else:
+                shutil.rmtree(safe_path)
 
         conn = get_db_connection()
         conn.execute('DELETE FROM volumes WHERE series_id = ?', (series_id,))
@@ -2545,7 +2586,7 @@ def delete_series(series_id):
         conn.commit()
         conn.close()
 
-        log_action('delete', series_id, series_title, f"{volume_count} tome(s) · {series_path}")
+        log_action('delete', series_id, series_title, f"{volume_count} tome(s) · {series_path}{kept_folder_note}")
 
         return jsonify({'success': True, 'library_id': library_id})
 
@@ -2595,6 +2636,9 @@ def merge_series(series_id):
         except UnsafePathError as e:
             conn.close()
             return jsonify({'success': False, 'error': error_message(e, 'Chemin de série invalide')}), 400
+        # Calculé avant la suppression de la fiche source : un dossier source qui n'est pas
+        # le sien seul (racine de la bibliothèque, dossier partagé) n'est jamais supprimé.
+        source_folder_conflict = _series_folder_conflict(conn, series_id, source_dir, source['library_path'])
 
         if not os.path.isdir(target_dir):
             try:
@@ -2706,7 +2750,7 @@ def merge_series(series_id):
         # Supprime le dossier source seulement s'il ne contient plus aucun fichier de BD
         # (un fichier non scanné qui traînerait là ne doit jamais partir avec le dossier)
         source_dir_removed = False
-        if os.path.isdir(source_dir) and source_dir != target_dir:
+        if os.path.isdir(source_dir) and source_dir != target_dir and not source_folder_conflict:
             comic_exts = {'.cbz', '.cbr', '.zip', '.rar', '.pdf'}
             leftover_comics = [
                 f for _root, _dirs, files in os.walk(source_dir) for f in files
@@ -8310,6 +8354,16 @@ def _rename_series_folder(conn, series_id, series_path, series_title, library_pa
 
     if current_path_real == new_series_path:
         return {'success': True, 'changed': False, 'old_path': series_path, 'new_path': series_path}
+
+    # Déplacer un dossier qui n'appartient pas qu'à cette série (racine de la bibliothèque,
+    # dossier partagé) déplacerait aussi les autres séries - toute la bibliothèque pour la
+    # racine, alors que la base continuerait de pointer vers leurs anciens chemins.
+    folder_conflict = _series_folder_conflict(conn, series_id, series_path, library_path)
+    if folder_conflict:
+        return {
+            'success': False, 'old_path': series_path, 'new_path': new_series_path,
+            'error': f"Dossier non renommé : {folder_conflict}. Rangez d'abord les fichiers de cette série dans leur propre dossier."
+        }
 
     if os.path.exists(new_series_path):
         return {

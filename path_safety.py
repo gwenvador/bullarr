@@ -50,3 +50,27 @@ def configured_root(requested, allowed_roots):
         if root_real == wanted:
             return root_real
     return None
+
+
+def series_folder_conflict(series_path, library_path, other_series_paths):
+    """Raison pour laquelle le dossier d'une série ne lui appartient PAS en propre (None s'il
+    lui appartient) : racine de la bibliothèque (fichiers posés directement à la racine, voir
+    le scan), dossier partagé avec une autre série, ou dossier qui contient celui d'une autre
+    série. Dans ces cas, supprimer ou déplacer ce dossier emporterait d'autres séries - toute
+    la bibliothèque pour la racine."""
+    if not series_path or not library_path:
+        return None
+    real = os.path.realpath(series_path)
+    if real == os.path.realpath(library_path):
+        return 'dossier racine de la bibliothèque'
+    normalized = os.path.normpath(series_path)
+    prefixes = tuple(p.rstrip(os.sep) + os.sep for p in {normalized, real})
+    for other in other_series_paths:
+        if not other:
+            continue
+        other_norm = os.path.normpath(other)
+        if other_norm in (normalized, real):
+            return 'dossier partagé avec une autre série'
+        if other_norm.startswith(prefixes):
+            return "dossier qui contient celui d'une autre série"
+    return None

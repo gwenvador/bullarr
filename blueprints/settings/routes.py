@@ -936,6 +936,14 @@ def _load_komga_duplicate_series(series_rows):
         return []
 
 
+def _series_folder_conflict(conn, series_id, series_path, library_path):
+    """Voir path_safety.series_folder_conflict (racine, dossier partagé ou parent d'une autre série)."""
+    from path_safety import series_folder_conflict
+    others = [row[0] for row in conn.execute(
+        'SELECT path FROM series WHERE id != ? AND path IS NOT NULL', (series_id,))]
+    return series_folder_conflict(series_path, library_path, others)
+
+
 @settings_bp.route('/api/settings/verification/duplicate-series/cleanup', methods=['POST'])
 def cleanup_duplicate_empty_series():
     """Supprime uniquement les fiches de séries vides validées comme doublons.
@@ -982,13 +990,10 @@ def cleanup_duplicate_empty_series():
                     skipped.append({'id': candidate['id'], 'title': candidate['title'],
                                     'reason': 'Chemin hors bibliothèque ou racine de bibliothèque'})
                     continue
-                shared_path = conn.execute(
-                    'SELECT 1 FROM series WHERE id != ? AND path = ? LIMIT 1',
-                    (candidate['id'], series_path)
-                ).fetchone()
-                if shared_path:
+                folder_conflict = _series_folder_conflict(conn, candidate['id'], series_path, candidate['library_path'])
+                if folder_conflict:
                     skipped.append({'id': candidate['id'], 'title': candidate['title'],
-                                    'reason': 'Dossier partagé par plusieurs séries'})
+                                    'reason': f'Dossier conservé : {folder_conflict}'})
                     continue
                 shutil.rmtree(real_series_path)
                 conn.execute('DELETE FROM volumes WHERE series_id = ?', (candidate['id'],))
@@ -1058,6 +1063,13 @@ def cleanup_duplicate_empty_series():
                     if os.path.commonpath([real_series_path, real_library_path]) != real_library_path:
                         skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'Chemin hors bibliothèque'})
                         continue
+                    # Deux séries posées à la racine partagent justement le même dossier :
+                    # le supprimer effaçait toute la bibliothèque, ou le doublon restant.
+                    folder_conflict = _series_folder_conflict(conn, candidate['id'], series_path, candidate['library_path'])
+                    if folder_conflict:
+                        skipped.append({'id': candidate['id'], 'title': candidate['title'],
+                                        'reason': f'Dossier conservé : {folder_conflict}'})
+                        continue
                     shutil.rmtree(real_series_path)
                 conn.execute('DELETE FROM volumes WHERE series_id = ?', (candidate['id'],))
                 conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))
@@ -1090,6 +1102,11 @@ def cleanup_duplicate_empty_series():
                     continue
                 if any(files for _root, _dirs, files in os.walk(real_series_path)):
                     skipped.append({'id': candidate['id'], 'title': candidate['title'], 'reason': 'Le dossier contient des fichiers'})
+                    continue
+                folder_conflict = _series_folder_conflict(conn, candidate['id'], series_path, candidate['library_path'])
+                if folder_conflict:
+                    skipped.append({'id': candidate['id'], 'title': candidate['title'],
+                                    'reason': f'Dossier conservé : {folder_conflict}'})
                     continue
 
             conn.execute('DELETE FROM series WHERE id = ?', (candidate['id'],))

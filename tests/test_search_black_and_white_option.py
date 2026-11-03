@@ -66,7 +66,7 @@ def test_search_result_tbody_keeps_rows_when_asynchronous_refresh_rerenders():
 def test_black_and_white_filter_selects_only_matching_results():
     script = f"""
 const fs = require('fs'), vm = require('vm');
-let source = fs.readFileSync({str(Path('/tmp/bullarr-rewrite/static/js/search-results-table.js'))!r}, 'utf8');
+let source = fs.readFileSync({str(JS)!r}, 'utf8');
 source = source.replace('let _searchTableAllResults = [];', 'var _searchTableAllResults = [];')
                .replace('let _searchTableFilters', 'var _searchTableFilters');
 const context = {{ console, fetch: () => Promise.resolve({{ ok: true, json: () => Promise.resolve({{}}) }}), document: {{ getElementById: () => null }}, window: {{}}, localStorage: {{ getItem: () => null, setItem: () => {{}} }} }};

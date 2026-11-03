@@ -42,6 +42,32 @@ _app_login_failures = {}
 _app_login_lock = threading.Lock()
 
 
+# Connexion par mot de passe : même limite que l'échange de code de l'app, par adresse.
+PASSWORD_LOGIN_MAX_FAILURES_PER_MINUTE = 10
+_password_login_failures = {}
+
+
+def _password_login_blocked(address):
+    """True si cette adresse a déjà raté PASSWORD_LOGIN_MAX_FAILURES_PER_MINUTE connexions
+    dans la dernière minute (sans limite, un mot de passe pouvait être deviné en boucle)."""
+    now = time.monotonic()
+    with _app_login_lock:
+        failures = [t for t in _password_login_failures.get(address, []) if now - t < 60]
+        if failures:
+            _password_login_failures[address] = failures
+        else:
+            _password_login_failures.pop(address, None)
+        return len(failures) >= PASSWORD_LOGIN_MAX_FAILURES_PER_MINUTE
+
+
+def _record_password_login_failure(address):
+    now = time.monotonic()
+    with _app_login_lock:
+        failures = [t for t in _password_login_failures.get(address, []) if now - t < 60]
+        failures.append(now)
+        _password_login_failures[address] = failures
+
+
 def _purge_app_login_state(now):
     for code in [code for code, (expires, _user) in _app_login_codes.items() if expires <= now]:
         del _app_login_codes[code]
@@ -215,11 +241,17 @@ def login():
 @auth_bp.route('/login/password', methods=['POST'])
 def login_password():
     config = load_oidc_config()
+    address = request.remote_addr or ''
+    if _password_login_blocked(address):
+        return _render_login(config, error='Trop de tentatives de connexion. Réessayez dans une minute.', status=429)
     username = (request.form.get('username') or '').strip()
     password = request.form.get('password') or ''
     if (not _password_enabled(config) or not username or username != config.get('username')
             or not config.get('password_hash') or not check_password_hash(config['password_hash'], password)):
+        _record_password_login_failure(address)
         return _render_login(config, error='Identifiant ou mot de passe incorrect.', status=401)
+    with _app_login_lock:
+        _password_login_failures.pop(address, None)
     next_url = session.get('next_url') or '/'
     session.clear()
     session['user'] = {'name': username, 'auth_method': 'password'}
