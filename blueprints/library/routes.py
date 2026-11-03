@@ -4575,6 +4575,37 @@ def _download_folder_identities(download, torrent_names_by_hash):
     return list(identities)
 
 
+_FOLDER_NAME_ONLY_HOLD_REASON = (
+    "rattaché par le nom de son dossier, sans indice dans son propre nom "
+    "- cliquez sur « Importer » pour valider"
+)
+
+
+def _hold_files_scheduler_cannot_attach(items, container_name, download, name_match_downloads,
+                                        torrent_names_by_hash):
+    """/import rattache un dossier à son téléchargement par son nom, quel que soit le client
+    (voir _download_folder_identities). L'import automatique (library/scheduler.py), lui,
+    ne retrouve un fichier non listé par le client que par son propre nom
+    (match_filename_against_trackable_downloads) ou, pour qBittorrent seulement, par le nom
+    exact du torrent. Un fichier que le planificateur ne peut pas rattacher ainsi restait
+    affiché « Import automatique en attente », verrouillé, sans jamais être importé : il est
+    signalé ici comme import manuel à valider."""
+    from blueprints.missing_monitor.downloader import match_filename_against_trackable_downloads
+    torrent_name = None
+    if download.get('client') == 'qbittorrent':
+        torrent_name = (torrent_names_by_hash or {}).get((download.get('client_item_id') or '').lower()) \
+            or download.get('client_item_name')
+    if torrent_name and container_name and torrent_name.strip().lower() == container_name.strip().lower():
+        return
+    for item in items:
+        if item.get('auto_import_skip_reason'):
+            continue
+        match = match_filename_against_trackable_downloads(item['filename'], name_match_downloads)
+        if match and match.get('series_id'):
+            continue
+        item['auto_import_skip_reason'] = _FOLDER_NAME_ONLY_HOLD_REASON
+
+
 def _folder_has_subdirectories(folder_path):
     """Return True when a tracked download folder contains any subdirectory.
 
@@ -5413,36 +5444,44 @@ def _scan_tracked_import_files(validate_files=True):
                 if (download.get('download_status') in ('imported', 'skipped')
                         and not _terminal_download_has_finalized_sibling(entry.path, finalized_source_paths)):
                     continue
-                destination = _build_active_download_destination(
-                    download['series_id'], download.get('volume_number'), download['id']
-                )
+                # Même destination que les autres chemins (type HS/intégrale/épisode suivi,
+                # « Remplacer quand même ») : sans ces drapeaux, un hors-série suivi passait
+                # en « Tome manquant » et un remplacement voulu était jeté comme doublon.
+                destination = _destination_from_download(download)
                 if destination and download.get('is_pack'):
                     destination['is_pack_download'] = True
+                first_new = len(files_found)
                 _collect_download_folder_files(
                     entry.path, import_path, download, destination, scanner,
                     supported_extensions, manual_override_filepaths,
                     import_config, files_found, incompatible_folders,
                     validate_files=validate_files, manual_destinations=manual_destinations
                 )
+                _hold_files_scheduler_cannot_attach(
+                    files_found[first_new:], entry.name, download, name_match_downloads, torrent_names_by_hash)
             elif entry.is_file():
                 ext = os.path.splitext(entry.name)[1].lower()
                 if ext == '.part' or ext not in supported_extensions:
                     continue
                 match = find_active_download_destination(entry.name, name_match_downloads)
+                torrent_download = None
                 if not match:
                     torrent_download = downloads_by_folder_name.get(entry.name.strip().lower())
                     if torrent_download:
-                        match = _build_active_download_destination(
-                            torrent_download['series_id'], torrent_download.get('volume_number'), torrent_download['id']
-                        )
+                        match = _destination_from_download(torrent_download)
                 if not match:
                     continue
+                first_new = len(files_found)
                 _append_scanned_file(
                     entry.path, import_path, entry.name, match, scanner,
                     manual_override_filepaths, import_config, files_found,
                     pack_download_id=match.get('tracking_id'),
                     validate_file=validate_files, manual_destinations=manual_destinations
                 )
+                if torrent_download:
+                    _hold_files_scheduler_cannot_attach(
+                        files_found[first_new:], entry.name, torrent_download,
+                        name_match_downloads, torrent_names_by_hash)
 
     # CBZ créés depuis « Voir le contenu » (voir package_import_archive_folders): vivent hors
     # des répertoires d'import et ne sont listés que tant qu'ils attendent une validation
@@ -6791,6 +6830,18 @@ def _refresh_bedetheque_cache_for_import_if_missing(series_id, parsed):
         return False
 
 
+def _unique_import_target_path(target_dir, filename):
+    """Chemin libre pour `filename` dans `target_dir` : le nom tel quel, sinon nom_1, nom_2...
+    Jamais un fichier existant (le transfert final remplace la cible sans prévenir)."""
+    target_path = os.path.join(target_dir, filename)
+    base, ext = os.path.splitext(filename)
+    counter = 1
+    while os.path.lexists(target_path):
+        target_path = os.path.join(target_dir, f"{base}_{counter}{ext}")
+        counter += 1
+    return target_path
+
+
 def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, strict_missing_file, notify_source):
     """Cœur partagé de l'exécution d'un import - déplace/convertit/insère chaque fichier
     de `files_to_import` vers sa destination, met à jour Historique/stats/renommage/
@@ -7221,6 +7272,12 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         # Supprimer l'ancien volume de la base de données
                         cursor.execute('DELETE FROM volumes WHERE filepath = ?', (existing_file_path,))
 
+                        # L'ancien fichier est maintenant en backup: si le nom visé existe
+                        # encore, c'est le fichier d'un AUTRE tome de la série. Même suffixe
+                        # que l'import normal plutôt que de l'écraser (transfer_import_file
+                        # remplace la cible sans prévenir).
+                        target_path = _unique_import_target_path(target_dir, file_data['filename'])
+
                         # Copier les fichiers dont la source n'est pas inscriptible
                         # (montage NFS en lecture seule, ex: aMule); déplacer les autres.
                         # "the reliable fix would be: after the library volumes row and
@@ -7300,12 +7357,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         placeholder_volume_id = existing_volume_id
 
                     # Si le fichier de destination existe déjà (même nom de fichier)
-                    if os.path.exists(target_path):
-                        base, ext = os.path.splitext(file_data['filename'])
-                        counter = 1
-                        while os.path.exists(target_path):
-                            target_path = os.path.join(target_dir, f"{base}_{counter}{ext}")
-                            counter += 1
+                    target_path = _unique_import_target_path(target_dir, file_data['filename'])
 
                     # Copier les fichiers dont la source n'est pas inscriptible (montage
                     # NFS en lecture seule, ex: aMule); déplacer les autres. Même
