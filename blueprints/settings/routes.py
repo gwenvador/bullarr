@@ -32,6 +32,13 @@ def api_updates():
     return jsonify({'success': True, **update_status(current_app.config.get('APP_VERSION', ''))})
 
 
+@settings_bp.route('/docs')
+def docs_page():
+    """Documentation utilisateur: même contenu que docs.html du site du projet, tiré de
+    templates/partials/guide.html (voir scripts/sync_site_docs.py)."""
+    return render_template('docs.html')
+
+
 @settings_bp.route('/history')
 def history_page():
     """Page Historique: imports + téléchargements automatiques, page à part entière

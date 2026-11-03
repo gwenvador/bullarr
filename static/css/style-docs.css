@@ -1,0 +1,107 @@
+/* Page Documentation (/docs). Le contenu vient de templates/partials/guide.html, recopié
+   tel quel dans docs.html du site (scripts/sync_site_docs.py). Les règles .guide-*
+   ci-dessous sont aussi celles du site : seules les variables --g-* changent. */
+.guide-page {
+    --g-ink: var(--color-text);
+    --g-muted: var(--color-text-muted);
+    --g-surface: var(--color-surface);
+    --g-surface-alt: var(--color-surface-alt);
+    --g-line: var(--color-border);
+    --g-accent: var(--color-accent);
+    --g-accent-ink: var(--color-accent-hover);
+    --g-accent-soft: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    --g-code-bg: color-mix(in srgb, var(--color-text) 7%, transparent);
+    --g-sticky-top: 0px;
+    max-width: 1120px;
+    margin: 0 auto;
+}
+.guide-hero {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
+    background: var(--color-surface); border: 2px solid var(--color-border); border-radius: 15px;
+    padding: 22px 26px; margin-bottom: 26px;
+}
+.guide-hero h2 { margin: 0 0 4px; font-size: 1.35em; text-transform: none; }
+.guide-hero p { margin: 0; color: var(--color-text-muted); }
+.guide-hero-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.guide-hero-links .btn { text-decoration: none; }
+
+/* ---- Règles partagées avec le site (début) ---- */
+.guide-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; align-items: start; }
+.guide-toc {
+    position: sticky; top: var(--g-sticky-top);
+    font-size: 0.92rem; padding: 4px 0;
+}
+.guide-toc strong {
+    display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--g-muted); margin: 0 0 10px 12px;
+}
+.guide-toc ol { list-style: none; margin: 0; padding: 0; counter-reset: toc; }
+.guide-toc li { counter-increment: toc; }
+.guide-toc a {
+    display: flex; gap: 10px; padding: 6px 12px; border-radius: 8px; border-left: 2px solid transparent;
+    color: var(--g-muted); text-decoration: none; line-height: 1.35;
+}
+.guide-toc a::before { content: counter(toc); font-variant-numeric: tabular-nums; min-width: 1em; color: var(--g-muted); opacity: 0.7; }
+.guide-toc a:hover { color: var(--g-ink); background: var(--g-surface-alt); }
+.guide-toc a.active { color: var(--g-accent-ink); border-left-color: var(--g-accent); background: var(--g-accent-soft); font-weight: 600; border-radius: 0 8px 8px 0; }
+
+.guide { min-width: 0; color: var(--g-ink); line-height: 1.65; }
+.guide-intro { font-size: 1.08em; color: var(--g-muted); margin: 0 0 8px; }
+.guide section { padding: 28px 0 8px; border-top: 1px solid var(--g-line); margin-top: 24px; scroll-margin-top: calc(var(--g-sticky-top) + 12px); }
+.guide section:first-of-type { border-top: none; margin-top: 0; padding-top: 12px; }
+.guide h2 { display: flex; align-items: center; gap: 12px; font-size: 1.45em; margin: 0 0 12px; text-transform: none; letter-spacing: -0.01em; }
+.guide-num {
+    flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+    background: var(--g-accent-soft); color: var(--g-accent-ink); font-size: 0.68em; font-weight: 700;
+}
+.guide h3 { font-size: 1.08em; margin: 22px 0 8px; }
+.guide p { margin: 0 0 12px; }
+.guide ul { padding-left: 20px; margin: 0 0 12px; }
+.guide li { margin: 6px 0; }
+.guide li::marker { color: var(--g-accent); }
+.guide a { color: var(--g-accent-ink); }
+.guide code, .guide kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em;
+    background: var(--g-code-bg); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere;
+}
+.guide kbd { border: 1px solid var(--g-line); border-bottom-width: 2px; background: var(--g-surface); }
+.guide pre {
+    background: #1f1f23; color: #f2f2f2; padding: 14px 18px; border-radius: 12px; border: 1px solid var(--g-line);
+    overflow-x: auto; font-size: 0.88em; line-height: 1.6; margin: 12px 0 16px;
+}
+.guide pre code { background: none; padding: 0; font-size: 1em; overflow-wrap: normal; color: inherit; }
+
+.guide-steps { list-style: none; padding: 0; margin: 4px 0 14px; counter-reset: step; }
+.guide-steps li { counter-increment: step; position: relative; padding-left: 38px; margin: 0 0 12px; }
+.guide-steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 1px; width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 0.8em; font-weight: 700;
+    background: var(--g-accent-soft); color: var(--g-accent-ink);
+}
+
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; margin-top: 6px; }
+.guide-card { background: var(--g-surface); border: 1px solid var(--g-line); border-radius: 14px; padding: 16px 18px; }
+.guide-card h3 { margin: 0 0 6px; font-size: 1em; }
+.guide-card p, .guide-card ul { margin: 0; color: var(--g-muted); font-size: 0.95em; }
+.guide-card ul { padding-left: 18px; }
+
+.guide-table { overflow-x: auto; border: 1px solid var(--g-line); border-radius: 12px; margin: 12px 0 16px; background: var(--g-surface); }
+.guide-table table { width: 100%; border-collapse: collapse; }
+.guide-table th, .guide-table td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--g-line); font-size: 0.95em; vertical-align: top; }
+.guide-table th { background: var(--g-surface-alt); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--g-muted); }
+.guide-table tr:last-child td { border-bottom: none; }
+.guide-table td:first-child { white-space: nowrap; }
+
+.guide-note {
+    background: var(--g-accent-soft); border-left: 4px solid var(--g-accent);
+    border-radius: 0 12px 12px 0; padding: 12px 16px; margin: 16px 0;
+}
+
+@media (max-width: 860px) {
+    .guide-layout { grid-template-columns: 1fr; gap: 16px; }
+    .guide-toc { position: static; background: var(--g-surface); border: 1px solid var(--g-line); border-radius: 14px; padding: 14px 8px; }
+    .guide-toc ol { columns: 2; column-gap: 8px; }
+    .guide-toc a.active { border-left-color: transparent; background: none; font-weight: inherit; color: var(--g-muted); }
+}
+@media (max-width: 480px) { .guide-toc ol { columns: 1; } }
+/* ---- Règles partagées avec le site (fin) ---- */
