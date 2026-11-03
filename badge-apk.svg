@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="72" viewBox="0 0 300 72" role="img" aria-label="Télécharger l'APK signé de Bullarr">
+  <rect x="1" y="1" width="298" height="70" rx="12" fill="#1f1a17" stroke="#f08a24" stroke-width="2"/>
+  <circle cx="44" cy="36" r="20" fill="#f08a24"/>
+  <path d="M44 22 L44 42 M36 34 L44 42 L52 34" stroke="#1f1a17" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="78" y="31" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#f5e9dc">Télécharger</text>
+  <text x="78" y="53" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">APK signé</text>
+</svg>
