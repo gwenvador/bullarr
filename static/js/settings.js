@@ -3100,3 +3100,12 @@ async function loadAboutUpdates() {
     } catch (error) { /* GitHub injoignable: la carte reste sans ligne de mise à jour */ }
 }
 document.addEventListener('DOMContentLoaded', loadAboutUpdates);
+
+// Vue d'ensemble : icônes au trait des cartes de catégorie (mêmes icônes que le menu, voir
+// SIDEBAR_ICON_MAP dans nav.js), insérées depuis icons.js plutôt que dupliquées dans le HTML.
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof svgIcon !== 'function') return;
+    document.querySelectorAll('.overview-card-icon[data-icon]').forEach(el => {
+        el.innerHTML = svgIcon(el.dataset.icon);
+    });
+});
