@@ -16,6 +16,8 @@
     <style>
         /* Repères d'effet des actions de correction : le texte porte le sens, la couleur le renforce. */
         .verif-legend { margin: 8px 0 0; font-size: 0.85em; color: var(--color-text-muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+        .verif-card-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .verif-run-btn { min-width: 8em; justify-content: center; }
         .verif-effect { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.72em; font-weight: 600; line-height: 1.6; white-space: nowrap; border: 1px solid transparent; vertical-align: middle; }
         .verif-legend .verif-effect { font-size: 1em; }
         .verif-effect--write { color: #7a4716; background: #f6e8d3; border-color: #e0c79f; }
@@ -83,8 +85,8 @@
                                     <span>Métadonnées manquantes (<span id="missingMetadataCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--write" title="Le correctif écrit le ComicInfo.xml dans chaque archive">Écrit dans les fichiers</span>
                                 </h3>
-                                <div style="display:flex; align-items:center; gap:10px;">
-                                    <button class="btn btn-sm" id="verifRunMissingMetadataBtn" onclick="runVerificationCategory('missing_metadata')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                <div class="verif-card-actions">
+                                    <button type="button" class="btn btn-sm verif-run-btn" id="verifRunMissingMetadataBtn" onclick="runVerificationCategory('missing_metadata', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
                                     <!-- "alors que rien n'est lancer il ne faut pas que Tout sélectionner /
                                          Corriger la sélection (0) s'affiche" - masqué tant que renderMissingMetadata
                                          (verification.js) n'a pas au moins un résultat à sélectionner. -->
@@ -104,8 +106,8 @@
                                     <span>Nommage non standard (<span id="misnamedCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--write" title="Le correctif renomme les fichiers et dossiers selon le template">Renomme des fichiers</span>
                                 </h3>
-                                <div style="display:flex; align-items:center; gap:10px;">
-                                    <button class="btn btn-sm" id="verifRunMisnamedBtn" onclick="runVerificationCategory('misnamed')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                <div class="verif-card-actions">
+                                    <button type="button" class="btn btn-sm verif-run-btn" id="verifRunMisnamedBtn" onclick="runVerificationCategory('misnamed', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
                                     <!-- même masquage que verifMetaBulkControls ci-dessus jusqu'au premier
                                          résultat (renderMisnamed, verification.js). -->
                                     <span id="verifRenameBulkControls" style="display:none; align-items:center; gap:10px;">
@@ -124,8 +126,8 @@
                                     <span>Emplacement des dossiers (<span id="misplacedFoldersCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--write" title="Le correctif déplace les dossiers de série">Déplace des dossiers</span>
                                 </h3>
-                                <div style="display:flex; align-items:center; gap:10px;">
-                                    <button class="btn btn-sm" id="verifRunMisplacedFoldersBtn" onclick="runVerificationCategory('misplaced_folders')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                <div class="verif-card-actions">
+                                    <button type="button" class="btn btn-sm verif-run-btn" id="verifRunMisplacedFoldersBtn" onclick="runVerificationCategory('misplaced_folders', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
                                     <span id="verifFolderMoveBulkControls" class="missing-files-bulk-actions" style="display:none;">
                                         <button type="button" class="btn btn-sm" id="verifBulkFolderMoveBtn" onclick="verifBulkReconcileFolders()" disabled>Déplacer les dossiers (<span id="verifFolderMoveSelectedCount">0</span>)</button>
                                     </span>
@@ -143,7 +145,9 @@
                                     <span>Matching incorrect</span>
                                     <span class="verif-effect verif-effect--write" title="Corriger le matching change l’association de la série">Modifie l’association</span>
                                 </h3>
-                                <button class="btn btn-sm" id="verifRunMatchingBtn" onclick="loadMissingMatches()"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                <div class="verif-card-actions">
+                                    <button type="button" class="btn btn-sm verif-run-btn" id="verifRunMatchingBtn" onclick="loadMissingMatches({ expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                </div>
                             </div>
                             <p class="help-text" id="missing-count" style="margin-top:0;"></p>
                             <div id="missing-bulk-actions-bar" class="volume-bulk-actions-bar" style="display:none; margin-bottom:10px;"></div>
@@ -153,12 +157,13 @@
                         <div class="settings-card" id="verificationMissingFilesCard">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
-                                    <button type="button" class="verif-section-toggle" id="missingFilesToggle" onclick="verifToggleSection('missingFilesList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit;"><span aria-hidden="true">⌄</span></button>
+                                    <button type="button" class="verif-section-toggle" id="missingFilesToggle" onclick="verifToggleSection('missingFilesList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="m14.5 12.5-5 5" /><path d="m9.5 12.5 5 5" /></svg>
                                     <span>Fichiers absents de la bibliothèque (<span id="missingFilesCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--write" title="Les fichiers sur le disque ne sont jamais supprimés ici">Télécharge ou retire de la base</span>
                                 </h3>
-                                <div style="display:flex; align-items:center; gap:10px;">
-                                    <button class="btn btn-sm" id="verifRunMissingFilesBtn" onclick="runVerificationCategory('missing_files')">🔎 Lancer</button>
+                                <div class="verif-card-actions">
+                                    <button type="button" class="btn btn-sm verif-run-btn" id="verifRunMissingFilesBtn" onclick="runVerificationCategory('missing_files', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
                                     <span id="missingFilesBulkControls" class="missing-files-bulk-actions" style="display:none;">
                                         <input type="checkbox" id="missingFilesSelectAll" onchange="toggleAllMissingFilesSeries(this.checked)" data-tooltip="Tout sélectionner" aria-label="Tout sélectionner">
                                         <button type="button" class="btn-icon-only" id="missingFilesBatchAutoBtn" onclick="batchMissingFilesAutoAcquire()" disabled data-tooltip="Recherche + téléchargement automatique" aria-label="Recherche + téléchargement automatique"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m13 2-9 12h8l-1 8 9-12h-8z" /></svg></button>
@@ -173,12 +178,13 @@
                         <div class="settings-card" id="verificationArchiveFormatsCard">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
-                                    <button type="button" class="verif-section-toggle" id="archiveFormatsToggle" onclick="verifToggleSection('archiveFormatsList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit;"><span aria-hidden="true">⌄</span></button>
+                                    <button type="button" class="verif-section-toggle" id="archiveFormatsToggle" onclick="verifToggleSection('archiveFormatsList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="20" height="5" x="2" y="3" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><path d="M10 12h4" /></svg>
                                     <span>Formats d’archives incorrects (<span id="archiveFormatsCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--write" title="La conversion remplace le fichier d’origine">Remplace des archives par du CBZ</span>
                                 </h3>
-                                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                                    <button class="btn btn-sm" id="verifRunArchiveFormatsBtn" onclick="runVerificationCategory('archive_formats')">🔎 Lancer</button>
+                                <div class="verif-card-actions">
+                                    <button type="button" class="btn btn-sm verif-run-btn" id="verifRunArchiveFormatsBtn" onclick="runVerificationCategory('archive_formats', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
                                     <span id="verifArchiveFormatsBulkControls" style="display:none; align-items:center; gap:8px;"><label style="display:flex; align-items:center; gap:5px; font-size:0.85em; font-weight:normal; cursor:pointer;"><input type="checkbox" id="verifArchiveFormatsSelectAll" onchange="verifToggleSelectAllArchiveFormats(this)"> Tout sélectionner</label><button class="btn btn-sm" id="verifConvertArchiveFormatsBtn" onclick="verifConvertArchiveFormatsAndUpdateMetadata()" disabled>Convertir en CBZ + MAJ metadata (<span id="verifArchiveFormatsSelectedCount">0</span>)</button></span>
                                 </div>
                             </div>
@@ -195,7 +201,8 @@
                                     <span>Fichiers invalides (<span id="invalidFilesCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--danger" title="La suppression est définitive">Supprime des fichiers · irréversible</span>
                                 </h3>
-                                <button class="btn btn-sm" id="verifRunInvalidFilesBtn" onclick="runVerificationCategory('invalid_files')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                <div class="verif-card-actions">
+                                <button type="button" class="btn btn-sm verif-run-btn" id="verifRunInvalidFilesBtn" onclick="runVerificationCategory('invalid_files', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
                                 <span id="verifInvalidBulkControls" style="display:none; align-items:center; gap:10px;">
                                 <label style="display:flex; align-items:center; gap:5px; font-size:0.85em; font-weight:normal; cursor:pointer;">
                                     <input type="checkbox" id="verifInvalidSelectAll" onchange="verifToggleSelectAllInvalid(this)">
@@ -203,6 +210,7 @@
                                 </label>
                                 <button class="btn btn-sm" id="verifBulkDeleteInvalidBtn" onclick="verifBulkDeleteInvalidFiles()" disabled><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg> Supprimer les fichiers (<span id="verifInvalidSelectedCount">0</span>)</button>
                                 </span>
+                                </div>
                             </div>
                             <p class="help-text" style="margin:0 0 8px;">Signale les fichiers que Komga a marqués en échec lors de sa propre analyse média.</p>
                             <div id="invalidFilesList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>
@@ -224,8 +232,8 @@
                                     <span><img src="{{ url_for('static', filename='img/bedetheque-logo.png') }}" alt="Bédéthèque" class="section-header-logo"> Tomes possédés sans lien Bédéthèque (<span id="unmatchedOwnedCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--write" title="Le rattachement écrit les métadonnées Bédéthèque dans les archives">Écrit dans les fichiers</span>
                                 </h3>
-                                <div style="display:flex; align-items:center; gap:10px;">
-                                    <button class="btn btn-sm" id="verifRunUnmatchedOwnedBtn" onclick="runVerificationCategory('unmatched_owned_volumes')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
+                                <div class="verif-card-actions">
+                                    <button type="button" class="btn btn-sm verif-run-btn" id="verifRunUnmatchedOwnedBtn" onclick="runVerificationCategory('unmatched_owned_volumes', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
                                     <!-- "tout selectionner should be in the tableau en haut à gauche. ca
                                          toujours ete comme ca" - même convention que "Matching incorrect"
                                          (missing-series-select-all): une vraie checkbox dans le thead,
@@ -245,8 +253,8 @@
                                     <span><img src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="Komga" class="section-header-logo"> Tomes possédés sans lien Komga (<span id="unmatchedOwnedKomgaCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--write" title="La réparation relance l’association avec Komga">Resynchronise Komga</span>
                                 </h3>
-                                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                                    <button class="btn btn-sm" id="verifRunUnmatchedOwnedKomgaBtn" onclick="runVerificationCategory('unmatched_owned_komga')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg> Lancer</button>
+                                <div class="verif-card-actions">
+                                    <button type="button" class="btn btn-sm verif-run-btn" id="verifRunUnmatchedOwnedKomgaBtn" onclick="runVerificationCategory('unmatched_owned_komga', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button>
                                     <button class="btn btn-sm" id="verifBulkRepairKomgaBtn" onclick="verifBulkRepairKomga()" disabled><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg> Resynchroniser avec Komga (<span id="verifKomgaSelectedCount">0</span>)</button>
 
                                 </div>
@@ -259,10 +267,11 @@
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <h3 style="margin:0; display:flex; align-items:center; gap:6px;">
                                     <button type="button" class="verif-section-toggle" id="duplicateSeriesToggle" onclick="verifToggleSection('duplicateSeriesList', this)" data-tooltip="Replier/déplier" style="border:none; background:transparent; cursor:pointer; padding:2px; display:inline-flex; color:inherit; transition:transform 0.15s ease;"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" /></svg></button>
-                                    <span>♻️ Séries en doublon (<span id="duplicateSeriesCount">—</span>)</span>
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                                    <span>Séries en doublon (<span id="duplicateSeriesCount">—</span>)</span>
                                     <span class="verif-effect verif-effect--danger" title="Le nettoyage supprime la fiche, son dossier et ses fichiers">Supprime séries, dossiers et fichiers</span>
                                 </h3>
-                                <div style="display:flex; gap:8px;"><button class="btn btn-sm" id="verifRunDuplicateSeriesBtn" onclick="runVerificationCategory('duplicate_series')"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button><button class="btn btn-sm btn-icon-danger" id="verifCleanupDuplicateSeriesBtn" onclick="cleanupDuplicateSeries()" disabled>Supprimer les doublons (<span id="verifCleanupDuplicateSeriesCount">0</span>)</button></div>
+                                <div class="verif-card-actions"><button type="button" class="btn btn-sm verif-run-btn" id="verifRunDuplicateSeriesBtn" onclick="runVerificationCategory('duplicate_series', { expand: true })"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg> Lancer</button><button class="btn btn-sm btn-icon-danger" id="verifCleanupDuplicateSeriesBtn" onclick="cleanupDuplicateSeries()" disabled>Supprimer les doublons (<span id="verifCleanupDuplicateSeriesCount">0</span>)</button></div>
                             </div>
                             <p class="help-text" style="margin:0 0 8px;">Signale les fiches vides, les séries qui référencent les mêmes fichiers et les titres équivalents. Le nettoyage supprime la fiche clairement la plus petite ou, à égalité, la plus récente, avec son dossier et ses fichiers.</p>
                             <div id="duplicateSeriesList" class="series-list series-table-wrapper" style="max-height:500px; overflow-y:auto;"><p class="help-text">Pas encore lancée.</p></div>

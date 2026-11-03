@@ -27,16 +27,42 @@ function escapeForAttribute(text) {
 // (re)calcule QUE cette catégorie (?type=..., voir _verify_* côté blueprints/settings/
 // routes.py) - un clic sur "Métadonnées manquantes" n'attend plus le test d'intégrité.
 const VERIFICATION_CATEGORIES = {
-    missing_metadata: { runBtnId: 'verifRunMissingMetadataBtn', render: renderMissingMetadata },
-    misnamed: { runBtnId: 'verifRunMisnamedBtn', render: renderMisnamed },
-    misplaced_folders: { runBtnId: 'verifRunMisplacedFoldersBtn', render: renderMisplacedFolders },
-    invalid_files: { runBtnId: 'verifRunInvalidFilesBtn', render: renderInvalidFiles },
-    unmatched_owned_volumes: { runBtnId: 'verifRunUnmatchedOwnedBtn', render: renderUnmatchedOwnedVolumes },
-    unmatched_owned_komga: { runBtnId: 'verifRunUnmatchedOwnedKomgaBtn', render: renderUnmatchedOwnedKomga },
-    duplicate_series: { runBtnId: 'verifRunDuplicateSeriesBtn', render: renderDuplicateSeries },
-    missing_files: { runBtnId: 'verifRunMissingFilesBtn', render: renderMissingFiles },
-    archive_formats: { runBtnId: 'verifRunArchiveFormatsBtn', render: renderArchiveFormats },
+    missing_metadata: { runBtnId: 'verifRunMissingMetadataBtn', render: renderMissingMetadata, listId: 'missingMetadataList', toggleId: 'missingMetadataToggle' },
+    misnamed: { runBtnId: 'verifRunMisnamedBtn', render: renderMisnamed, listId: 'misnamedList', toggleId: 'misnamedToggle' },
+    misplaced_folders: { runBtnId: 'verifRunMisplacedFoldersBtn', render: renderMisplacedFolders, listId: 'misplacedFoldersList', toggleId: 'folderPlacementToggle' },
+    invalid_files: { runBtnId: 'verifRunInvalidFilesBtn', render: renderInvalidFiles, listId: 'invalidFilesList', toggleId: 'invalidFilesToggle' },
+    unmatched_owned_volumes: { runBtnId: 'verifRunUnmatchedOwnedBtn', render: renderUnmatchedOwnedVolumes, listId: 'unmatchedOwnedList', toggleId: 'unmatchedOwnedToggle' },
+    unmatched_owned_komga: { runBtnId: 'verifRunUnmatchedOwnedKomgaBtn', render: renderUnmatchedOwnedKomga, listId: 'unmatchedOwnedKomgaList', toggleId: 'unmatchedOwnedKomgaToggle' },
+    duplicate_series: { runBtnId: 'verifRunDuplicateSeriesBtn', render: renderDuplicateSeries, listId: 'duplicateSeriesList', toggleId: 'duplicateSeriesToggle' },
+    missing_files: { runBtnId: 'verifRunMissingFilesBtn', render: renderMissingFiles, listId: 'missingFilesList', toggleId: 'missingFilesToggle' },
+    archive_formats: { runBtnId: 'verifRunArchiveFormatsBtn', render: renderArchiveFormats, listId: 'archiveFormatsList', toggleId: 'archiveFormatsToggle' },
 };
+
+// Même état « en cours » pour tous les boutons Lancer (y compris Matching incorrect):
+// spinner + libellé, largeur conservée (voir .verif-run-btn), puis retour à l'original.
+function _verifSetRunning(btn, running) {
+    if (!btn) return;
+    if (running) {
+        if (btn.dataset.idleHtml === undefined) btn.dataset.idleHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} Analyse…`;
+    } else {
+        btn.disabled = false;
+        if (btn.dataset.idleHtml !== undefined) {
+            btn.innerHTML = btn.dataset.idleHtml;
+            delete btn.dataset.idleHtml;
+        }
+    }
+}
+
+// Un clic sur « Lancer » montre ses résultats: la section se déplie. Les relances après
+// une action corrective et le lancement au chargement ne touchent pas au repli.
+function _verifExpandSection(listId, toggleId) {
+    const list = document.getElementById(listId);
+    const toggle = document.getElementById(toggleId);
+    if (list) list.style.display = '';
+    if (toggle) toggle.style.transform = '';
+}
 
 function _updateVerificationSummary(data) {
     const summaryEl = document.getElementById('verificationSummary');
@@ -49,12 +75,10 @@ function _updateVerificationSummary(data) {
     summaryEl.textContent = `${data.series_count} ${pluralize(data.series_count, 'série')}, ${data.volume_count} ${pluralize(data.volume_count, 'tome')} dans la bibliothèque.`;
 }
 
-async function runVerificationCategory(type) {
+async function runVerificationCategory(type, { expand = false } = {}) {
     const config = VERIFICATION_CATEGORIES[type];
     const btn = document.getElementById(config.runBtnId);
-    const originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<span class="btn-icon">${svgIcon('loader-circle', 'icon-spin')}</span>`;
+    _verifSetRunning(btn, true);
 
     try {
         const response = await fetch(`/api/settings/verification?type=${type}`);
@@ -67,11 +91,11 @@ async function runVerificationCategory(type) {
 
         _updateVerificationSummary(data);
         config.render(data);
+        if (expand) _verifExpandSection(config.listId, config.toggleId);
     } catch (error) {
         alert('❌ Erreur de connexion: ' + error.message);
     } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
+        _verifSetRunning(btn, false);
     }
 }
 
@@ -364,9 +388,12 @@ function renderMisnamed(data) {
         filterVerifRenameTable(query);
         initClearableSearchInputs(namingList);
     }
+    // N'existe que dans le tableau des résultats: absent quand il n'y a rien à signaler.
     const renameSelectAllEl = document.getElementById('verifRenameSelectAll');
-    renameSelectAllEl.checked = false;
-    renameSelectAllEl.disabled = false;
+    if (renameSelectAllEl) {
+        renameSelectAllEl.checked = false;
+        renameSelectAllEl.disabled = false;
+    }
     document.getElementById('verifRenameBulkControls').style.display = data.misnamed.length > 0 ? 'flex' : 'none';
     verifUpdateRenameSelectionCount();
 }
@@ -1617,10 +1644,21 @@ let _ebdzConfigured = false;
 let _komgaConfigured = false;
 let missingSeriesSort = {field: 'title', dir: 1};
 
-async function loadMissingMatches() {
+async function loadMissingMatches({ expand = false } = {}) {
+    const runBtn = document.getElementById('verifRunMatchingBtn');
+    _verifSetRunning(runBtn, true);
+    try {
+        await _loadMissingMatches(expand);
+    } finally {
+        _verifSetRunning(runBtn, false);
+    }
+}
+
+async function _loadMissingMatches(expand) {
     const container = document.getElementById('missing-table-container');
     const countEl = document.getElementById('missing-count');
     container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    if (expand) _verifExpandSection('missing-table-container', 'matchingToggle');
 
     try {
         const response = await fetch('/api/bedetheque/missing-matches');
@@ -1926,6 +1964,7 @@ function verifCollapseAllSections() {
         ['unmatchedOwnedKomgaList', 'unmatchedOwnedKomgaToggle'],
         ['duplicateSeriesList', 'duplicateSeriesToggle'],
         ['misplacedFoldersList', 'folderPlacementToggle'],
+        ['archiveFormatsList', 'archiveFormatsToggle'],
     ].forEach(([listId, buttonId]) => {
         const list = document.getElementById(listId);
         const button = document.getElementById(buttonId);
@@ -1955,6 +1994,8 @@ function _updateMissingBulkActionsBar() { _updateMissingSelectionBulkActionsBar(
 
 document.addEventListener('DOMContentLoaded', () => {
     verifCollapseAllSections();
+    // Lancées d'office au chargement mais laissées repliées (résultats volumineux):
+    // seul un clic sur « Lancer » déplie la section (onclick du template, expand: true).
     runVerificationCategory('missing_metadata');
     runVerificationCategory('misnamed');
     runVerificationCategory('misplaced_folders');
