@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bullarr — gestionnaire de bibliothèque BD</title>
 <meta name="description" content="Bullarr gère votre bibliothèque de BD : métadonnées Bédéthèque, import automatique, tomes manquants, lecteur intégré, API, application Android et serveur MCP pour Claude et ChatGPT.">
+<meta property="og:title" content="Bullarr — gestionnaire de bibliothèque BD">
+<meta property="og:description" content="Votre bibliothèque de BD, à jour et complète. Auto-hébergé, métadonnées Bédéthèque, tomes manquants, lecteur intégré.">
+<meta property="og:image" content="https://gwenvador.github.io/bullarr/ma-tableau.jpg">
+<meta property="og:type" content="website">
 <link rel="icon" href="icon-128.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-128.png">
 <style>
@@ -16,9 +20,11 @@
     --line: #e4e1da;
     --accent: #e8891c;
     --accent-ink: #b5600a;
+    --accent-soft: #fdf0e1;
+    --shadow: 0 1px 2px rgba(29,29,31,.04), 0 8px 24px rgba(29,29,31,.06);
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
   body {
     margin: 0;
     overflow-x: hidden;
@@ -28,160 +34,225 @@
     line-height: 1.55;
   }
   a { color: var(--accent-ink); }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+  img { max-width: 100%; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
 
+  /* Barre du haut, collante */
   header.top {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 0 8px;
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(246,245,242,.86);
+    backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid transparent; transition: border-color .2s;
   }
-  header.top img { height: auto; width: min(640px, 62vw); max-width: 100%; display: block; }
-  @media (max-width: 760px) {
-    header.top { flex-direction: column; align-items: flex-start; gap: 10px; }
-    header.top img { width: 100%; }
-  }
+  header.top.scrolled { border-bottom-color: var(--line); }
+  header.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-weight: 750; font-size: 1.15rem; }
+  .brand img { width: 34px; height: 34px; }
+  .brand span b { color: var(--accent); font-weight: inherit; }
+  header.top nav { display: flex; align-items: center; gap: 4px; }
   header.top nav a {
-    margin-left: 18px; color: var(--ink); text-decoration: none; font-weight: 500;
+    color: var(--ink); text-decoration: none; font-weight: 500; font-size: .95rem;
+    padding: 7px 12px; border-radius: 8px;
   }
-  header.top nav a:hover { color: var(--accent-ink); }
+  header.top nav a:hover { background: rgba(0,0,0,.05); color: var(--accent-ink); }
+  header.top nav a.gh { border: 1px solid var(--line); background: var(--card); display: inline-flex; align-items: center; gap: 6px; }
+  header.top nav a.gh svg { width: 16px; height: 16px; }
+  @media (max-width: 760px) { header.top nav a.hide-sm { display: none; } }
 
-  .carousel { width: 100vw; position: relative; left: 50%; margin: 4px 0 0 -50vw; }
-  .slide { display: none; margin: 0; }
-  .slide.active { display: block; }
-  .slide img {
-    display: block; width: 100%; max-width: 1200px; margin: 0 auto; aspect-ratio: 16 / 10; object-fit: cover; background: #fff;
-    border: 1px solid var(--line); border-radius: 14px;
+  /* Hero */
+  .hero { padding: 48px 0 16px; text-align: center; }
+  .hero .logo { width: min(460px, 86%); height: auto; display: block; margin: 0 auto; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 18px;
+    padding: 5px 12px 5px 6px; border-radius: 999px; font-size: .88rem; font-weight: 500;
+    background: var(--card); border: 1px solid var(--line); color: var(--muted); text-decoration: none;
   }
-  .slide figcaption { color: var(--muted); font-size: 0.93rem; text-align: center; margin-top: 10px; }
-  .carousel-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; }
-  .carousel-nav button {
-    width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line);
-    background: var(--card); color: var(--ink); font-size: 1.2rem; cursor: pointer;
+  .pill b { background: var(--accent); color: #fff; padding: 2px 9px; border-radius: 999px; font-size: .8rem; }
+  .pill:hover { border-color: var(--accent); color: var(--ink); }
+  .hero h1 {
+    font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.1; margin: 18px auto 14px; font-weight: 800;
+    letter-spacing: -.02em; max-width: 760px;
   }
-  .carousel-nav button:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p { font-size: 1.15rem; color: var(--muted); max-width: 640px; margin: 0 auto; }
+  .cta { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 999px; text-decoration: none;
+    font-weight: 600; border: 1px solid var(--line); color: var(--ink); background: var(--card);
+    transition: border-color .15s, color .15s, background .15s, transform .15s;
+  }
+  .btn:hover { border-color: var(--accent-ink); color: var(--accent-ink); transform: translateY(-1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 6px 18px rgba(232,137,28,.3); }
+  .btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); color: #fff; }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; margin: 22px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .92rem; }
+  .chips li::before { content: "✓ "; color: var(--accent); font-weight: 700; }
+
+  /* Carrousel de captures, dans un cadre de navigateur */
+  .shots { padding: 36px 0 56px; }
+  .frame {
+    max-width: 960px; margin: 0 auto; background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,.04), 0 24px 60px rgba(60,40,10,.14);
+  }
+  .frame-bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #faf9f6; }
+  .frame-bar i { width: 11px; height: 11px; border-radius: 50%; background: #e4e1da; }
+  .frame-bar span { margin-left: 10px; font-size: .8rem; color: var(--muted); }
+  .slides { position: relative; aspect-ratio: 16 / 10; background: #fff; touch-action: pan-y; }
+  .slide { position: absolute; inset: 0; margin: 0; opacity: 0; transition: opacity .45s ease; }
+  .slide.active { opacity: 1; }
+  .slide img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+  .caption { text-align: center; color: var(--muted); font-size: .95rem; margin: 14px auto 0; max-width: 720px; min-height: 3em; }
+  .carousel-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 6px; }
+  .carousel-nav button.arrow {
+    width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); font-size: 1.2rem; cursor: pointer; line-height: 1;
+  }
+  .carousel-nav button.arrow:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
   .dots { display: flex; gap: 8px; }
   .dots button {
-    width: 9px; height: 9px; padding: 0; border: none; border-radius: 50%;
-    background: var(--line); cursor: pointer;
+    width: 9px; height: 9px; padding: 0; border: none; border-radius: 999px;
+    background: var(--line); cursor: pointer; transition: width .25s, background .25s;
   }
-  .dots button.on { background: var(--accent); }
+  .dots button.on { background: var(--accent); width: 24px; }
 
-  .hero { padding: 36px 0 28px; text-align: center; }
-  .hero img { width: min(520px, 90%); height: auto; }
-  .hero h1 {
-    font-size: clamp(1.9rem, 4.2vw, 2.8rem); line-height: 1.15; margin: 22px 0 12px; font-weight: 750;
-  }
-  .hero p { font-size: 1.12rem; color: var(--muted); max-width: 640px; margin: 0 auto; }
-  .cta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
-  .btn {
-    display: inline-block; padding: 11px 20px; border-radius: 999px; text-decoration: none;
-    font-weight: 600; border: 2px solid var(--ink); color: var(--ink); background: transparent;
-  }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
-  .btn:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+  /* Sections */
+  section { padding: 64px 0; }
+  .eyebrow { display: inline-block; font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 6px; }
+  section h2 { font-size: clamp(1.6rem, 3vw, 2rem); letter-spacing: -.01em; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 32px; font-size: 1.05rem; max-width: 700px; }
+  .band { background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 
-  section { padding: 44px 0; }
-  section h2 { font-size: 1.6rem; margin: 0 0 6px; }
-  section > .wrap > p.lead { color: var(--muted); margin: 0 0 24px; }
-
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 960px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
   .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px;
   }
-  .card .icon { font-size: 1.6rem; line-height: 1; margin-bottom: 10px; }
+  .grid .card { transition: border-color .2s, transform .2s, box-shadow .2s; }
+  .grid .card:hover { border-color: #f0c48e; transform: translateY(-2px); box-shadow: var(--shadow); }
+  .band .card { background: var(--paper); }
+  .card .icon {
+    width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+    background: var(--accent-soft); font-size: 1.35rem; line-height: 1; margin-bottom: 14px;
+  }
   .card h3 { font-size: 1.05rem; margin: 0 0 6px; }
-  .card p { margin: 0; color: var(--muted); font-size: 0.97rem; }
+  .card p { margin: 0; color: var(--muted); font-size: .95rem; }
 
-  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+  /* Installer */
+  .split { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+  .split > *, .ai > * { min-width: 0; }
+  @media (max-width: 820px) { .split { grid-template-columns: 1fr; } }
+  .steps { margin: 14px 0 0; padding: 0; list-style: none; counter-reset: s; }
+  .steps li { counter-increment: s; position: relative; padding: 0 0 0 36px; margin: 0 0 16px; color: var(--muted); font-size: .95rem; }
+  .steps li::before {
+    content: counter(s); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent-ink); font-weight: 700; font-size: .8rem; display: grid; place-items: center;
+  }
+  .steps li:last-child { margin-bottom: 0; }
+  .steps strong { color: var(--ink); }
+  .code { position: relative; margin-top: 18px; }
   pre {
     background: #1f1f23; color: #f2f2f2; padding: 16px 18px; border-radius: 12px;
-    overflow-x: auto; font-size: 0.92rem; margin: 10px 0 0;
+    overflow-x: auto; font-size: .9rem; margin: 0; line-height: 1.6;
   }
+  pre .c { color: #8b8b93; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .code pre { padding-right: 84px; }
+  .copy {
+    position: absolute; top: 10px; right: 10px; border: 1px solid #3a3a40; background: #2a2a30; color: #ddd;
+    font: 500 .8rem system-ui, sans-serif; padding: 5px 10px; border-radius: 7px; cursor: pointer;
+  }
+  .copy:hover { background: #35353c; color: #fff; }
+  .android { display: flex; flex-direction: column; }
+  .android .actions { margin-top: auto; padding-top: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+  .android .actions img { height: 52px; width: auto; display: block; }
 
-  .band { background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; background: var(--card); border-radius: 12px; overflow: hidden; }
-  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 0.97rem; }
-  th { background: #faf9f6; }
-  tr:last-child td { border-bottom: none; }
+  /* IA / MCP */
+  .ai { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  @media (max-width: 820px) { .ai { grid-template-columns: 1fr; } }
+  .chat { display: flex; flex-direction: column; gap: 10px; }
+  .bubble { padding: 11px 15px; border-radius: 16px; max-width: 88%; font-size: .95rem; }
+  .bubble.me { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .bubble.bot { align-self: flex-start; background: var(--paper); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .bubble.bot code { font-size: .82rem; background: var(--accent-soft); color: var(--accent-ink); padding: 1px 6px; border-radius: 5px; }
+  .tools { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--card); }
+  .tools li { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: .95rem; }
+  .tools li:last-child { border-bottom: none; }
+  .tools code { font-size: .85rem; color: var(--accent-ink); min-width: 150px; }
+  .tools span { color: var(--muted); }
+  .note { margin-top: 16px; padding: 12px 16px; border-radius: 12px; background: var(--accent-soft); color: #6b4310; font-size: .93rem; }
 
-  footer { padding: 28px 0 40px; color: var(--muted); font-size: 0.94rem; }
-  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+  footer { padding: 32px 0 44px; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; }
+  footer .links { display: flex; gap: 18px; }
+  footer .links a { color: var(--ink); text-decoration: none; font-weight: 500; }
+  footer .links a:hover { color: var(--accent-ink); }
+  footer small { display: block; max-width: 620px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .slide, .btn, .grid .card, .dots button { transition: none; }
+  }
 </style>
 </head>
 <body>
 
-<div class="wrap">
-  <header class="top">
-    <img src="logo-transparent.png" alt="Bullarr">
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="icon-128.png" alt=""><span>Bull<b>arr</b></span></a>
     <nav>
-      <a href="docs.html">📖 Documentation</a>
+      <a class="hide-sm" href="#fonctions">Fonctions</a>
+      <a class="hide-sm" href="#installer">Installer</a>
+      <a class="hide-sm" href="#ia">IA</a>
+      <a href="docs.html">Documentation</a>
+      <a class="gh" href="https://github.com/gwenvador/bullarr" aria-label="GitHub"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span class="hide-sm">GitHub</span></a>
     </nav>
-  </header>
-</div>
-
-<div class="wrap">
-  <div class="carousel" aria-label="Captures d'écran de Bullarr">
-    <div class="slides">
-      <figure class="slide active">
-        <img src="ma-tableau.jpg" alt="Bibliothèque en vue Tableau : titres, tomes, statut, année et genre.">
-        <figcaption>Bibliothèque en vue Tableau : titres, tomes, statut, année et genre.</figcaption>
-      </figure>
-      <figure class="slide">
-        <img src="ma-recherche.jpg" alt="Recherche : trouver une série à ajouter à la bibliothèque.">
-        <figcaption>Recherche : trouver une série à ajouter à la bibliothèque.</figcaption>
-      </figure>
-      <figure class="slide">
-        <img src="ma-recherche-sources.jpg" alt="Recherche multi-sources : torrents, Telegram, EBDZ et téléchargement direct.">
-        <figcaption>Recherche multi-sources (torrents, Telegram, EBDZ, téléchargement direct) : source, résolution, taille et seeds pour chaque résultat.</figcaption>
-      </figure>
-      <figure class="slide">
-        <img src="ma-configuration.jpg" alt="Configuration : indexeurs, clients, notifications, imports et sauvegarde.">
-        <figcaption>Configuration : indexeurs, clients, notifications, imports et sauvegarde.</figcaption>
-      </figure>
-      <figure class="slide">
-        <img src="ma-enrichir.jpg" alt="Enrichir : rapprochement des séries avec Bédéthèque et EBDZ.">
-        <figcaption>Enrichir : rapprochement des séries avec Bédéthèque et EBDZ.</figcaption>
-      </figure>
-      <figure class="slide">
-        <img src="ma-verification.jpg" alt="Vérification : métadonnées manquantes, nommage, matching incorrect, formats d’archives.">
-        <figcaption>Vérification : métadonnées manquantes, nommage, matching incorrect, formats d’archives.</figcaption>
-      </figure>
-      <figure class="slide">
-        <img src="ma-serie.jpg" alt="Fiche d’une série ouverte : titre, scénario, dessin, éditeur, statut et liens.">
-        <figcaption>Fiche d’une série ouverte : titre, scénario, dessin, éditeur, statut et liens.</figcaption>
-      </figure>
-    </div>
-    <div class="carousel-nav">
-      <button type="button" data-dir="-1" aria-label="Capture précédente">‹</button>
-      <div class="dots">
-        <button type="button" class="on" aria-label="Capture 1"></button>
-        <button type="button" aria-label="Capture 2"></button>
-        <button type="button" aria-label="Capture 3"></button>
-        <button type="button" aria-label="Capture 4"></button>
-        <button type="button" aria-label="Capture 5"></button>
-        <button type="button" aria-label="Capture 6"></button>
-        <button type="button" aria-label="Capture 7"></button>
-      </div>
-      <button type="button" data-dir="1" aria-label="Capture suivante">›</button>
-    </div>
   </div>
-</div>
+</header>
 
 <div class="wrap hero">
-  <h1>Votre bibliothèque de BD, à jour et complète.</h1>
+  <img class="logo" src="logo-transparent.png" alt="Bullarr — gestionnaire de bibliothèque BD" width="715" height="312">
+  <a class="pill" href="https://github.com/gwenvador/bullarr/releases/tag/v10.0"><b>v10.0</b> Voir les nouveautés →</a>
+  <h1>Votre bibliothèque de BD, <em>à jour et complète.</em></h1>
   <p>Bullarr télécharge et met à jour les métadonnées de vos BD grâce à Bédéthèque, repère les tomes manquants et vous laisse tout lire depuis le navigateur. Auto-hébergé, sans base externe.</p>
   <div class="cta">
     <a class="btn primary" href="#installer">Installer Bullarr</a>
-    <a class="btn" href="https://github.com/gwenvador/bullarr/releases/tag/v10.0">Version 10.0</a>
     <a class="btn" href="https://github.com/gwenvador/bullarr-android/releases/latest">APK Android</a>
     <a class="btn" href="https://github.com/gwenvador/bullarr">Code source</a>
+  </div>
+  <ul class="chips">
+    <li>Docker + SQLite</li>
+    <li>Métadonnées Bédéthèque</li>
+    <li>CBZ, CBR, PDF</li>
+    <li>API et serveur MCP</li>
+  </ul>
+</div>
+
+<div class="wrap shots">
+  <div class="carousel" aria-roledescription="carrousel" aria-label="Captures d'écran de Bullarr">
+    <div class="frame">
+      <div class="frame-bar" aria-hidden="true"><i></i><i></i><i></i><span>bullarr.local</span></div>
+      <div class="slides">
+        <figure class="slide active"><img src="ma-tableau.jpg" alt="Bibliothèque en vue Tableau : titres, tomes, statut, année et genre." data-caption="Bibliothèque en vue Tableau : titres, tomes, statut, année et genre."></figure>
+        <figure class="slide"><img loading="lazy" src="ma-recherche.jpg" alt="Recherche : trouver une série à ajouter à la bibliothèque." data-caption="Recherche : trouver une série à ajouter à la bibliothèque."></figure>
+        <figure class="slide"><img loading="lazy" src="ma-recherche-sources.jpg" alt="Recherche multi-sources : torrents, Telegram, EBDZ et téléchargement direct." data-caption="Recherche multi-sources (torrents, Telegram, EBDZ, téléchargement direct) : source, résolution, taille et seeds pour chaque résultat."></figure>
+        <figure class="slide"><img loading="lazy" src="ma-configuration.jpg" alt="Configuration : indexeurs, clients, notifications, imports et sauvegarde." data-caption="Configuration : indexeurs, clients, notifications, imports et sauvegarde."></figure>
+        <figure class="slide"><img loading="lazy" src="ma-enrichir.jpg" alt="Enrichir : rapprochement des séries avec Bédéthèque et EBDZ." data-caption="Enrichir : rapprochement des séries avec Bédéthèque et EBDZ."></figure>
+        <figure class="slide"><img loading="lazy" src="ma-verification.jpg" alt="Vérification : métadonnées manquantes, nommage, matching incorrect, formats d’archives." data-caption="Vérification : métadonnées manquantes, nommage, matching incorrect, formats d’archives."></figure>
+        <figure class="slide"><img loading="lazy" src="ma-serie.jpg" alt="Fiche d’une série ouverte : titre, scénario, dessin, éditeur, statut et liens." data-caption="Fiche d’une série ouverte : titre, scénario, dessin, éditeur, statut et liens."></figure>
+      </div>
+    </div>
+    <p class="caption" aria-live="polite">Bibliothèque en vue Tableau : titres, tomes, statut, année et genre.</p>
+    <div class="carousel-nav">
+      <button type="button" class="arrow" data-dir="-1" aria-label="Capture précédente">‹</button>
+      <div class="dots"></div>
+      <button type="button" class="arrow" data-dir="1" aria-label="Capture suivante">›</button>
+    </div>
   </div>
 </div>
 
 <section id="fonctions" class="band">
   <div class="wrap">
+    <span class="eyebrow">Fonctions</span>
     <h2>Ce que Bullarr fait</h2>
     <p class="lead">Un outil pensé pour les collections de BD francophones : vous gardez la main sur vos fichiers.</p>
     <div class="grid">
@@ -211,7 +282,7 @@
         <p>CBZ, CBR et PDF lus dans le navigateur : deux pages, zoom, miniatures, plein écran et raccourcis clavier.</p>
       </div>
       <div class="card">
-        <div class="icon">🏷️</div>
+        <div class="icon">🔖</div>
         <h3>Tags et listes</h3>
         <p>Des tags par série, éditables et recherchables. Une liste « à lire plus tard » et des favoris pour ce que vous ne lisez pas encore.</p>
       </div>
@@ -220,70 +291,142 @@
         <h3>API et application Android</h3>
         <p>Toutes les fonctions sont pilotables par une clé API. Une application Android s'appuie dessus pour la bibliothèque, les téléchargements et l'import.</p>
       </div>
+      <div class="card">
+        <div class="icon">🔒</div>
+        <h3>Auto-hébergé</h3>
+        <p>Docker et SQLite, sans base externe. Secrets chiffrés sur disque, authentification facultative par mot de passe ou SSO OIDC.</p>
+      </div>
     </div>
   </div>
 </section>
 
 <section id="installer">
   <div class="wrap">
-    <h2>Installer</h2>
+    <span class="eyebrow">Installer</span>
+    <h2>Prêt en quelques minutes</h2>
     <p class="lead">Bullarr tourne dans Docker, avec une base SQLite : rien d'autre à installer.</p>
     <div class="split">
       <div class="card">
         <h3>Avec Docker Compose</h3>
-        <p>Clonez le dépôt, copiez le modèle de configuration, puis démarrez. Le guide complet est dans le README.</p>
-        <pre><code>git clone https://github.com/gwenvador/bullarr.git
+        <ol class="steps">
+          <li><strong>Clonez le dépôt</strong> et copiez le modèle <code>docker-compose.example.yml</code>.</li>
+          <li><strong>Renseignez <code>SECRET_KEY</code></strong> dans <code>.env</code> et adaptez les volumes à votre bibliothèque.</li>
+          <li><strong>Démarrez</strong>, puis suivez la <a href="docs.html#premier-demarrage">documentation</a> pour le premier démarrage.</li>
+        </ol>
+        <div class="code">
+          <button class="copy" type="button">Copier</button>
+<pre><code>git clone https://github.com/gwenvador/bullarr.git
 cd bullarr
 cp docker-compose.example.yml docker-compose.yml
-# renseignez SECRET_KEY dans .env puis :
+<span class="c"># renseignez SECRET_KEY dans .env puis :</span>
 docker compose up -d</code></pre>
+        </div>
       </div>
-      <div class="card">
+      <div class="card android">
+        <div class="icon">📱</div>
         <h3>Application Android</h3>
         <p>L'application pilote Bullarr depuis votre téléphone : bibliothèque, recherche, téléchargements, import. Elle s'installe depuis le dépôt F-Droid de l'auteur.</p>
-        <p style="margin-top:12px"><a href="https://gwenvador.github.io/bullarr-android/repo/" title="Dépôt F-Droid de l'application Android"><img src="fdroid.svg" alt="Installer avec F-Droid" style="height:52px;width:auto;display:block;"></a></p>
+        <div class="actions">
+          <a href="https://gwenvador.github.io/bullarr-android/repo/" title="Dépôt F-Droid de l'application Android"><img src="fdroid.svg" alt="Installer avec F-Droid"></a>
+          <a href="https://github.com/gwenvador/bullarr-android/releases/latest">ou télécharger l'APK →</a>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="claude" class="band">
+<section id="ia" class="band">
   <div class="wrap">
-    <h2>Bullarr et AI</h2>
-    <p class="lead">Bullarr expose un serveur MCP. Posez vos questions en langage naturel : « une BD des années 70 sur les chats », « quelles séries parlent de Nietzsche ? », « tague cette série ».</p>
-    <table>
-      <tr><th>Outil</th><th>Rôle</th></tr>
-      <tr><td><code>search_series</code></td><td>Chercher par mots, tags et année.</td></tr>
-      <tr><td><code>get_series</code></td><td>Lire la fiche d'une série.</td></tr>
-      <tr><td><code>list_tags</code></td><td>Lister les tags et leur nombre de séries.</td></tr>
-      <tr><td><code>set_series_tags</code></td><td>Remplacer les tags d'une série.</td></tr>
-      <tr><td><code>set_reading_lists</code></td><td>Gérer « à lire plus tard » et les favoris.</td></tr>
-    </table>
-    <p class="lead" style="margin-top:16px">Il ne supprime rien et ne modifie aucun fichier. L'accès se fait par un jeton dédié, à configurer dans votre instance.</p>
+    <span class="eyebrow">Bullarr et IA</span>
+    <h2>Interrogez votre bibliothèque en langage naturel</h2>
+    <p class="lead">Bullarr expose un serveur MCP pour Claude, ChatGPT ou tout assistant compatible.</p>
+    <div class="ai">
+      <div class="card chat" aria-label="Exemple de conversation">
+        <div class="bubble me">Une BD des années 70 sur les chats ?</div>
+        <div class="bubble bot">Je cherche dans ta bibliothèque avec <code>search_series</code>…</div>
+        <div class="bubble me">Quelles séries parlent de Nietzsche ?</div>
+        <div class="bubble me">Tague cette série « philosophie ».</div>
+        <div class="bubble bot">C'est fait, via <code>set_series_tags</code>.</div>
+      </div>
+      <div>
+        <ul class="tools">
+          <li><code>search_series</code><span>Chercher par mots, tags et année.</span></li>
+          <li><code>get_series</code><span>Lire la fiche d'une série.</span></li>
+          <li><code>list_tags</code><span>Lister les tags et leur nombre de séries.</span></li>
+          <li><code>set_series_tags</code><span>Remplacer les tags d'une série.</span></li>
+          <li><code>set_reading_lists</code><span>Gérer « à lire plus tard » et les favoris.</span></li>
+        </ul>
+        <p class="note">Il ne supprime rien et ne modifie aucun fichier. L'accès se fait par un jeton dédié, à configurer dans votre instance — voir la <a href="docs.html#ai">documentation</a>.</p>
+      </div>
+    </div>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    <span>Bullarr est un projet personnel, auto-hébergé. Images de démonstration : domaine public ou CC0, via <a href="https://commons.wikimedia.org">Wikimedia Commons</a>. Badge F-Droid : © F-Droid, CC BY-SA 3.0.</span>
-    <span><a href="https://github.com/gwenvador/bullarr">github.com/gwenvador/bullarr</a></span>
+    <a class="brand" href="#"><img src="icon-128.png" alt=""><span>Bull<b>arr</b></span></a>
+    <div class="links">
+      <a href="docs.html">Documentation</a>
+      <a href="https://github.com/gwenvador/bullarr/releases">Versions</a>
+      <a href="https://github.com/gwenvador/bullarr">GitHub</a>
+    </div>
+    <small>Bullarr est un projet personnel, auto-hébergé. Images de démonstration : domaine public ou CC0, via <a href="https://commons.wikimedia.org">Wikimedia Commons</a>. Badge F-Droid : © F-Droid, CC BY-SA 3.0.</small>
   </div>
 </footer>
 
 <script>
   (function () {
+    // En-tête : bordure une fois la page défilée
+    const top = document.querySelector('header.top');
+    const onScroll = () => top.classList.toggle('scrolled', window.scrollY > 4);
+    addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+    // Carrousel : flèches, points, clavier, glissement et défilement automatique
     const car = document.querySelector('.carousel');
-    const slides = car.querySelectorAll('.slide');
-    const dots = car.querySelectorAll('.dots button');
-    let current = 0;
+    const slides = [...car.querySelectorAll('.slide')];
+    const caption = car.querySelector('.caption');
+    const dotsBox = car.querySelector('.dots');
+    const dots = slides.map((_, k) => {
+      const d = document.createElement('button');
+      d.type = 'button'; d.setAttribute('aria-label', 'Capture ' + (k + 1));
+      d.addEventListener('click', () => { show(k); restart(); });
+      dotsBox.appendChild(d); return d;
+    });
+    let current = 0, timer = null;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     function show(n) {
       current = (n + slides.length) % slides.length;
       slides.forEach((s, k) => s.classList.toggle('active', k === current));
       dots.forEach((d, k) => d.classList.toggle('on', k === current));
+      caption.textContent = slides[current].querySelector('img').dataset.caption;
     }
+    function restart() { if (reduce) return; clearInterval(timer); timer = setInterval(() => show(current + 1), 6000); }
     car.querySelectorAll('[data-dir]').forEach(b =>
-      b.addEventListener('click', () => show(current + Number(b.dataset.dir))));
-    dots.forEach((d, k) => d.addEventListener('click', () => show(k)));
+      b.addEventListener('click', () => { show(current + Number(b.dataset.dir)); restart(); }));
+    car.addEventListener('mouseenter', () => clearInterval(timer));
+    car.addEventListener('mouseleave', restart);
+    car.tabIndex = 0;
+    car.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft') { show(current - 1); restart(); }
+      if (e.key === 'ArrowRight') { show(current + 1); restart(); }
+    });
+    let x0 = null;
+    const area = car.querySelector('.slides');
+    area.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+    area.addEventListener('touchend', e => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0; x0 = null;
+      if (Math.abs(dx) > 40) { show(current + (dx < 0 ? 1 : -1)); restart(); }
+    });
+    show(0); restart();
+
+    // Bouton Copier du bloc d'installation
+    document.querySelectorAll('.copy').forEach(btn => btn.addEventListener('click', async () => {
+      const text = btn.nextElementSibling.innerText;
+      try { await navigator.clipboard.writeText(text); btn.textContent = 'Copié ✓'; }
+      catch (e) { btn.textContent = 'Échec'; }
+      setTimeout(() => { btn.textContent = 'Copier'; }, 1600);
+    }));
   })();
 </script>
 </body>
