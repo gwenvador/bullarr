@@ -67,48 +67,75 @@
                 <div class="tab-content active" id="tab-overview">
                     <div class="settings-section">
                         <div class="section-header">
-                            <h2>⚙️ Vue d'ensemble</h2>
+                            <h2>Vue d'ensemble</h2>
                             <p class="section-description">
                                 Toutes les catégories de configuration. Cliquez sur une carte pour l'ouvrir.
                             </p>
                         </div>
-                        <div class="integration-cards-grid">
-                            <div class="integration-card" onclick="switchTab('indexeurs')">
-                                <span class="integration-card-icon">🔌</span>
-                                <div class="integration-card-name">Indexeurs</div>
-                            </div>
-                            <div class="integration-card" onclick="switchTab('clients')">
-                                <span class="integration-card-icon">💻</span>
-                                <div class="integration-card-name">Clients</div>
-                            </div>
-                            <div class="integration-card" onclick="switchTab('telegram')">
-                                <img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="integration-card-logo">
-                                <div class="integration-card-name">Notifications</div>
-                            </div>
-                            <div class="integration-card" onclick="switchTab('oidc')">
-                                <span class="integration-card-icon">🔐</span>
-                                <div class="integration-card-name">Login</div>
-                            </div>
-                            <div class="integration-card" onclick="switchTab('monitoring')">
-                                <span class="integration-card-icon">📊</span>
-                                <div class="integration-card-name">Surveillance</div>
-                            </div>
-                            <div class="integration-card" onclick="switchTab('import-auto')">
-                                <span class="integration-card-icon">📥</span>
-                                <div class="integration-card-name">Imports</div>
-                            </div>
-                            <div class="integration-card" onclick="switchTab('search-formats')">
-                                <span class="integration-card-icon">🗂️</span>
-                                <div class="integration-card-name">Recherche</div>
-                            </div>
-                            <div class="integration-card" onclick="switchTab('libraries')">
-                                <span class="integration-card-icon">✏️</span>
-                                <div class="integration-card-name">Format</div>
-                            </div>
-                            <div class="integration-card" onclick="switchTab('backup')">
-                                <span class="integration-card-icon">💾</span>
-                                <div class="integration-card-name">Backup</div>
-                            </div>
+                        <div class="overview-grid">
+                            <button type="button" class="overview-card" onclick="switchTab('indexeurs')">
+                                <span class="overview-card-icon" data-icon="plug"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Indexeurs</span>
+                                    <span class="overview-card-desc">Prowlarr, EBDZ, canaux Telegram, RSS, Komga</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('clients')">
+                                <span class="overview-card-icon" data-icon="monitor"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Clients</span>
+                                    <span class="overview-card-desc">qBittorrent, rTorrent, Deluge, aMule, Shelfmark</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('telegram')">
+                                <span class="overview-card-icon" data-icon="smartphone"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Notifications</span>
+                                    <span class="overview-card-desc">Bot Telegram : imports, tomes trouvés</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('oidc')">
+                                <span class="overview-card-icon" data-icon="lock"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Login</span>
+                                    <span class="overview-card-desc">Mot de passe, SSO OIDC, clé API</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('monitoring')">
+                                <span class="overview-card-icon" data-icon="activity"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Surveillance</span>
+                                    <span class="overview-card-desc">Volumes manquants et nouveautés</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('import-auto')">
+                                <span class="overview-card-icon" data-icon="download"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Imports</span>
+                                    <span class="overview-card-desc">Dossiers surveillés, import périodique</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('search-formats')">
+                                <span class="overview-card-icon" data-icon="search"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Recherche</span>
+                                    <span class="overview-card-desc">Formats préférés dans les résultats</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('libraries')">
+                                <span class="overview-card-icon" data-icon="pencil"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Format</span>
+                                    <span class="overview-card-desc">Modèles de renommage des fichiers</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('backup')">
+                                <span class="overview-card-icon" data-icon="save"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Backup</span>
+                                    <span class="overview-card-desc">Sauvegarde et restauration</span>
+                                </span>
+                            </button>
                         </div>
 
                         <div class="settings-card about-card" id="about">
@@ -1983,7 +2010,7 @@
                     <div class="settings-section">
                         <div class="section-header">
                             <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
-                            <h2>📊 Surveillance des Volumes</h2>
+                            <h2>📊 Surveillance des volumes</h2>
                             <p class="section-description">
                                 Configurez la surveillance automatique des volumes manquants et nouveaux volumes
                             </p>
@@ -1993,7 +2020,7 @@
                         <div class="settings-card">
                             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
                                 <span style="font-size: 24px;">⚠️</span>
-                                <h3 style="margin: 0; color: var(--color-text);">Volumes Manquants</h3>
+                                <h3 style="margin: 0; color: var(--color-text);">Volumes manquants</h3>
                             </div>
 
                             <div class="form-group checkbox-group">
