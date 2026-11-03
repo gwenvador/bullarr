@@ -206,7 +206,7 @@
   </nav>
 
   <article class="guide">
-    <p class="guide-intro">Bullarr est un gestionnaire de bibliothèque de BD francophone. Cette page couvre l'installation, la configuration, les fonctions, le serveur MCP et l'application Android.</p>
+    <p class="guide-intro">Bullarr est un Sonarr pour les BD et les comics : il surveille les nouveautés, télécharge les albums qui manquent à vos séries et tient vos métadonnées à jour grâce à Bédéthèque. Cette page couvre l'installation, la configuration, les fonctions, le serveur MCP et l'application Android.</p>
 
     <section id="installation">
       <h2><span class="guide-num">1</span> Installation</h2>
@@ -243,8 +243,12 @@
           </ul>
         </div>
         <div class="guide-card">
-          <h3>📊 Tomes manquants</h3>
-          <p>Bullarr compare les tomes attendus à ceux possédés, et peut lancer la recherche et le téléchargement sur les sources configurées.</p>
+          <h3>📡 Surveillance</h3>
+          <p>Bullarr surveille les flux RSS et les nouveautés EBDZ et Telegram, reconnaît les nouveaux albums de vos séries et télécharge automatiquement ceux qui vous manquent.</p>
+        </div>
+        <div class="guide-card">
+          <h3>🧭 Enrichir</h3>
+          <p>Pour compléter votre collection : les indispensables, le Panthéon, les thèmes, le Top 100 et les sorties BDGest, ou toute la bibliographie d'un auteur.</p>
         </div>
         <div class="guide-card">
           <h3>📖 Lecteur de BD</h3>
@@ -256,7 +260,7 @@
         </div>
         <div class="guide-card">
           <h3>🕓 Historique</h3>
-          <p>Imports et actions (renommage, suppression, déplacement) sont journalisés, avec annulation pour les imports.</p>
+          <p>Imports et actions (renommage, suppression, déplacement) sont journalisés.</p>
         </div>
       </div>
     </section>
@@ -273,7 +277,7 @@
 
     <section id="import">
       <h2><span class="guide-num">5</span> Import automatique</h2>
-      <p>Bullarr surveille des dossiers de téléchargement : aMule, torrents, Telegram, sources web. Il reconnaît la série et le tome, convertit en CBZ si besoin, et garde un historique annulable. La page <strong>Import</strong> affiche les téléchargements en cours, avec leur progression, et permet de les mettre en pause ou en premier.</p>
+      <p>Bullarr surveille des dossiers de téléchargement : aMule, torrents, Telegram, sources web. Il reconnaît la série et le tome et convertit en CBZ si besoin. La page <strong>Import</strong> affiche les téléchargements en cours, avec leur progression, et permet de les mettre en pause ou en premier.</p>
     </section>
 
     <section id="ai">
@@ -309,7 +313,7 @@
 
     <section id="android">
       <h2><span class="guide-num">8</span> Application Android</h2>
-      <p>L'application pilote Bullarr depuis le téléphone : bibliothèque, fiches, recherche, téléchargements, import et réglages.</p>
+      <p>L'application pilote Bullarr depuis le téléphone : bibliothèque, fiches, recherche, téléchargements, import et réglages. Elle lit vos albums en plein écran (mode webtoon compris) et peut les copier sur le téléphone pour les lire hors ligne, même sans réseau.</p>
       <ol class="guide-steps">
         <li>Installez-la depuis le <a href="https://gwenvador.github.io/bullarr-android/repo/">dépôt F-Droid</a>, ou téléchargez l'<a href="https://github.com/gwenvador/bullarr-android/releases/latest">APK</a>.</li>
         <li>Au premier lancement, indiquez l'adresse de votre serveur (par exemple <code>http://192.168.1.10:4000</code>) et votre clé API, puis « Tester » et « Enregistrer ».</li>
