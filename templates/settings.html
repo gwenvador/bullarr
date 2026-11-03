@@ -112,46 +112,130 @@
                         </div>
 
                         <div class="settings-card about-card" id="about">
-                            <h3>À propos</h3>
-                            <p class="about-version">
-                                <strong>Bullarr</strong>{% if app_version %} <span class="about-version-number">v{{ app_version }}</span>{% endif %}
-                                <span id="about-android" hidden>· <strong>Application Android</strong> <a id="about-android-link" class="about-version-number" href="https://github.com/gwenvador/bullarr-android/releases/latest" target="_blank" rel="noopener noreferrer" data-tooltip="Télécharger l'APK"></a></span>
-                                — gestionnaire de bibliothèque BD.
-                                Code source : <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url | replace('https://', '') }}</a>
-                                · <a href="{{ source_url }}/releases" target="_blank" rel="noopener noreferrer">Versions</a>
-                                · <a href="/api/docs" target="_blank" rel="noopener">API</a>
-                            </p>
-                            <p class="about-update" id="about-update" hidden></p>
+                            <div class="about-header">
+                                <img class="about-logo" src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="">
+                                <div class="about-identity">
+                                    <h3>Bullarr</h3>
+                                    <p class="about-tagline">Gestionnaire de bibliothèque BD</p>
+                                    <div class="about-badges">
+                                        {% if app_version %}<span class="about-badge">Serveur <strong class="about-version-number">v{{ app_version }}</strong></span>{% endif %}
+                                        <a id="about-android" class="about-badge about-badge-link" hidden href="https://github.com/gwenvador/bullarr-android/releases/latest" target="_blank" rel="noopener noreferrer" data-tooltip="Télécharger l'APK">Android <strong id="about-android-link" class="about-version-number"></strong></a>
+                                        <span class="about-update" id="about-update" hidden></span>
+                                    </div>
+                                </div>
+                                <nav class="about-actions" aria-label="Liens du projet">
+                                    <a class="about-action" href="{{ source_url }}" target="_blank" rel="noopener noreferrer" data-tooltip="{{ source_url | replace('https://', '') }}">Code source</a>
+                                    <a class="about-action" href="{{ source_url }}/releases" target="_blank" rel="noopener noreferrer">Versions</a>
+                                    <a class="about-action" href="/api/docs" target="_blank" rel="noopener">API</a>
+                                </nav>
+                            </div>
                             <div class="about-links">
-                                <div class="about-links-group">
-                                    <h4>Métadonnées</h4>
-                                    <ul>
-                                        <li><a href="https://www.bedetheque.com" target="_blank" rel="noopener noreferrer">Bédéthèque</a> — fiches séries, albums, auteurs</li>
-                                        <li><a href="https://www.bdgest.com" target="_blank" rel="noopener noreferrer">BDGest</a> — Top 100</li>
-                                    </ul>
-                                </div>
-                                <div class="about-links-group">
-                                    <h4>Sources</h4>
-                                    <ul>
-                                        <li><a href="https://ebdz.net/forum/" target="_blank" rel="noopener noreferrer">EBDZ.net</a> — forum, liens ed2k</li>
-                                        <li><a href="https://prowlarr.com" target="_blank" rel="noopener noreferrer">Prowlarr</a> — indexeurs torrent</li>
-                                        <li><a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">Telegram</a> — api_id / api_hash des canaux</li>
-                                        <li><a href="https://fourtoutici.cc" target="_blank" rel="noopener noreferrer">fourtoutici.cc</a></li>
-                                        <li><a href="https://annas-archive.gl" target="_blank" rel="noopener noreferrer">Anna's Archive</a></li>
-                                        <li><a href="https://vk.com/board203785966" target="_blank" rel="noopener noreferrer">Forum VK Au Phil des Bulles</a></li>
-                                    </ul>
-                                </div>
-                                <div class="about-links-group">
-                                    <h4>Clients et services</h4>
-                                    <ul>
-                                        <li><a href="https://komga.org" target="_blank" rel="noopener noreferrer">Komga</a> — serveur de lecture</li>
-                                        <li><a href="https://www.qbittorrent.org" target="_blank" rel="noopener noreferrer">qBittorrent</a></li>
-                                        <li><a href="https://github.com/rakshasa/rtorrent" target="_blank" rel="noopener noreferrer">rTorrent</a></li>
-                                        <li><a href="https://deluge-torrent.org" target="_blank" rel="noopener noreferrer">Deluge</a></li>
-                                        <li><a href="https://www.amule.org" target="_blank" rel="noopener noreferrer">aMule</a></li>
-                                        <li><a href="https://github.com/calibrain/shelfmark" target="_blank" rel="noopener noreferrer">Shelfmark</a></li>
-                                    </ul>
-                                </div>
+                            <section class="about-links-group">
+                                <h4>Métadonnées</h4>
+                                <ul>
+                                    <li><a class="about-link" href="https://www.bedetheque.com" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/bedetheque-logo.png') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Bédéthèque</span>
+                                            <span class="about-link-desc">Fiches séries, albums, auteurs</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://www.bdgest.com" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/web-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">BDGest</span>
+                                            <span class="about-link-desc">Top 100</span>
+                                        </span>
+                                    </a></li>
+                                </ul>
+                            </section>
+                            <section class="about-links-group">
+                                <h4>Sources</h4>
+                                <ul>
+                                    <li><a class="about-link" href="https://ebdz.net/forum/" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/ebdz-logo.png') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">EBDZ.net</span>
+                                            <span class="about-link-desc">Forum, liens ed2k</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://prowlarr.com" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/prowlarr-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Prowlarr</span>
+                                            <span class="about-link-desc">Indexeurs torrent</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Telegram</span>
+                                            <span class="about-link-desc">api_id / api_hash des canaux</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://fourtoutici.cc" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/fourtoutici-favicon.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">fourtoutici.cc</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://annas-archive.gl" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/annas-archive-favicon.ico') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Anna's Archive</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://vk.com/board203785966" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/vk-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Au Phil des Bulles</span>
+                                            <span class="about-link-desc">Forum VK</span>
+                                        </span>
+                                    </a></li>
+                                </ul>
+                            </section>
+                            <section class="about-links-group">
+                                <h4>Clients et services</h4>
+                                <ul>
+                                    <li><a class="about-link" href="https://komga.org" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Komga</span>
+                                            <span class="about-link-desc">Serveur de lecture</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://www.qbittorrent.org" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/qbittorrent-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">qBittorrent</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://github.com/rakshasa/rtorrent" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/rtorrent-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">rTorrent</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://deluge-torrent.org" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/deluge-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Deluge</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://www.amule.org" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/emule-logo.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">aMule</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://github.com/calibrain/shelfmark" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="{{ url_for('static', filename='img/shelfmark.svg') }}" alt="" loading="lazy">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Shelfmark</span>
+                                        </span>
+                                    </a></li>
+                                </ul>
+                            </section>
                             </div>
                         </div>
                     </div>

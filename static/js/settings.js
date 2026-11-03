@@ -3085,16 +3085,16 @@ async function loadAboutUpdates() {
         if (!data.success) return;
         const android = data.android;
         if (android) {
-            const link = document.getElementById('about-android-link');
-            link.textContent = `v${android.latest}`;
-            link.href = android.apk_url || android.url;
-            document.getElementById('about-android').hidden = false;
+            const badge = document.getElementById('about-android');
+            document.getElementById('about-android-link').textContent = `v${android.latest}`;
+            badge.href = android.apk_url || android.url;
+            badge.hidden = false;
         }
         const bullarr = data.bullarr;
         if (bullarr) {
             box.innerHTML = bullarr.update_available
-                ? `<a class="btn btn-success about-update-button" href="${escapeHtml(bullarr.url)}" target="_blank" rel="noopener noreferrer">⬆️ Mise à jour disponible : v${escapeHtml(bullarr.latest)}</a>`
-                : '<span class="about-uptodate">✓ Bullarr est à jour</span>';
+                ? `<a class="about-badge about-badge-update" href="${escapeHtml(bullarr.url)}" target="_blank" rel="noopener noreferrer">⬆ Mise à jour : <strong>v${escapeHtml(bullarr.latest)}</strong></a>`
+                : '<span class="about-badge about-badge-ok">✓ À jour</span>';
             box.hidden = false;
         }
     } catch (error) { /* GitHub injoignable: la carte reste sans ligne de mise à jour */ }
