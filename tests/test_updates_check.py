@@ -64,11 +64,14 @@ class AboutCardTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         template = (root / 'templates/settings.html').read_text()
         script = (root / 'static/js/settings.js').read_text()
-        first_line = template[template.index('<strong>Bullarr</strong>'):template.index('gestionnaire de bibliothèque BD')]
-        self.assertIn('id="about-android-link"', first_line)
+        badges = template[template.index('<div class="about-badges">'):template.index('<nav class="about-actions"')]
+        self.assertIn('about-version-number">v{{ app_version }}', badges)
+        self.assertIn('<a id="about-android" class="about-badge about-badge-link"', badges)
+        self.assertIn('id="about-android-link"', badges)
         self.assertNotIn('>Application Android (APK)</a>', template)
         self.assertNotIn('Télécharger</a>', script)
-        self.assertIn("link.textContent = `v${android.latest}`", script)
+        self.assertIn("document.getElementById('about-android-link').textContent = `v${android.latest}`", script)
+        self.assertIn('badge.href = android.apk_url || android.url', script)
 
 
 if __name__ == '__main__':

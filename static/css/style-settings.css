@@ -1223,18 +1223,78 @@ input[type="checkbox"].switch-input:disabled {
    .content) et la carte À propos se place tout en bas (margin-top: auto). */
 #tab-overview.active { display: flex; flex-direction: column; min-height: calc(100vh - 20px - 120px - 80px); }
 #tab-overview > .settings-section { flex: 1; display: flex; flex-direction: column; }
-.about-card { margin-top: auto; font-size: 0.9rem; }
+.about-card { margin-top: auto; font-size: 0.9rem; padding: 0; overflow: hidden; }
 #tab-overview .integration-cards-grid { margin-bottom: 24px; }
-.about-card h3 { margin: 0 0 10px; font-size: 1.2em; }
-.about-version { margin: 0 0 18px; color: var(--color-text-muted); line-height: 1.7; }
-.about-version strong { color: var(--color-text); }
-.about-version-number { font-variant-numeric: tabular-nums; color: var(--color-text); }
-.about-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px 28px; }
-.about-links-group h4 { margin: 0 0 8px; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
-.about-links-group ul { list-style: none; margin: 0; padding: 0; }
-.about-links-group li { margin: 6px 0; color: var(--color-text-muted); line-height: 1.5; }
-.about-card a { color: var(--color-accent); text-decoration: none; }
-.about-card a:hover { color: var(--color-accent-hover); text-decoration: underline; }
+.about-card [hidden] { display: none !important; }
+
+/* En-tête : logo, nom, badges de version, liens projet */
+.about-header {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 18px 22px;
+    padding: 24px 28px;
+    background: linear-gradient(135deg, var(--color-surface-alt), var(--color-surface));
+    border-bottom: 1px solid var(--color-border);
+}
+.about-logo { width: 64px; height: 64px; object-fit: contain; border-radius: 14px; flex: none; }
+.about-identity { flex: 1; min-width: 200px; }
+.about-identity h3 { margin: 0; font-size: 1.45em; line-height: 1.2; color: var(--color-text); }
+.about-tagline { margin: 2px 0 10px; color: var(--color-text-muted); }
+.about-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.about-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 999px; font-size: 0.85em;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    color: var(--color-text-muted); text-decoration: none; white-space: nowrap;
+}
+.about-badge strong { color: var(--color-text); font-weight: 600; }
+.about-version-number { font-variant-numeric: tabular-nums; }
+.about-card a.about-badge-link:hover { border-color: var(--color-accent); text-decoration: none; }
+.about-update { display: contents; }
+.about-badge-ok { background: #e3f1e5; border-color: #b9dcc0; color: #1e6b33; }
+.about-card a.about-badge-update { background: var(--color-accent); border-color: var(--color-accent); color: #fff; font-weight: 600; }
+.about-card a.about-badge-update strong { color: #fff; }
+.about-card a.about-badge-update:hover { background: var(--color-accent-hover); text-decoration: none; }
+[data-theme="dark"] .about-badge-ok { background: #243a2a; border-color: #35553e; color: #a8d5b5; }
+
+.about-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.about-card a.about-action {
+    padding: 7px 14px; border-radius: 8px; font-weight: 600; font-size: 0.9em;
+    border: 1px solid var(--color-border); background: var(--color-surface);
+    color: var(--color-text); text-decoration: none;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+.about-card a.about-action:hover { border-color: var(--color-accent); color: var(--color-accent); text-decoration: none; }
+
+/* Liens externes : groupes en colonnes, chaque lien = tuile avec logo */
+.about-links {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 22px 28px; padding: 22px 28px 26px;
+}
+.about-links-group h4 {
+    margin: 0 0 8px; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+}
+.about-links-group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.about-card a.about-link {
+    display: flex; align-items: center; gap: 12px;
+    padding: 7px 10px; margin: 0 -10px; border-radius: 10px;
+    text-decoration: none; color: var(--color-text);
+    transition: background 0.15s ease;
+}
+.about-card a.about-link:hover { background: var(--color-surface-alt); text-decoration: none; }
+.about-link-logo {
+    width: 28px; height: 28px; flex: none; object-fit: contain; padding: 3px;
+    border-radius: 7px; background: #fff; border: 1px solid var(--color-border);
+}
+.about-link-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.about-link-name { font-weight: 600; }
+.about-card a.about-link:hover .about-link-name { color: var(--color-accent); }
+.about-link-desc { font-size: 0.85em; color: var(--color-text-muted); }
+
+@media (max-width: 600px) {
+    .about-header, .about-links { padding-left: 18px; padding-right: 18px; }
+    .about-logo { width: 48px; height: 48px; }
+    .about-actions { width: 100%; }
+}
 
 .rss-genres-setting { margin: 16px 0; display: flex; flex-direction: column; gap: 6px; }
 .rss-genres-options { display: flex; flex-wrap: wrap; gap: 6px 18px; }
@@ -1253,6 +1313,3 @@ input[type="checkbox"].switch-input:disabled {
 .prowlarr-other-categories > summary { cursor: pointer; font-size: 0.85em; color: var(--color-text-muted, #666); margin-bottom: 8px; }
 .prowlarr-no-categories { margin-top: 6px; padding: 8px 10px; border-left: 3px solid #ffc107; font-size: 0.85em; color: var(--color-text-muted, #666); }
 
-.about-update { margin: 0 0 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; color: var(--color-text-muted); }
-.about-update-button { text-decoration: none; padding: 6px 12px; border-radius: 6px; color: #fff !important; }
-.about-uptodate { color: var(--color-success, #2e7d32); }
