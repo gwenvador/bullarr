@@ -5,6 +5,39 @@ import os
 import sqlite3
 
 
+# Ancienne valeur par défaut de SECRET_KEY : publique (elle figure dans ce dépôt), elle
+# n'est jamais utilisée pour signer des sessions (voir resolve_secret_key).
+INSECURE_DEFAULT_SECRET_KEY = 'dev-secret-key-change-in-production'
+
+
+def resolve_secret_key(configured, data_dir):
+    """Clé de signature des sessions Flask. Sans SECRET_KEY fourni (ou avec l'ancienne
+    valeur par défaut publique), une clé aléatoire est générée une fois et conservée dans
+    data/.secret_key : avec une clé connue de tous, n'importe qui pouvait fabriquer un
+    cookie de session et passer outre la connexion par mot de passe ou SSO."""
+    if configured and configured != INSECURE_DEFAULT_SECRET_KEY:
+        return configured
+    import secrets
+    os.makedirs(data_dir, exist_ok=True)
+    path = os.path.join(data_dir, '.secret_key')
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        with open(path, encoding='utf-8') as handle:
+            key = handle.read().strip()
+        if key:
+            return key
+        # Fichier vide (écriture interrompue) : régénéré.
+        os.remove(path)
+        return resolve_secret_key(configured, data_dir)
+    key = secrets.token_urlsafe(48)
+    with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+        handle.write(key)
+    print("⚠️ SECRET_KEY non défini : clé aléatoire générée dans data/.secret_key "
+          "(définissez SECRET_KEY dans .env pour la fixer vous-même).")
+    return key
+
+
 def _env_flag(name, default=False):
     """Variable d'environnement booléenne: 1/true/yes/on (insensible à la casse) = activée."""
     value = os.environ.get(name)
@@ -17,7 +50,8 @@ class Config:
     """Configuration de base"""
     
     # Flask
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    # Remplacé au démarrage par resolve_secret_key (voir create_app) si absent.
+    SECRET_KEY = os.environ.get('SECRET_KEY') or None
     # Commutateur de récupération (voir README): désactive la garde d'authentification pour
     # corriger une mauvaise configuration SSO/mot de passe. Jamais activé par défaut.
     AUTH_BYPASS_LOGIN = _env_flag('BULLARR_AUTH_BYPASS_LOGIN')

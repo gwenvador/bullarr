@@ -156,7 +156,9 @@ BULLARR_AUTH_BYPASS_LOGIN=false     # dépannage uniquement, ne pas laisser acti
 
 `SECRET_KEY` sert à signer les sessions Flask et certaines données protégées. Une nouvelle
 valeur invalide les sessions existantes ; ne la changez donc pas après le démarrage sauf
-si vous acceptez de forcer les utilisateurs à se reconnecter.
+si vous acceptez de forcer les utilisateurs à se reconnecter. Lancé sans `SECRET_KEY`
+(`docker run` direct, modèle Unraid...), Bullarr génère une clé aléatoire et la conserve
+dans `data/.secret_key` plutôt que de signer les sessions avec une valeur connue.
 
 `BULLARR_AUTH_BYPASS_LOGIN=true` désactive temporairement la garde d'authentification pour récupérer l'accès après une mauvaise configuration OIDC. Redémarrez Bullarr, corrigez le réglage depuis **Configuration → Login**, remettez la variable à `false`, puis redémarrez à nouveau. Ne laissez pas cette variable activée en fonctionnement normal.
 
