@@ -87,18 +87,38 @@ def send_push(kind, title, body):
     payload = json.dumps({'kind': kind, 'title': title or 'Bullarr', 'body': body}, ensure_ascii=False).encode('utf-8')
     sent, errors, gone = 0, [], []
     for entry in entries:
+        device = entry.get('device') or 'téléphone'
+        host = urlparse(entry['endpoint']).netloc
         try:
-            response = requests.post(entry['endpoint'], data=payload, timeout=5, allow_redirects=False,
+            response = requests.post(entry['endpoint'], data=payload, timeout=10, allow_redirects=False,
                                      headers={'Content-Type': 'application/json', 'TTL': '86400'})
-        except requests.RequestException as exc:
-            errors.append(f"{entry.get('device') or 'téléphone'} : {type(exc).__name__}")
+        except requests.exceptions.SSLError:
+            errors.append(f"{device} : certificat HTTPS de {host} refusé par le serveur Bullarr")
+            continue
+        except requests.exceptions.Timeout:
+            errors.append(f"{device} : {host} ne répond pas (délai dépassé)")
+            continue
+        except requests.RequestException:
+            errors.append(f"{device} : impossible de joindre {host} depuis le serveur Bullarr "
+                          f"(nom introuvable ou réseau Docker)")
             continue
         if response.status_code in (404, 410):
             gone.append(entry['endpoint'])
+            errors.append(f"{device} : abonnement supprimé par {host}, réactivez les notifications dans l'application")
         elif 200 <= response.status_code < 300:
             sent += 1
+        elif response.status_code in (401, 403):
+            errors.append(f"{device} : {host} refuse l'envoi (HTTP {response.status_code}). Sur un ntfy protégé, "
+                          f"autorisez l'écriture anonyme des topics UnifiedPush : "
+                          f"ntfy access everyone 'up*' write-only")
         else:
-            errors.append(f"{entry.get('device') or 'téléphone'} : HTTP {response.status_code}")
+            detail = ''
+            try:
+                detail = (response.json() or {}).get('error') or ''
+            except ValueError:
+                pass
+            errors.append(f"{device} : {host} a répondu HTTP {response.status_code}"
+                          + (f" ({detail})" if detail else ''))
     for endpoint in gone:
         unregister_endpoint(endpoint)
     return sent, errors
@@ -131,7 +151,9 @@ def push_test():
                              'Les notifications instantanées fonctionnent.')
     if sent:
         return jsonify({'success': True, 'sent': sent})
-    return jsonify({'success': False, 'error': '; '.join(errors) or 'Envoi impossible'}), 502
+    # 400 et non 5xx : Bullarr fonctionne, c'est le distributeur (ntfy) qui refuse ou est
+    # injoignable - l'application afficherait sinon « Erreur interne de Bullarr ».
+    return jsonify({'success': False, 'error': '; '.join(errors) or 'Envoi impossible'}), 400
 
 
 @push_bp.route('/devices', methods=['GET'])

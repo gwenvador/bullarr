@@ -75,8 +75,22 @@ class SendTest(PushTestCase):
         from blueprints.push.routes import load_endpoints, send_push
         self.register()
         with mock.patch('blueprints.push.routes.requests.post', return_value=_response(404)):
-            self.assertEqual(send_push('test', 't', 'b'), (0, []))
+            sent, errors = send_push('test', 't', 'b')
+        self.assertEqual(sent, 0)
+        self.assertIn('réactivez', errors[0])
         self.assertEqual(load_endpoints(), [])
+
+    def test_errors_explain_the_cause(self):
+        import requests
+        from blueprints.push.routes import send_push
+        self.register()
+        with mock.patch('blueprints.push.routes.requests.post', return_value=_response(403)):
+            self.assertIn("ntfy access everyone 'up*' write-only", send_push('test', 't', 'b')[1][0])
+        with mock.patch('blueprints.push.routes.requests.post', side_effect=requests.exceptions.ConnectionError()):
+            self.assertIn('impossible de joindre ntfy.sh', send_push('test', 't', 'b')[1][0])
+        with mock.patch('blueprints.push.routes.requests.post', return_value=_response(403)):
+            response = self.client.post('/api/push/test')
+        self.assertEqual(response.status_code, 400)
 
     def test_test_route(self):
         self.assertEqual(self.client.post('/api/push/test').status_code, 400)
