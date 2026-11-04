@@ -88,6 +88,7 @@ class Config:
     LIBRARY_IMPORT_CONFIG_FILE = os.path.join(DATA_DIR, 'library_import_config.json')
     RENAME_CONFIG_FILE = os.path.join(DATA_DIR, 'rename_config.json')
     TELEGRAM_CONFIG_FILE = os.path.join(DATA_DIR, 'telegram_config.json')
+    NTFY_CONFIG_FILE = os.path.join(DATA_DIR, 'ntfy_config.json')
     TELEGRAM_CHANNELS_CONFIG_FILE = os.path.join(DATA_DIR, 'telegram_channels_config.json')
     IMPORT_NOTIFY_STATE_FILE = os.path.join(DATA_DIR, 'import_notify_state.json')
     
@@ -141,6 +142,22 @@ class Config:
         'chat_id': '',
         'notify_import_completed': True,
         'notify_import_available': True
+    }
+
+    # Notifications ntfy (https://ntfy.sh ou serveur auto-hébergé), voir blueprints/ntfy.
+    # auth: 'none', 'token' (jeton d'accès tk_...) ou 'basic' (identifiant + mot de passe).
+    NTFY_CONFIG = {
+        'enabled': False,
+        'server_url': 'https://ntfy.sh',
+        'topic': '',
+        'auth': 'none',
+        'token': '',
+        'username': '',
+        'password': '',
+        'priority': 3,
+        'notify_import_completed': True,
+        'notify_import_available': True,
+        'notify_monitor': True,
     }
 
     # Compte Telegram "utilisateur" (MTProto, via Telethon) pour lire le CONTENU des

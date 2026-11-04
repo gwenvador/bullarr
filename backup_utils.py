@@ -14,7 +14,7 @@ BACKUP_NAMES = frozenset({
     'ebdz_config.json', 'prowlarr_config.json', 'komga_config.json',
     'oidc_config.json', 'missing_monitor_config.json',
     'library_import_config.json', 'rename_config.json', 'rss_feeds.json',
-    'qbittorrent_config.json',
+    'qbittorrent_config.json', 'telegram_config.json', 'ntfy_config.json',
 })
 
 

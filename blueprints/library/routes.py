@@ -296,8 +296,8 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
     if imported_count <= 0:
         return
     try:
-        from blueprints.telegram.routes import load_telegram_config, send_telegram_notification
-        if not load_telegram_config().get('notify_import_completed', True):
+        from notifications import notification_wanted, send_notification
+        if not notification_wanted('import_completed'):
             return
         relevant_entries = [
             entry for entry in (logs_to_record or [])
@@ -339,12 +339,14 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
             blocks.append(f"{display_name}\n{links}" if links else display_name)
         conn.close()
 
-        message = "BD Importé :"
+        message = ""
         if blocks:
             sample = blocks[:10]
-            message += "\n\n" + "\n\n".join(sample)
+            message = "\n" + "\n\n".join(sample)
             if len(blocks) > len(sample):
                 message += f"\n\n… et {len(blocks) - len(sample)} autre(s)"
+        else:
+            message = f"{imported_count} fichier(s) ajouté(s) à la bibliothèque"
 
         photo_path = None
         series_ids = {entry['series_id'] for entry in relevant_entries if entry.get('series_id')}
@@ -362,11 +364,12 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
             if cover_path:
                 photo_path = os.path.join(current_app.config['DATA_DIR'], cover_path)
 
-        success, error = send_telegram_notification(message, photo_path=photo_path)
-        if not success:
-            print(f"Erreur notification Telegram (import terminé): {error}")
+        success, errors = send_notification(
+            message, kind='import_completed', title='BD Importé :', tags=['books'], photo_path=photo_path)
+        if errors:
+            print(f"Erreur notification (import terminé): {'; '.join(errors)}")
     except Exception as e:
-        print(f"Erreur notification Telegram (import terminé): {e}")
+        print(f"Erreur notification (import terminé): {e}")
 
 
 # UnsafePathError, resolve_within, resolve_within_any, configured_root: voir path_safety.py

@@ -793,6 +793,100 @@ function toggleTelegramPassword() {
     btn.innerHTML = telegramPasswordVisible ? `${svgIcon('eye-off')} Masquer` : `${svgIcon('eye')} Afficher`;
 }
 
+// ===== NTFY =====
+// Même onglet que Telegram (voir notifications.py : chaque canal coche ses propres types).
+// Les secrets reviennent masqués (****) : renvoyés tels quels, ils ne sont pas modifiés.
+function updateNtfyAuthFields() {
+    const mode = document.getElementById('ntfyAuth').value;
+    document.getElementById('ntfyTokenGroup').hidden = mode !== 'token';
+    document.getElementById('ntfyBasicGroup').hidden = mode !== 'basic';
+}
+
+function _ntfyFormValues() {
+    return {
+        enabled: document.getElementById('ntfyEnabled').checked,
+        server_url: document.getElementById('ntfyServerUrl').value.trim() || 'https://ntfy.sh',
+        topic: document.getElementById('ntfyTopic').value.trim(),
+        auth: document.getElementById('ntfyAuth').value,
+        token: document.getElementById('ntfyToken').value,
+        username: document.getElementById('ntfyUsername').value.trim(),
+        password: document.getElementById('ntfyPassword').value,
+        priority: Number(document.getElementById('ntfyPriority').value) || 3,
+        notify_import_completed: document.getElementById('ntfyNotifyImportCompleted').checked,
+        notify_import_available: document.getElementById('ntfyNotifyImportAvailable').checked,
+        notify_monitor: document.getElementById('ntfyNotifyMonitor').checked,
+    };
+}
+
+async function loadNtfySettings() {
+    try {
+        const config = await (await fetch('/api/ntfy/config')).json();
+        document.getElementById('ntfyEnabled').checked = !!config.enabled;
+        document.getElementById('ntfyServerUrl').value = config.server_url || 'https://ntfy.sh';
+        document.getElementById('ntfyTopic').value = config.topic || '';
+        document.getElementById('ntfyAuth').value = config.auth || 'none';
+        document.getElementById('ntfyToken').value = config.token || '';
+        document.getElementById('ntfyUsername').value = config.username || '';
+        document.getElementById('ntfyPassword').value = config.password || '';
+        document.getElementById('ntfyPriority').value = String(config.priority || 3);
+        document.getElementById('ntfyNotifyImportCompleted').checked = config.notify_import_completed !== false;
+        document.getElementById('ntfyNotifyImportAvailable').checked = config.notify_import_available !== false;
+        document.getElementById('ntfyNotifyMonitor').checked = config.notify_monitor !== false;
+        updateNtfyAuthFields();
+    } catch (error) {
+        showMessage('ntfyMessage', '❌ Erreur lors du chargement de la configuration ntfy', 'error');
+    }
+}
+
+async function saveNtfySettings() {
+    const config = _ntfyFormValues();
+    if (config.enabled && !config.topic) {
+        showMessage('ntfyMessage', '⚠️ Veuillez entrer un topic', 'warning');
+        return;
+    }
+    try {
+        const response = await fetch('/api/ntfy/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
+        const data = await response.json();
+        if (data.success) {
+            showMessage('ntfyMessage', '✅ Configuration ntfy enregistrée', 'success');
+            loadNtfySettings();
+        } else {
+            showMessage('ntfyMessage', '❌ Erreur: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('ntfyMessage', '❌ Erreur lors de la sauvegarde', 'error');
+    }
+}
+
+async function testNtfyNotification() {
+    const config = _ntfyFormValues();
+    if (!config.topic) {
+        showMessage('ntfyMessage', '⚠️ Veuillez entrer un topic', 'warning');
+        return;
+    }
+    showMessage('ntfyMessage', '⏳ Envoi de la notification de test...', 'info');
+    try {
+        // Teste les valeurs saisies, sans devoir enregistrer ni cocher « Activer » avant.
+        const response = await fetch('/api/ntfy/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
+        const data = await response.json();
+        if (data.success) {
+            showMessage('ntfyMessage', '✅ Notification de test envoyée - vérifiez l\'application ntfy', 'success');
+        } else {
+            showMessage('ntfyMessage', '❌ Échec de l\'envoi: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('ntfyMessage', '❌ Erreur: ' + error.message, 'error');
+    }
+}
+
 // ===== TELEGRAM (CANAUX) - connexion "compte utilisateur" MTProto (Telethon), distincte
 // des notifications bot ci-dessus. Flux en 3 étapes possibles: identifiants -> code reçu
 // par Telegram -> mot de passe 2FA (uniquement si activé sur le compte) - voir
@@ -1616,6 +1710,7 @@ function switchTab(tabName) {
         loadClientCardStatuses();
     } else if (tabName === 'telegram') {
         loadTelegramSettings();
+        loadNtfySettings();
     } else if (tabName === 'oidc') {
         loadOidcSettings();
         loadApiKey();

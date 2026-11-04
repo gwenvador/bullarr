@@ -91,7 +91,7 @@
                                 <span class="overview-card-icon" data-icon="smartphone"></span>
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">Notifications</span>
-                                    <span class="overview-card-desc">Bot Telegram : imports, tomes trouvés</span>
+                                    <span class="overview-card-desc">Telegram et ntfy : imports, albums repérés</span>
                                 </span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('oidc')">
@@ -1438,14 +1438,15 @@
                     <div class="settings-section">
                         <div class="section-header">
                             <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
-                            <h2><img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="section-header-logo"> Notifications Telegram</h2>
+                            <h2>Notifications</h2>
                             <p class="section-description">
-                                Configure un bot Telegram pour recevoir des notifications (imports, tomes
-                                trouvés automatiquement...).
+                                Recevez une notification pour les imports et les albums repérés par la
+                                surveillance, sur Telegram, sur ntfy, ou sur les deux.
                             </p>
                         </div>
 
                         <div class="settings-card">
+                            <h3 class="notification-channel-title"><img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="section-header-logo"> Telegram</h3>
                             <div class="form-group checkbox-group">
                                 <input type="checkbox" id="telegramEnabled">
                                 <label for="telegramEnabled">
@@ -1503,6 +1504,102 @@
                             <div id="telegramMessage" class="message"></div>
                         </div>
 
+                        <!-- ntfy (https://ntfy.sh ou serveur auto-hébergé), voir blueprints/ntfy et
+                             notifications.py : mêmes types de notification que Telegram, cochés
+                             indépendamment pour chaque canal. -->
+                        <div class="settings-card" id="ntfySettingsCard">
+                            <h3 class="notification-channel-title"><span class="notification-channel-icon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.268 21a2 2 0 0 0 3.464 0" /><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></svg></span> ntfy</h3>
+                            <div class="form-group checkbox-group">
+                                <input type="checkbox" id="ntfyEnabled">
+                                <label for="ntfyEnabled">
+                                    <strong>Activer les notifications ntfy</strong>
+                                    <span class="help-text">Notifications push sur Android, iOS ou le navigateur, via l'application ntfy</span>
+                                </label>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ntfyServerUrl">Serveur</label>
+                                    <input type="url" id="ntfyServerUrl" placeholder="https://ntfy.sh">
+                                    <small class="help-text">https://ntfy.sh, ou l'adresse de votre serveur ntfy</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ntfyTopic">Topic</label>
+                                    <input type="text" id="ntfyTopic" placeholder="ex: bullarr-7f3k9q" maxlength="64" autocomplete="off">
+                                    <small class="help-text">Sur ntfy.sh, un topic est public : choisissez un nom difficile à deviner</small>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ntfyAuth">Authentification</label>
+                                    <select id="ntfyAuth" class="form-select" onchange="updateNtfyAuthFields()">
+                                        <option value="none">Aucune</option>
+                                        <option value="token">Jeton d'accès</option>
+                                        <option value="basic">Identifiant et mot de passe</option>
+                                    </select>
+                                    <small class="help-text">Nécessaire pour un topic protégé</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ntfyPriority">Priorité</label>
+                                    <select id="ntfyPriority" class="form-select">
+                                        <option value="1">Minimale</option>
+                                        <option value="2">Basse</option>
+                                        <option value="3">Normale</option>
+                                        <option value="4">Haute</option>
+                                        <option value="5">Urgente</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-group" id="ntfyTokenGroup" hidden>
+                                <label for="ntfyToken">Jeton d'accès</label>
+                                <input type="password" id="ntfyToken" placeholder="tk_..." autocomplete="off">
+                            </div>
+                            <div class="form-row" id="ntfyBasicGroup" hidden>
+                                <div class="form-group">
+                                    <label for="ntfyUsername">Identifiant</label>
+                                    <input type="text" id="ntfyUsername" autocomplete="off">
+                                </div>
+                                <div class="form-group">
+                                    <label for="ntfyPassword">Mot de passe</label>
+                                    <input type="password" id="ntfyPassword" autocomplete="new-password">
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                                <label style="font-weight: 600; margin-bottom: 10px; display: block;">Notifications à envoyer</label>
+                                <div class="form-group checkbox-group">
+                                    <input type="checkbox" id="ntfyNotifyImportCompleted">
+                                    <label for="ntfyNotifyImportCompleted">
+                                        <strong>Import effectué</strong>
+                                        <span class="help-text">Avec la couverture en pièce jointe quand l'import concerne une seule série</span>
+                                    </label>
+                                </div>
+                                <div class="form-group checkbox-group">
+                                    <input type="checkbox" id="ntfyNotifyImportAvailable">
+                                    <label for="ntfyNotifyImportAvailable">
+                                        <strong>Import disponible</strong>
+                                        <span class="help-text">Quand de nouveaux fichiers apparaissent dans les répertoires surveillés</span>
+                                    </label>
+                                </div>
+                                <div class="form-group checkbox-group">
+                                    <input type="checkbox" id="ntfyNotifyMonitor">
+                                    <label for="ntfyNotifyMonitor">
+                                        <strong>Surveillance</strong>
+                                        <span class="help-text">Quand la surveillance repère un album manquant et qu'elle est réglée sur « Notifier »</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveNtfySettings()">Sauvegarder</button>
+                                <button class="btn" onclick="testNtfyNotification()">Tester</button>
+                            </div>
+
+                            <div id="ntfyMessage" class="message"></div>
+                        </div>
+
                         <!-- Aide configuration -->
                         <div class="help-section">
                             <h3>📖 Aide à la configuration</h3>
@@ -1514,6 +1611,17 @@
                                         <li>Ouvrez une conversation avec <strong>@BotFather</strong> sur Telegram</li>
                                         <li>Envoyez la commande <code>/newbot</code> et suivez les instructions</li>
                                         <li>@BotFather vous donne un jeton (ex: <code>123456789:AAExemple...</code>) - copiez-le dans le formulaire ci-dessus</li>
+                                    </ol>
+                                </div>
+                            </details>
+
+                            <details class="help-details">
+                                <summary>Comment recevoir les notifications ntfy sur mon téléphone ?</summary>
+                                <div class="help-content">
+                                    <ol>
+                                        <li>Installez l'application <strong>ntfy</strong> (F-Droid, Google Play ou App Store)</li>
+                                        <li>Appuyez sur <strong>+</strong> et abonnez-vous au même topic que ci-dessus (et au même serveur, si vous n'utilisez pas ntfy.sh)</li>
+                                        <li>Revenez ici, cliquez sur <strong>Tester</strong> : la notification arrive sur le téléphone</li>
                                     </ol>
                                 </div>
                             </details>
