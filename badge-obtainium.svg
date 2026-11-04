@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="300" height="72" viewBox="0 0 300 72" role="img" aria-label="Installer Bullarr avec Obtainium">
-  <rect x="1" y="1" width="298" height="70" rx="12" fill="#1f1a17" stroke="#f08a24" stroke-width="2"/>
-  <circle cx="44" cy="36" r="20" fill="#f08a24"/>
-  <path d="M53 30 A10 10 0 1 0 54 39" stroke="#1f1a17" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M54 22 L54 31 L45 31" stroke="#1f1a17" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="78" y="31" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#f5e9dc">Installer et mettre à jour avec</text>
-  <text x="78" y="53" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">Obtainium</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="90" viewBox="0 0 300 90" role="img" aria-label="Installer et mettre à jour Bullarr avec Obtainium">
+  <rect x="1.5" y="1.5" width="297" height="87" rx="14" fill="#1f1a17" stroke="#f08a24" stroke-width="3"/>
+  <circle cx="50" cy="45" r="27" fill="#f08a24"/>
+  <path d="M62 37 A14 14 0 1 0 63 50" stroke="#1f1a17" stroke-width="5.5" fill="none" stroke-linecap="round"/>
+  <path d="M63 25 L63 38 L50 38" stroke="#1f1a17" stroke-width="5.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="92" y="38" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" fill="#f5e9dc">Disponible sur</text>
+  <text x="92" y="68" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#ffffff">Obtainium</text>
 </svg>
