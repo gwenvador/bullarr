@@ -299,6 +299,7 @@ async function _loadLibraryData() {
         const stats = await statsResponse.json();
 
         _writeLibraryCache(series, stats);
+        loadKeepReading();
         const freshSignature = _libraryDataSignature(series, stats);
         if (freshSignature !== _libraryRenderedSignature) {
             _applyLibraryData(series, stats);
@@ -555,6 +556,76 @@ function buildVolumeCountLabel(s) {
     add(s.owned_specials, 'spécial');
     return parts.length ? parts.join(' · ') : '0 album';
 }
+
+// ===== « Continuer la lecture » (comme le « Keep reading » de Komga) =====
+// Albums commencés, du plus récemment lu au plus ancien (GET /api/komga/keep-reading) ; un
+// clic ouvre le lecteur à la page atteinte. Le bouton relit tout de suite l'avancement dans
+// Komga et rattache les tomes qui ne l'étaient pas (POST /api/komga/read-progress/sync).
+async function loadKeepReading() {
+    const section = document.getElementById('keep-reading-section');
+    if (!section) return;
+    let data;
+    try {
+        data = await (await fetch(`/api/komga/keep-reading?library_id=${libraryId}`)).json();
+    } catch (error) {
+        return;
+    }
+    if (!data || !data.success || !data.enabled) { section.hidden = true; return; }
+    const items = data.items || [];
+    const cards = items.map(item => {
+        const pages = item.pages_count;
+        const percent = pages ? Math.min(100, Math.round(100 * item.page / pages)) : 0;
+        const cover = item.cover_path
+            ? `<img src="/${escapeHtml(item.cover_path)}" alt="" loading="lazy">`
+            : '<span class="keep-reading-cover-placeholder">📖</span>';
+        return `
+            <button type="button" class="keep-reading-card" onclick="openComicReader(${item.volume_id})"
+                    title="Reprendre ${escapeHtml(item.series_title)} - ${escapeHtml(item.label)} à la page ${item.page}">
+                <span class="keep-reading-cover">${cover}<span class="keep-reading-progress"><span style="width:${percent}%"></span></span></span>
+                <span class="keep-reading-title">${escapeHtml(item.series_title)}</span>
+                <span class="keep-reading-meta">${escapeHtml(item.label)} · p. ${item.page}${pages ? '/' + pages : ''}</span>
+            </button>`;
+    }).join('');
+    section.innerHTML = `
+        <div class="keep-reading-header">
+            <h3>Continuer la lecture</h3>
+            <button type="button" class="toolbar-btn keep-reading-sync" onclick="syncKomgaReading(this)" title="Relire l'avancement de lecture dans Komga">${svgIcon('refresh-cw')} Synchroniser avec Komga</button>
+            <span class="keep-reading-status" id="keep-reading-status"></span>
+        </div>
+        ${items.length
+            ? `<div class="keep-reading-row">${cards}</div>`
+            : '<p class="keep-reading-empty">Aucun album en cours de lecture.</p>'}`;
+    section.hidden = false;
+}
+
+async function syncKomgaReading(button) {
+    button.disabled = true;
+    const status = () => document.getElementById('keep-reading-status');
+    status().textContent = 'Synchronisation…';
+    try {
+        const response = await fetch('/api/komga/read-progress/sync', { method: 'POST' });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        await loadLibraryData();
+        await loadKeepReading();
+        const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
+        let message = `Komga : ${plural(data.read, 'album')} lu${data.read > 1 ? 's' : ''}, ${data.reading} en cours. `
+            + `${plural(data.linked_volumes, 'tome')} rattaché${data.linked_volumes > 1 ? 's' : ''} à Komga`
+            + (data.relinked ? ` (dont ${data.relinked} à l'instant)` : '')
+            + `, ${data.volumes_with_progress} avec un avancement.`;
+        if (!data.linked_volumes) message += ' Aucun tome rattaché : matchez vos séries sur Komga (Éditer → Komga).';
+        status().textContent = message;
+    } catch (error) {
+        status().textContent = '❌ ' + error.message;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+// Après une lecture dans le lecteur intégré : la rangée reflète la page atteinte.
+document.addEventListener('comic-reader-closed', () => {
+    if (document.getElementById('keep-reading-section')) loadKeepReading();
+});
 
 // Avancement de lecture lu dans Komga (voir blueprints/komga/read_progress.py) : tomes
 // possédés rattachés à Komga, lus et en cours. null si la série n'a aucun tome rattaché.
