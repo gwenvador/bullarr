@@ -59,6 +59,7 @@ def create_app(config_name='default'):
     from blueprints.auth import auth_bp
     from blueprints.telegram import telegram_bp
     from blueprints.ntfy import ntfy_bp
+    from blueprints.push import push_bp
     from blueprints.activity import activity_bp
     from blueprints.telegram_channels import telegram_channels_bp
     from blueprints.fourtoutici import fourtoutici_bp
@@ -82,6 +83,7 @@ def create_app(config_name='default'):
     app.register_blueprint(auth_bp)
     app.register_blueprint(telegram_bp, url_prefix='/api/telegram')
     app.register_blueprint(ntfy_bp, url_prefix='/api/ntfy')
+    app.register_blueprint(push_bp, url_prefix='/api/push')
     app.register_blueprint(activity_bp)
     app.register_blueprint(telegram_channels_bp)
     app.register_blueprint(fourtoutici_bp)
