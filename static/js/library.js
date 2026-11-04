@@ -556,6 +556,27 @@ function buildVolumeCountLabel(s) {
     return parts.length ? parts.join(' · ') : '0 album';
 }
 
+// Avancement de lecture lu dans Komga (voir blueprints/komga/read_progress.py) : tomes
+// possédés rattachés à Komga, lus et en cours. null si la série n'a aucun tome rattaché.
+function komgaReadingInfo(s) {
+    const total = Number(s.komga_book_count) || 0;
+    if (!total) return null;
+    const read = Number(s.komga_read_count) || 0;
+    const reading = Number(s.komga_reading_count) || 0;
+    return { total, read, reading, started: read + reading > 0, percent: Math.round(100 * read / total) };
+}
+
+function komgaReadingLabel(info) {
+    if (!info) return '';
+    return `${info.read}/${info.total} lu${info.read > 1 ? 's' : ''}` + (info.reading ? ` · ${info.reading} en cours` : '');
+}
+
+function buildPosterReadingHtml(s) {
+    const info = komgaReadingInfo(s);
+    if (!info || !info.started) return '';
+    return `<div class="poster-read-progress" title="Lecture (Komga) : ${escapeHtml(komgaReadingLabel(info))}"><span style="width:${info.percent}%"></span></div>`;
+}
+
 // Construit l'affiche (poster) d'une série: couverture, pastilles de statut,
 // actions au survol, et titre/nb de tomes en surimpression en bas
 function buildPosterCardHtml(s) {
@@ -578,8 +599,9 @@ function buildPosterCardHtml(s) {
             </div>
             <div class="poster-overlay">
                 <div class="poster-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}${seriesListIconsHtml(s)}</div>
-                <div class="poster-subtitle">${bedethequeOriginHtml(s.bedetheque_origin)} ${volumeLabel}</div>
+                <div class="poster-subtitle">${bedethequeOriginHtml(s.bedetheque_origin)} ${volumeLabel}${komgaReadingInfo(s)?.started ? ` · ${escapeHtml(komgaReadingLabel(komgaReadingInfo(s)))}` : ''}</div>
             </div>
+            ${buildPosterReadingHtml(s)}
         </div>
         ${buildHiddenStatusAnchorsHtml(s)}
     </div>
@@ -609,6 +631,7 @@ function buildOverviewRowHtml(s) {
                 ${bedethequeOriginHtml(s.bedetheque_origin)}
                 ${statusInfo ? `<span class="overview-tag">${svgIcon(statusInfo.icon)} ${escapeHtml(statusInfo.label)}</span>` : ''}
                 <span class="overview-tag">📖 ${volumeLabel}</span>
+                ${komgaReadingInfo(s)?.started ? `<span class="overview-tag overview-tag-reading" title="Avancement de lecture (Komga)">✓ ${escapeHtml(komgaReadingLabel(komgaReadingInfo(s)))}</span>` : ''}
                 ${s.to_read_later ? '<span class="overview-tag">📚 À lire</span>' : ''}
                 ${s.is_favorite ? '<span class="overview-tag">⭐ Favori</span>' : ''}
                 ${(s.tags || []).map(tag => `<span class="overview-tag">${escapeHtml(tag)}</span>`).join('')}
@@ -663,6 +686,9 @@ const TABLE_OPTIONAL_COLUMNS = [
     { key: 'missing', label: 'Tomes manquants', icon: '❗', header: 'Manquants', filterType: 'text',
       render: s => (s.missing_volumes && s.missing_volumes.length) ? String(s.missing_volumes.length) : '0' },
     { key: 'ebdzMatch', label: 'Matching EBDZ', icon: '<img class="table-header-source-logo" src="/static/img/ebdz-logo.png" alt="EBDZ">', header: '<img class="table-header-source-logo" src="/static/img/ebdz-logo.png" alt="EBDZ"> EBDZ', render: s => _matchStatusHtml(s.ebdz_match_status === 'matched') },
+    // Avancement de lecture Komga (tomes possédés rattachés) : « 3/12 lus · 1 en cours ».
+    { key: 'reading', label: 'Lecture (Komga)', icon: '<img class="table-header-source-logo" src="/static/img/komga-logo.svg" alt="Komga">', header: 'Lecture', filterType: 'text',
+      render: s => komgaReadingLabel(komgaReadingInfo(s)) || '—' },
     { key: 'komgaMatch', label: 'Matching Komga', icon: '<img class="table-header-source-logo" src="/static/img/komga-logo.svg" alt="Komga">', header: '<img class="table-header-source-logo" src="/static/img/komga-logo.svg" alt="Komga"> Komga', render: s => _matchStatusHtml(s.komga_match_status === 'matched') },
     // Popularité : somme des votes Bédéthèque de tous les tomes (clic sur l'en-tête pour trier).
     { key: 'votes', label: 'Votes', icon: '⭐', header: 'Votes', filterType: 'text',
@@ -683,7 +709,7 @@ const TABLE_FIXED_COLUMNS = [
 function _availableTableOptionalColumns() {
     return TABLE_OPTIONAL_COLUMNS.filter(col => {
         if (col.key === 'ebdzMatch') return enabledIntegrations.ebdz;
-        if (col.key === 'komgaMatch') return enabledIntegrations.komga;
+        if (col.key === 'komgaMatch' || col.key === 'reading') return enabledIntegrations.komga;
         return true;
     });
 }
@@ -952,6 +978,11 @@ function _seriesTableSortValue(s, column) {
         case 'genre': return (s.local_genre || '').toLowerCase() || null;
         case 'type': return bedethequeOriginLabel(s.bedetheque_origin);
         case 'votes': return s.total_votes || null;
+        // Part de tomes lus (puis en cours), pas le texte « 3/12 lus » affiché.
+        case 'reading': {
+            const info = komgaReadingInfo(s);
+            return info && info.started ? info.read / info.total + info.reading / (1000 * info.total) : null;
+        }
         // Dates triées sur la valeur brute (AAAA-MM-JJ…), pas sur le texte « jj/mm/aaaa » affiché.
         case 'addedAt': return s.added_at || null;
         case 'lastChange': return s.last_changed_at || null;
@@ -3147,6 +3178,19 @@ function buildVolumeTableMissingBadgeHtml(v) {
 }
 
 // pas le bouton 🔗 Liens, qui n'est pas une action mais une consultation externe.
+// État de lecture d'un tome dans Komga : « ✓ Lu » ou la page atteinte (« p. 12/48 »).
+function buildVolumeReadingBadgeHtml(v) {
+    if (!v.komga_book_id) return '';
+    if (v.komga_read_completed) {
+        return ' <span class="volume-reading-badge volume-reading-badge-done" title="Lu (Komga)">✓ Lu</span>';
+    }
+    if (v.komga_read_page) {
+        const pages = v.komga_pages_count || v.page_count;
+        return ` <span class="volume-reading-badge" title="En cours de lecture (Komga)">p. ${v.komga_read_page}${pages ? '/' + pages : ''}</span>`;
+    }
+    return '';
+}
+
 function buildVolumeTableRowHtml(v, isOneshot) {
     const ci = v.comicinfo || {};
     const numberLabel = volumeNumberLabel(v, isOneshot);
@@ -3193,7 +3237,7 @@ function buildVolumeTableRowHtml(v, isOneshot) {
         <tr class="volume-table-row${isPlaceholder ? ' volume-table-row-placeholder' : ' volume-table-row-owned'}" data-group="${groupKey}"${groupHiddenStyle}>
             ${selectCellHtml}
             <td${v.is_special ? ` data-tooltip="${escapeHtml(_volumeNumberBadgeTooltip(v))}"` : ''}>${numberLabel}</td>
-            <td class="volume-table-name" data-tooltip="${escapeHtml(name)}">${escapeHtml(name)}</td>
+            <td class="volume-table-name" data-tooltip="${escapeHtml(name)}">${escapeHtml(name)}${buildVolumeReadingBadgeHtml(v)}</td>
             <td style="white-space:nowrap;"${_volumeDateTooltipAttr(v)}>${escapeHtml(String(_volumeDateLabel(v)))}</td>
             <td>${isPlaceholder ? '—' : escapeHtml((v.format || '?').toUpperCase())}</td>
             <td style="white-space:nowrap;" data-raw-size="${v.file_size || 0}">${isPlaceholder ? '—' : formatBytes(v.file_size)}</td>

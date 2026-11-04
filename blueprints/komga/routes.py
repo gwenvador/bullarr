@@ -123,3 +123,17 @@ def scan_libraries():
         return jsonify({'success': False, 'error': 'Erreur interne'}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
+
+
+@komga_bp.route('/read-progress/sync', methods=['POST'])
+def sync_komga_read_progress():
+    """Relit tout de suite l'avancement de lecture dans Komga (sinon toutes les 15 minutes)."""
+    from .client import KomgaError
+    from .read_progress import sync_read_progress
+    try:
+        stats = sync_read_progress()
+    except KomgaError as e:
+        return jsonify({'success': False, 'error': str(e)}), 502
+    if stats is None:
+        return jsonify({'success': False, 'error': 'Komga non activé'}), 400
+    return jsonify({'success': True, **stats})

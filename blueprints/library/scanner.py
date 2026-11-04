@@ -243,6 +243,20 @@ class LibraryScanner:
         # fois créé, comme les index déjà posés ailleurs dans l'app (ed2k_links, etc.).
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_volumes_series_id ON volumes(series_id)')
 
+        # Avancement de lecture lu dans Komga (voir blueprints/komga/read_progress.py) - table
+        # à part, indexée par livre Komga : un rescan supprime puis recrée les lignes
+        # `volumes`, seul komga_book_id y est repris.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS komga_read_progress (
+                komga_book_id TEXT PRIMARY KEY,
+                page INTEGER,
+                pages_count INTEGER,
+                completed INTEGER DEFAULT 0,
+                read_at TEXT,
+                synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         conn.commit()
 
         # Ajouter les colonnes de comparaison EBDZ si elles n'existent pas
@@ -253,6 +267,9 @@ class LibraryScanner:
 
         # Ajouter les colonnes de métadonnées ComicInfo.xml / couverture si elles n'existent pas
         self._add_volume_metadata_columns(conn)
+        # Après la migration ci-dessus : komga_book_id n'existe pas encore sur une base neuve.
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_volumes_komga_book_id ON volumes(komga_book_id)')
+        conn.commit()
 
         # Ajouter les colonnes de couverture/résumé locaux (issus du ComicInfo.xml des
         # volumes) à la table series si elles n'existent pas

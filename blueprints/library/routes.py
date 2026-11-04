@@ -2011,6 +2011,12 @@ def post_volume_reader_progress(volume_id):
         KomgaClient().update_read_progress(row['komga_book_id'], page, bool(data.get('completed')))
     except KomgaError as e:
         return jsonify({'success': True, 'synced': False, 'reason': 'komga_error', 'error': error_message(e)})
+    # Reflété tout de suite dans la bibliothèque, sans attendre la synchronisation périodique.
+    try:
+        from blueprints.komga.read_progress import record_local_progress
+        record_local_progress(row['komga_book_id'], page, bool(data.get('completed')))
+    except sqlite3.Error as e:
+        print(f"Avancement de lecture local non enregistré: {e}")
     return jsonify({'success': True, 'synced': True})
 
 
@@ -2089,11 +2095,22 @@ def get_series_volumes(series_id):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
-        SELECT * FROM volumes
-        WHERE series_id = ?
-        ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, hs_number
-    ''', (series_id,))
+    try:
+        cursor.execute('''
+            SELECT v.*, p.page AS komga_read_page, p.pages_count AS komga_pages_count,
+                   p.completed AS komga_read_completed, p.read_at AS komga_read_at
+            FROM volumes v
+            LEFT JOIN komga_read_progress p ON p.komga_book_id = v.komga_book_id
+            WHERE v.series_id = ?
+            ORDER BY v.part_number, (v.volume_number IS NULL), v.volume_number, v.integral_number, v.hs_number
+        ''', (series_id,))
+    except sqlite3.OperationalError:
+        # Base sans l'avancement de lecture Komga (schéma pas encore migré) : tomes seuls.
+        cursor.execute('''
+            SELECT * FROM volumes
+            WHERE series_id = ?
+            ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, hs_number
+        ''', (series_id,))
     owned_volumes = [dict(row) for row in cursor.fetchall()]
 
     cursor.execute('SELECT bedetheque_albums FROM series WHERE id = ?', (series_id,))
@@ -2403,9 +2420,21 @@ def get_library_series(library_id):
                    (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND COALESCE(v.filesystem_present, 1) = 1 AND v.is_episode = 1) AS owned_episodes,
                    (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND COALESCE(v.filesystem_present, 1) = 1
                      AND v.is_special = 1 AND v.is_integral = 0 AND v.is_hs = 0 AND v.is_episode = 0) AS owned_specials,
-                   u.name AS universe_name
+                   u.name AS universe_name,
+                   COALESCE(rp.book_count, 0) AS komga_book_count,
+                   COALESCE(rp.read_count, 0) AS komga_read_count,
+                   COALESCE(rp.reading_count, 0) AS komga_reading_count
             FROM series s
             LEFT JOIN universes u ON u.id = s.universe_id
+            -- Avancement de lecture Komga des tomes possédés et rattachés (voir komga/read_progress.py).
+            LEFT JOIN (
+                SELECT v.series_id, COUNT(*) AS book_count,
+                       SUM(CASE WHEN p.completed = 1 THEN 1 ELSE 0 END) AS read_count,
+                       SUM(CASE WHEN COALESCE(p.completed, 0) = 0 AND COALESCE(p.page, 0) > 0 THEN 1 ELSE 0 END) AS reading_count
+                FROM volumes v LEFT JOIN komga_read_progress p ON p.komga_book_id = v.komga_book_id
+                WHERE v.komga_book_id IS NOT NULL AND v.filepath IS NOT NULL
+                GROUP BY v.series_id
+            ) rp ON rp.series_id = s.id
             WHERE s.library_id = ?
             ORDER BY s.title
         ''', (library_id,))
@@ -2480,7 +2509,11 @@ def get_library_series(library_id):
                 'owned_hs': row['owned_hs'],
                 'owned_episodes': row['owned_episodes'],
                 'owned_specials': row['owned_specials'],
-                'universe_name': row['universe_name']
+                'universe_name': row['universe_name'],
+                # Avancement de lecture Komga : tomes rattachés, lus, en cours.
+                'komga_book_count': row['komga_book_count'],
+                'komga_read_count': row['komga_read_count'],
+                'komga_reading_count': row['komga_reading_count'],
             })
 
         conn.close()
