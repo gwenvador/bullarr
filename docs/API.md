@@ -226,6 +226,24 @@ Chaque entrée indique si la série est en bibliothèque (`already_in_library`),
 | `POST /api/missing-monitor/series/<series_id>/monitor` | Active ou coupe la surveillance d'une série (`{"enabled": true}`). |
 | `GET /api/missing-monitor/history` | Historique des téléchargements de la surveillance. |
 
+## Notifications instantanées (UnifiedPush)
+
+L'application Android enregistre l'adresse que lui donne son distributeur UnifiedPush (l'app
+ntfy, en général). Bullarr y envoie ensuite chaque évènement, sous la forme d'un JSON
+`{"kind", "title", "body"}`, avec `kind` parmi `import_completed`, `import_available`,
+`monitor_found`, `review` et `test`.
+
+- `POST /api/push/register` : `{"endpoint": "https://ntfy.sh/up…?up=1", "device": "Fairphone 5",
+  "previous_endpoint": "…"}` (le dernier champ est facultatif ; l'ancienne adresse est alors
+  retirée). 20 téléphones au maximum.
+- `POST /api/push/unregister` : `{"endpoint": "…"}`.
+- `POST /api/push/test` : envoie une notification `test` à tous les téléphones abonnés ;
+  `400` si aucun ne l'est.
+- `GET /api/push/devices` : la liste des téléphones abonnés, sans leurs adresses.
+
+Une adresse que le distributeur déclare supprimée (réponse `404` ou `410`) est retirée
+automatiquement.
+
 ## Exemple complet en Python
 
 ```python

@@ -143,6 +143,17 @@ def _manual_review_candidates(candidates, series_title, volume_number):
     return selected
 
 
+def _notify_new_review(label, reason):
+    """Notification « validation en attente » (téléphones abonnés aux notifications
+    instantanées) - seulement pour une NOUVELLE ligne, pas à chaque mise à jour de ses candidats."""
+    try:
+        from notifications import send_notification
+        send_notification(f"{label}\n{reason}" if reason else label, kind='review',
+                          title='Validation en attente')
+    except Exception as exc:
+        print(f"Erreur notification (validation en attente) : {exc}")
+
+
 def queue_manual_review(series_id, series_title, volume_number, volume_label, candidates, reason, force_candidates=False):
     """Persist borderline results, or explicitly rejected packs, for manual review."""
     candidates = list(candidates or []) if force_candidates else _manual_review_candidates(candidates, series_title, volume_number)
@@ -170,6 +181,8 @@ def queue_manual_review(series_id, series_title, volume_number, volume_label, ca
         conn.commit()
     finally:
         conn.close()
+    if not existing:
+        _notify_new_review(f"{series_title} - {volume_label}" if volume_label else series_title, reason)
 
 
 def queue_series_match_review(series_title, candidates, reason='La série n’a pas pu être associée automatiquement.'):
@@ -213,6 +226,8 @@ def queue_series_match_review(series_title, candidates, reason='La série n’a 
         conn.commit()
     finally:
         conn.close()
+    if not existing:
+        _notify_new_review(f"{series_title} - série à ajouter", reason)
 
 
 def get_manual_reviews():

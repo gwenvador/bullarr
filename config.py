@@ -89,6 +89,8 @@ class Config:
     RENAME_CONFIG_FILE = os.path.join(DATA_DIR, 'rename_config.json')
     TELEGRAM_CONFIG_FILE = os.path.join(DATA_DIR, 'telegram_config.json')
     NTFY_CONFIG_FILE = os.path.join(DATA_DIR, 'ntfy_config.json')
+    # Adresses UnifiedPush des téléphones abonnés (application Android), voir blueprints/push.
+    PUSH_ENDPOINTS_FILE = os.path.join(DATA_DIR, 'push_endpoints.json')
     TELEGRAM_CHANNELS_CONFIG_FILE = os.path.join(DATA_DIR, 'telegram_channels_config.json')
     IMPORT_NOTIFY_STATE_FILE = os.path.join(DATA_DIR, 'import_notify_state.json')
     
