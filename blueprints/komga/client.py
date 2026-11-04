@@ -253,6 +253,10 @@ class KomgaClient:
                     'pages_count': (book.get('media') or {}).get('pagesCount'),
                     'completed': bool(progress.get('completed')),
                     'read_at': progress.get('readDate') or progress.get('lastModified'),
+                    # Pour rattacher un tome par son nom de fichier dans sa série Komga.
+                    'series_id': book.get('seriesId'),
+                    'name': book.get('name'),
+                    'url': f"{self.base_url}/book/{book.get('id')}",
                 }
             if data.get('last', True) or not content:
                 break

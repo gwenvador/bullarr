@@ -924,4 +924,6 @@ function closeComicReader() {
     _clearComicReaderImages();
     document.getElementById('comic-reader-thumbs').innerHTML = '';
     document.getElementById('comic-reader-webtoon').innerHTML = '';
+    // Laisse l'envoi de la page partir avant de relire l'avancement (rangée « Continuer la lecture »).
+    setTimeout(() => document.dispatchEvent(new CustomEvent('comic-reader-closed')), 800);
 }

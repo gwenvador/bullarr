@@ -137,3 +137,12 @@ def sync_komga_read_progress():
     if stats is None:
         return jsonify({'success': False, 'error': 'Komga non activé'}), 400
     return jsonify({'success': True, **stats})
+
+
+@komga_bp.route('/keep-reading', methods=['GET'])
+def get_keep_reading():
+    """« Continuer la lecture » : tomes commencés dans Komga (ou le lecteur de Bullarr)."""
+    from .read_progress import keep_reading, last_sync
+    library_id = request.args.get('library_id', type=int)
+    return jsonify({'success': True, 'enabled': bool(load_komga_config().get('enabled')),
+                    'items': keep_reading(library_id), 'last_sync': last_sync})
