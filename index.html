@@ -169,7 +169,8 @@
   .android .actions { gap: 10px; }
   .android .actions a { display: block; border-radius: 12px; transition: transform .15s, box-shadow .15s; }
   .android .actions a:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(240,138,36,.25); }
-  .android .actions img { width: 200px; height: auto; display: block; }
+  /* Même hauteur pour les trois badges (F-Droid, APK, Obtainium), quelles que soient leurs proportions. */
+  .android .actions img { height: 60px; width: auto; max-width: 100%; display: block; }
 
   /* IA / MCP */
   .ai { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
@@ -334,9 +335,9 @@ docker compose up -d</code></pre>
         <h3>Application Android</h3>
         <p>L'application pilote Bullarr depuis votre téléphone : bibliothèque, recherche, téléchargements, import. Elle s'installe depuis le dépôt F-Droid de l'auteur, avec Obtainium (directement depuis les releases GitHub, avec mises à jour), ou en APK signé.</p>
         <div class="actions">
-          <a href="https://gwenvador.github.io/bullarr-android/repo/" title="Dépôt F-Droid de l'application Android"><img src="fdroid.svg" alt="Disponible sur F-Droid" width="564" height="168"></a>
-          <a href="https://github.com/gwenvador/bullarr-android/releases/latest" title="Dernière version de l'application Android"><img src="badge-apk.svg" alt="Télécharger l'APK signé de Bullarr" width="300" height="90"></a>
-          <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/gwenvador/bullarr-android" title="Ajouter Bullarr à Obtainium (depuis le téléphone)"><img src="badge-obtainium.svg" alt="Installer et mettre à jour Bullarr avec Obtainium" width="300" height="90"></a>
+          <a href="https://gwenvador.github.io/bullarr-android/repo/" title="Dépôt F-Droid de l'application Android"><img src="fdroid.svg?v=2" alt="Disponible sur F-Droid" width="564" height="168"></a>
+          <a href="https://github.com/gwenvador/bullarr-android/releases/latest" title="Dernière version de l'application Android"><img src="badge-apk.svg?v=2" alt="Télécharger l'APK signé de Bullarr" width="300" height="90"></a>
+          <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/gwenvador/bullarr-android" title="Ajouter Bullarr à Obtainium (depuis le téléphone)"><img src="badge-obtainium.svg?v=2" alt="Installer et mettre à jour Bullarr avec Obtainium" width="300" height="90"></a>
         </div>
       </div>
     </div>
