@@ -51,5 +51,22 @@ class ReaderNeighboursTest(unittest.TestCase):
         self.assertIsNone(self.neighbours(14)[1])
 
 
+    def test_resume_page_comes_from_komga(self):
+        from blueprints.library import routes
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE volumes SET komga_book_id = 'b10' WHERE id = 10")
+        conn.execute("UPDATE volumes SET komga_book_id = 'b11' WHERE id = 11")
+        conn.execute("INSERT INTO komga_read_progress (komga_book_id, page, pages_count, completed) VALUES ('b10', 17, 46, 0)")
+        conn.execute("INSERT INTO komga_read_progress (komga_book_id, page, pages_count, completed) VALUES ('b11', 46, 46, 1)")
+        conn.commit()
+        conn.close()
+        with self.app.app_context():
+            self.assertEqual(routes._reader_komga_progress('b10'), (17, False))
+            # Album terminé : pas de reprise, le lecteur repart du début.
+            self.assertEqual(routes._reader_komga_progress('b11'), (None, True))
+            self.assertEqual(routes._reader_komga_progress('inconnu'), (None, False))
+            self.assertEqual(routes._reader_komga_progress(None), (None, False))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -893,7 +893,11 @@ async function openComicReader(volumeId) {
         const slider = document.getElementById('comic-reader-slider');
         slider.max = String(data.page_count);
         _buildComicReaderThumbs();
-        let start = parseInt(_comicReaderPref(_comicReaderStorageKey(volumeId), '1'), 10) || 1;
+        // Reprise : la page atteinte d'après Komga (tout lecteur, tout appareil), sinon la
+        // dernière page lue dans ce navigateur.
+        let start = data.resume_page
+            || (data.read_completed ? 1 : parseInt(_comicReaderPref(_comicReaderStorageKey(volumeId), '1'), 10))
+            || 1;
         // Album fini lors de la dernière lecture : on repart du début.
         if (start >= data.page_count) start = 1;
         if (comicReader.webtoon) {

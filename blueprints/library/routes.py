@@ -1973,12 +1973,34 @@ def get_volume_reader_info(volume_id):
     except (ValueError, TypeError, AttributeError):
         comicinfo_title = None
     previous, following, manga = _reader_neighbours(row['series_id'], row['id'])
+    resume_page, read_completed = _reader_komga_progress(row['komga_book_id'])
     return jsonify({'success': True, 'volume_id': row['id'], 'series_id': row['series_id'],
                     'series_title': row['series_title'], 'label': _reader_volume_label(row),
                     'title': comicinfo_title or row['filename'], 'page_count': count,
                     # Tomes voisins (avec fichier) pour « Tome précédent / suivant », et sens de
                     # lecture par défaut : droite à gauche pour une série d'origine Asie.
-                    'previous': previous, 'next': following, 'manga': manga})
+                    'previous': previous, 'next': following, 'manga': manga,
+                    # Page atteinte d'après Komga (tout lecteur, tout appareil) : la reprise.
+                    'resume_page': resume_page, 'read_completed': read_completed})
+
+
+def _reader_komga_progress(komga_book_id):
+    """(page à reprendre, lu en entier) d'après l'avancement Komga synchronisé (voir
+    komga/read_progress.py) ; (None, False) sans avancement connu."""
+    if not komga_book_id:
+        return None, False
+    conn = get_db_connection()
+    try:
+        row = conn.execute('SELECT page, completed FROM komga_read_progress WHERE komga_book_id = ?',
+                           (komga_book_id,)).fetchone()
+    except sqlite3.Error:
+        return None, False
+    finally:
+        conn.close()
+    if not row:
+        return None, False
+    completed = bool(row['completed'])
+    return (None if completed or not row['page'] else int(row['page'])), completed
 
 
 def _reader_volume_label(row):
