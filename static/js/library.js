@@ -2949,10 +2949,11 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
             </div>
             <div class="volume-cover-wrapper">
                 ${coverHtml}
+                ${buildVolumeCoverReadingHtml(v)}
             </div>
             <div class="volume-details">
                 <div class="volume-filename-row">
-                    <div class="volume-filename">${escapeHtml(_displayVolumeTitle(v) || v.filename)}</div>
+                    <div class="volume-filename">${escapeHtml(_displayVolumeTitle(v) || v.filename)}${buildVolumeReadingBadgeHtml(v)}</div>
                     ${buildVolumeActionIconsHtml(v)}
                 </div>
                 ${ci.title ? `<div class="volume-file-detail">${escapeHtml(v.filename)}</div>` : ''}
@@ -3178,6 +3179,21 @@ function buildVolumeTableMissingBadgeHtml(v) {
 }
 
 // pas le bouton 🔗 Liens, qui n'est pas une action mais une consultation externe.
+// Sur la couverture (vue Aperçu des albums) : pastille ✓ pour un tome lu, barre de
+// progression pour un tome commencé.
+function buildVolumeCoverReadingHtml(v) {
+    if (!v.komga_book_id) return '';
+    if (v.komga_read_completed) {
+        return '<span class="volume-cover-read" title="Lu (Komga)" aria-label="Lu">✓</span>';
+    }
+    const pages = v.komga_pages_count || v.page_count;
+    if (v.komga_read_page && pages) {
+        const percent = Math.min(100, Math.round(100 * v.komga_read_page / pages));
+        return `<span class="volume-cover-progress" title="Page ${v.komga_read_page}/${pages} (Komga)"><span style="width:${percent}%"></span></span>`;
+    }
+    return '';
+}
+
 // État de lecture d'un tome dans Komga : « ✓ Lu » ou la page atteinte (« p. 12/48 »).
 function buildVolumeReadingBadgeHtml(v) {
     if (!v.komga_book_id) return '';
