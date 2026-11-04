@@ -22,13 +22,17 @@ EVENTS = (
      "La surveillance repère un album manquant et elle est réglée sur « Notifier »", True),
     ('review', 'Validation en attente',
      "Un résultat douteux attend votre décision dans la page Validation", False),
+    ('update_available', 'Mise à jour disponible',
+     "Une nouvelle version de Bullarr ou de l'application Android est publiée", True),
 )
 KINDS = tuple(event[0] for event in EVENTS)
 DEFAULTS = {event[0]: event[3] for event in EVENTS}
 CHAT_CHANNELS = ('telegram', 'ntfy')
 # Noms attendus par l'application Android (voir Push.onMessage côté app). Un téléchargement
-# ajouté y passe pour un évènement d'import : l'app l'affiche avec ses alertes « Imports ».
-_PUSH_KINDS = {'monitor': 'monitor_found', 'download_added': 'import_available'}
+# ajouté y passe pour un évènement d'import (alertes « Imports »), une mise à jour pour une
+# nouveauté (alertes « Nouveautés ») : l'app ignore les types qu'elle ne connaît pas.
+_PUSH_KINDS = {'monitor': 'monitor_found', 'download_added': 'import_available',
+               'update_available': 'monitor_found'}
 
 
 def channel_config(channel):

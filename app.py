@@ -180,6 +180,10 @@ def create_app(config_name='default'):
         from blueprints.ebdz.rss_monitor_scheduler import rss_monitor_scheduler
         rss_monitor_scheduler.start(app)
 
+        # Notification « Mise à jour disponible » (Bullarr, application Android).
+        from blueprints.settings.update_notifier import update_notifier_scheduler
+        update_notifier_scheduler.start(app)
+
     # "toujours trop petit. on voit même pas que c'est un cover" - la modification était
     # bien déployée côté serveur (vérifié directement), donc un cache navigateur/proxy
     # côté mobile n'ayant pas revalidé malgré Cache-Control:no-cache est l'explication la
