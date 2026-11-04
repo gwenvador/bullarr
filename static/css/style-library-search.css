@@ -3546,3 +3546,21 @@ body.comic-reader-open { overflow: hidden; }
     font: inherit;
     font-size: 0.8em;
 }
+
+/* Avancement de lecture Komga (voir komgaReadingInfo dans library.js) : barre en bas de
+   l'affiche, part des tomes rattachés déjà lus. */
+.poster-read-progress {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
+    background: rgba(255, 255, 255, 0.25); pointer-events: none; z-index: 1;
+}
+.poster-read-progress span { display: block; height: 100%; background: var(--color-accent); }
+.overview-tag-reading { color: var(--color-success, #2e7d32); }
+.volume-reading-badge {
+    display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px;
+    font-size: 0.78em; font-weight: 600; line-height: 1.6; white-space: nowrap; vertical-align: 1px;
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent);
+}
+.volume-reading-badge-done {
+    background: color-mix(in srgb, var(--color-success, #2e7d32) 14%, transparent);
+    color: var(--color-success, #2e7d32);
+}

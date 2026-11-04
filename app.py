@@ -184,6 +184,10 @@ def create_app(config_name='default'):
         from blueprints.settings.update_notifier import update_notifier_scheduler
         update_notifier_scheduler.start(app)
 
+        # Avancement de lecture Komga affiché dans la bibliothèque.
+        from blueprints.komga.read_progress import read_progress_scheduler
+        read_progress_scheduler.start(app)
+
     # "toujours trop petit. on voit même pas que c'est un cover" - la modification était
     # bien déployée côté serveur (vérifié directement), donc un cache navigateur/proxy
     # côté mobile n'ayant pas revalidé malgré Cache-Control:no-cache est l'explication la

@@ -225,6 +225,40 @@ class KomgaClient:
 
         return result
 
+    def list_books_read_progress(self):
+        """Avancement de lecture de TOUS les livres pour le compte de la clé API, paginé par
+        lots de 500 (même parcours que list_book_media_status). Retourne
+        {komga_book_id: {page, pages_count, completed, read_at}} ; un livre jamais ouvert a
+        page=None et completed=False."""
+        result = {}
+        page = 0
+        while True:
+            try:
+                response = requests.get(
+                    f"{self.base_url}/api/v1/books",
+                    headers=self.headers,
+                    params={'size': 500, 'page': page},
+                    timeout=30
+                )
+            except requests.exceptions.RequestException as e:
+                raise KomgaError(f"Impossible de contacter Komga: {e}")
+            if response.status_code != 200:
+                raise KomgaError(f"Erreur HTTP Komga {response.status_code}: {response.text[:200]}")
+            data = response.json()
+            content = data.get('content', [])
+            for book in content:
+                progress = book.get('readProgress') or {}
+                result[book.get('id')] = {
+                    'page': progress.get('page'),
+                    'pages_count': (book.get('media') or {}).get('pagesCount'),
+                    'completed': bool(progress.get('completed')),
+                    'read_at': progress.get('readDate') or progress.get('lastModified'),
+                }
+            if data.get('last', True) or not content:
+                break
+            page += 1
+        return result
+
     def download_thumbnail(self, series_id):
         """Télécharge la vignette d'une série. Retourne (bytes, content_type) ou (None, None)."""
         try:
