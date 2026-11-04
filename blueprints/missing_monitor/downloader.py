@@ -292,6 +292,10 @@ def mark_download_pending(title: str, client: str, series_id: Optional[int] = No
 
         conn.commit()
         conn.close()
+        # Une relance automatique (retry_count > 0) n'est pas un nouveau téléchargement.
+        if not retry_count:
+            from notifications import notify_download_added
+            notify_download_added(title, client, series_id=series_id, volume_number=volume_number)
         return download_id
     except Exception as e:
         print(f"Erreur enregistrement téléchargement en attente ({client}): {e}")

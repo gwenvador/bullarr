@@ -1339,3 +1339,26 @@ input[type="checkbox"].switch-input:disabled {
 .notification-channel-icon { display: inline-grid; place-items: center; width: 22px; height: 22px; color: var(--color-accent); }
 .notification-channel-icon svg { width: 20px; height: 20px; }
 #ntfySettingsCard [hidden] { display: none !important; }
+
+/* Tableau « Événements » : une ligne par type de notification, une case par canal. */
+.notification-events-table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: 12px; }
+.notification-events-table { width: 100%; border-collapse: collapse; }
+.notification-events-table th, .notification-events-table td { padding: 12px 14px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: middle; }
+.notification-events-table tbody tr:last-child > * { border-bottom: none; }
+.notification-events-table thead th { background: var(--color-surface-alt); font-size: .85em; font-weight: 600; white-space: nowrap; }
+.notification-events-table tbody th { font-weight: normal; }
+.notification-events-label { display: block; font-weight: 600; color: var(--color-text); }
+.notification-events-table .help-text { display: block; margin-top: 2px; }
+.notification-events-channel, .notification-events-cell { text-align: center !important; width: 110px; }
+.notification-events-channel { vertical-align: top !important; }
+.notification-events-channel .notification-channel-icon { width: 16px; height: 16px; vertical-align: -3px; }
+.notification-events-channel .notification-channel-icon svg { width: 16px; height: 16px; }
+.notification-events-logo { width: 16px; height: 16px; vertical-align: -3px; }
+.notification-events-state { display: block; margin-top: 3px; font-size: .85em; font-weight: 500; color: var(--color-text-muted); }
+.notification-events-state.is-on { color: var(--color-success, #2e7d32); }
+.notification-events-toggle { display: inline-flex; padding: 6px; cursor: pointer; }
+.notification-events-toggle input { width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: var(--color-accent); }
+@media (max-width: 600px) {
+    .notification-events-table th, .notification-events-table td { padding: 10px 8px; }
+    .notification-events-channel, .notification-events-cell { width: 72px; }
+}

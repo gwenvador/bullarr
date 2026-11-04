@@ -1445,6 +1445,29 @@
                             </p>
                         </div>
 
+                        <!-- Une ligne par type de notification, une case par canal (voir
+                             blueprints/notification_events et notifications.EVENTS). Chaque
+                             changement est enregistré aussitôt. -->
+                        <div class="settings-card" id="notificationEventsCard">
+                            <h3 class="notification-channel-title">Événements</h3>
+                            <p class="help-text" style="margin:0 0 14px;">Choisissez ce que chaque canal reçoit. Un canal se configure et s'active dans sa carte, plus bas.</p>
+                            <div class="notification-events-table-wrap">
+                                <table class="notification-events-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Événement</th>
+                                            <th scope="col" class="notification-events-channel"><img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="notification-events-logo"> Telegram <span class="notification-events-state" id="notifEventsStateTelegram"></span></th>
+                                            <th scope="col" class="notification-events-channel"><span class="notification-channel-icon" data-icon="bell"></span> ntfy <span class="notification-events-state" id="notifEventsStateNtfy"></span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="notificationEventsBody">
+                                        <tr><td colspan="3" class="help-text">Chargement…</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div id="notificationEventsMessage" class="message"></div>
+                        </div>
+
                         <div class="settings-card">
                             <h3 class="notification-channel-title"><img src="{{ url_for('static', filename='img/telegram-logo.svg') }}" alt="" class="section-header-logo"> Telegram</h3>
                             <div class="form-group checkbox-group">
@@ -1470,26 +1493,6 @@
                                 <label for="telegramChatId">Chat ID</label>
                                 <input type="text" id="telegramChatId" placeholder="ex: 123456789">
                                 <small class="help-text">Identifiant du chat/utilisateur destinataire des messages</small>
-                            </div>
-
-                            <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
-                                <label style="font-weight: 600; margin-bottom: 10px; display: block;">Notifications à envoyer</label>
-
-                                <div class="form-group checkbox-group">
-                                    <input type="checkbox" id="telegramNotifyImportCompleted">
-                                    <label for="telegramNotifyImportCompleted">
-                                        <strong>Import effectué</strong>
-                                        <span class="help-text">Quand un import (manuel ou automatique) déplace des fichiers dans la bibliothèque</span>
-                                    </label>
-                                </div>
-
-                                <div class="form-group checkbox-group">
-                                    <input type="checkbox" id="telegramNotifyImportAvailable">
-                                    <label for="telegramNotifyImportAvailable">
-                                        <strong>Import disponible</strong>
-                                        <span class="help-text">Quand de nouveaux fichiers apparaissent dans les répertoires surveillés - nécessite l'Import Automatique activé (onglet "Imports")</span>
-                                    </label>
-                                </div>
                             </div>
 
                             <div class="form-actions">
@@ -1567,37 +1570,18 @@
                                 </div>
                             </div>
 
-                            <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
-                                <label style="font-weight: 600; margin-bottom: 10px; display: block;">Notifications à envoyer</label>
-                                <div class="form-group checkbox-group">
-                                    <input type="checkbox" id="ntfyNotifyImportCompleted">
-                                    <label for="ntfyNotifyImportCompleted">
-                                        <strong>Import effectué</strong>
-                                        <span class="help-text">Avec la couverture en pièce jointe quand l'import concerne une seule série</span>
-                                    </label>
-                                </div>
-                                <div class="form-group checkbox-group">
-                                    <input type="checkbox" id="ntfyNotifyImportAvailable">
-                                    <label for="ntfyNotifyImportAvailable">
-                                        <strong>Import disponible</strong>
-                                        <span class="help-text">Quand de nouveaux fichiers apparaissent dans les répertoires surveillés</span>
-                                    </label>
-                                </div>
-                                <div class="form-group checkbox-group">
-                                    <input type="checkbox" id="ntfyNotifyMonitor">
-                                    <label for="ntfyNotifyMonitor">
-                                        <strong>Surveillance</strong>
-                                        <span class="help-text">Quand la surveillance repère un album manquant et qu'elle est réglée sur « Notifier »</span>
-                                    </label>
-                                </div>
-                            </div>
-
                             <div class="form-actions">
                                 <button class="btn" onclick="saveNtfySettings()">Sauvegarder</button>
                                 <button class="btn" onclick="testNtfyNotification()">Tester</button>
                             </div>
 
                             <div id="ntfyMessage" class="message"></div>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 class="notification-channel-title"><span class="notification-channel-icon" data-icon="smartphone"></span> Application Android</h3>
+                            <p class="help-text" style="margin:0;">Les notifications instantanées se règlent dans l'application (Configuration → Notifications), avec l'app ntfy installée sur le téléphone. Chaque téléphone choisit lui-même les alertes qu'il affiche.</p>
+                            <p id="pushDevicesSummary" style="margin:12px 0 0; font-weight:600;"></p>
                         </div>
 
                         <!-- Aide configuration -->

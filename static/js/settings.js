@@ -711,8 +711,6 @@ async function loadTelegramSettings() {
 
         document.getElementById('telegramEnabled').checked = config.enabled;
         document.getElementById('telegramChatId').value = config.chat_id || '';
-        document.getElementById('telegramNotifyImportCompleted').checked = config.notify_import_completed !== false;
-        document.getElementById('telegramNotifyImportAvailable').checked = config.notify_import_available !== false;
 
         // Voir le commentaire équivalent dans loadSettings (aMule) - même correctif
         if (config.bot_token) {
@@ -727,9 +725,7 @@ async function saveTelegramSettings() {
     const config = {
         enabled: document.getElementById('telegramEnabled').checked,
         bot_token: document.getElementById('telegramBotToken').value,
-        chat_id: document.getElementById('telegramChatId').value.trim(),
-        notify_import_completed: document.getElementById('telegramNotifyImportCompleted').checked,
-        notify_import_available: document.getElementById('telegramNotifyImportAvailable').checked
+        chat_id: document.getElementById('telegramChatId').value.trim()
     };
 
     if (config.enabled && !config.bot_token) {
@@ -753,6 +749,7 @@ async function saveTelegramSettings() {
         if (data.success) {
             showMessage('telegramMessage', '✅ Configuration Telegram enregistrée', 'success');
             loadTelegramSettings();
+            loadNotificationEvents();
         } else {
             showMessage('telegramMessage', '❌ Erreur: ' + data.error, 'error');
         }
@@ -793,6 +790,77 @@ function toggleTelegramPassword() {
     btn.innerHTML = telegramPasswordVisible ? `${svgIcon('eye-off')} Masquer` : `${svgIcon('eye')} Afficher`;
 }
 
+// ===== NOTIFICATIONS : tableau « Événements » =====
+// Une ligne par type de notification, une case par canal ; chaque changement est enregistré
+// aussitôt (voir blueprints/notification_events). Les cartes Telegram et ntfy ne gardent
+// que la connexion et l'activation de leur canal.
+const NOTIFICATION_CHANNELS = ['telegram', 'ntfy'];
+
+function _channelStateLabel(state) {
+    if (!state.configured) return 'à configurer';
+    return state.enabled ? 'activé' : 'désactivé';
+}
+
+async function loadNotificationEvents() {
+    const body = document.getElementById('notificationEventsBody');
+    if (!body) return;
+    try {
+        const data = await (await fetch('/api/notifications/events')).json();
+        if (!data.success) throw new Error(data.error || 'Erreur');
+        for (const channel of NOTIFICATION_CHANNELS) {
+            const state = data.channels[channel];
+            const el = document.getElementById('notifEventsState' + channel.charAt(0).toUpperCase() + channel.slice(1));
+            if (el) {
+                el.textContent = _channelStateLabel(state);
+                el.classList.toggle('is-on', state.enabled && state.configured);
+            }
+        }
+        body.innerHTML = data.events.map(event => `
+            <tr>
+                <th scope="row">
+                    <span class="notification-events-label">${escapeHtml(event.label)}</span>
+                    <span class="help-text">${escapeHtml(event.description)}</span>
+                </th>
+                ${NOTIFICATION_CHANNELS.map(channel => {
+                    const state = data.channels[channel];
+                    const id = `notifEvent-${channel}-${event.id}`;
+                    return `<td class="notification-events-cell"><label class="notification-events-toggle" for="${id}">
+                        <input type="checkbox" id="${id}" ${state.events[event.id] ? 'checked' : ''}
+                               onchange="saveNotificationEvent('${channel}', '${event.id}', this)"
+                               aria-label="${escapeHtml(event.label)} : ${channel === 'telegram' ? 'Telegram' : 'ntfy'}">
+                    </label></td>`;
+                }).join('')}
+            </tr>`).join('');
+        const devices = document.getElementById('pushDevicesSummary');
+        if (devices) {
+            devices.textContent = data.push_devices
+                ? `${data.push_devices} téléphone${data.push_devices > 1 ? 's' : ''} abonné${data.push_devices > 1 ? 's' : ''} aux notifications instantanées`
+                : 'Aucun téléphone abonné pour l’instant';
+        }
+    } catch (error) {
+        body.innerHTML = `<tr><td colspan="3" class="help-text">❌ ${escapeHtml(error.message)}</td></tr>`;
+    }
+}
+
+async function saveNotificationEvent(channel, eventId, input) {
+    input.disabled = true;
+    try {
+        const response = await fetch('/api/notifications/events', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({[channel]: {[eventId]: input.checked}})
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Erreur');
+        showMessage('notificationEventsMessage', '✅ Enregistré', 'success');
+    } catch (error) {
+        input.checked = !input.checked;
+        showMessage('notificationEventsMessage', '❌ ' + error.message, 'error');
+    } finally {
+        input.disabled = false;
+    }
+}
+
 // ===== NTFY =====
 // Même onglet que Telegram (voir notifications.py : chaque canal coche ses propres types).
 // Les secrets reviennent masqués (****) : renvoyés tels quels, ils ne sont pas modifiés.
@@ -812,9 +880,6 @@ function _ntfyFormValues() {
         username: document.getElementById('ntfyUsername').value.trim(),
         password: document.getElementById('ntfyPassword').value,
         priority: Number(document.getElementById('ntfyPriority').value) || 3,
-        notify_import_completed: document.getElementById('ntfyNotifyImportCompleted').checked,
-        notify_import_available: document.getElementById('ntfyNotifyImportAvailable').checked,
-        notify_monitor: document.getElementById('ntfyNotifyMonitor').checked,
     };
 }
 
@@ -829,9 +894,6 @@ async function loadNtfySettings() {
         document.getElementById('ntfyUsername').value = config.username || '';
         document.getElementById('ntfyPassword').value = config.password || '';
         document.getElementById('ntfyPriority').value = String(config.priority || 3);
-        document.getElementById('ntfyNotifyImportCompleted').checked = config.notify_import_completed !== false;
-        document.getElementById('ntfyNotifyImportAvailable').checked = config.notify_import_available !== false;
-        document.getElementById('ntfyNotifyMonitor').checked = config.notify_monitor !== false;
         updateNtfyAuthFields();
     } catch (error) {
         showMessage('ntfyMessage', '❌ Erreur lors du chargement de la configuration ntfy', 'error');
@@ -854,6 +916,7 @@ async function saveNtfySettings() {
         if (data.success) {
             showMessage('ntfyMessage', '✅ Configuration ntfy enregistrée', 'success');
             loadNtfySettings();
+            loadNotificationEvents();
         } else {
             showMessage('ntfyMessage', '❌ Erreur: ' + data.error, 'error');
         }
@@ -1711,6 +1774,10 @@ function switchTab(tabName) {
     } else if (tabName === 'telegram') {
         loadTelegramSettings();
         loadNtfySettings();
+        loadNotificationEvents();
+        document.querySelectorAll('#tab-telegram .notification-channel-icon[data-icon]').forEach(el => {
+            if (!el.innerHTML.trim() && typeof svgIcon === 'function') el.innerHTML = svgIcon(el.dataset.icon);
+        });
     } else if (tabName === 'oidc') {
         loadOidcSettings();
         loadApiKey();

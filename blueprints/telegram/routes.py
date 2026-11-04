@@ -143,8 +143,11 @@ def telegram_config():
 
             config['enabled'] = new_config.get('enabled', False)
             config['chat_id'] = new_config.get('chat_id', '').strip()
-            config['notify_import_completed'] = new_config.get('notify_import_completed', True)
-            config['notify_import_available'] = new_config.get('notify_import_available', True)
+            # Les cases par type se règlent dans le tableau « Événements »
+            # (/api/notifications/events) : ne les changer que si elles sont envoyées.
+            for key, value in new_config.items():
+                if key.startswith('notify_'):
+                    config[key] = bool(value)
 
             # Ne change le jeton que si ce n'est pas la valeur masquée
             new_token = new_config.get('bot_token', '')

@@ -348,21 +348,9 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
         else:
             message = f"{imported_count} fichier(s) ajouté(s) à la bibliothèque"
 
-        photo_path = None
+        from notifications import series_cover_path
         series_ids = {entry['series_id'] for entry in relevant_entries if entry.get('series_id')}
-        if len(series_ids) == 1:
-            conn = get_db_connection()
-            row = conn.execute(
-                'SELECT local_cover_path, bedetheque_cover_path, komga_cover_path FROM series WHERE id = ?',
-                (next(iter(series_ids)),)
-            ).fetchone()
-            conn.close()
-            # Même ordre de priorité que le reste de l'app (voir library.js,
-            # pickPosterCoverPath): une vignette locale extraite du fichier prime sur
-            # celle de Bédéthèque, elle-même préférée à celle de Komga.
-            cover_path = (row and (row['local_cover_path'] or row['bedetheque_cover_path'] or row['komga_cover_path'])) or None
-            if cover_path:
-                photo_path = os.path.join(current_app.config['DATA_DIR'], cover_path)
+        photo_path = series_cover_path(next(iter(series_ids))) if len(series_ids) == 1 else None
 
         success, errors = send_notification(
             message, kind='import_completed', title='BD Importé :', tags=['books'], photo_path=photo_path)

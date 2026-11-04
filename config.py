@@ -141,9 +141,8 @@ class Config:
     TELEGRAM_CONFIG = {
         'enabled': False,
         'bot_token': '',
-        'chat_id': '',
-        'notify_import_completed': True,
-        'notify_import_available': True
+        'chat_id': ''
+        # Cases notify_<type> : voir notifications.EVENTS (valeurs par défaut).
     }
 
     # Notifications ntfy (https://ntfy.sh ou serveur auto-hébergé), voir blueprints/ntfy.
@@ -157,9 +156,6 @@ class Config:
         'username': '',
         'password': '',
         'priority': 3,
-        'notify_import_completed': True,
-        'notify_import_available': True,
-        'notify_monitor': True,
     }
 
     # Compte Telegram "utilisateur" (MTProto, via Telethon) pour lire le CONTENU des

@@ -105,12 +105,13 @@ class ConfigRouteTest(NtfyTestCase):
                 self.assertNotIn('tk_secret', handle.read())
             public = client.get('/api/ntfy/config').get_json()
             self.assertEqual(public['token'], '****')
-            self.assertFalse(public['notify_monitor'])
-            # Renvoyé masqué : le jeton enregistré reste.
+            # Renvoyé masqué : le jeton enregistré reste ; les cases par type, absentes du
+            # formulaire (tableau « Événements »), ne sont pas remises à leur valeur par défaut.
             client.post('/api/ntfy/config', json={**public, 'topic': 'bullarr-def'})
         from blueprints.ntfy.routes import load_ntfy_config
         cfg = load_ntfy_config()
         self.assertEqual((cfg['topic'], cfg['token_decrypted']), ('bullarr-def', 'tk_secret'))
+        self.assertFalse(cfg['notify_monitor'])
 
     def test_invalid_topic_is_refused(self):
         response = self.app.test_client().post('/api/ntfy/config', json={'enabled': True, 'topic': 'a b'})
