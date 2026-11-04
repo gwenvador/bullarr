@@ -84,9 +84,8 @@ def _auto_import_has_work(include_pending=True):
     if include_pending and rows:
         return True
     try:
-        from blueprints.telegram.routes import load_telegram_config
-        telegram_config = load_telegram_config()
-        return bool(telegram_config.get('enabled') and telegram_config.get('notify_import_available', True))
+        from notifications import notification_wanted
+        return notification_wanted('import_available')
     except Exception:
         return False
 
@@ -269,19 +268,21 @@ class LibraryImportScheduler:
 
         if new_files:
             try:
-                from blueprints.telegram.routes import load_telegram_config, send_telegram_notification
+                from notifications import notification_wanted, send_notification
                 # Le suivi des fichiers "déjà connus" continue même si la notification est
                 # décochée dans Settings > Telegram (voir _save_notified_files plus bas,
                 # inconditionnel) - sans ça, ré-activer plus tard renverrait d'un coup tout
                 # le backlog accumulé pendant que c'était désactivé.
-                if load_telegram_config().get('notify_import_available', True):
+                if notification_wanted('import_available'):
                     sample = sorted(new_files)[:5]
-                    message = f"📥 {len(new_files)} nouveau(x) fichier(s) disponible(s) pour import :\n" + "\n".join(sample)
+                    message = "\n".join(sample)
                     if len(new_files) > len(sample):
                         message += f"\n… et {len(new_files) - len(sample)} autre(s)"
-                    send_telegram_notification(message)
+                    send_notification(
+                        message, kind='import_available', icon='📥', tags=['inbox_tray'],
+                        title=f"{len(new_files)} nouveau(x) fichier(s) disponible(s) pour import :")
             except Exception as e:
-                print(f"Erreur notification Telegram (import disponible): {e}")
+                print(f"Erreur notification (import disponible): {e}")
 
         # Baseline = l'état courant du répertoire, qu'il y ait eu de nouveaux fichiers ou
         # non : un fichier déjà connu qui reste sur place ne doit pas re-notifier au tick
@@ -717,13 +718,12 @@ library_import_scheduler = LibraryImportScheduler()
 def sync_auto_import_schedule():
     ""
     from . import routes
-    from blueprints.telegram.routes import load_telegram_config
+    from notifications import notification_wanted
 
     import_config = routes.load_library_import_config()
-    telegram_config = load_telegram_config()
 
     auto_import_enabled = import_config.get('auto_import_enabled', False)
-    notify_available = telegram_config.get('enabled', False) and telegram_config.get('notify_import_available', True)
+    notify_available = notification_wanted('import_available')
 
     if auto_import_enabled or notify_available:
         library_import_scheduler.add_job(AUTO_IMPORT_FALLBACK_INTERVAL_SECONDS, 'seconds')

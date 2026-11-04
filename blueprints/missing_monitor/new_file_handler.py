@@ -264,13 +264,14 @@ def _process_typed_monitor_file(source, item, filename, parsed, typed, match, se
 
     stats['matched_missing'] += 1
     if action == 'notify':
-        from blueprints.telegram.routes import send_telegram_notification
-        success, error = send_telegram_notification(
-            f"📚 Nouvel album surveillé\nSérie : {match[3]}\nAlbum : {label}\nFichier : {filename}")
+        from notifications import send_notification
+        success, errors = send_notification(
+            f"Série : {match[3]}\nAlbum : {label}\nFichier : {filename}",
+            kind='monitor', icon='📚', title='Nouvel album surveillé', tags=['books'])
         if success:
             stats['notifications_sent'] += 1
         else:
-            stats['errors'].append(error or 'Échec notification Telegram')
+            stats['errors'].append('; '.join(errors) or 'Échec notification')
         return
 
     success, message = _send_monitor_download(source, item, downloader, match[3], None, series_id, filename, volume_id=volume_id)
@@ -494,23 +495,24 @@ def process_new_monitor_files(source, items):
             # d'équivalent "notify", elle télécharge directement dès que les deux portes
             # de _quality_upgrade_match passent (voir sa docstring).
             if is_missing and action == "notify":
-                from blueprints.telegram.routes import send_telegram_notification
+                from notifications import send_notification
                 source_label = {"ebdz": "EBDZ", "rss": "RSS"}.get(source, "Telegram")
                 source_url = (item.get("thread_url") if source == "ebdz" else item.get("link") if source == "rss" else
                               f"https://t.me/{item.get("channel", "").lstrip("@")}/{item.get("message_id")}")
-                message = (f"📚 Nouveau tome surveillé\n"
-                           f"Série : {match[3]}\n"
+                message = (f"Série : {match[3]}\n"
                            f"Tome : {volume_number}\n"
                            f"Source : {source_label}\n"
-                           f"Fichier : {filename}"
-                           + (f"\n{source_url}" if source_url else ""))
-                success, error = send_telegram_notification(message)
+                           f"Fichier : {filename}")
+                success, errors = send_notification(
+                    message, kind="monitor", icon="📚", title="Nouveau tome surveillé", tags=["books"],
+                    click=source_url or None)
                 if success:
                     stats["notifications_sent"] += 1
                     print(f"  ✓ Notification envoyée pour {match[3]} tome {volume_number}")
                 else:
-                    stats["errors"].append(error or "Échec notification Telegram")
-                    print(f"  ✗ Notification Telegram: {error}")
+                    error = "; ".join(errors) or "Échec notification"
+                    stats["errors"].append(error)
+                    print(f"  ✗ Notification: {error}")
                 continue
 
             success, message = _send_monitor_download(source, item, downloader, match[3], volume_number, series_id, filename)

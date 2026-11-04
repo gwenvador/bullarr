@@ -141,6 +141,8 @@ def _backup_file_specs():
         ('rename_config.json', cfg['RENAME_CONFIG_FILE'], False),
         ('rss_feeds.json', cfg['RSS_CONFIG_FILE'], False),
         ('qbittorrent_config.json', cfg['QBITTORRENT_CONFIG_FILE'], False),
+        ('telegram_config.json', cfg['TELEGRAM_CONFIG_FILE'], False),
+        ('ntfy_config.json', cfg['NTFY_CONFIG_FILE'], False),
     ]
 
 
