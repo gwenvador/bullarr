@@ -89,7 +89,8 @@ class ComicReaderWiringTest(unittest.TestCase):
 
     def test_reader_navigation(self):
         js = (ROOT / 'static/js/reader.js').read_text()
-        self.assertIn('rect.width / 2 ? -1 : 1', js)          # clic gauche / droite
+        self.assertIn('const left = event.clientX - rect.left < rect.width / 2;', js)  # clic gauche / droite
+        self.assertIn('stepComicReader(left === !_comicReaderRtl() ? -1 : 1)', js)      # inversé en sens manga
         self.assertIn("addEventListener('wheel'", js)        # souris
         self.assertIn('requestFullscreen', js)               # plein écran
 
