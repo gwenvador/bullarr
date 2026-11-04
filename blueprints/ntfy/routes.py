@@ -179,9 +179,6 @@ def _public_config(cfg):
         'token': MASK if cfg.get('token') else '',
         'password': MASK if cfg.get('password') else '',
         'priority': _priority(cfg),
-        'notify_import_completed': cfg.get('notify_import_completed', True),
-        'notify_import_available': cfg.get('notify_import_available', True),
-        'notify_monitor': cfg.get('notify_monitor', True),
     }
 
 
@@ -201,10 +198,11 @@ def _merge_form(cfg, data):
         'auth': auth,
         'username': (data.get('username') or '').strip(),
         'priority': _priority({'priority': data.get('priority', 3)}),
-        'notify_import_completed': bool(data.get('notify_import_completed', True)),
-        'notify_import_available': bool(data.get('notify_import_available', True)),
-        'notify_monitor': bool(data.get('notify_monitor', True)),
     })
+    # Cases par type : réglées dans le tableau « Événements », changées seulement si envoyées.
+    for key, value in data.items():
+        if key.startswith('notify_'):
+            cfg[key] = bool(value)
     for field in _SECRET_FIELDS:
         value = data.get(field)
         if value is None or value == MASK:

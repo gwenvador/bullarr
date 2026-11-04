@@ -1,40 +1,54 @@
-"""Envoi des notifications de Bullarr sur tous les canaux configurés (Telegram, ntfy).
+"""Envoi des notifications de Bullarr sur tous les canaux configurés.
 
-Chaque point d'envoi de l'app indique le TYPE de notification ; chaque canal a sa propre
-case par type (Configuration → Notifications) :
-
-- import_completed : un import a ajouté des fichiers à la bibliothèque ;
-- import_available : de nouveaux fichiers sont arrivés dans les dossiers surveillés ;
-- monitor : la surveillance a repéré un album manquant (action « notifier ») ;
-- review : une nouvelle validation attend dans la page Validation.
-
-Canaux : Telegram et ntfy (cases cochées dans Configuration → Notifications ; pas de
-« review » pour eux), et les téléphones abonnés aux notifications instantanées de
-l'application Android (blueprints/push), qui reçoivent tout et filtrent eux-mêmes.
+Chaque point d'envoi de l'app indique le TYPE de notification (voir EVENTS). Telegram et
+ntfy ont chacun une case par type, réglées ensemble dans le tableau « Événements » de
+Configuration → Notifications (cases notify_<type> de leur configuration). Les téléphones
+abonnés aux notifications instantanées de l'application Android (blueprints/push)
+reçoivent tout et filtrent eux-mêmes selon les alertes cochées sur le téléphone.
 
 Nécessite un contexte applicatif Flask (current_app), comme send_telegram_notification.
 Ne lève jamais d'exception : une notification ratée ne fait pas échouer l'opération.
 """
 
-KINDS = ('import_completed', 'import_available', 'monitor', 'review')
-_CHAT_KINDS = ('import_completed', 'import_available', 'monitor')
-# Noms attendus par l'application Android (voir Push.onMessage côté app).
-_PUSH_KINDS = {'monitor': 'monitor_found'}
+# (type, libellé, description, coché par défaut) - l'ordre est celui du tableau.
+EVENTS = (
+    ('download_added', 'Téléchargement ajouté',
+     "Un téléchargement est envoyé à un client (recherche, surveillance ou validation)", True),
+    ('import_completed', 'Import effectué',
+     "Des fichiers entrent dans la bibliothèque, avec la couverture quand l'import concerne une seule série", True),
+    ('import_available', 'Import disponible',
+     "De nouveaux fichiers attendent dans les répertoires surveillés", True),
+    ('monitor', 'Surveillance',
+     "La surveillance repère un album manquant et elle est réglée sur « Notifier »", True),
+    ('review', 'Validation en attente',
+     "Un résultat douteux attend votre décision dans la page Validation", False),
+)
+KINDS = tuple(event[0] for event in EVENTS)
+DEFAULTS = {event[0]: event[3] for event in EVENTS}
+CHAT_CHANNELS = ('telegram', 'ntfy')
+# Noms attendus par l'application Android (voir Push.onMessage côté app). Un téléchargement
+# ajouté y passe pour un évènement d'import : l'app l'affiche avec ses alertes « Imports ».
+_PUSH_KINDS = {'monitor': 'monitor_found', 'download_added': 'import_available'}
 
 
-def _telegram_wants(kind):
-    from blueprints.telegram.routes import load_telegram_config
-    cfg = load_telegram_config()
-    if not cfg.get('enabled') or kind not in _CHAT_KINDS:
-        return False
-    # Telegram n'a pas de case pour la surveillance : elle notifie dès que le canal est actif.
-    return kind == 'monitor' or bool(cfg.get(f'notify_{kind}', True))
-
-
-def _ntfy_wants(kind):
+def channel_config(channel):
+    if channel == 'telegram':
+        from blueprints.telegram.routes import load_telegram_config
+        return load_telegram_config()
     from blueprints.ntfy.routes import load_ntfy_config
-    cfg = load_ntfy_config()
-    return kind in _CHAT_KINDS and bool(cfg.get('enabled')) and bool(cfg.get(f'notify_{kind}', True))
+    return load_ntfy_config()
+
+
+def channel_wants(cfg, kind):
+    """Case notify_<type> d'une configuration de canal (Telegram ou ntfy)."""
+    return bool(cfg.get(f'notify_{kind}', DEFAULTS.get(kind, False)))
+
+
+def _chat_wants(channel):
+    def wants(kind):
+        cfg = channel_config(channel)
+        return kind in KINDS and bool(cfg.get('enabled')) and channel_wants(cfg, kind)
+    return wants
 
 
 def _push_wants(kind):
@@ -44,7 +58,7 @@ def _push_wants(kind):
 
 def _channels(kind):
     channels = []
-    for name, wants in (('telegram', _telegram_wants), ('ntfy', _ntfy_wants), ('push', _push_wants)):
+    for name, wants in (('telegram', _chat_wants('telegram')), ('ntfy', _chat_wants('ntfy')), ('push', _push_wants)):
         try:
             if wants(kind):
                 channels.append(name)
@@ -94,3 +108,71 @@ def send_notification(message, *, kind, title=None, icon=None, tags=None, click=
         else:
             errors.append(f"{channel} : {error}")
     return sent, errors
+
+
+def series_cover_path(series_id):
+    """Couverture locale d'une série (même priorité que la bibliothèque : vignette extraite
+    du fichier, puis Bédéthèque, puis Komga), ou None."""
+    if not series_id:
+        return None
+    import os
+    import sqlite3
+    from flask import current_app
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    try:
+        row = conn.execute(
+            'SELECT local_cover_path, bedetheque_cover_path, komga_cover_path FROM series WHERE id = ?',
+            (series_id,)).fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        conn.close()
+    cover = next((value for value in (row or ()) if value), None)
+    if not cover:
+        return None
+    path = os.path.join(current_app.config['DATA_DIR'], cover)
+    return path if os.path.isfile(path) else None
+
+
+_CLIENT_LABELS = {
+    'amule': 'aMule', 'qbittorrent': 'qBittorrent', 'rtorrent': 'rTorrent', 'deluge': 'Deluge',
+    'telegram': 'Telegram', 'fourtoutici': 'fourtoutici', 'vk': 'VK', 'annas_archive': "Anna's Archive",
+    'shelfmark': 'Shelfmark',
+}
+
+
+def notify_download_added(title, client, series_id=None, volume_number=None):
+    """« Téléchargement ajouté », envoyée en arrière-plan : l'ajout au client (souvent un clic
+    dans l'interface) n'attend jamais Telegram, ntfy ou les téléphones."""
+    try:
+        if not notification_wanted('download_added'):
+            return
+        import threading
+        from flask import current_app
+        app = current_app._get_current_object()
+    except Exception as exc:
+        print(f"Erreur notification (téléchargement ajouté) : {exc}")
+        return
+
+    def run():
+        with app.app_context():
+            try:
+                lines = []
+                if series_id:
+                    import sqlite3
+                    conn = sqlite3.connect(app.config['DATABASE'], timeout=30.0)
+                    try:
+                        row = conn.execute('SELECT title FROM series WHERE id = ?', (series_id,)).fetchone()
+                    finally:
+                        conn.close()
+                    if row and row[0]:
+                        lines.append(f"{row[0]} - Tome {volume_number}" if volume_number is not None else row[0])
+                lines.append(f"Fichier : {title}")
+                lines.append(f"Client : {_CLIENT_LABELS.get(client, client)}")
+                send_notification('\n'.join(lines), kind='download_added', icon='⬇️',
+                                  title='Téléchargement ajouté', tags=['arrow_down'],
+                                  photo_path=series_cover_path(series_id))
+            except Exception as exc:
+                print(f"Erreur notification (téléchargement ajouté) : {exc}")
+
+    threading.Thread(target=run, name='notify-download-added', daemon=True).start()
