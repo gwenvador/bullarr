@@ -1972,17 +1972,52 @@ def get_volume_reader_info(volume_id):
         comicinfo_title = (json.loads(row['comicinfo'] or '{}') or {}).get('title')
     except (ValueError, TypeError, AttributeError):
         comicinfo_title = None
-    if row['is_integral']:
-        label = f"Intégrale {row['integral_number'] or ''}".strip()
-    elif row['is_hs']:
-        label = f"HS {row['hs_number'] or ''}".strip()
-    elif row['volume_number'] is not None:
-        label = f"Tome {row['volume_number']}"
-    else:
-        label = ''
+    previous, following, manga = _reader_neighbours(row['series_id'], row['id'])
     return jsonify({'success': True, 'volume_id': row['id'], 'series_id': row['series_id'],
-                    'series_title': row['series_title'], 'label': label,
-                    'title': comicinfo_title or row['filename'], 'page_count': count})
+                    'series_title': row['series_title'], 'label': _reader_volume_label(row),
+                    'title': comicinfo_title or row['filename'], 'page_count': count,
+                    # Tomes voisins (avec fichier) pour « Tome précédent / suivant », et sens de
+                    # lecture par défaut : droite à gauche pour une série d'origine Asie.
+                    'previous': previous, 'next': following, 'manga': manga})
+
+
+def _reader_volume_label(row):
+    if row['is_integral']:
+        return f"Intégrale {row['integral_number'] or ''}".strip()
+    if row['is_hs']:
+        return f"HS {row['hs_number'] or ''}".strip()
+    if row['volume_number'] is not None:
+        return f"Tome {row['volume_number']}"
+    return ''
+
+
+def _reader_neighbours(series_id, volume_id):
+    """(tome précédent, tome suivant, manga) : voisins parmi les tomes de la série qui ont un
+    fichier présent, dans l'ordre de la fiche série (tomes, puis intégrales et hors-séries)."""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute('''
+            SELECT id, volume_number, is_integral, integral_number, is_hs, hs_number, filename
+            FROM volumes
+            WHERE series_id = ? AND filepath IS NOT NULL AND filepath != '' AND COALESCE(filesystem_present, 1) = 1
+            ORDER BY part_number, is_integral, is_hs, (volume_number IS NULL), volume_number,
+                     integral_number, hs_number, filename
+        ''', (series_id,)).fetchall()
+        origin = conn.execute('SELECT bedetheque_origin FROM series WHERE id = ?', (series_id,)).fetchone()
+    except sqlite3.Error:
+        return None, None, False
+    finally:
+        conn.close()
+    ids = [r['id'] for r in rows]
+    manga = bool(origin and (origin[0] or '').strip().lower() in ('asie', 'manga'))
+    if volume_id not in ids:
+        return None, None, manga
+    index = ids.index(volume_id)
+
+    def describe(r):
+        return {'volume_id': r['id'], 'label': _reader_volume_label(r) or os.path.splitext(r['filename'] or '')[0]}
+    return (describe(rows[index - 1]) if index > 0 else None,
+            describe(rows[index + 1]) if index + 1 < len(rows) else None, manga)
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/reader/progress', methods=['POST'])

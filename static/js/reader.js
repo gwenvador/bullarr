@@ -7,9 +7,13 @@
 // (bouton ou touche M). Zoom (boutons − / +, touches + − 0, Ctrl/⌘ + molette ou pincement
 // du pavé tactile, pincement au doigt) avec déplacement de l'image à la souris ou au doigt.
 // Deux pages côte à côte (bouton ou touche D) : la couverture seule, puis les doubles pages
-// 2-3, 4-5… comme dans un album ouvert. La dernière page lue de chaque tome, l'ajustement,
-// l'affichage des miniatures et le mode deux pages sont mémorisés. Bouton ? (ou touche ?) :
-// liste des raccourcis.
+// 2-3, 4-5… comme dans un album ouvert. Mode webtoon (bouton ou touche W) : toutes les pages
+// à la suite, en défilement vertical continu. Sens manga (bouton ou touche R, mémorisé par
+// série, d'office pour une série d'origine Asie) : clics, flèches, glissements, double page et
+// miniatures de droite à gauche. Tome précédent / suivant (boutons ⏮ ⏭, touches [ ]) ; à la
+// dernière page, tourner la page ouvre le tome suivant (et à la première, le précédent).
+// La dernière page lue de chaque tome, l'ajustement, l'affichage des miniatures, le mode deux
+// pages et le mode webtoon sont mémorisés. Bouton ? (ou touche ?) : liste des raccourcis.
 const comicReader = {
     volumeId: null,
     page: 1,
@@ -29,7 +33,24 @@ const comicReader = {
     progressTimer: null,
     progressPending: null,
     progressReady: false,
+    webtoon: false,
+    rtl: false,
+    seriesId: null,
+    previous: null,
+    next: null,
+    webtoonFrame: null,
+    webtoonSettleUntil: 0,
 };
+
+// Deux pages côte à côte : jamais en webtoon (pages à la suite).
+function _comicReaderSpread() {
+    return comicReader.spread && !comicReader.webtoon;
+}
+
+// Sens de lecture effectif : le webtoon se lit toujours de haut en bas.
+function _comicReaderRtl() {
+    return comicReader.rtl && !comicReader.webtoon;
+}
 
 const COMIC_READER_ZOOM_MAX = 6;
 const COMIC_READER_ZOOM_STEP = 1.4;
@@ -65,14 +86,20 @@ function _comicReaderStepTarget(page, step, count, spread) {
 
 const COMIC_READER_SHORTCUTS = [
     ['Pages', [
-        ['→  PageDown  Espace', 'Page suivante'],
-        ['←  PageUp  Maj + Espace', 'Page précédente'],
+        ['→  PageDown  Espace', 'Page suivante (← en sens manga)'],
+        ['←  PageUp  Maj + Espace', 'Page précédente (→ en sens manga)'],
         ['Début  /  Fin', 'Première / dernière page'],
         ['Clic droite / gauche', 'Page suivante / précédente'],
         ['Molette', 'Page suivante / précédente'],
         ['Glisser un doigt', 'Page suivante / précédente'],
     ]],
+    ['Albums', [
+        ['[  /  ]', 'Tome précédent / suivant'],
+        ['Dernière page puis →', 'Ouvre le tome suivant'],
+    ]],
     ['Affichage', [
+        ['W', 'Mode webtoon : défilement vertical continu'],
+        ['R', 'Sens manga (droite → gauche), mémorisé par série'],
         ['D', 'Une ou deux pages côte à côte'],
         ['Z', 'Ajustement : page entière, largeur, hauteur'],
         ['M', 'Bande de miniatures'],
@@ -114,7 +141,7 @@ function toggleComicReaderHelp(force) {
 const COMIC_READER_PROGRESS_DELAY_MS = 2500;
 
 function _scheduleComicReaderProgress() {
-    const shown = _comicReaderSpreadPages(comicReader.page, comicReader.count, comicReader.spread);
+    const shown = _comicReaderSpreadPages(comicReader.page, comicReader.count, _comicReaderSpread());
     const page = shown[shown.length - 1];
     comicReader.progressPending = { volumeId: comicReader.volumeId, page, completed: page >= comicReader.count };
     clearTimeout(comicReader.progressTimer);
@@ -158,6 +185,7 @@ function _buildComicReader() {
     comicReader.fit = COMIC_READER_FITS[_comicReaderPref('comic-reader-fit', 'page')] ? _comicReaderPref('comic-reader-fit', 'page') : 'page';
     comicReader.thumbs = _comicReaderPref('comic-reader-thumbs', '1') !== '0';
     comicReader.spread = _comicReaderPref('comic-reader-spread', '0') === '1';
+    comicReader.webtoon = _comicReaderPref('comic-reader-webtoon', '0') === '1';
     overlay = document.createElement('div');
     overlay.id = 'comic-reader';
     overlay.className = 'comic-reader';
@@ -173,11 +201,15 @@ function _buildComicReader() {
                 <button type="button" class="comic-reader-btn" data-reader-action="zoom-out" aria-label="Dézoomer" data-tooltip="Dézoomer (−)">−</button>
                 <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="zoom-reset" id="comic-reader-zoom" aria-label="Zoom : revenir à 100 %" data-tooltip="Revenir à 100 % (0)">100 %</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="zoom-in" aria-label="Zoomer" data-tooltip="Zoomer (+)">+</button>
+                <button type="button" class="comic-reader-btn" data-reader-action="prev-volume" id="comic-reader-prev-volume" aria-label="Tome précédent" data-tooltip="Tome précédent ([)" hidden>⏮</button>
+                <button type="button" class="comic-reader-btn" data-reader-action="next-volume" id="comic-reader-next-volume" aria-label="Tome suivant" data-tooltip="Tome suivant (])" hidden>⏭</button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="webtoon" id="comic-reader-webtoon-btn" aria-label="Mode webtoon" data-tooltip="Mode webtoon : défilement vertical continu (W)">↕<span class="comic-reader-btn-label">Webtoon</span></button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="rtl" id="comic-reader-rtl-btn" aria-label="Sens manga" data-tooltip="Sens manga : droite → gauche (R)">⇆<span class="comic-reader-btn-label">Manga</span></button>
                 <button type="button" class="comic-reader-btn comic-reader-btn-spread" data-reader-action="spread" id="comic-reader-spread-btn" aria-label="Deux pages côte à côte" data-tooltip="Deux pages côte à côte (D)">▯▯</button>
                 <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="fit" id="comic-reader-fit" aria-label="Ajustement de l'image" data-tooltip="Ajustement de l'image : page entière, largeur ou hauteur de l'écran (Z)"></button>
                 <button type="button" class="comic-reader-btn" data-reader-action="thumbs" id="comic-reader-thumbs-btn" aria-label="Miniatures des pages" data-tooltip="Miniatures des pages (M)">▦</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="prev" aria-label="Page précédente" data-tooltip="Page précédente (←)">‹</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="next" aria-label="Page suivante" data-tooltip="Page suivante (→)">›</button>
+                <button type="button" class="comic-reader-btn" data-reader-action="left" id="comic-reader-left-btn" aria-label="Page précédente" data-tooltip="Page précédente (←)">‹</button>
+                <button type="button" class="comic-reader-btn" data-reader-action="right" id="comic-reader-right-btn" aria-label="Page suivante" data-tooltip="Page suivante (→)">›</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="fullscreen" aria-label="Plein écran" data-tooltip="Plein écran (F)">⛶</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="help" id="comic-reader-help-btn" aria-label="Raccourcis clavier" data-tooltip="Raccourcis clavier (?)">?</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="close" aria-label="Fermer le lecteur" data-tooltip="Fermer (Échap)">×</button>
@@ -188,9 +220,11 @@ function _buildComicReader() {
                 <img class="comic-reader-image" id="comic-reader-image" alt="">
                 <img class="comic-reader-image" id="comic-reader-image-2" alt="" hidden>
             </div>
+            <div class="comic-reader-webtoon" id="comic-reader-webtoon" hidden></div>
             <div class="comic-reader-status" id="comic-reader-status"></div>
         </div>
         <div class="comic-reader-footer">
+            <div class="comic-reader-edge" id="comic-reader-edge" hidden></div>
             <div class="comic-reader-thumbs" id="comic-reader-thumbs" aria-label="Miniatures des pages"></div>
             <input type="range" class="comic-reader-slider" id="comic-reader-slider" min="1" max="1" value="1" aria-label="Aller à la page">
         </div>
@@ -204,8 +238,12 @@ function _buildComicReader() {
         button.addEventListener('click', event => {
             event.stopPropagation();
             const action = button.dataset.readerAction;
-            if (action === 'prev') stepComicReader(-1);
-            else if (action === 'next') stepComicReader(1);
+            if (action === 'left') stepComicReader(_comicReaderRtl() ? 1 : -1);
+            else if (action === 'right') stepComicReader(_comicReaderRtl() ? -1 : 1);
+            else if (action === 'prev-volume') openComicReaderNeighbour(-1);
+            else if (action === 'next-volume') openComicReaderNeighbour(1);
+            else if (action === 'webtoon') toggleComicReaderWebtoon();
+            else if (action === 'rtl') toggleComicReaderRtl();
             else if (action === 'fit') cycleComicReaderFit();
             else if (action === 'spread') toggleComicReaderSpread();
             else if (action === 'help') toggleComicReaderHelp();
@@ -222,11 +260,25 @@ function _buildComicReader() {
         // Un glissement pour déplacer l'image agrandie ne tourne pas la page ; image
         // agrandie, un simple clic non plus (on revient à 100 % avec 0 ou le bouton).
         if (comicReader.suppressClick) { comicReader.suppressClick = false; return; }
-        if (comicReader.zoom > 1) return;
+        if (comicReader.zoom > 1 || comicReader.webtoon) return;  // webtoon : on fait défiler
         const rect = stage.getBoundingClientRect();
-        stepComicReader(event.clientX - rect.left < rect.width / 2 ? -1 : 1);
+        const left = event.clientX - rect.left < rect.width / 2;
+        stepComicReader(left === !_comicReaderRtl() ? -1 : 1);
+    });
+    // Webtoon : la page en cours est celle qui occupe le milieu de l'écran.
+    stage.addEventListener('scroll', () => {
+        if (!comicReader.webtoon || comicReader.webtoonFrame) return;
+        comicReader.webtoonFrame = requestAnimationFrame(() => {
+            comicReader.webtoonFrame = null;
+            _trackComicReaderWebtoonPage();
+        });
+    }, { passive: true });
+    overlay.querySelector('#comic-reader-edge').addEventListener('click', event => {
+        const button = event.target.closest('[data-neighbour]');
+        if (button) { event.stopPropagation(); openComicReaderNeighbour(parseInt(button.dataset.neighbour, 10)); }
     });
     stage.addEventListener('wheel', event => {
+        if (comicReader.webtoon) return;  // défilement natif
         // Ctrl/⌘ + molette (et pincement du pavé tactile) : zoom autour du pointeur.
         if (event.ctrlKey || event.metaKey) {
             event.preventDefault();
@@ -278,6 +330,7 @@ function _buildComicReader() {
         return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
     };
     stage.addEventListener('touchstart', event => {
+        if (comicReader.webtoon) return;  // défilement natif
         if (event.touches.length === 2) {
             // Pincement : zoom autour du milieu des deux doigts.
             const [a, b] = [touchPoint(event.touches[0]), touchPoint(event.touches[1])];
@@ -308,6 +361,7 @@ function _buildComicReader() {
         }
     }, { passive: false });
     stage.addEventListener('touchend', event => {
+        if (comicReader.webtoon) return;
         if (comicReader.pinch) {
             if (event.touches.length < 2) comicReader.pinch = null;
             comicReader.touchX = null;
@@ -325,7 +379,7 @@ function _buildComicReader() {
         if (comicReader.fit === 'height' && stage.scrollWidth > stage.clientWidth + 2) return;
         if (Math.abs(dx) > 40) {
             event.preventDefault();  // pas de clic fantôme après un glissement
-            stepComicReader(dx < 0 ? 1 : -1);
+            stepComicReader((dx < 0) === !_comicReaderRtl() ? 1 : -1);
         }
     });
     const thumbs = overlay.querySelector('#comic-reader-thumbs');
@@ -362,6 +416,7 @@ function _buildComicReader() {
     document.addEventListener('keydown', _comicReaderKeydown, true);
     _applyComicReaderFit();
     _applyComicReaderThumbs();
+    _applyComicReaderWebtoon();
     return overlay;
 }
 
@@ -370,7 +425,10 @@ function _comicReaderKeydown(event) {
     if (!overlay || overlay.hidden) return;
     event.stopImmediatePropagation();
     const keys = {
-        ArrowRight: () => stepComicReader(1), ArrowLeft: () => stepComicReader(-1),
+        ArrowRight: () => stepComicReader(_comicReaderRtl() ? -1 : 1), ArrowLeft: () => stepComicReader(_comicReaderRtl() ? 1 : -1),
+        '[': () => openComicReaderNeighbour(-1), ']': () => openComicReaderNeighbour(1),
+        w: () => toggleComicReaderWebtoon(), W: () => toggleComicReaderWebtoon(),
+        r: () => toggleComicReaderRtl(), R: () => toggleComicReaderRtl(),
         ' ': () => stepComicReader(event.shiftKey ? -1 : 1), PageDown: () => stepComicReader(1),
         PageUp: () => stepComicReader(-1), Home: () => showComicReaderPage(1),
         End: () => showComicReaderPage(comicReader.count), Escape: () => closeComicReader(),
@@ -451,6 +509,7 @@ function _applyComicReaderZoom() {
 }
 
 function _setComicReaderZoom(zoom, cx, cy) {
+    if (comicReader.webtoon) return;  // webtoon : zoom du navigateur (Ctrl +)
     const next = Math.min(COMIC_READER_ZOOM_MAX, zoom);
     if (next <= 1.01) { resetComicReaderZoom(); return; }
     const stage = document.getElementById('comic-reader-stage');
@@ -525,6 +584,29 @@ function _layoutComicReaderPages(fitOverride) {
 
 function _applyComicReaderSpread() {
     document.getElementById('comic-reader-spread-btn')?.classList.toggle('active', comicReader.spread);
+    // Sens manga : la première page de la double page à droite, miniatures et curseur aussi.
+    const rtl = _comicReaderRtl();
+    document.getElementById('comic-reader-pages')?.classList.toggle('rtl', rtl);
+    const strip = document.getElementById('comic-reader-thumbs');
+    if (strip) strip.dir = rtl ? 'rtl' : 'ltr';
+    const slider = document.getElementById('comic-reader-slider');
+    if (slider) slider.style.direction = rtl ? 'rtl' : '';
+    const rtlButton = document.getElementById('comic-reader-rtl-btn');
+    if (rtlButton) { rtlButton.classList.toggle('active', comicReader.rtl); rtlButton.hidden = comicReader.webtoon; }
+    const spreadButton = document.getElementById('comic-reader-spread-btn');
+    if (spreadButton) spreadButton.hidden = comicReader.webtoon;
+}
+
+function _comicReaderRtlKey() {
+    return `comic-reader-rtl-${comicReader.seriesId}`;
+}
+
+function toggleComicReaderRtl() {
+    if (comicReader.webtoon) return;
+    comicReader.rtl = !comicReader.rtl;
+    if (comicReader.seriesId) _comicReaderSavePref(_comicReaderRtlKey(), comicReader.rtl ? '1' : '0');
+    _applyComicReaderSpread();
+    if (comicReader.count) showComicReaderPage(comicReader.page);
 }
 
 function toggleComicReaderSpread() {
@@ -582,7 +664,7 @@ function _highlightComicReaderThumb() {
     const strip = document.getElementById('comic-reader-thumbs');
     if (!strip || strip.hidden) return;
     strip.querySelectorAll('.comic-reader-thumb.active').forEach(el => el.classList.remove('active'));
-    const shown = _comicReaderSpreadPages(comicReader.page, comicReader.count, comicReader.spread);
+    const shown = _comicReaderSpreadPages(comicReader.page, comicReader.count, _comicReaderSpread());
     shown.forEach(number => strip.querySelector(`[data-page="${number}"]`)?.classList.add('active'));
     const current = strip.querySelector(`[data-page="${shown[0]}"]`);
     if (!current) return;
@@ -590,15 +672,31 @@ function _highlightComicReaderThumb() {
     const stripRect = strip.getBoundingClientRect();
     const thumbRect = current.getBoundingClientRect();
     const target = strip.scrollLeft + (thumbRect.left - stripRect.left) - (strip.clientWidth - thumbRect.width) / 2;
-    strip.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+    // En sens manga (dir=rtl), scrollLeft est négatif : pas de borne à 0.
+    strip.scrollTo({ left: strip.dir === 'rtl' ? target : Math.max(0, target), behavior: 'smooth' });
 }
 
 function showComicReaderPage(number) {
     if (!comicReader.count) return;
-    const page = _comicReaderNormalizePage(number, comicReader.count, comicReader.spread);
+    if (comicReader.webtoon) {
+        const page = Math.min(Math.max(1, number), comicReader.count);
+        const target = document.querySelector(`#comic-reader-webtoon [data-page="${page}"]`);
+        // Le défilement provoqué ici n'est pas une lecture : le suivi l'ignore un instant.
+        comicReader.webtoonSettleUntil = Date.now() + 700;
+        target?.scrollIntoView({ block: 'start' });
+        // Une fois l'image chargée (hauteur réelle), on se recale dessus.
+        if (target && !target.complete) {
+            target.addEventListener('load', () => {
+                if (Date.now() < comicReader.webtoonSettleUntil + 1500) target.scrollIntoView({ block: 'start' });
+            }, { once: true });
+        }
+        _comicReaderPageShown(page, [page]);
+        return;
+    }
+    const page = _comicReaderNormalizePage(number, comicReader.count, _comicReaderSpread());
     comicReader.page = page;
     resetComicReaderZoom();
-    const shown = _comicReaderSpreadPages(page, comicReader.count, comicReader.spread);
+    const shown = _comicReaderSpreadPages(page, comicReader.count, _comicReaderSpread());
     const first = document.getElementById('comic-reader-image');
     const second = document.getElementById('comic-reader-image-2');
     document.getElementById('comic-reader-status').textContent = '';
@@ -615,30 +713,129 @@ function showComicReaderPage(number) {
         second.removeAttribute('src');
         second.removeAttribute('data-page');
     }
-    document.getElementById('comic-reader-counter').textContent =
-        `${shown.length > 1 ? `${shown[0]}-${shown[1]}` : shown[0]} / ${comicReader.count}`;
-    const slider = document.getElementById('comic-reader-slider');
-    slider.value = String(page);
     const stage = document.getElementById('comic-reader-stage');
     if (stage) { stage.scrollTop = 0; stage.scrollLeft = 0; }
     _layoutComicReaderPages();
-    _highlightComicReaderThumb();
-    _comicReaderSavePref(_comicReaderStorageKey(comicReader.volumeId), String(page));
+    _comicReaderPageShown(page, shown);
     // Précharge la vue suivante pour tourner sans attente.
-    if (comicReader.progressReady) _scheduleComicReaderProgress();
-    else comicReader.progressReady = true;  // premier affichage : pas d'envoi
-    const next = _comicReaderStepTarget(page, 1, comicReader.count, comicReader.spread);
+    const next = _comicReaderStepTarget(page, 1, comicReader.count, _comicReaderSpread());
     if (next) {
-        _comicReaderSpreadPages(next, comicReader.count, comicReader.spread).forEach(number => {
+        _comicReaderSpreadPages(next, comicReader.count, _comicReaderSpread()).forEach(number => {
             const preload = new Image();
             preload.src = _comicReaderPageUrl(number);
         });
     }
 }
 
+// Ce qui suit l'affichage d'une page, en mode pages comme en webtoon : compteur, curseur,
+// miniatures, reprise, envoi à Komga, encart du tome voisin.
+function _comicReaderPageShown(page, shown) {
+    comicReader.page = page;
+    document.getElementById('comic-reader-counter').textContent =
+        `${shown.length > 1 ? `${shown[0]}-${shown[1]}` : shown[0]} / ${comicReader.count}`;
+    document.getElementById('comic-reader-slider').value = String(page);
+    _highlightComicReaderThumb();
+    _comicReaderSavePref(_comicReaderStorageKey(comicReader.volumeId), String(page));
+    if (comicReader.progressReady) _scheduleComicReaderProgress();
+    else comicReader.progressReady = true;  // premier affichage : pas d'envoi
+    _updateComicReaderEdge(shown);
+}
+
+// Encart « Tome précédent » à la première page, « Fin de l'album · Tome suivant » à la dernière.
+function _updateComicReaderEdge(shown) {
+    const edge = document.getElementById('comic-reader-edge');
+    if (!edge) return;
+    const escape = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const last = shown[shown.length - 1] >= comicReader.count;
+    if (last) {
+        edge.innerHTML = `<span>Fin de l'album</span>` + (comicReader.next
+            ? `<button type="button" class="comic-reader-edge-btn" data-neighbour="1">Tome suivant : ${escape(comicReader.next.label)} ⏭</button>`
+            : '<span class="comic-reader-edge-muted">dernier tome de la série</span>');
+        edge.hidden = false;
+    } else if (shown[0] === 1 && comicReader.previous) {
+        edge.innerHTML = `<button type="button" class="comic-reader-edge-btn" data-neighbour="-1">⏮ Tome précédent : ${escape(comicReader.previous.label)}</button>`;
+        edge.hidden = false;
+    } else {
+        edge.hidden = true;
+    }
+}
+
 function stepComicReader(step) {
-    const target = _comicReaderStepTarget(comicReader.page, step, comicReader.count, comicReader.spread);
+    if (comicReader.webtoon) {
+        const target = comicReader.page + step;
+        if (target >= 1 && target <= comicReader.count) showComicReaderPage(target);
+        else openComicReaderNeighbour(step > 0 ? 1 : -1);
+        return;
+    }
+    const target = _comicReaderStepTarget(comicReader.page, step, comicReader.count, _comicReaderSpread());
     if (target !== null) showComicReaderPage(target);
+    // Au bout de l'album, tourner la page ouvre le tome voisin.
+    else openComicReaderNeighbour(step > 0 ? 1 : -1);
+}
+
+function openComicReaderNeighbour(direction) {
+    const target = direction > 0 ? comicReader.next : comicReader.previous;
+    if (target) openComicReader(target.volume_id);
+}
+
+// ===== Mode webtoon : toutes les pages à la suite, défilement vertical continu =====
+function _buildComicReaderWebtoon() {
+    const container = document.getElementById('comic-reader-webtoon');
+    if (!container) return;
+    const parts = [];
+    for (let n = 1; n <= comicReader.count; n++) {
+        parts.push(`<img class="comic-reader-webtoon-page" data-page="${n}" src="${_comicReaderPageUrl(n)}" alt="${comicReader.title.replace(/"/g, '&quot;')} - page ${n}" loading="lazy" decoding="async">`);
+    }
+    container.innerHTML = parts.join('');
+}
+
+function _trackComicReaderWebtoonPage() {
+    if (Date.now() < (comicReader.webtoonSettleUntil || 0)) return;
+    const stage = document.getElementById('comic-reader-stage');
+    const pages = document.querySelectorAll('#comic-reader-webtoon .comic-reader-webtoon-page');
+    if (!stage || !pages.length) return;
+    const middle = stage.getBoundingClientRect().top + stage.clientHeight / 2;
+    let page = comicReader.page;
+    for (const image of pages) {
+        const rect = image.getBoundingClientRect();
+        if (rect.top <= middle && rect.bottom >= middle) { page = parseInt(image.dataset.page, 10); break; }
+    }
+    // Tout en bas : la dernière page est atteinte même si elle est courte.
+    if (stage.scrollTop + stage.clientHeight >= stage.scrollHeight - 4) page = comicReader.count;
+    if (page !== comicReader.page) _comicReaderPageShown(page, [page]);
+}
+
+function _applyComicReaderWebtoon() {
+    const stage = document.getElementById('comic-reader-stage');
+    if (!stage) return;
+    const webtoon = comicReader.webtoon;
+    stage.classList.toggle('webtoon', webtoon);
+    document.getElementById('comic-reader-pages').hidden = webtoon;
+    document.getElementById('comic-reader-webtoon').hidden = !webtoon;
+    document.getElementById('comic-reader-webtoon-btn')?.classList.toggle('active', webtoon);
+    for (const id of ['comic-reader-fit', 'comic-reader-zoom']) {
+        const el = document.getElementById(id);
+        if (el) el.hidden = webtoon;
+    }
+    document.querySelectorAll('[data-reader-action="zoom-in"], [data-reader-action="zoom-out"]').forEach(el => { el.hidden = webtoon; });
+    _applyComicReaderSpread();
+}
+
+function toggleComicReaderWebtoon() {
+    resetComicReaderZoom();
+    comicReader.webtoon = !comicReader.webtoon;
+    _comicReaderSavePref('comic-reader-webtoon', comicReader.webtoon ? '1' : '0');
+    _applyComicReaderWebtoon();
+    if (!comicReader.count) return;
+    const page = comicReader.page;
+    if (comicReader.webtoon) {
+        _buildComicReaderWebtoon();
+        _clearComicReaderImages();
+        requestAnimationFrame(() => showComicReaderPage(page));
+    } else {
+        document.getElementById('comic-reader-webtoon').innerHTML = '';
+        showComicReaderPage(page);
+    }
 }
 
 function toggleComicReaderFullscreen() {
@@ -657,6 +854,8 @@ async function openComicReader(volumeId) {
     comicReader.volumeId = volumeId;
     comicReader.count = 0;
     comicReader.progressReady = false;
+    comicReader.previous = null;
+    comicReader.next = null;
     resetComicReaderZoom();
     document.getElementById('comic-reader-title').textContent = 'Chargement…';
     document.getElementById('comic-reader-counter').textContent = '';
@@ -664,6 +863,8 @@ async function openComicReader(volumeId) {
     _applyComicReaderSpread();
     document.getElementById('comic-reader-status').textContent = '';
     document.getElementById('comic-reader-thumbs').innerHTML = '';
+    document.getElementById('comic-reader-webtoon').innerHTML = '';
+    document.getElementById('comic-reader-edge').hidden = true;
     overlay.hidden = false;
     document.body.classList.add('comic-reader-open');
     document.getElementById('comic-reader-stage').focus({ preventScroll: true });
@@ -674,6 +875,19 @@ async function openComicReader(volumeId) {
         if (!data.page_count) throw new Error('Aucune page lisible dans ce fichier');
         comicReader.count = data.page_count;
         comicReader.title = [data.series_title, data.label].filter(Boolean).join(' - ');
+        comicReader.seriesId = data.series_id;
+        comicReader.previous = data.previous || null;
+        comicReader.next = data.next || null;
+        // Sens manga : choix mémorisé pour la série, sinon d'office pour une origine Asie.
+        const savedRtl = data.series_id ? _comicReaderPref(_comicReaderRtlKey(), null) : null;
+        comicReader.rtl = savedRtl === null ? !!data.manga : savedRtl === '1';
+        const prevButton = document.getElementById('comic-reader-prev-volume');
+        const nextButton = document.getElementById('comic-reader-next-volume');
+        prevButton.hidden = !comicReader.previous;
+        nextButton.hidden = !comicReader.next;
+        if (comicReader.previous) prevButton.dataset.tooltip = `Tome précédent : ${comicReader.previous.label} ([)`;
+        if (comicReader.next) nextButton.dataset.tooltip = `Tome suivant : ${comicReader.next.label} (])`;
+        _applyComicReaderWebtoon();
         const subtitle = data.title && !comicReader.title.includes(data.title) ? ` · ${data.title}` : '';
         document.getElementById('comic-reader-title').textContent = comicReader.title + subtitle;
         const slider = document.getElementById('comic-reader-slider');
@@ -682,7 +896,12 @@ async function openComicReader(volumeId) {
         let start = parseInt(_comicReaderPref(_comicReaderStorageKey(volumeId), '1'), 10) || 1;
         // Album fini lors de la dernière lecture : on repart du début.
         if (start >= data.page_count) start = 1;
-        showComicReaderPage(start);
+        if (comicReader.webtoon) {
+            _buildComicReaderWebtoon();
+            requestAnimationFrame(() => showComicReaderPage(start));
+        } else {
+            showComicReaderPage(start);
+        }
     } catch (error) {
         document.getElementById('comic-reader-title').textContent = 'Lecture impossible';
         document.getElementById('comic-reader-status').textContent = error.message;
@@ -700,4 +919,5 @@ function closeComicReader() {
     document.body.classList.remove('comic-reader-open');
     _clearComicReaderImages();
     document.getElementById('comic-reader-thumbs').innerHTML = '';
+    document.getElementById('comic-reader-webtoon').innerHTML = '';
 }

@@ -3564,3 +3564,25 @@ body.comic-reader-open { overflow: hidden; }
     background: color-mix(in srgb, var(--color-success, #2e7d32) 14%, transparent);
     color: var(--color-success, #2e7d32);
 }
+
+/* Lecteur : mode webtoon (pages à la suite, défilement vertical continu). Les pages pas encore
+   chargées gardent des proportions d'album (2/3) pour que la reprise tombe au bon endroit. */
+.comic-reader-stage.webtoon { display: block; overflow-y: auto; overflow-x: hidden; cursor: default; touch-action: pan-y; }
+.comic-reader-webtoon { display: flex; flex-direction: column; align-items: center; }
+.comic-reader-webtoon-page { display: block; width: min(100%, 960px); height: auto; aspect-ratio: auto 2 / 3; background: #1a1a1a; }
+/* Sens manga : la première page de la double page à droite. */
+.comic-reader-pages.rtl { flex-direction: row-reverse; }
+/* Encart du tome voisin : première page (tome précédent), dernière page (tome suivant). */
+/* En tête du pied du lecteur, au-dessus des miniatures. */
+.comic-reader-edge {
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px;
+    margin: 0 0 8px; color: #eee; font-size: 14px;
+}
+.comic-reader-edge[hidden] { display: none; }
+.comic-reader-edge-btn {
+    border: none; border-radius: 999px; padding: 7px 14px; cursor: pointer;
+    background: var(--color-accent); color: #fff; font-weight: 600; font-size: 14px;
+}
+.comic-reader-edge-btn:hover { filter: brightness(1.1); }
+.comic-reader-edge-muted { color: #aaa; }
+.comic-reader-btn[hidden] { display: none; }
