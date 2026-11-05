@@ -251,7 +251,7 @@ function _applyLibraryData(series, stats) {
     seriesData.forEach(s => { s._searchHaystack = buildSearchHaystack(s); });
     updateStats(stats);
     populateDynamicFilterOptions();
-    updateActiveFilterBadges();
+    refreshFilterDropdownUI();
     // Ré-applique la recherche/les filtres/le tri actifs (plutôt que d'afficher la
     // liste brute) pour qu'un rechargement manuel ou après scan ne fasse pas
     // silencieusement disparaître le filtrage en cours (cf. filterSeries)
@@ -697,8 +697,6 @@ function buildPosterCardHtml(s) {
                 <span class="poster-select-box" aria-hidden="true">${svgIcon('check')}</span>
             </label>
             <div class="poster-actions">
-                <button class="poster-action-btn" onclick="event.stopPropagation(); scanSeries(${s.id})"
-                        title="Actualiser: scan rapide de cette série" aria-label="Actualiser: scan rapide de cette série">${svgIcon('refresh-cw')}</button>
                 <button class="poster-action-btn" onclick="event.stopPropagation(); searchSeriesInSearchTab(${s.id})"
                         title="Rechercher cette série dans l'onglet Recherche" aria-label="Rechercher cette série dans l'onglet Recherche">${svgIcon('search')}</button>
                 <button class="poster-action-btn" onclick="event.stopPropagation(); openSeriesEditModal(${s.id})"
@@ -1583,6 +1581,8 @@ function seriesMatchesFilterKey(s, key) {
     if (key.startsWith('genre:')) return splitMultiValue(s.local_genre).includes(key.slice('genre:'.length));
     if (key.startsWith('author:')) return splitMultiValue(s.local_author).includes(key.slice('author:'.length));
     if (key.startsWith('year:')) return (s.year || '') === key.slice('year:'.length);
+    if (key.startsWith('status:')) return _seriesStatusLabel(s) === key.slice('status:'.length);
+    if (key.startsWith('lang:')) return _seriesLanguageLabel(s) === key.slice('lang:'.length);
     if (key.startsWith('tag:')) {
         const wanted = normalizeForSearch(key.slice('tag:'.length)).replace(/-/g, ' ');
         return (s.tags || []).some(tag => normalizeForSearch(tag).replace(/-/g, ' ') === wanted);
@@ -1783,6 +1783,40 @@ function splitMultiValue(value) {
 // déroulant, champ de seriesData à lire, préfixe de mode utilisé par filterSeries(),
 // icône affichée devant chaque option, si la valeur doit être découpée (multi-valeur)
 // ou utilisée telle quelle (valeur unique, ex: année)
+function _seriesLanguageLabel(s) {
+    const lang = (s.bedetheque_language || '').trim();
+    return lang || 'Inconnue';
+}
+
+// Statut (même libellé que le badge des affiches) et langue Bédéthèque : menus construits
+// depuis les valeurs présentes dans la bibliothèque, avec le nombre de séries pour chacune.
+const _STATUS_FILTER_ORDER = ['Terminé', 'En cours', 'Incomplet', 'Manquant', 'Vide', '—'];
+
+function _fillCountFilterMenu(menuId, prefix, getValue, order) {
+    const menu = document.getElementById(menuId);
+    if (!menu) return;
+    const counts = new Map();
+    seriesData.filter(seriesHasAlbums).forEach(s => {
+        const v = getValue(s);
+        counts.set(v, (counts.get(v) || 0) + 1);
+    });
+    const values = [...counts.keys()].sort((a, b) => {
+        if (order) {
+            const ia = order.indexOf(a), ib = order.indexOf(b);
+            if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        }
+        return (counts.get(b) - counts.get(a)) || a.localeCompare(b, 'fr');
+    });
+    menu.innerHTML = values.length
+        ? values.map(v => `<button class="toolbar-dropdown-item" data-filter="${escapeHtml(prefix + v)}" onclick="toggleSeriesFilter(this.dataset.filter)">${escapeHtml(v === '—' ? 'Sans statut' : v)} <span class="filter-count">${counts.get(v)}</span></button>`).join('')
+        : '<div class="toolbar-dropdown-empty">Aucune valeur</div>';
+}
+
+function populateStatusLanguageFilters() {
+    _fillCountFilterMenu('status-filter-menu', 'status:', _seriesStatusLabel, _STATUS_FILTER_ORDER);
+    _fillCountFilterMenu('language-filter-menu', 'lang:', _seriesLanguageLabel, null);
+}
+
 const DYNAMIC_FILTER_SECTIONS = [
     { containerId: 'genre-filter-list', field: 'local_genre', prefix: 'genre:', icon: '🏷️', multi: true },
     { containerId: 'author-filter-list', field: 'local_author', prefix: 'author:', icon: '✍️', multi: true },
@@ -1793,6 +1827,7 @@ const DYNAMIC_FILTER_SECTIONS = [
 // locales (ComicInfo.xml) présentes dans seriesData, puisqu'elles dépendent du contenu de
 // chaque bibliothèque et ne peuvent pas être codées en dur comme les autres options
 function populateDynamicFilterOptions() {
+    populateStatusLanguageFilters();
     DYNAMIC_FILTER_SECTIONS.forEach(section => {
         const container = document.getElementById(section.containerId);
         const sectionEl = document.getElementById(section.containerId.replace('-list', '-section'));
@@ -1835,6 +1870,8 @@ function getFilterKeyLabel(key) {
     if (key === 'to-read') return '📚 À lire plus tard';
     if (key === 'favorite') return '⭐ Favoris';
     if (key.startsWith('tag:')) return '🏷️ ' + key.slice('tag:'.length);
+    if (key.startsWith('status:')) return '📊 ' + key.slice('status:'.length);
+    if (key.startsWith('lang:')) return '🌐 ' + key.slice('lang:'.length);
     for (const section of DYNAMIC_FILTER_SECTIONS) {
         if (key.startsWith(section.prefix)) {
             return `${section.icon} ${key.slice(section.prefix.length)}`;
@@ -1947,7 +1984,8 @@ function clearSeriesFilters() {
 // Auteur/Année, cf. templates/library.html): utilisé pour mettre en surbrillance le
 // bouton lui-même dès qu'un filtre de sa catégorie est actif, même dropdown fermé
 const FILTER_TOOLBAR_BUTTONS = [
-    { id: 'status-filter-btn', match: key => key === 'missing' || key === 'oneshot' || key === 'ebdz-unmatched' || key === 'missing-metadata' },
+    { id: 'status-filter-btn', match: key => key.startsWith('status:') },
+    { id: 'language-filter-btn', match: key => key.startsWith('lang:') },
     { id: 'lists-filter-btn', match: key => key === 'to-read' || key === 'favorite' },
     { id: 'genre-filter-btn', match: key => key.startsWith('genre:') },
     { id: 'author-filter-btn', match: key => key.startsWith('author:') },
