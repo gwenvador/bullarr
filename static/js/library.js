@@ -583,7 +583,8 @@ async function loadKeepReading() {
                     title="Reprendre ${escapeHtml(item.series_title)} - ${escapeHtml(item.label)} à la page ${item.page}">
                 <span class="keep-reading-cover">${cover}<span class="keep-reading-progress"><span style="width:${percent}%"></span></span></span>
                 <span class="keep-reading-title">${escapeHtml(item.series_title)}</span>
-                <span class="keep-reading-meta">${escapeHtml(item.label)} · p. ${item.page}${pages ? '/' + pages : ''}</span>
+                <span class="keep-reading-meta">${escapeHtml(item.label)}</span>
+                <span class="keep-reading-pages">p. ${item.page}${pages ? '/' + pages : ''}</span>
             </button>`;
     }).join('');
     section.innerHTML = `
