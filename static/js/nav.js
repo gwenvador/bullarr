@@ -2144,9 +2144,14 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
         // présent dans le wrapper. Garder l'élément du premier rendu laissait la barre miroir sur une largeur
         // périmée (sans débordement), alors que la barre native du bas est masquée: plus aucune barre à la souris.
         let observed = null;
+        // Un même conteneur peut quitter la vue tableau (bibliothèque : #series-grid passe en
+        // affiches/aperçu) : la barre miroir disparaît alors, sinon elle restait affichée
+        // au-dessus des affiches avec la largeur de l'ancien tableau.
         const syncWidth = () => {
             const current = wrapper.querySelector('table');
-            if (!current) return;
+            const active = !!current && selectors.some(selector => wrapper.matches(selector));
+            top.style.display = active ? '' : 'none';
+            if (!active) return;
             spacer.style.width = `${current.scrollWidth}px`;
             top.scrollLeft = wrapper.scrollLeft;
         };
@@ -2163,7 +2168,7 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
         top.addEventListener('scroll', () => { wrapper.scrollLeft = top.scrollLeft; });
         wrapper.addEventListener('scroll', () => { if (top.scrollLeft !== wrapper.scrollLeft) top.scrollLeft = wrapper.scrollLeft; });
         if (resizeObserver) resizeObserver.observe(wrapper);
-        new MutationObserver(observeCurrentTable).observe(wrapper, { childList: true });
+        new MutationObserver(observeCurrentTable).observe(wrapper, { childList: true, attributes: true, attributeFilter: ['class'] });
         observeCurrentTable();
     }
 
