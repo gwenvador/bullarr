@@ -11,6 +11,7 @@ import time
 
 from flask import current_app, jsonify, request
 
+from error_utils import error_message
 from . import ai_bp
 from .auto_tag import (
     AUTO_TAG_DELAY, AUTO_TAG_MAX_ATTEMPTS, AUTO_TAG_MAX_SERIES, auto_tag_active, ensure_table,
@@ -111,7 +112,7 @@ def ai_test():
     try:
         name = test_connection(cfg)
     except AiError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': error_message(exc)}), 400
     return jsonify({'success': True, 'message': f'Connexion réussie : {name}'})
 
 
@@ -126,7 +127,7 @@ def ai_models():
     try:
         models = list_models(cfg)
     except AiError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': error_message(exc)}), 400
     return jsonify({'success': True, 'models': models})
 
 
@@ -260,7 +261,7 @@ def ai_suggest_series_tags(series_id):
     try:
         cfg = _enabled_config()
     except AiError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': error_message(exc)}), 400
     conn = _db()
     try:
         row = conn.execute('SELECT * FROM series WHERE id = ?', (series_id,)).fetchone()
@@ -271,7 +272,7 @@ def ai_suggest_series_tags(series_id):
     except AiError as exc:
         add_entry('series', 'error', str(exc), provider=cfg.get('provider'), model=active_model(cfg),
                   started_at=started, extra={'title': row['title'] if row else ''})
-        return jsonify({'success': False, 'error': str(exc)}), 502
+        return jsonify({'success': False, 'error': error_message(exc)}), 502
     finally:
         conn.close()
     current = parse_tags(row['tags'])
@@ -298,7 +299,7 @@ def ai_generate_tags():
     try:
         _enabled_config()
     except AiError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': error_message(exc)}), 400
     error = _start_job('generate', _run_generate, scope, library_id, extra={'scope': scope})
     if error:
         return jsonify({'success': False, 'error': error}), 409
@@ -337,7 +338,7 @@ def ai_normalize_tags():
                           'proposer des tags. Choisissez un autre fournisseur ci-dessus (Claude, Gemini, '
                           'ChatGPT, OpenRouter, Groq ou un LLM local)')
     except AiError as exc:
-        return jsonify({'success': False, 'error': str(exc)}), 400
+        return jsonify({'success': False, 'error': error_message(exc)}), 400
     error = _start_job('normalize', _run_normalize)
     if error:
         return jsonify({'success': False, 'error': error}), 409

@@ -2,6 +2,7 @@
 Routes pour l'intégration Komga (serveur de bibliothèque BD)
 Documentation API: https://komga.org/docs/openapi/komga-api
 """
+from error_utils import error_message
 from flask import request, jsonify
 from . import komga_bp
 import requests
@@ -133,7 +134,7 @@ def sync_komga_read_progress():
     try:
         stats = sync_read_progress()
     except KomgaError as e:
-        return jsonify({'success': False, 'error': str(e)}), 502
+        return jsonify({'success': False, 'error': error_message(e)}), 502
     if stats is None:
         return jsonify({'success': False, 'error': 'Komga non activé'}), 400
     return jsonify({'success': True, **stats})

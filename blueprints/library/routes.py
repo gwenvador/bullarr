@@ -6961,11 +6961,13 @@ def _refresh_bedetheque_cache_for_import_if_missing(series_id, parsed):
 def _unique_import_target_path(target_dir, filename):
     """Chemin libre pour `filename` dans `target_dir` : le nom tel quel, sinon nom_1, nom_2...
     Jamais un fichier existant (le transfert final remplace la cible sans prévenir)."""
-    target_path = os.path.join(target_dir, filename)
+    # Nom venu de la requête : le chemin doit rester dans target_dir (pas de « ../ »).
+    root = os.path.realpath(target_dir)
+    target_path = resolve_within(os.path.join(root, filename), root)
     base, ext = os.path.splitext(filename)
     counter = 1
     while os.path.lexists(target_path):
-        target_path = os.path.join(target_dir, f"{base}_{counter}{ext}")
+        target_path = resolve_within(os.path.join(root, f"{base}_{counter}{ext}"), root)
         counter += 1
     return target_path
 

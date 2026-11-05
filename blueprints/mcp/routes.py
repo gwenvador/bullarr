@@ -5,6 +5,7 @@ listes « à lire plus tard » et favoris. Aucune suppression, aucun changement 
 Authentification : jeton dédié BULLARR_MCP_TOKEN (en-tête Authorization: Bearer ...), distinct
 de la clé API. Sans ce jeton configuré, l'endpoint répond 503.
 """
+from error_utils import error_message
 import hmac
 import json
 import os
@@ -292,7 +293,7 @@ def process(message):
             result = {'content': [{'type': 'text', 'text': json.dumps(output, ensure_ascii=False, indent=2)}],
                       'isError': False}
         except (McpError, KeyError, ValueError, TypeError, sqlite3.Error) as exc:
-            result = {'content': [{'type': 'text', 'text': f'Erreur : {exc}'}], 'isError': True}
+            result = {'content': [{'type': 'text', 'text': f'Erreur : {error_message(exc)}'}], 'isError': True}
     else:
         return _error(request_id, -32601, f'Méthode non gérée : {method}')
     return {'jsonrpc': '2.0', 'id': request_id, 'result': result}
