@@ -1,8 +1,9 @@
 """IA : configuration, appel du modèle et logique des tags.
 
-Deux fournisseurs au choix (Configuration → IA), chacun avec sa clé API et son modèle :
+Trois fournisseurs au choix (Configuration → IA), chacun avec sa clé API et son modèle :
 - Claude (Anthropic), via le SDK officiel « anthropic » ;
-- Gemini (Google), via l'API REST generativelanguage.googleapis.com.
+- Gemini (Google), via l'API REST generativelanguage.googleapis.com ;
+- ChatGPT (OpenAI), via l'API REST api.openai.com (Chat Completions, sortie JSON stricte).
 
 Deux traitements utilisent l'IA :
 - création des tags : propose des tags pour des séries (sans tags, ou toutes) à partir du
@@ -50,6 +51,19 @@ PROVIDERS = {
         'key_url': 'https://aistudio.google.com/apikey',
         'dynamic_models': True,
     },
+    'openai': {
+        'name': 'ChatGPT (OpenAI)',
+        # Liste de départ : la liste réelle est lue chez OpenAI avec la clé (list_models).
+        'models': {
+            'gpt-5-mini': 'GPT-5 mini',
+            'gpt-5': 'GPT-5',
+            'gpt-5-nano': 'GPT-5 nano',
+        },
+        'default_model': 'gpt-5-mini',
+        'key_placeholder': 'sk-proj-...',
+        'key_url': 'https://platform.openai.com/api-keys',
+        'dynamic_models': True,
+    },
 }
 DEFAULT_PROVIDER = 'anthropic'
 # Modèles Claude qui acceptent le repli côté serveur (fallbacks: "default") quand une
@@ -58,6 +72,10 @@ _FALLBACK_MODELS = {'claude-opus-5-5', 'claude-sonnet-5-5'}
 _MODEL_ID_RE = re.compile(r'^[a-z0-9][a-z0-9.\-]{1,80}$')
 GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta'
 GEMINI_RETRY_DELAYS = (5, 20)
+OPENAI_API = 'https://api.openai.com/v1'
+# Modèles OpenAI sans intérêt ici (audio, image, embeddings…), retirés de la liste.
+_OPENAI_SKIP = ('audio', 'realtime', 'tts', 'transcribe', 'image', 'embedding', 'search',
+                'moderation', 'instruct', 'whisper', 'dall-e', 'codex', 'computer-use')
 MASK = '****'
 
 GENERATE_BATCH_SIZE = 20
@@ -332,6 +350,8 @@ def list_models(cfg):
         return [{'id': model_id, 'name': name} for model_id, name in info['models'].items()]
     if not active_key(cfg):
         raise AiError('Saisissez une clé API pour lire la liste des modèles')
+    if provider == 'openai':
+        return _openai_models(cfg)
     models = []
     token = None
     for _ in range(10):
@@ -379,6 +399,86 @@ def _gemini_json(cfg, system, user, schema, max_tokens):
     return ''.join(part.get('text', '') for part in parts if not part.get('thought'))
 
 
+# ===== ChatGPT (OpenAI) =====
+
+def _openai_request(cfg, method, path, **kwargs):
+    headers = {'Authorization': f'Bearer {active_key(cfg)}', 'Content-Type': 'application/json'}
+    for attempt in range(len(GEMINI_RETRY_DELAYS) + 1):
+        try:
+            response = requests.request(method, f'{OPENAI_API}/{path}', headers=headers, **kwargs)
+        except requests.RequestException as exc:
+            raise AiError('Impossible de joindre l\'API OpenAI') from exc
+        try:
+            error = (response.json() or {}).get('error') or {} if not response.ok else {}
+        except ValueError:
+            error = {}
+        # Limite par minute ou surcharge : on réessaie (pas quand le crédit est épuisé).
+        retry = response.status_code in (500, 502, 503) or (
+            response.status_code == 429 and error.get('code') != 'insufficient_quota')
+        if retry and attempt < len(GEMINI_RETRY_DELAYS):
+            time.sleep(GEMINI_RETRY_DELAYS[attempt])
+            continue
+        break
+    if response.ok:
+        return response.json()
+    message = error.get('message') or response.text[:200]
+    if response.status_code == 401:
+        raise AiError('Clé API refusée par OpenAI')
+    if response.status_code == 403:
+        raise AiError('Clé API OpenAI sans accès à ce modèle')
+    if response.status_code == 404:
+        raise AiError('Modèle OpenAI introuvable pour cette clé API')
+    if response.status_code == 429:
+        if error.get('code') == 'insufficient_quota':
+            raise AiError('Crédit OpenAI épuisé : ajoutez du crédit sur platform.openai.com')
+        raise AiError('Limite de requêtes OpenAI atteinte, réessayez plus tard')
+    raise AiError(f'Erreur de l\'API OpenAI ({response.status_code}) : {message}')
+
+
+def _openai_test(cfg):
+    data = _openai_request(cfg, 'GET', f'models/{active_model(cfg)}', timeout=30)
+    return data.get('id') or active_model(cfg)
+
+
+def _openai_models(cfg):
+    data = _openai_request(cfg, 'GET', 'models', timeout=30)
+    models = []
+    for item in data.get('data') or []:
+        model_id = str(item.get('id') or '')
+        if not (model_id.startswith('gpt-') or model_id[:2] in ('o1', 'o3', 'o4')):
+            continue
+        if any(word in model_id for word in _OPENAI_SKIP) or not _MODEL_ID_RE.match(model_id):
+            continue
+        models.append({'id': model_id, 'name': model_id})
+    models.sort(key=lambda item: item['id'], reverse=True)
+    return models
+
+
+def _openai_json(cfg, system, user, schema, max_tokens):
+    body = {
+        'model': active_model(cfg),
+        'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
+        'response_format': {
+            'type': 'json_schema',
+            'json_schema': {'name': 'reponse', 'strict': True, 'schema': schema},
+        },
+        'max_completion_tokens': min(max_tokens, 100000),
+    }
+    data = _openai_request(cfg, 'POST', 'chat/completions', json=body, timeout=900)
+    choices = data.get('choices') or []
+    if not choices:
+        raise AiError('OpenAI n\'a renvoyé aucune réponse')
+    choice = choices[0]
+    message = choice.get('message') or {}
+    if message.get('refusal'):
+        raise AiError(f'ChatGPT a refusé de traiter cette demande : {message["refusal"]}')
+    if choice.get('finish_reason') == 'length':
+        raise AiError('Réponse du modèle tronquée (trop longue)')
+    if choice.get('finish_reason') == 'content_filter':
+        raise AiError('ChatGPT a refusé de traiter cette demande (filtre de contenu)')
+    return message.get('content') or ''
+
+
 # ===== Appel commun =====
 
 def _require_key(cfg):
@@ -391,6 +491,8 @@ def test_connection(cfg):
     _require_key(cfg)
     if cfg.get('provider') == 'gemini':
         return _gemini_test(cfg)
+    if cfg.get('provider') == 'openai':
+        return _openai_test(cfg)
     return _anthropic_test(cfg)
 
 
@@ -399,6 +501,8 @@ def call_json(cfg, system, user, schema, cache_system=False, max_tokens=64000):
     _require_key(cfg)
     if cfg.get('provider') == 'gemini':
         text = _gemini_json(cfg, system, user, schema, max_tokens)
+    elif cfg.get('provider') == 'openai':
+        text = _openai_json(cfg, system, user, schema, max_tokens)
     else:
         text = _anthropic_json(cfg, system, user, schema, cache_system, max_tokens)
     try:

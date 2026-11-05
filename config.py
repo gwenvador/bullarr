@@ -148,7 +148,7 @@ class Config:
 
     # Notifications ntfy (https://ntfy.sh ou serveur auto-hébergé), voir blueprints/ntfy.
     # auth: 'none', 'token' (jeton d'accès tk_...) ou 'basic' (identifiant + mot de passe).
-    # IA (Claude d'Anthropic ou Gemini de Google), voir blueprints/ai : création et
+    # IA (Claude d'Anthropic, Gemini de Google ou ChatGPT d'OpenAI), voir blueprints/ai : création et
     # normalisation des tags. Une clé chiffrée et un modèle par fournisseur.
     AI_CONFIG = {
         'enabled': False,

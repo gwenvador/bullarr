@@ -398,5 +398,76 @@ class AiTagsTestCase(unittest.TestCase):
         self.assertEqual(self.client.get('/api/ai/stats').get_json()['auto_pending'], 0)
 
 
+    def enable_openai(self):
+        response = self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'openai', 'api_key': 'sk-proj-openai-key-123456',
+            'model': 'gpt-5-mini'})
+        self.assertEqual(response.status_code, 200, response.get_json())
+
+    def _openai_response(self, content, finish='stop', refusal=None):
+        response = mock.Mock(status_code=200, ok=True)
+        response.json.return_value = {'choices': [{
+            'finish_reason': finish,
+            'message': {'role': 'assistant', 'content': content, 'refusal': refusal},
+        }]}
+        return response
+
+    def test_openai_call_sends_bearer_key_and_strict_schema(self):
+        self.enable_openai()
+        answer = {'groups': [{'canonical': 'charles-de-gaulle', 'reason': 'Même personne',
+                              'variants': ['de-gaulle', 'charles-de-gaulle']}]}
+        with mock.patch('blueprints.ai.service.requests.request',
+                        return_value=self._openai_response(json.dumps(answer))) as request:
+            self.client.post('/api/ai/tags/normalize')
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'done', job)
+        self.assertEqual(job['result']['groups'][0]['canonical'], 'charles-de-gaulle')
+        method, url = request.call_args.args
+        self.assertEqual((method, url), ('POST', 'https://api.openai.com/v1/chat/completions'))
+        kwargs = request.call_args.kwargs
+        self.assertEqual(kwargs['headers']['Authorization'], 'Bearer sk-proj-openai-key-123456')
+        body = kwargs['json']
+        self.assertEqual(body['model'], 'gpt-5-mini')
+        self.assertEqual(body['messages'][0]['role'], 'system')
+        self.assertTrue(body['response_format']['json_schema']['strict'])
+        self.assertIn('max_completion_tokens', body)
+        with open(self.app.config['AI_CONFIG_FILE'], encoding='utf-8') as handle:
+            self.assertNotIn('sk-proj', handle.read())
+
+    def test_openai_refusal_and_truncation_are_errors(self):
+        self.enable_openai()
+        for response, expected in ((self._openai_response(None, refusal='Non'), 'refusé'),
+                                   (self._openai_response('{', finish='length'), 'tronquée')):
+            with mock.patch('blueprints.ai.service.requests.request', return_value=response):
+                self.client.post('/api/ai/tags/normalize')
+                job = self.wait_job()
+            self.assertEqual(job['status'], 'error')
+            self.assertIn(expected, job['message'])
+
+    def test_openai_errors_are_explained(self):
+        self.client.post('/api/ai/config', json={'provider': 'openai', 'api_key': 'sk-proj-bad-0000000'})
+        for status, code, expected in ((401, 'invalid_api_key', 'Clé API refusée par OpenAI'),
+                                       (429, 'insufficient_quota', 'Crédit OpenAI épuisé')):
+            bad = mock.Mock(status_code=status, ok=False, text='')
+            bad.json.return_value = {'error': {'message': 'x', 'code': code}}
+            with mock.patch('blueprints.ai.service.requests.request', return_value=bad) as request:
+                response = self.client.post('/api/ai/test', json={'provider': 'openai'})
+            self.assertEqual(response.status_code, 400)
+            self.assertIn(expected, response.get_json()['error'])
+            self.assertEqual(request.call_count, 1)  # pas de nouvel essai
+
+    def test_openai_model_list_keeps_chat_models(self):
+        self.client.post('/api/ai/config', json={'provider': 'openai', 'api_key': 'sk-proj-openai-key-123456'})
+        listing = mock.Mock(status_code=200, ok=True)
+        listing.json.return_value = {'data': [
+            {'id': 'gpt-5-mini'}, {'id': 'gpt-5'}, {'id': 'o4-mini'}, {'id': 'text-embedding-3-small'},
+            {'id': 'gpt-4o-audio-preview'}, {'id': 'gpt-image-1'}, {'id': 'dall-e-3'},
+        ]}
+        with mock.patch('blueprints.ai.service.requests.request', return_value=listing):
+            data = self.client.post('/api/ai/models', json={'provider': 'openai'}).get_json()
+        self.assertTrue(data['success'], data)
+        self.assertEqual([m['id'] for m in data['models']], ['o4-mini', 'gpt-5-mini', 'gpt-5'])
+
+
 if __name__ == '__main__':
     unittest.main()
