@@ -1367,6 +1367,7 @@ input[type="checkbox"].switch-input:disabled {
 
 /* ===== Onglet IA (voir settings.js, partie « IA ») ===== */
 .ai-job-card { display: flex; flex-direction: column; gap: 8px; }
+.ai-job-card[hidden], .ai-proposals[hidden], .ai-job-progress[hidden] { display: none; }
 .ai-job-card.ai-job-error { border-color: var(--color-danger, #c0392b); }
 .ai-job-message { margin: 0; font-weight: 600; }
 .ai-job-progress { width: 100%; height: 8px; accent-color: var(--color-accent); }
