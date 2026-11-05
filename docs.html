@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Documentation — Bullarr</title>
-<meta name="description" content="Installer, configurer et utiliser Bullarr : bibliothèque, tags, listes, import, API, serveur MCP pour Claude et ChatGPT, application Android.">
+<meta name="description" content="Installer, configurer et utiliser Bullarr : bibliothèque, tags, listes, import, tags par IA (Claude, Gemini, ChatGPT), API, serveur MCP pour Claude et ChatGPT, application Android.">
 <link rel="icon" href="icon-128.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-128.png">
 <style>
@@ -100,6 +100,7 @@
     background: var(--g-accent-soft); color: var(--g-accent-ink); font-size: 0.68em; font-weight: 700;
 }
 .guide h3 { font-size: 1.08em; margin: 22px 0 8px; }
+.guide h4 { font-size: 1em; margin: 16px 0 6px; }
 .guide p { margin: 0 0 12px; }
 .guide ul { padding-left: 20px; margin: 0 0 12px; }
 .guide li { margin: 6px 0; }
@@ -198,7 +199,7 @@
       <li><a href="#fonctions">Fonctions</a></li>
       <li><a href="#tags-listes">Tags et listes</a></li>
       <li><a href="#import">Import automatique</a></li>
-      <li><a href="#ai">Bullarr et IA (MCP)</a></li>
+      <li><a href="#ai">Bullarr et IA (tags, MCP)</a></li>
       <li><a href="#api">API</a></li>
       <li><a href="#android">Application Android</a></li>
       <li><a href="#securite">Sécurité</a></li>
@@ -281,7 +282,17 @@
     </section>
 
     <section id="ai">
-      <h2><span class="guide-num">6</span> Bullarr et IA (serveur MCP)</h2>
+      <h2><span class="guide-num">6</span> Bullarr et IA</h2>
+      <h3>Tags par IA</h3>
+      <p>Dans <strong>Configuration → IA</strong>, choisissez un fournisseur — Claude (Anthropic), Gemini (Google) ou ChatGPT (OpenAI) — collez votre clé API, puis « Tester ». La clé est chiffrée sur le disque de votre serveur ; ↻ lit la liste des modèles disponibles avec votre clé.</p>
+      <ul>
+        <li><strong>Créer les tags</strong> : pour les séries sans tags (leur nombre est affiché) ou pour toutes. L'IA lit le titre, les auteurs, le genre et le résumé et réutilise le vocabulaire existant. Les tags proposés s'ajoutent, rien n'est retiré.</li>
+        <li><strong>Normaliser les tags</strong> : l'IA regroupe les tags qui veulent dire la même chose et propose un tag commun. Rien ne change avant votre validation.</li>
+        <li><strong>Nouvelles séries</strong> : une option tague automatiquement chaque série ajoutée (Bédéthèque, import ou scan), quelques minutes après son arrivée.</li>
+        <li><strong>Historique</strong> : chaque traitement est journalisé avec les séries modifiées et les tags ajoutés.</li>
+      </ul>
+      <div class="guide-note">Les appels sont facturés par le fournisseur choisi, sur votre clé. Seuls le titre, les auteurs, le genre, l’année, l’origine, le résumé et les tags sont envoyés, jamais les fichiers.</div>
+      <h3>Serveur MCP</h3>
       <p>Bullarr expose un serveur <a href="https://modelcontextprotocol.io">MCP</a> à l'adresse <code>/mcp</code> de votre instance. Il permet à Claude, ou à un autre assistant compatible, de chercher dans votre bibliothèque, de lire une fiche, de lister les tags et de les modifier, et de gérer les listes.</p>
       <div class="guide-table">
         <table>
@@ -295,7 +306,7 @@
           </tbody>
         </table>
       </div>
-      <h3>Activer le serveur</h3>
+      <h4>Activer le serveur</h4>
       <ol class="guide-steps">
         <li>Dans le <code>.env</code> de Bullarr, définissez <code>BULLARR_MCP_TOKEN</code> avec une chaîne aléatoire, puis redémarrez. Sans ce jeton, <code>/mcp</code> répond <code>503</code>.</li>
         <li>Ajoutez le serveur dans Claude Code :</li>
