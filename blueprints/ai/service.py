@@ -1,6 +1,10 @@
-"""IA (API Claude d'Anthropic) : configuration, appel du modèle et logique des tags.
+"""IA : configuration, appel du modèle et logique des tags.
 
-L'utilisateur saisit sa clé API dans Configuration → IA. Deux traitements utilisent l'IA :
+Deux fournisseurs au choix (Configuration → IA), chacun avec sa clé API et son modèle :
+- Claude (Anthropic), via le SDK officiel « anthropic » ;
+- Gemini (Google), via l'API REST generativelanguage.googleapis.com.
+
+Deux traitements utilisent l'IA :
 - création des tags : propose des tags pour des séries (sans tags, ou toutes) à partir du
   titre, des auteurs, du genre et du résumé, en réutilisant le vocabulaire existant ;
   les tags proposés s'ajoutent aux tags existants, rien n'est retiré ;
@@ -8,24 +12,52 @@ L'utilisateur saisit sa clé API dans Configuration → IA. Deux traitements uti
   (« de-gaulle », « charles-de-gaulle », « general de gaulle ») et propose un tag commun.
   Rien n'est modifié tant que l'utilisateur n'a pas validé les regroupements.
 """
+import copy
 import json
 import os
 import re
 import sqlite3
+import time
 
+import requests
 from flask import current_app
 
 from encryption import decrypt, encrypt
 
-MODELS = {
-    'claude-opus-5-5': 'Claude Opus 5.5',
-    'claude-sonnet-5-5': 'Claude Sonnet 5.5',
-    'claude-haiku-5-5': 'Claude Haiku 5.5',
+PROVIDERS = {
+    'anthropic': {
+        'name': 'Claude (Anthropic)',
+        'models': {
+            'claude-opus-5-5': 'Claude Opus 5.5',
+            'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+            'claude-haiku-5-5': 'Claude Haiku 5.5',
+        },
+        'default_model': 'claude-opus-5-5',
+        'key_placeholder': 'sk-ant-...',
+        'key_url': 'https://platform.claude.com/settings/keys',
+        'dynamic_models': False,
+    },
+    'gemini': {
+        'name': 'Gemini (Google)',
+        # Liste de départ : la liste réelle est lue chez Google avec la clé (list_models).
+        'models': {
+            'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
+            'gemini-3.5-flash': 'Gemini 3.5 Flash',
+            'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
+        },
+        'default_model': 'gemini-3.5-flash-lite',
+        'key_placeholder': 'AIza...',
+        'key_url': 'https://aistudio.google.com/apikey',
+        'dynamic_models': True,
+    },
 }
-DEFAULT_MODEL = 'claude-opus-5-5'
-# Modèles qui acceptent le repli côté serveur (fallbacks: "default") quand une requête
-# est déclinée par les filtres de sécurité.
+DEFAULT_PROVIDER = 'anthropic'
+# Modèles Claude qui acceptent le repli côté serveur (fallbacks: "default") quand une
+# requête est déclinée par les filtres de sécurité.
 _FALLBACK_MODELS = {'claude-opus-5-5', 'claude-sonnet-5-5'}
+_MODEL_ID_RE = re.compile(r'^[a-z0-9][a-z0-9.\-]{1,80}$')
+GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta'
+GEMINI_RETRY_DELAYS = (5, 20)
 MASK = '****'
 
 GENERATE_BATCH_SIZE = 20
@@ -40,11 +72,11 @@ class AiError(Exception):
 # ===== Configuration =====
 
 def default_ai_config():
-    return dict(current_app.config['AI_CONFIG'])
+    return copy.deepcopy(current_app.config['AI_CONFIG'])
 
 
 def load_ai_config():
-    """Configuration IA, clé API déchiffrée dans api_key_decrypted."""
+    """Configuration IA. Clés déchiffrées dans api_keys_decrypted[fournisseur]."""
     path = current_app.config['AI_CONFIG_FILE']
     cfg = default_ai_config()
     if os.path.exists(path):
@@ -55,20 +87,34 @@ def load_ai_config():
                 cfg.update(stored)
         except (OSError, ValueError):
             pass
-    if cfg.get('api_key'):
-        decrypted = decrypt(cfg['api_key'])
-        if decrypted:
-            cfg['api_key_decrypted'] = decrypted
-    if cfg.get('model') not in MODELS:
-        cfg['model'] = DEFAULT_MODEL
+    cfg['api_keys'] = dict(cfg.get('api_keys') or {})
+    cfg['models'] = dict(cfg.get('models') or {})
+    # Ancien format (Claude seul) : api_key / model au premier niveau.
+    legacy_key = cfg.pop('api_key', '')
+    legacy_model = cfg.pop('model', '')
+    if legacy_key and not cfg['api_keys'].get('anthropic'):
+        cfg['api_keys']['anthropic'] = legacy_key
+    if legacy_model and not cfg['models'].get('anthropic'):
+        cfg['models']['anthropic'] = legacy_model
+    if cfg.get('provider') not in PROVIDERS:
+        cfg['provider'] = DEFAULT_PROVIDER
+    cfg['api_keys_decrypted'] = {}
+    for provider, encrypted in cfg['api_keys'].items():
+        if provider in PROVIDERS and encrypted:
+            decrypted = decrypt(encrypted)
+            if decrypted:
+                cfg['api_keys_decrypted'][provider] = decrypted
+    for provider, info in PROVIDERS.items():
+        if not valid_model(provider, cfg['models'].get(provider)):
+            cfg['models'][provider] = info['default_model']
     return cfg
 
 
 def save_ai_config(cfg):
     path = current_app.config['AI_CONFIG_FILE']
     to_save = {key: value for key, value in cfg.items() if not key.endswith('_decrypted')}
-    plain = cfg.get('api_key_decrypted')
-    to_save['api_key'] = encrypt(plain) if plain else ''
+    to_save['api_keys'] = {provider: encrypt(key)
+                           for provider, key in (cfg.get('api_keys_decrypted') or {}).items() if key}
     try:
         with open(path, 'w', encoding='utf-8') as handle:
             json.dump(to_save, handle, indent=4)
@@ -79,49 +125,91 @@ def save_ai_config(cfg):
         return False
 
 
+def valid_model(provider, model):
+    info = PROVIDERS.get(provider)
+    if not info or not model:
+        return False
+    if info['dynamic_models']:
+        return bool(_MODEL_ID_RE.match(str(model)))
+    return model in info['models']
+
+
+def active_key(cfg):
+    return (cfg.get('api_keys_decrypted') or {}).get(cfg.get('provider'), '')
+
+
+def active_model(cfg):
+    provider = cfg.get('provider') or DEFAULT_PROVIDER
+    return cfg['models'].get(provider) or PROVIDERS[provider]['default_model']
+
+
 def public_config(cfg):
-    key = cfg.get('api_key_decrypted') or ''
+    keys = cfg.get('api_keys_decrypted') or {}
+    providers = []
+    for provider, info in PROVIDERS.items():
+        key = keys.get(provider) or ''
+        model = cfg['models'].get(provider) or info['default_model']
+        models = dict(info['models'])
+        models.setdefault(model, model)
+        providers.append({
+            'id': provider,
+            'name': info['name'],
+            'model': model,
+            'models': [{'id': model_id, 'name': name} for model_id, name in models.items()],
+            'dynamic_models': info['dynamic_models'],
+            'has_api_key': bool(key),
+            'api_key': MASK if key else '',
+            'api_key_hint': f'…{key[-4:]}' if len(key) > 8 else '',
+            'key_placeholder': info['key_placeholder'],
+            'key_url': info['key_url'],
+        })
     return {
         'enabled': bool(cfg.get('enabled')),
-        'model': cfg.get('model') or DEFAULT_MODEL,
-        'models': [{'id': model_id, 'name': name} for model_id, name in MODELS.items()],
-        'has_api_key': bool(key),
-        'api_key': MASK if key else '',
-        'api_key_hint': f'…{key[-4:]}' if len(key) > 8 else '',
+        'provider': cfg.get('provider') or DEFAULT_PROVIDER,
+        'providers': providers,
     }
 
 
 def merge_form(cfg, data):
-    """Reporte le formulaire dans cfg. Renvoie un message d'erreur ou None."""
+    """Reporte le formulaire dans cfg. Renvoie un message d'erreur ou None.
+
+    data : enabled, provider, et la clé / le modèle de ce fournisseur (api_key, model)."""
+    if 'provider' in data:
+        provider = str(data.get('provider') or '')
+        if provider not in PROVIDERS:
+            return 'Fournisseur d\'IA inconnu'
+        cfg['provider'] = provider
+    provider = cfg.get('provider') or DEFAULT_PROVIDER
     if 'enabled' in data:
         cfg['enabled'] = bool(data.get('enabled'))
     if 'model' in data:
-        model = str(data.get('model') or '')
-        if model not in MODELS:
+        model = str(data.get('model') or '').strip()
+        if model.startswith('models/'):
+            model = model[len('models/'):]
+        if not valid_model(provider, model):
             return 'Modèle inconnu'
-        cfg['model'] = model
+        cfg['models'][provider] = model
     if 'api_key' in data:
         key = str(data.get('api_key') or '').strip()
         if key != MASK:
-            cfg['api_key_decrypted'] = key
-            if not key:
-                cfg['api_key'] = ''
-    if cfg.get('enabled') and not cfg.get('api_key_decrypted'):
+            keys = cfg.setdefault('api_keys_decrypted', {})
+            if key:
+                keys[provider] = key
+            else:
+                keys.pop(provider, None)
+    if cfg.get('enabled') and not active_key(cfg):
         return 'Saisissez une clé API pour activer l\'IA'
     return None
 
 
-# ===== Appel du modèle =====
+# ===== Claude (Anthropic) =====
 
-def _client(cfg):
-    key = cfg.get('api_key_decrypted')
-    if not key:
-        raise AiError('Aucune clé API : renseignez-la dans Configuration → IA')
+def _anthropic_client(cfg):
     import anthropic
-    return anthropic.Anthropic(api_key=key, max_retries=3, timeout=900.0)
+    return anthropic.Anthropic(api_key=active_key(cfg), max_retries=3, timeout=900.0)
 
 
-def _friendly_error(exc):
+def _anthropic_error(exc):
     import anthropic
     if isinstance(exc, anthropic.AuthenticationError):
         return 'Clé API refusée par Anthropic'
@@ -139,20 +227,16 @@ def _friendly_error(exc):
     return str(exc)
 
 
-def test_connection(cfg):
-    """Vérifie la clé et l'accès au modèle choisi, sans consommer de tokens."""
-    client = _client(cfg)
+def _anthropic_test(cfg):
     try:
-        model = client.models.retrieve(cfg.get('model') or DEFAULT_MODEL)
+        model = _anthropic_client(cfg).models.retrieve(active_model(cfg))
     except Exception as exc:  # noqa: BLE001 - message lisible pour l'interface
-        raise AiError(_friendly_error(exc)) from exc
-    return getattr(model, 'display_name', None) or MODELS.get(cfg.get('model'), cfg.get('model'))
+        raise AiError(_anthropic_error(exc)) from exc
+    return getattr(model, 'display_name', None) or active_model(cfg)
 
 
-def call_json(cfg, system, user, schema, cache_system=False, max_tokens=64000):
-    """Envoie une requête au modèle et renvoie la réponse JSON (validée par le schéma)."""
-    client = _client(cfg)
-    model = cfg.get('model') or DEFAULT_MODEL
+def _anthropic_json(cfg, system, user, schema, cache_system, max_tokens):
+    model = active_model(cfg)
     system_block = {'type': 'text', 'text': system}
     if cache_system:
         system_block['cache_control'] = {'type': 'ephemeral'}
@@ -171,15 +255,149 @@ def call_json(cfg, system, user, schema, cache_system=False, max_tokens=64000):
         params['betas'] = ['server-side-fallback-2026-07-01']
         params['fallbacks'] = 'default'
     try:
-        with client.beta.messages.stream(**params) as stream:
+        with _anthropic_client(cfg).beta.messages.stream(**params) as stream:
             message = stream.get_final_message()
     except Exception as exc:  # noqa: BLE001 - message lisible pour l'interface
-        raise AiError(_friendly_error(exc)) from exc
+        raise AiError(_anthropic_error(exc)) from exc
     if message.stop_reason == 'refusal':
         raise AiError('Le modèle a refusé de traiter cette demande')
     if message.stop_reason == 'max_tokens':
         raise AiError('Réponse du modèle tronquée (trop longue)')
-    text = next((block.text for block in message.content if block.type == 'text'), '')
+    return next((block.text for block in message.content if block.type == 'text'), '')
+
+
+# ===== Gemini (Google) =====
+
+def gemini_schema(schema):
+    """Schéma JSON → responseSchema de Gemini (types en majuscules, sans additionalProperties)."""
+    if isinstance(schema, dict):
+        converted = {}
+        for key, value in schema.items():
+            if key == 'additionalProperties':
+                continue
+            if key == 'type' and isinstance(value, str):
+                converted[key] = value.upper()
+            else:
+                converted[key] = gemini_schema(value)
+        return converted
+    if isinstance(schema, list):
+        return [gemini_schema(item) for item in schema]
+    return schema
+
+
+def _gemini_request(cfg, method, path, **kwargs):
+    headers = {'x-goog-api-key': active_key(cfg), 'Content-Type': 'application/json'}
+    for attempt in range(len(GEMINI_RETRY_DELAYS) + 1):
+        try:
+            response = requests.request(method, f'{GEMINI_API}/{path}', headers=headers, **kwargs)
+        except requests.RequestException as exc:
+            raise AiError('Impossible de joindre l\'API Gemini') from exc
+        # Surcharge ou quota par minute : on réessaie un peu plus tard.
+        if response.status_code in (429, 500, 503) and attempt < len(GEMINI_RETRY_DELAYS):
+            time.sleep(GEMINI_RETRY_DELAYS[attempt])
+            continue
+        break
+    if response.ok:
+        return response.json()
+    try:
+        error = response.json().get('error') or {}
+    except ValueError:
+        error = {}
+    message = error.get('message') or response.text[:200]
+    reasons = json.dumps(error.get('details') or [])
+    if response.status_code == 400 and 'API_KEY_INVALID' in reasons:
+        raise AiError('Clé API refusée par Google')
+    if response.status_code in (401, 403):
+        raise AiError('Clé API refusée par Google, ou sans accès à ce modèle')
+    if response.status_code == 404:
+        raise AiError('Modèle Gemini introuvable pour cette clé API')
+    if response.status_code == 429:
+        raise AiError('Quota Gemini atteint, réessayez plus tard')
+    raise AiError(f'Erreur de l\'API Gemini ({response.status_code}) : {message}')
+
+
+def _gemini_test(cfg):
+    data = _gemini_request(cfg, 'GET', f'models/{active_model(cfg)}', timeout=30)
+    return data.get('displayName') or active_model(cfg)
+
+
+def list_models(cfg):
+    """Modèles disponibles pour le fournisseur choisi (Gemini : lus chez Google)."""
+    provider = cfg.get('provider') or DEFAULT_PROVIDER
+    info = PROVIDERS[provider]
+    if not info['dynamic_models']:
+        return [{'id': model_id, 'name': name} for model_id, name in info['models'].items()]
+    if not active_key(cfg):
+        raise AiError('Saisissez une clé API pour lire la liste des modèles')
+    models = []
+    token = None
+    for _ in range(10):
+        params = {'pageSize': 1000}
+        if token:
+            params['pageToken'] = token
+        data = _gemini_request(cfg, 'GET', 'models', params=params, timeout=30)
+        for item in data.get('models') or []:
+            model_id = str(item.get('name') or '').removeprefix('models/')
+            if (model_id.startswith('gemini')
+                    and 'generateContent' in (item.get('supportedGenerationMethods') or [])):
+                models.append({'id': model_id, 'name': item.get('displayName') or model_id})
+        token = data.get('nextPageToken')
+        if not token:
+            break
+    models.sort(key=lambda item: item['id'], reverse=True)
+    return models
+
+
+def _gemini_json(cfg, system, user, schema, max_tokens):
+    body = {
+        'systemInstruction': {'parts': [{'text': system}]},
+        'contents': [{'role': 'user', 'parts': [{'text': user}]}],
+        'generationConfig': {
+            'responseMimeType': 'application/json',
+            'responseSchema': gemini_schema(schema),
+            'maxOutputTokens': min(max_tokens, 65536),
+        },
+    }
+    data = _gemini_request(cfg, 'POST', f'models/{active_model(cfg)}:generateContent',
+                           json=body, timeout=900)
+    block = (data.get('promptFeedback') or {}).get('blockReason')
+    if block:
+        raise AiError(f'Gemini a refusé de traiter cette demande ({block})')
+    candidates = data.get('candidates') or []
+    if not candidates:
+        raise AiError('Gemini n\'a renvoyé aucune réponse')
+    candidate = candidates[0]
+    reason = candidate.get('finishReason')
+    if reason == 'MAX_TOKENS':
+        raise AiError('Réponse du modèle tronquée (trop longue)')
+    if reason in ('SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII'):
+        raise AiError(f'Gemini a refusé de traiter cette demande ({reason})')
+    parts = (candidate.get('content') or {}).get('parts') or []
+    return ''.join(part.get('text', '') for part in parts if not part.get('thought'))
+
+
+# ===== Appel commun =====
+
+def _require_key(cfg):
+    if not active_key(cfg):
+        raise AiError('Aucune clé API : renseignez-la dans Configuration → IA')
+
+
+def test_connection(cfg):
+    """Vérifie la clé et l'accès au modèle choisi, sans consommer de tokens."""
+    _require_key(cfg)
+    if cfg.get('provider') == 'gemini':
+        return _gemini_test(cfg)
+    return _anthropic_test(cfg)
+
+
+def call_json(cfg, system, user, schema, cache_system=False, max_tokens=64000):
+    """Envoie une requête au modèle et renvoie la réponse JSON (conforme au schéma)."""
+    _require_key(cfg)
+    if cfg.get('provider') == 'gemini':
+        text = _gemini_json(cfg, system, user, schema, max_tokens)
+    else:
+        text = _anthropic_json(cfg, system, user, schema, cache_system, max_tokens)
     try:
         return json.loads(text)
     except ValueError as exc:

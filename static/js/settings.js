@@ -3277,33 +3277,107 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// ===== IA (Claude) : clé API, création et normalisation des tags =====
+// ===== IA (Claude ou Gemini) : clé API, création et normalisation des tags =====
 // Voir blueprints/ai. Les traitements tournent côté serveur ; on suit GET /api/ai/job.
 let aiJobTimer = null;
+let aiConfig = null;
+// Saisies non enregistrées, gardées quand on passe d'un fournisseur à l'autre.
+const aiDrafts = {};
+
+const AI_MODEL_HELP = {
+    anthropic: 'Opus : le plus précis. Haiku : le moins cher.',
+    gemini: 'Flash-Lite : rapide et peu cher. ↻ lit les modèles disponibles avec votre clé.',
+};
+
+function _aiProvider(id) {
+    return ((aiConfig && aiConfig.providers) || []).find(p => p.id === id);
+}
+
+function _aiFillModels(models, selected) {
+    const select = document.getElementById('aiModel');
+    const list = [...models];
+    if (selected && !list.some(m => m.id === selected)) list.unshift({ id: selected, name: selected });
+    select.innerHTML = list.map(m =>
+        `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}${m.name !== m.id ? ' (' + escapeHtml(m.id) + ')' : ''}</option>`).join('');
+    select.value = selected;
+}
+
+function _aiShowProvider(id) {
+    const provider = _aiProvider(id);
+    if (!provider) return;
+    const draft = aiDrafts[id] || {};
+    const keyInput = document.getElementById('aiApiKey');
+    keyInput.value = draft.api_key !== undefined ? draft.api_key : (provider.api_key || '');
+    keyInput.placeholder = provider.has_api_key
+        ? `Clé enregistrée ${provider.api_key_hint || ''}`.trim() : provider.key_placeholder;
+    const link = document.getElementById('aiKeyLink');
+    link.href = provider.key_url;
+    link.textContent = new URL(provider.key_url).host;
+    _aiFillModels(draft.models || provider.models, draft.model || provider.model);
+    document.getElementById('aiRefreshModels').hidden = !provider.dynamic_models;
+    document.getElementById('aiModelHelp').textContent = AI_MODEL_HELP[id] || '';
+}
+
+function _aiSaveDraft() {
+    const id = document.getElementById('aiProvider').dataset.current;
+    if (!id) return;
+    const select = document.getElementById('aiModel');
+    aiDrafts[id] = {
+        api_key: document.getElementById('aiApiKey').value,
+        model: select.value,
+        models: [...select.options].map(o => ({ id: o.value, name: o.textContent.replace(/ \(.*\)$/, '') })),
+    };
+}
+
+function onAiProviderChange() {
+    _aiSaveDraft();
+    const select = document.getElementById('aiProvider');
+    select.dataset.current = select.value;
+    _aiShowProvider(select.value);
+}
 
 async function loadAiSettings() {
     try {
-        const cfg = await (await fetch('/api/ai/config')).json();
-        document.getElementById('aiEnabled').checked = !!cfg.enabled;
-        const keyInput = document.getElementById('aiApiKey');
-        keyInput.value = cfg.api_key || '';
-        keyInput.placeholder = cfg.has_api_key ? `Clé enregistrée ${cfg.api_key_hint || ''}`.trim() : 'sk-ant-...';
-        const select = document.getElementById('aiModel');
-        select.innerHTML = (cfg.models || []).map(model =>
-            `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`).join('');
-        select.value = cfg.model;
+        aiConfig = await (await fetch('/api/ai/config')).json();
+        Object.keys(aiDrafts).forEach(key => delete aiDrafts[key]);
+        document.getElementById('aiEnabled').checked = !!aiConfig.enabled;
+        const select = document.getElementById('aiProvider');
+        select.innerHTML = aiConfig.providers.map(p =>
+            `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
+        select.value = aiConfig.provider;
+        select.dataset.current = aiConfig.provider;
+        _aiShowProvider(aiConfig.provider);
     } catch (error) {
         showMessage('aiMessage', '❌ Impossible de charger la configuration IA', 'error');
     }
-    pollAiJob(true);
+    pollAiJob();
 }
 
 function _aiFormValues() {
     return {
         enabled: document.getElementById('aiEnabled').checked,
+        provider: document.getElementById('aiProvider').value,
         api_key: document.getElementById('aiApiKey').value.trim(),
         model: document.getElementById('aiModel').value,
     };
+}
+
+async function refreshAiModels() {
+    const values = _aiFormValues();
+    showMessage('aiMessage', 'Lecture des modèles…', 'info');
+    try {
+        const response = await fetch('/api/ai/models', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ provider: values.provider, api_key: values.api_key }),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        _aiFillModels(data.models, values.model);
+        showMessage('aiMessage', `✅ ${data.models.length} modèles disponibles`, 'success');
+    } catch (error) {
+        showMessage('aiMessage', '❌ ' + error.message, 'error');
+    }
 }
 
 async function saveAiSettings() {
@@ -3382,7 +3456,7 @@ function _showAiJob(job) {
     document.getElementById('aiNormalizeButton').disabled = running;
 }
 
-async function pollAiJob(once) {
+async function pollAiJob() {
     clearTimeout(aiJobTimer);
     let job;
     try {
@@ -3394,7 +3468,7 @@ async function pollAiJob(once) {
     if (job.status === 'running') {
         aiJobTimer = setTimeout(() => pollAiJob(), 2000);
     } else if (job.status === 'done' && job.kind === 'normalize' && !job.applied) {
-        // Aussi au retour sur l'onglet (once) : les propositions restent à valider.
+        // Aussi au retour sur l'onglet : les propositions restent à valider.
         renderAiNormalizeProposals((job.result || {}).groups || []);
     }
 }
