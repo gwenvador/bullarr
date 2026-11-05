@@ -3425,7 +3425,8 @@ async function _startAiJob(url, body) {
     });
     const data = await response.json();
     if (!data.success) {
-        _showAiJob({ status: 'error', message: data.error });
+        showMessage('aiMessage', '❌ ' + data.error, 'error');
+        document.getElementById('aiMessage').scrollIntoView({ block: 'nearest' });
         return false;
     }
     pollAiJob();
@@ -3447,7 +3448,8 @@ function _showAiJob(job) {
     const card = document.getElementById('aiJobCard');
     if (!card) return;
     const running = job.status === 'running';
-    card.hidden = !job.status || job.status === 'idle';
+    // Visible seulement pendant un traitement : le résultat va dans l'historique.
+    card.hidden = !running;
     card.classList.toggle('ai-job-error', job.status === 'error');
     const prefix = running ? '⏳ ' : job.status === 'error' ? '❌ ' : job.status === 'done' ? '✅ ' : '';
     document.getElementById('aiJobMessage').textContent = prefix + (job.message || '');
