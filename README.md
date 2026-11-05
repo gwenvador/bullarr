@@ -50,6 +50,13 @@ tomes manquants.
   ou les deux sur la même page de connexion
 - 🏷️ **Tags et listes** : tags par série (modifiables depuis la fiche, colonne Tags du tableau),
   recherche par tags dans la barre du haut, listes « à lire plus tard » et « favoris »
+- ✨ **Tags par IA** : Claude, Gemini ou ChatGPT (votre propre clé API) créent les tags des
+  séries et normalisent les tags existants, avec historique des traitements ; option pour
+  taguer automatiquement chaque nouvelle série (Configuration → IA)
+- 🖼️ **Vue Affiches** : grille de couvertures avec statut, sélection multiple, filtres Statut,
+  Origine (BD, Comics, Manga) et Listes, et « Continuer la lecture » synchronisé avec Komga
+- 🔔 **Notifications** : ntfy et notifications instantanées pour l'application Android
+  (UnifiedPush), par événement
 - 🤖 **Claude et ChatGPT (serveur MCP)** : chercher dans la bibliothèque, lire une fiche, créer
   des tags et gérer les listes, voir [🤖 Serveur MCP](#-serveur-mcp-claude-et-chatgpt)
 - 🐳 **100 % Docker**, base SQLite (aucune base externe à gérer)
