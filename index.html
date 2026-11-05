@@ -185,6 +185,9 @@
   .tools li:last-child { border-bottom: none; }
   .tools code { font-size: .85rem; color: var(--accent-ink); min-width: 150px; }
   .tools span { color: var(--muted); }
+  .grid.grid-3 { grid-template-columns: repeat(3, 1fr); margin-bottom: 36px; }
+  @media (max-width: 960px) { .grid.grid-3 { grid-template-columns: 1fr; } }
+  .ai-sub { margin: 0 0 14px; font-size: 1.15rem; }
   .note { margin-top: 16px; padding: 12px 16px; border-radius: 12px; background: var(--accent-soft); color: #6b4310; font-size: .93rem; }
 
   footer { padding: 32px 0 44px; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); }
@@ -217,7 +220,7 @@
 
 <div class="wrap hero">
   <img class="logo" src="logo-transparent.png" alt="Bullarr — gestionnaire de bibliothèque BD" width="715" height="312">
-  <a class="pill" href="https://github.com/gwenvador/bullarr/releases/tag/v10.0"><b>v10.0</b> Voir les nouveautés →</a>
+  <a class="pill" href="https://github.com/gwenvador/bullarr/releases/tag/v11.0"><b>v11.0</b> Tags par IA, vue Affiches, lecture Komga →</a>
   <h1>Votre bibliothèque de BD, <em>à jour et complète.</em></h1>
   <p class="tagline">Chercher les tomes, les télécharger, les ranger, compléter leurs métadonnées : avant, c'était l'enfer. Maintenant, Bullarr s'en occupe.</p>
   <div class="cta">
@@ -230,6 +233,7 @@
     <li>EBDZ, Telegram, Torrents</li>
     <li>Métadonnées Bédéthèque</li>
     <li>CBZ, CBR, PDF</li>
+    <li>Tags par IA</li>
     <li>API et serveur MCP</li>
   </ul>
 </div>
@@ -291,7 +295,7 @@
       <div class="card">
         <div class="icon">📖</div>
         <h3>Lecteur intégré</h3>
-        <p>CBZ, CBR et PDF lus dans le navigateur : deux pages, zoom, miniatures, plein écran et raccourcis clavier.</p>
+        <p>CBZ, CBR et PDF lus dans le navigateur : deux pages, webtoon, sens manga, zoom, miniatures, plein écran et raccourcis clavier.</p>
       </div>
       <div class="card">
         <div class="icon">📱</div>
@@ -302,6 +306,26 @@
         <div class="icon">🔒</div>
         <h3>Auto-hébergé</h3>
         <p>Docker et SQLite, sans base externe. Secrets chiffrés sur disque, authentification facultative par mot de passe ou SSO OIDC.</p>
+      </div>
+      <div class="card">
+        <div class="icon">✨</div>
+        <h3>Tags par IA</h3>
+        <p>Claude, Gemini ou ChatGPT, avec votre propre clé, proposent les tags de vos séries à partir du résumé et des auteurs, regroupent les doublons et taguent les nouvelles séries.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🖼️</div>
+        <h3>Vue Affiches</h3>
+        <p>Toute la bibliothèque en couvertures, avec statut, filtres Statut, Origine (BD, Comics, Manga) et Listes, et sélection multiple pour agir sur plusieurs séries.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔖</div>
+        <h3>Lecture synchronisée</h3>
+        <p>« Continuer la lecture » et l'avancement de chaque album lus dans Komga : vous reprenez à la bonne page, sur le site comme sur le téléphone.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔔</div>
+        <h3>Notifications</h3>
+        <p>ntfy et notifications instantanées sur Android (UnifiedPush), réglables événement par événement : imports, téléchargements, nouvelles versions.</p>
       </div>
     </div>
   </div>
@@ -347,8 +371,27 @@ docker compose up -d</code></pre>
 <section id="ia" class="band">
   <div class="wrap">
     <span class="eyebrow">Bullarr et IA</span>
-    <h2>Interrogez votre bibliothèque en langage naturel</h2>
-    <p class="lead">Bullarr expose un serveur MCP pour Claude, ChatGPT ou tout assistant compatible.</p>
+    <h2>Des tags créés par l'IA, une bibliothèque qui répond</h2>
+    <p class="lead">Branchez Claude, Gemini ou ChatGPT avec votre propre clé API pour taguer vos séries, et interrogez votre bibliothèque en langage naturel grâce au serveur MCP.</p>
+    <h3 class="ai-sub">Tags automatiques</h3>
+    <div class="grid grid-3">
+      <div class="card">
+        <div class="icon">🏷️</div>
+        <h3>Créer les tags</h3>
+        <p>Pour toutes les séries ou seulement celles qui n'en ont pas : l'IA lit le titre, les auteurs, le genre et le résumé, et réutilise vos tags existants. Rien n'est retiré.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🧹</div>
+        <h3>Normaliser</h3>
+        <p>« de-gaulle », « charles-de-gaulle », « général de gaulle » : l'IA repère les tags qui veulent dire la même chose et propose un tag commun, appliqué seulement après votre validation.</p>
+      </div>
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h3>Nouvelles séries</h3>
+        <p>Option pour taguer automatiquement chaque série ajoutée, depuis Bédéthèque, l'import ou un scan. Un historique garde la trace de chaque traitement.</p>
+      </div>
+    </div>
+    <h3 class="ai-sub">Serveur MCP</h3>
     <div class="ai">
       <div class="card chat" aria-label="Exemple de conversation">
         <div class="bubble me">Une BD des années 70 sur les chats ?</div>
@@ -365,7 +408,7 @@ docker compose up -d</code></pre>
           <li><code>set_series_tags</code><span>Remplacer les tags d'une série.</span></li>
           <li><code>set_reading_lists</code><span>Gérer « à lire plus tard » et les favoris.</span></li>
         </ul>
-        <p class="note">Il ne supprime rien et ne modifie aucun fichier. L'accès se fait par un jeton dédié, à configurer dans votre instance — voir la <a href="docs.html#ai">documentation</a>.</p>
+        <p class="note">Il ne supprime rien et ne modifie aucun fichier. L'accès se fait par un jeton dédié, à configurer dans votre instance — voir la <a href="docs.html#ai">documentation</a>. Les tags par IA se règlent dans Configuration → IA ; la clé API reste chiffrée sur votre serveur.</p>
       </div>
     </div>
   </div>
