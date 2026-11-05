@@ -1383,3 +1383,17 @@ input[type="checkbox"].switch-input:disabled {
 .ai-proposal-canonical { flex: 1 1 160px; min-width: 0; padding: 4px 8px; font-weight: 600; }
 .ai-proposal-reason { margin: 4px 0 0; color: var(--color-text-muted); font-size: 0.85em; }
 .ai-proposals-done { margin: 0; font-weight: 600; }
+.ai-history-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ai-history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 70vh; overflow-y: auto; }
+.ai-history-item { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); min-width: 0; }
+.ai-history-item.ai-history-error { border-color: var(--color-danger, #c0392b); }
+.ai-history-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ai-history-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ai-history-date { flex: 0 0 auto; color: var(--color-text-muted); font-size: 0.85em; white-space: nowrap; }
+.ai-history-message { margin: 2px 0 0; overflow-wrap: anywhere; }
+.ai-history-meta { margin: 2px 0 0; color: var(--color-text-muted); font-size: 0.82em; overflow-wrap: anywhere; }
+.ai-history-details { margin-top: 6px; }
+.ai-history-details summary { cursor: pointer; color: var(--color-accent); font-size: 0.9em; }
+.ai-history-details ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
+.ai-history-tag { display: inline-block; padding: 0 6px; border-radius: 999px; background: var(--color-surface-alt); font-size: 0.9em; overflow-wrap: anywhere; }
+.ai-history-empty { color: var(--color-text-muted); padding: 4px 0; }

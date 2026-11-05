@@ -65,6 +65,14 @@ class AiTagsTestCase(unittest.TestCase):
             'enabled': True, 'api_key': 'sk-ant-test-123456789', 'model': 'claude-haiku-5-5'})
         self.assertEqual(response.status_code, 200)
 
+    def wait_history(self, count=1):
+        for _ in range(100):
+            entries = self.client.get('/api/ai/history').get_json()['entries']
+            if len(entries) >= count:
+                return entries
+            time.sleep(0.02)
+        self.fail('historique IA non écrit')
+
     def wait_job(self):
         for _ in range(100):
             job = self.client.get('/api/ai/job').get_json()
@@ -277,6 +285,44 @@ class AiTagsTestCase(unittest.TestCase):
             data = self.client.post('/api/ai/models', json={'provider': 'gemini'}).get_json()
         self.assertTrue(data['success'], data)
         self.assertEqual([m['id'] for m in data['models']], ['gemini-3.5-flash-lite'])
+
+
+    def test_stats_count_untagged_series(self):
+        self.assertEqual(self.client.get('/api/ai/stats').get_json(), {'total': 5, 'untagged': 1})
+        self.assertEqual(self.client.get('/api/ai/stats?library_id=2').get_json(), {'total': 1, 'untagged': 1})
+
+    def test_history_records_generated_tags(self):
+        self.enable()
+        with mock.patch('blueprints.ai.routes.call_json',
+                        return_value={'series': [{'id': 4, 'tags': ['espace']}]}):
+            self.client.post('/api/ai/tags/generate', json={'scope': 'untagged'})
+            self.wait_job()
+            entry = self.wait_history()[0]
+        self.assertEqual(entry['kind'], 'generate')
+        self.assertEqual(entry['status'], 'done')
+        self.assertEqual(entry['scope'], 'untagged')
+        self.assertEqual(entry['provider'], 'anthropic')
+        self.assertEqual(entry['model'], 'claude-haiku-5-5')
+        self.assertEqual(entry['details'], [{'series_id': 4, 'title': 'Sans tags', 'added': ['espace']}])
+        self.assertEqual(self.client.get('/api/ai/job').get_json()['history_id'], entry['id'])
+        self.assertEqual(self.client.get('/api/ai/stats').get_json()['untagged'], 0)
+
+    def test_history_records_errors_and_merges(self):
+        self.enable()
+        from blueprints.ai.service import AiError
+        with mock.patch('blueprints.ai.service.call_json', side_effect=AiError('Quota dépassé')):
+            self.client.post('/api/ai/tags/normalize')
+            self.wait_job()
+            self.wait_history()
+        self.client.post('/api/ai/tags/normalize/apply', json={'groups': [{
+            'canonical': 'charles-de-gaulle', 'variants': ['de-gaulle', 'charles-de-gaulle']}]})
+        entries = self.wait_history(2)
+        self.assertEqual(entries[0]['kind'], 'apply')
+        self.assertEqual(entries[0]['details'], [{'canonical': 'charles-de-gaulle', 'variants': ['de-gaulle']}])
+        self.assertEqual(entries[1]['status'], 'error')
+        self.assertEqual(entries[1]['message'], 'Quota dépassé')
+        self.assertEqual(self.client.delete('/api/ai/history').status_code, 200)
+        self.assertEqual(self.client.get('/api/ai/history').get_json()['entries'], [])
 
 
 if __name__ == '__main__':

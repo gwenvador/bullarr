@@ -3281,6 +3281,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Voir blueprints/ai. Les traitements tournent côté serveur ; on suit GET /api/ai/job.
 let aiJobTimer = null;
 let aiConfig = null;
+let aiLastJobStatus = null;  // history_id du dernier traitement vu
 // Saisies non enregistrées, gardées quand on passe d'un fournisseur à l'autre.
 const aiDrafts = {};
 
@@ -3350,6 +3351,8 @@ async function loadAiSettings() {
     } catch (error) {
         showMessage('aiMessage', '❌ Impossible de charger la configuration IA', 'error');
     }
+    loadAiStats();
+    loadAiHistory();
     pollAiJob();
 }
 
@@ -3465,7 +3468,14 @@ async function pollAiJob() {
         return;
     }
     _showAiJob(job);
-    if (job.status === 'running') {
+    // Fin d'un traitement suivi : nouveaux nombres de séries et nouvelle entrée d'historique
+    // (history_id arrive juste après la fin, une fois l'entrée écrite).
+    if (aiLastJobStatus !== null && job.history_id && job.history_id !== aiLastJobStatus) {
+        loadAiStats();
+        loadAiHistory();
+    }
+    aiLastJobStatus = job.history_id || '';
+    if (job.status === 'running' || (job.status && job.status !== 'idle' && !job.history_id)) {
         aiJobTimer = setTimeout(() => pollAiJob(), 2000);
     } else if (job.status === 'done' && job.kind === 'normalize' && !job.applied) {
         // Aussi au retour sur l'onglet : les propositions restent à valider.
@@ -3526,8 +3536,104 @@ async function applyAiNormalization() {
         const data = await response.json();
         if (!data.success) throw new Error(data.error);
         const box = document.getElementById('aiNormalizeProposals');
+        loadAiHistory();
         box.innerHTML = `<p class="ai-proposals-done">✅ ${data.renamed} tag${data.renamed > 1 ? 's' : ''} fusionné${data.renamed > 1 ? 's' : ''}, ${data.changed} série${data.changed > 1 ? 's' : ''} modifiée${data.changed > 1 ? 's' : ''}.</p>`;
     } catch (error) {
         showMessage('aiNormalizeMessage', '❌ ' + error.message, 'error');
+    }
+}
+
+// Nombre de séries dans le choix « Séries sans tags / Toutes les séries ».
+async function loadAiStats() {
+    try {
+        const stats = await (await fetch('/api/ai/stats')).json();
+        const select = document.getElementById('aiGenerateScope');
+        select.querySelector('option[value="untagged"]').textContent = `Séries sans tags (${stats.untagged})`;
+        select.querySelector('option[value="all"]').textContent = `Toutes les séries (${stats.total})`;
+    } catch (error) {
+        // Les libellés sans nombre restent utilisables.
+    }
+}
+
+const AI_HISTORY_LABELS = {
+    generate: entry => 'Création des tags · ' + (entry.scope === 'all' ? 'toutes les séries' : 'séries sans tags'),
+    normalize: () => 'Analyse des tags',
+    apply: () => 'Regroupements appliqués',
+};
+const AI_HISTORY_ICONS = { generate: '✨', normalize: '🔀', apply: '✅' };
+
+function _aiHistoryDate(seconds) {
+    if (!seconds) return '';
+    const options = { dateStyle: 'short', timeStyle: 'short' };
+    if (typeof BULLARR_DISPLAY_TZ !== 'undefined') options.timeZone = BULLARR_DISPLAY_TZ;
+    return new Date(seconds * 1000).toLocaleString('fr-FR', options);
+}
+
+function _aiHistoryDuration(entry) {
+    if (!entry.started_at || !entry.finished_at) return '';
+    const seconds = Math.round(entry.finished_at - entry.started_at);
+    return seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${String(seconds % 60).padStart(2, '0')} s`;
+}
+
+function _aiHistoryDetail(entry, item) {
+    if (entry.kind === 'generate') {
+        const tags = (item.added || []).map(tag => `<span class="ai-history-tag">+${escapeHtml(tag)}</span>`).join(' ');
+        return `<a href="/series/${encodeURIComponent(item.series_id)}">${escapeHtml(item.title || '#' + item.series_id)}</a> ${tags}`;
+    }
+    const variants = (item.variants || []).map(tag => `<span class="ai-history-tag">${escapeHtml(tag)}</span>`).join(' ');
+    return `${variants} <span class="ai-proposal-arrow">→</span> <strong>${escapeHtml(item.canonical)}</strong>`;
+}
+
+function _aiHistoryItem(entry) {
+    const provider = entry.provider ? _aiProvider(entry.provider) : null;
+    const meta = [
+        provider ? provider.name : '',
+        entry.model || '',
+        _aiHistoryDuration(entry),
+    ].filter(Boolean).join(' · ');
+    const details = entry.details || [];
+    const more = (entry.details_total || 0) - details.length;
+    const label = (AI_HISTORY_LABELS[entry.kind] || (() => entry.kind))(entry);
+    const icon = entry.status === 'error' ? '❌' : (AI_HISTORY_ICONS[entry.kind] || '•');
+    return `
+        <li class="ai-history-item${entry.status === 'error' ? ' ai-history-error' : ''}">
+            <div class="ai-history-head">
+                <span class="ai-history-icon" aria-hidden="true">${icon}</span>
+                <strong class="ai-history-label">${escapeHtml(label)}</strong>
+                <time class="ai-history-date">${escapeHtml(_aiHistoryDate(entry.finished_at))}</time>
+            </div>
+            <p class="ai-history-message">${escapeHtml(entry.message || '')}</p>
+            ${meta ? `<p class="ai-history-meta">${escapeHtml(meta)}</p>` : ''}
+            ${details.length ? `
+            <details class="ai-history-details">
+                <summary>Détail (${entry.details_total || details.length})</summary>
+                <ul>${details.map(item => `<li>${_aiHistoryDetail(entry, item)}</li>`).join('')}</ul>
+                ${more > 0 ? `<p class="ai-history-meta">… et ${more} de plus</p>` : ''}
+            </details>` : ''}
+        </li>`;
+}
+
+async function loadAiHistory() {
+    const list = document.getElementById('aiHistoryList');
+    if (!list) return;
+    let entries = [];
+    try {
+        entries = (await (await fetch('/api/ai/history')).json()).entries || [];
+    } catch (error) {
+        list.innerHTML = '<li class="ai-history-empty">Historique indisponible</li>';
+        return;
+    }
+    document.getElementById('aiHistoryClear').hidden = !entries.length;
+    list.innerHTML = entries.length
+        ? entries.map(_aiHistoryItem).join('')
+        : '<li class="ai-history-empty">Aucun traitement pour l\'instant</li>';
+}
+
+async function clearAiHistory() {
+    if (!confirm('Vider l\'historique IA ? Les tags des séries ne changent pas.')) return;
+    try {
+        await fetch('/api/ai/history', { method: 'DELETE' });
+    } finally {
+        loadAiHistory();
     }
 }

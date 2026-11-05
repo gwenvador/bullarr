@@ -2,6 +2,8 @@
 
 Les traitements longs (création et normalisation des tags) tournent dans un fil à part ;
 l'interface suit leur avancement avec GET /api/ai/job. Un seul traitement à la fois.
+Chaque traitement, et chaque application de regroupements, est noté dans l'historique
+(history.py, GET /api/ai/history).
 """
 import json
 import threading
@@ -10,9 +12,10 @@ import time
 from flask import current_app, jsonify, request
 
 from . import ai_bp
+from .history import add_entry, clear_history, load_history
 from .service import (
     GENERATE_BATCH_SIZE, GENERATE_SCHEMA, AiError, _db, apply_tag_mapping, call_json, clean_tag,
-    active_key, generate_system, list_models, load_ai_config, merge_form, merge_generated_tags,
+    active_key, active_model, count_series, generate_system, list_models, load_ai_config, merge_form, merge_generated_tags,
     normalize_proposals, public_config, save_ai_config, series_brief, series_to_tag,
     test_connection, vocabulary,
 )
@@ -31,8 +34,9 @@ def _update_job(**values):
         _job.update(values)
 
 
-def _start_job(kind, target, *args):
-    """Lance target(app, *args) dans un fil. Renvoie un message d'erreur si un traitement tourne."""
+def _start_job(kind, target, *args, extra=None):
+    """Lance target(*args, details=[...]) dans un fil et note le résultat dans l'historique.
+    Renvoie un message d'erreur si un traitement tourne déjà."""
     with _job_lock:
         if _job.get('status') == 'running':
             return 'Un traitement IA est déjà en cours'
@@ -40,16 +44,30 @@ def _start_job(kind, target, *args):
         _job.update({'kind': kind, 'status': 'running', 'progress': 0, 'total': 0,
                      'message': 'Démarrage…', 'started_at': time.time()})
     app = current_app._get_current_object()
+    cfg = load_ai_config()
+    provider, model = cfg.get('provider'), active_model(cfg)
 
     def run():
+        # Détail des changements, gardé même si le traitement s'arrête en route
+        # (les lots déjà traités sont enregistrés).
+        details = []
         with app.app_context():
             try:
-                target(*args)
+                target(*args, details=details)
             except AiError as exc:
                 _update_job(status='error', message=str(exc))
             except Exception as exc:  # noqa: BLE001 - l'erreur est affichée dans l'interface
                 current_app.logger.exception('Traitement IA en échec')
                 _update_job(status='error', message=f'Erreur inattendue : {exc}')
+            job = _job_snapshot()
+            try:
+                entry = add_entry(kind, job.get('status'), job.get('message'), provider=provider,
+                                  model=model, started_at=job.get('started_at'), details=details,
+                                  extra=extra)
+                # L'interface recharge l'historique quand cet identifiant apparaît.
+                _update_job(history_id=entry['id'])
+            except Exception:  # noqa: BLE001 - l'historique ne doit pas casser le traitement
+                current_app.logger.exception('Historique IA : entrée non enregistrée')
 
     threading.Thread(target=run, name=f'ai-{kind}', daemon=True).start()
     return None
@@ -113,9 +131,27 @@ def ai_job():
     return jsonify(_job_snapshot())
 
 
+@ai_bp.route('/stats', methods=['GET'])
+def ai_stats():
+    """Nombre de séries et de séries sans tags, affichés dans le choix « Créer des tags »."""
+    conn = _db()
+    try:
+        return jsonify(count_series(conn, request.args.get('library_id') or None))
+    finally:
+        conn.close()
+
+
+@ai_bp.route('/history', methods=['GET', 'DELETE'])
+def ai_history():
+    if request.method == 'DELETE':
+        clear_history()
+        return jsonify({'success': True})
+    return jsonify({'entries': load_history()})
+
+
 # ===== Création des tags =====
 
-def _run_generate(scope, library_id):
+def _run_generate(scope, library_id, details):
     cfg = _enabled_config()
     conn = _db()
     try:
@@ -134,7 +170,7 @@ def _run_generate(scope, library_id):
             # Système identique pour tous les lots : mis en cache pour ne le payer qu'une fois.
             data = call_json(cfg, system, user, GENERATE_SCHEMA, cache_system=True, max_tokens=32000)
             batch_changed, batch_added = merge_generated_tags(
-                conn, data.get('series') or [], {row['id'] for row in batch})
+                conn, data.get('series') or [], {row['id'] for row in batch}, details)
             changed += batch_changed
             added += batch_added
             done = min(start + GENERATE_BATCH_SIZE, total)
@@ -155,7 +191,7 @@ def ai_generate_tags():
         _enabled_config()
     except AiError as exc:
         return jsonify({'success': False, 'error': str(exc)}), 400
-    error = _start_job('generate', _run_generate, scope, library_id)
+    error = _start_job('generate', _run_generate, scope, library_id, extra={'scope': scope})
     if error:
         return jsonify({'success': False, 'error': error}), 409
     return jsonify({'success': True})
@@ -163,7 +199,7 @@ def ai_generate_tags():
 
 # ===== Normalisation des tags =====
 
-def _run_normalize():
+def _run_normalize(details):
     cfg = _enabled_config()
     _update_job(message='Analyse des tags par l\'IA…')
     conn = _db()
@@ -171,6 +207,8 @@ def _run_normalize():
         groups = normalize_proposals(cfg, conn)
     finally:
         conn.close()
+    details.extend({'canonical': group['canonical'], 'variants': [v['tag'] for v in group['variants']]}
+                   for group in groups)
     count = len(groups)
     _update_job(status='done', result={'groups': groups},
                 message=f'{count} regroupement{"s" if count > 1 else ""} proposé{"s" if count > 1 else ""}'
@@ -194,16 +232,21 @@ def ai_apply_normalization():
     """Applique les regroupements validés : {"groups": [{"canonical": ..., "variants": [...]}]}."""
     data = request.get_json(silent=True) or {}
     mapping = {}
+    applied = []
     for group in data.get('groups') or []:
         if not isinstance(group, dict):
             continue
         canonical = clean_tag(group.get('canonical'))
         if not canonical:
             continue
+        merged = []
         for variant in group.get('variants') or []:
             variant = str(variant or '')
             if variant and variant != canonical:
                 mapping[variant] = canonical
+                merged.append(variant)
+        if merged:
+            applied.append({'canonical': canonical, 'variants': merged})
     if not mapping:
         return jsonify({'success': False, 'error': 'Aucun regroupement sélectionné'}), 400
     conn = _db()
@@ -214,4 +257,9 @@ def ai_apply_normalization():
     with _job_lock:
         if _job.get('kind') == 'normalize':
             _job['applied'] = True
+    renamed = len(mapping)
+    add_entry('apply', 'done',
+              f'{renamed} tag{"s" if renamed > 1 else ""} fusionné{"s" if renamed > 1 else ""}, '
+              f'{changed} série{"s" if changed > 1 else ""} modifiée{"s" if changed > 1 else ""}',
+              details=applied)
     return jsonify({'success': True, 'changed': changed, 'renamed': len(mapping)})

@@ -617,8 +617,19 @@ def vocabulary(conn):
             if count >= VOCABULARY_MIN_COUNT]
 
 
-def merge_generated_tags(conn, results, allowed_ids):
-    """Ajoute les tags proposés aux tags existants. Renvoie (séries modifiées, tags ajoutés)."""
+def count_series(conn, library_id=None):
+    """Nombre de séries, et de séries sans tags (choix « Créer des tags »)."""
+    query, params = 'SELECT tags FROM series', []
+    if library_id:
+        query += ' WHERE library_id = ?'
+        params.append(int(library_id))
+    rows = conn.execute(query, params).fetchall()
+    return {'total': len(rows), 'untagged': sum(1 for row in rows if not parse_tags(row['tags']))}
+
+
+def merge_generated_tags(conn, results, allowed_ids, changes=None):
+    """Ajoute les tags proposés aux tags existants. Renvoie (séries modifiées, tags ajoutés).
+    Si changes est une liste, y ajoute {series_id, title, added} pour l'historique."""
     changed, added = 0, 0
     for item in results:
         try:
@@ -627,7 +638,7 @@ def merge_generated_tags(conn, results, allowed_ids):
             continue
         if series_id not in allowed_ids:
             continue
-        row = conn.execute('SELECT tags FROM series WHERE id = ?', (series_id,)).fetchone()
+        row = conn.execute('SELECT title, tags FROM series WHERE id = ?', (series_id,)).fetchone()
         if not row:
             continue
         current = parse_tags(row['tags'])
@@ -637,5 +648,8 @@ def merge_generated_tags(conn, results, allowed_ids):
                          (json.dumps(updated, ensure_ascii=False), series_id))
             changed += 1
             added += len(updated) - len(current)
+            if changes is not None:
+                changes.append({'series_id': series_id, 'title': row['title'],
+                                'added': [tag for tag in updated if tag not in current]})
     conn.commit()
     return changed, added
