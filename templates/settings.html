@@ -2168,6 +2168,13 @@
                                 </select>
                                 <button class="btn" id="aiGenerateButton" onclick="startAiTagGeneration()">✨ Créer les tags</button>
                             </div>
+                            <div class="checkbox-group" style="margin-top:14px;">
+                                <input type="checkbox" id="aiAutoTagNew" onchange="saveAiAutoTag()">
+                                <label for="aiAutoTagNew">
+                                    <strong>Créer les tags des nouvelles séries</strong>
+                                    <span class="help-text">Chaque série ajoutée (import, création, Bédéthèque, scan) passe par l'IA quelques minutes après, le temps de lire sa fiche Bédéthèque. <span id="aiAutoPending"></span></span>
+                                </label>
+                            </div>
                         </div>
 
                         <div class="settings-card">

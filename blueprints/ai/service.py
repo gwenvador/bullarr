@@ -165,6 +165,7 @@ def public_config(cfg):
         })
     return {
         'enabled': bool(cfg.get('enabled')),
+        'auto_tag_new': bool(cfg.get('auto_tag_new')),
         'provider': cfg.get('provider') or DEFAULT_PROVIDER,
         'providers': providers,
     }
@@ -182,6 +183,8 @@ def merge_form(cfg, data):
     provider = cfg.get('provider') or DEFAULT_PROVIDER
     if 'enabled' in data:
         cfg['enabled'] = bool(data.get('enabled'))
+    if 'auto_tag_new' in data:
+        cfg['auto_tag_new'] = bool(data.get('auto_tag_new'))
     if 'model' in data:
         model = str(data.get('model') or '').strip()
         if model.startswith('models/'):

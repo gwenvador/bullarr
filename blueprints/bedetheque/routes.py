@@ -2547,6 +2547,8 @@ def add_series_from_bedetheque():
         if (info.get('status') or '').strip().lower() == 'one shot':
             cursor.execute('UPDATE series SET is_oneshot = 1 WHERE id = ?', (series_id,))
 
+        from blueprints.ai.auto_tag import queue_new_series
+        queue_new_series(cursor, [series_id])
         conn.commit()
         conn.close()
 

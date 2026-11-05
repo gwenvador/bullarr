@@ -3342,6 +3342,7 @@ async function loadAiSettings() {
         aiConfig = await (await fetch('/api/ai/config')).json();
         Object.keys(aiDrafts).forEach(key => delete aiDrafts[key]);
         document.getElementById('aiEnabled').checked = !!aiConfig.enabled;
+        document.getElementById('aiAutoTagNew').checked = !!aiConfig.auto_tag_new;
         const select = document.getElementById('aiProvider');
         select.innerHTML = aiConfig.providers.map(p =>
             `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
@@ -3552,8 +3553,33 @@ async function loadAiStats() {
         const select = document.getElementById('aiGenerateScope');
         select.querySelector('option[value="untagged"]').textContent = `Séries sans tags (${stats.untagged})`;
         select.querySelector('option[value="all"]').textContent = `Toutes les séries (${stats.total})`;
+        const pending = stats.auto_pending || 0;
+        document.getElementById('aiAutoPending').textContent = pending
+            ? `${pending} série${pending > 1 ? 's' : ''} en attente.` : '';
     } catch (error) {
         // Les libellés sans nombre restent utilisables.
+    }
+}
+
+// Enregistrée tout de suite, sans toucher au reste du formulaire.
+async function saveAiAutoTag() {
+    const box = document.getElementById('aiAutoTagNew');
+    try {
+        const response = await fetch('/api/ai/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ auto_tag_new: box.checked }),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        if (aiConfig) aiConfig.auto_tag_new = box.checked;
+        const warning = box.checked && !(aiConfig && aiConfig.enabled)
+            ? ' (activez l\'IA ci-dessus pour que ce soit pris en compte)' : '';
+        showMessage('aiMessage', (box.checked ? '✅ Tags des nouvelles séries activés' : '✅ Tags des nouvelles séries désactivés') + warning,
+                    warning ? 'warning' : 'success');
+    } catch (error) {
+        box.checked = !box.checked;
+        showMessage('aiMessage', '❌ ' + error.message, 'error');
     }
 }
 
@@ -3561,8 +3587,9 @@ const AI_HISTORY_LABELS = {
     generate: entry => 'Création des tags · ' + (entry.scope === 'all' ? 'toutes les séries' : 'séries sans tags'),
     normalize: () => 'Analyse des tags',
     apply: () => 'Regroupements appliqués',
+    auto: () => 'Tags des nouvelles séries',
 };
-const AI_HISTORY_ICONS = { generate: '✨', normalize: '🔀', apply: '✅' };
+const AI_HISTORY_ICONS = { generate: '✨', normalize: '🔀', apply: '✅', auto: '🆕' };
 
 function _aiHistoryDate(seconds) {
     if (!seconds) return '';
@@ -3578,7 +3605,7 @@ function _aiHistoryDuration(entry) {
 }
 
 function _aiHistoryDetail(entry, item) {
-    if (entry.kind === 'generate') {
+    if (entry.kind === 'generate' || entry.kind === 'auto') {
         const tags = (item.added || []).map(tag => `<span class="ai-history-tag">+${escapeHtml(tag)}</span>`).join(' ');
         return `<a href="/series/${encodeURIComponent(item.series_id)}">${escapeHtml(item.title || '#' + item.series_id)}</a> ${tags}`;
     }

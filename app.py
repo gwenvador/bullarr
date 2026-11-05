@@ -190,6 +190,10 @@ def create_app(config_name='default'):
         from blueprints.komga.read_progress import read_progress_scheduler
         read_progress_scheduler.start(app)
 
+        # IA : tags des nouvelles séries, si l'option est cochée (Configuration → IA).
+        from blueprints.ai.auto_tag import auto_tag_scheduler
+        auto_tag_scheduler.start(app)
+
     # "toujours trop petit. on voit même pas que c'est un cover" - la modification était
     # bien déployée côté serveur (vérifié directement), donc un cache navigateur/proxy
     # côté mobile n'ayant pas revalidé malgré Cache-Control:no-cache est l'explication la
