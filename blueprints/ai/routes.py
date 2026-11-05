@@ -312,7 +312,12 @@ def _run_normalize(details):
     _update_job(message='Analyse des tags par l\'IA…')
     conn = _db()
     try:
-        groups = normalize_proposals(cfg, conn)
+        def progress(done, total):
+            if total > 1:
+                _update_job(progress=done, total=total,
+                            message=f'Analyse des tags par l\'IA : partie {done} / {total}…')
+
+        groups = normalize_proposals(cfg, conn, progress)
     finally:
         conn.close()
     details.extend({'canonical': group['canonical'], 'variants': [v['tag'] for v in group['variants']]}

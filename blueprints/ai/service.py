@@ -172,6 +172,15 @@ _GROQ_SKIP = ('whisper', 'tts', 'guard', 'playai', 'orpheus', 'compound', 'safeg
 # Sortie JSON stricte (schéma garanti) ; les autres modèles suivent le schéma au mieux.
 _GROQ_STRICT = ('openai/gpt-oss',)
 GROQ_MAX_WAIT = 60
+# Plafond de départ des tokens de réponse, réduit ensuite selon le modèle et la limite par
+# minute de l'offre (les tokens de réponse demandés comptent dans cette limite).
+GROQ_MAX_COMPLETION = 16384
+GROQ_MIN_COMPLETION = 1500
+# Normalisation avec Groq : liste des tags envoyée par morceaux (offre gratuite : 8 000 tokens
+# par minute, réponse comprise).
+GROQ_NORMALIZE_CHUNK_CHARS = 7000
+_GROQ_MAX_RE = re.compile(r'max_completion_tokens`? must be less than or equal to `?(\d+)')
+_GROQ_TPM_RE = re.compile(r'\(I?TPM\): Limit (\d+), Requested (\d+)')
 _openrouter_catalog_cache = {'at': 0.0, 'models': None}
 MASK = '****'
 
@@ -964,6 +973,18 @@ def _local_json(cfg, system, user, schema, max_tokens):
 class _GroqBadRequest(AiError):
     """Requête refusée (400) : souvent un JSON non conforme au schéma demandé."""
 
+    def __init__(self, message, detail=''):
+        super().__init__(message)
+        self.detail = detail
+
+
+class _GroqTooLarge(AiError):
+    """Requête plus grosse que la limite de tokens par minute de l'offre (413)."""
+
+    def __init__(self, message, limit=0, requested=0):
+        super().__init__(message)
+        self.limit, self.requested = limit, requested
+
 
 def _groq_request(cfg, method, path, **kwargs):
     headers = {'Authorization': f'Bearer {active_key(cfg)}', 'Content-Type': 'application/json'}
@@ -997,12 +1018,16 @@ def _groq_request(cfg, method, path, **kwargs):
     if response.status_code == 404:
         raise AiError('Modèle Groq introuvable : ↻ relit la liste des modèles disponibles')
     if response.status_code == 413:
-        raise AiError('Requête trop grosse pour la limite de votre offre Groq')
+        match = _GROQ_TPM_RE.search(message)
+        limit, requested = (int(match.group(1)), int(match.group(2))) if match else (0, 0)
+        detail = f' ({requested} tokens demandés, limite {limit} par minute)' if match else ''
+        raise _GroqTooLarge(f'Requête trop grosse pour la limite de votre offre Groq{detail}',
+                            limit, requested)
     if response.status_code == 429:
         raise AiError('Limite de requêtes Groq atteinte (offre gratuite : par minute et par jour), '
                       'réessayez plus tard')
     if response.status_code == 400:
-        raise _GroqBadRequest(f'Requête refusée par Groq : {message}')
+        raise _GroqBadRequest(f'Requête refusée par Groq : {message}', message)
     raise AiError(f'Erreur de l\'API Groq ({response.status_code}) : {message}')
 
 
@@ -1030,22 +1055,43 @@ def _groq_json(cfg, system, user, schema, max_tokens):
     body = {
         'model': model,
         'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
-        'max_completion_tokens': min(max_tokens, 32000),
+        'max_completion_tokens': min(max_tokens, GROQ_MAX_COMPLETION),
         'temperature': 0.2,
         'response_format': {
             'type': 'json_schema',
             'json_schema': {'name': 'reponse', 'strict': model.startswith(_GROQ_STRICT), 'schema': schema},
         },
     }
-    try:
-        data = _groq_request(cfg, 'POST', 'chat/completions', json=body, timeout=900)
-    except _GroqBadRequest:
-        # Modèle sans sortie structurée (ou JSON refusé) : mode JSON simple, schéma dans la consigne.
-        prompt = (f'{system}\n\nRéponds uniquement par un objet JSON valide, sans texte autour ni bloc '
-                  f'de code, conforme à ce schéma JSON :\n{json.dumps(schema, ensure_ascii=False)}')
-        body = {**body, 'response_format': {'type': 'json_object'},
-                'messages': [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': user}]}
-        data = _groq_request(cfg, 'POST', 'chat/completions', json=body, timeout=900)
+    if model.startswith('openai/gpt-oss'):
+        # Raisonnement court : il compte dans les tokens de réponse.
+        body['reasoning_effort'] = 'low'
+    fallback = False
+    for _ in range(4):
+        try:
+            data = _groq_request(cfg, 'POST', 'chat/completions', json=body, timeout=900)
+            break
+        except _GroqTooLarge as exc:
+            # Limite par minute : réponse réduite à ce qui reste après la question.
+            room = exc.limit - (exc.requested - body['max_completion_tokens']) - 100
+            if not exc.limit or room < GROQ_MIN_COMPLETION or room >= body['max_completion_tokens']:
+                raise
+            body = {**body, 'max_completion_tokens': room}
+        except _GroqBadRequest as exc:
+            match = _GROQ_MAX_RE.search(exc.detail)
+            if match and int(match.group(1)) < body['max_completion_tokens']:
+                # Plafond propre au modèle (16 384 pour certains).
+                body = {**body, 'max_completion_tokens': int(match.group(1))}
+                continue
+            if fallback:
+                raise
+            # Modèle sans sortie structurée (ou JSON refusé) : mode JSON simple, schéma dans la consigne.
+            fallback = True
+            prompt = (f'{system}\n\nRéponds uniquement par un objet JSON valide, sans texte autour ni bloc '
+                      f'de code, conforme à ce schéma JSON :\n{json.dumps(schema, ensure_ascii=False)}')
+            body = {**body, 'response_format': {'type': 'json_object'},
+                    'messages': [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': user}]}
+    else:
+        raise AiError('Groq refuse la requête : essayez un autre modèle')
     choices = data.get('choices') or []
     if not choices:
         raise AiError('Groq n\'a renvoyé aucune réponse')
@@ -1199,15 +1245,49 @@ NORMALIZE_SYSTEM = (
 )
 
 
-def normalize_proposals(cfg, conn):
-    """Regroupements proposés par le modèle, filtrés sur les tags qui existent vraiment."""
+def _normalize_order(tag):
+    """Rapproche les variantes d'un même tag (« de-gaulle », « charles-de-gaulle »,
+    « general-de-gaulle ») : tri sur le dernier mot, sans accents."""
+    words = [_plain(word) for word in re.split(r'[-\s_]+', tag) if _plain(word)]
+    return (words[-1] if words else '', _plain(tag), tag)
+
+
+def normalize_chunks(cfg, counts):
+    """Liste des tags envoyée au modèle : en une fois, ou par morceaux (Groq gratuit)."""
+    if cfg.get('provider') != 'groq':
+        return ['\n'.join(f'{tag} ({count})' for tag, count in sorted(counts.items()))]
+    chunks, lines, size = [], [], 0
+    for tag in sorted(counts, key=_normalize_order):
+        line = f'{tag} ({counts[tag]})'
+        if lines and size + len(line) + 1 > GROQ_NORMALIZE_CHUNK_CHARS:
+            chunks.append('\n'.join(lines))
+            lines, size = [], 0
+        lines.append(line)
+        size += len(line) + 1
+    if lines:
+        chunks.append('\n'.join(lines))
+    return chunks
+
+
+def normalize_proposals(cfg, conn, progress=None):
+    """Regroupements proposés par le modèle, filtrés sur les tags qui existent vraiment.
+    progress(fait, total) est appelé après chaque morceau de la liste."""
     counts = tag_counts(conn)
     if len(counts) < 2:
         return []
-    listing = '\n'.join(f'{tag} ({count})' for tag, count in sorted(counts.items()))
-    data = call_json(cfg, NORMALIZE_SYSTEM, f'Tags de la bibliothèque :\n{listing}', NORMALIZE_SCHEMA)
+    chunks = normalize_chunks(cfg, counts)
+    answers = []
+    for index, listing in enumerate(chunks):
+        if len(chunks) == 1:
+            user = f'Tags de la bibliothèque :\n{listing}'
+        else:
+            user = (f'Tags de la bibliothèque, partie {index + 1} sur {len(chunks)} (les tags voisins '
+                    f'sont rapprochés ; regroupe seulement ceux de cette partie) :\n{listing}')
+        answers.extend(call_json(cfg, NORMALIZE_SYSTEM, user, NORMALIZE_SCHEMA).get('groups') or [])
+        if progress:
+            progress(index + 1, len(chunks))
     groups, used = [], set()
-    for group in data.get('groups') or []:
+    for group in answers:
         canonical = clean_tag(group.get('canonical'))
         variants = [tag for tag in dedupe(group.get('variants') or [])
                     if tag in counts and tag not in used]

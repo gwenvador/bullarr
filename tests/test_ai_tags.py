@@ -756,6 +756,47 @@ class AiTagsTestCase(unittest.TestCase):
             data = self.client.post('/api/ai/models', json={'provider': 'groq'}).get_json()
         self.assertEqual([m['id'] for m in data['models']], ['llama-3.3-70b-versatile', 'openai/gpt-oss-20b'])
 
+    def _groq_error(self, status, message):
+        response = mock.Mock(status_code=status, ok=False, text='', headers={})
+        response.json.return_value = {'error': {'message': message}}
+        return response
+
+    def test_groq_adapts_completion_tokens_to_model_and_minute_limit(self):
+        self.enable_groq('qwen/qwen3.8-27b')
+        too_many = self._groq_error(400, '`max_completion_tokens` must be less than or equal to `8192`, the maximum')
+        too_large = self._groq_error(413, 'Request too large for model `qwen` on tokens per minute (TPM): '
+                                          'Limit 8000, Requested 8692, please reduce your message size')
+        answer = {'series': [{'id': 4, 'tags': ['aventure']}]}
+        from blueprints.ai import service
+        with self.app.app_context(), mock.patch('blueprints.ai.service.requests.request',
+                        side_effect=[too_many, too_large, self._openai_response(json.dumps(answer))]) as request:
+            cfg = service.load_ai_config()
+            service._groq_json(cfg, 'consigne', 'question', service.GENERATE_SCHEMA, 32000)
+        sent = [call.kwargs['json']['max_completion_tokens'] for call in request.call_args_list]
+        self.assertEqual(sent, [16384, 8192, 7400])
+
+    def test_groq_request_too_large_even_with_small_answer_is_explained(self):
+        self.enable_groq()
+        too_large = self._groq_error(413, 'Request too large (TPM): Limit 8000, Requested 30172, please reduce')
+        from blueprints.ai import service
+        with self.app.app_context(), mock.patch('blueprints.ai.service.requests.request', return_value=too_large):
+            cfg = service.load_ai_config()
+            with self.assertRaises(service.AiError) as caught:
+                service._groq_json(cfg, 'consigne', 'question', service.GENERATE_SCHEMA, 1000)
+        self.assertIn('30172 tokens demandés, limite 8000', str(caught.exception))
+
+    def test_groq_normalization_is_sent_in_chunks_of_neighbouring_tags(self):
+        from blueprints.ai import service
+        counts = {f'tag-{i:04d}-{"x" * 20}': 1 for i in range(600)}
+        counts.update({'de-gaulle': 2, 'charles-de-gaulle': 1, 'général-de-gaulle': 1})
+        chunks = service.normalize_chunks({'provider': 'groq'}, counts)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= service.GROQ_NORMALIZE_CHUNK_CHARS for chunk in chunks))
+        gaulle = [chunk for chunk in chunks if 'de-gaulle (2)' in chunk][0]
+        self.assertIn('charles-de-gaulle (1)', gaulle)
+        self.assertIn('général-de-gaulle (1)', gaulle)
+        self.assertEqual(len(service.normalize_chunks({'provider': 'openai'}, counts)), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
