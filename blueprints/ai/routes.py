@@ -18,7 +18,7 @@ from .auto_tag import (
 )
 from .history import add_entry, clear_history, load_history
 from .service import (
-    GENERATE_BATCH_SIZE, GENERATE_SCHEMA, AiError, _db, apply_tag_mapping, call_json, clean_tag,
+    GENERATE_SCHEMA, AiError, _db, aiautotag_series, generate_batch_size, provider_ready, supports_llm, apply_tag_mapping, call_json, clean_tag,
     active_key, active_model, count_series, generate_system, list_models, load_ai_config, merge_form, merge_generated_tags,
     normalize_proposals, parse_tags, public_config, save_ai_config, series_brief, series_to_tag,
     test_connection, vocabulary,
@@ -79,7 +79,7 @@ def _start_job(kind, target, *args, extra=None):
 
 def _enabled_config():
     cfg = load_ai_config()
-    if not cfg.get('enabled') or not active_key(cfg):
+    if not cfg.get('enabled') or not provider_ready(cfg):
         raise AiError('Activez l\'IA et renseignez une clé API dans Configuration → IA')
     return cfg
 
@@ -120,7 +120,7 @@ def ai_models():
     """Modèles du fournisseur saisi dans le formulaire (clé pas forcément enregistrée)."""
     data = request.get_json(silent=True) or {}
     cfg = load_ai_config()
-    error = merge_form(cfg, {key: data[key] for key in ('provider', 'api_key') if key in data})
+    error = merge_form(cfg, {key: data[key] for key in ('provider', 'api_key', 'base_url') if key in data})
     if error:
         return jsonify({'success': False, 'error': error}), 400
     try:
@@ -166,28 +166,36 @@ def _run_generate(scope, library_id, details):
         conn.close()
 
 
+def _generate(cfg, known_tags, system, briefs, max_tokens):
+    """Tags proposés pour briefs ({'series': [{id, tags}]}), quel que soit le fournisseur."""
+    if cfg.get('provider') == 'aiautotagging':
+        return aiautotag_series(briefs, known_tags)
+    user = 'Séries à taguer (JSON) :\n' + json.dumps(briefs, ensure_ascii=False, indent=1)
+    # Système identique pour tous les lots : mis en cache pour ne le payer qu'une fois.
+    return call_json(cfg, system, user, GENERATE_SCHEMA, cache_system=True, max_tokens=max_tokens)
+
+
 def _tag_rows(cfg, conn, rows, details, after_batch=None):
     """Fait créer par l'IA les tags des séries rows, par lots, en suivant l'avancement."""
     if not rows:
         _update_job(status='done', message='Aucune série à traiter', result={'changed': 0, 'added': 0})
         return
-    system = generate_system(vocabulary(conn))
+    known_tags = vocabulary(conn)
+    system = generate_system(known_tags)
     total = len(rows)
+    size = generate_batch_size(cfg)
     changed = added = 0
     _update_job(total=total, message=f'0 / {total} séries')
-    for start in range(0, total, GENERATE_BATCH_SIZE):
-        batch = rows[start:start + GENERATE_BATCH_SIZE]
-        briefs = [series_brief(row) for row in batch]
-        user = 'Séries à taguer (JSON) :\n' + json.dumps(briefs, ensure_ascii=False, indent=1)
-        # Système identique pour tous les lots : mis en cache pour ne le payer qu'une fois.
-        data = call_json(cfg, system, user, GENERATE_SCHEMA, cache_system=True, max_tokens=32000)
+    for start in range(0, total, size):
+        batch = rows[start:start + size]
+        data = _generate(cfg, known_tags, system, [series_brief(row) for row in batch], 32000)
         batch_changed, batch_added = merge_generated_tags(
             conn, data.get('series') or [], {row['id'] for row in batch}, details)
         changed += batch_changed
         added += batch_added
         if after_batch:
             after_batch([row['id'] for row in batch])
-        done = min(start + GENERATE_BATCH_SIZE, total)
+        done = min(start + size, total)
         _update_job(progress=done, message=f'{done} / {total} séries')
     _update_job(status='done', result={'changed': changed, 'added': added, 'total': total},
                 message=f'{changed} série{"s" if changed > 1 else ""} enrichie{"s" if changed > 1 else ""}, '
@@ -258,9 +266,8 @@ def ai_suggest_series_tags(series_id):
         row = conn.execute('SELECT * FROM series WHERE id = ?', (series_id,)).fetchone()
         if not row:
             return jsonify({'success': False, 'error': 'Série introuvable'}), 404
-        system = generate_system(vocabulary(conn))
-        user = 'Séries à taguer (JSON) :\n' + json.dumps([series_brief(row)], ensure_ascii=False, indent=1)
-        data = call_json(cfg, system, user, GENERATE_SCHEMA, cache_system=True, max_tokens=4000)
+        known_tags = vocabulary(conn)
+        data = _generate(cfg, known_tags, generate_system(known_tags), [series_brief(row)], 4000)
     except AiError as exc:
         add_entry('series', 'error', str(exc), provider=cfg.get('provider'), model=active_model(cfg),
                   started_at=started, extra={'title': row['title'] if row else ''})
@@ -319,7 +326,11 @@ def _run_normalize(details):
 @ai_bp.route('/tags/normalize', methods=['POST'])
 def ai_normalize_tags():
     try:
-        _enabled_config()
+        cfg = _enabled_config()
+        if not supports_llm(cfg):
+            raise AiError('La normalisation demande un modèle de langage : aiautotagging.com ne sait que '
+                          'proposer des tags. Choisissez un autre fournisseur ci-dessus (Claude, Gemini, '
+                          'ChatGPT, OpenRouter, Groq ou un LLM local)')
     except AiError as exc:
         return jsonify({'success': False, 'error': str(exc)}), 400
     error = _start_job('normalize', _run_normalize)

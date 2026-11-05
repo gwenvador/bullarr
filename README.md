@@ -50,8 +50,8 @@ tomes manquants.
   ou les deux sur la même page de connexion
 - 🏷️ **Tags et listes** : tags par série (modifiables depuis la fiche, colonne Tags du tableau),
   recherche par tags dans la barre du haut, listes « à lire plus tard » et « favoris »
-- ✨ **Tags par IA** : Claude, Gemini, ChatGPT ou OpenRouter (votre propre clé API) créent les tags des
-  séries et normalisent les tags existants, avec historique des traitements ; option pour
+- ✨ **Tags par IA** : aiautotagging.com (gratuit, sans clé), Claude, Gemini, ChatGPT,
+  OpenRouter, Groq ou un LLM local (Ollama, LM Studio…) créent les tags des séries et normalisent les tags existants, avec historique des traitements ; option pour
   taguer automatiquement chaque nouvelle série (Configuration → IA)
 - 🖼️ **Vue Affiches** : grille de couvertures avec statut, sélection multiple, filtres Statut,
   Origine (BD, Comics, Manga) et Listes, et « Continuer la lecture » synchronisé avec Komga

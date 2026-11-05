@@ -62,7 +62,8 @@ class AiTagsTestCase(unittest.TestCase):
 
     def enable(self):
         response = self.client.post('/api/ai/config', json={
-            'enabled': True, 'api_key': 'sk-ant-test-123456789', 'model': 'claude-haiku-5-5'})
+            'enabled': True, 'provider': 'anthropic', 'api_key': 'sk-ant-test-123456789',
+            'model': 'claude-haiku-5-5'})
         self.assertEqual(response.status_code, 200)
 
     def wait_history(self, count=1):
@@ -95,7 +96,8 @@ class AiTagsTestCase(unittest.TestCase):
         self.assertTrue(self.provider('anthropic')['has_api_key'])
 
     def test_enabling_without_key_is_refused(self):
-        response = self.client.post('/api/ai/config', json={'enabled': True, 'api_key': ''})
+        response = self.client.post('/api/ai/config', json={'enabled': True, 'provider': 'anthropic',
+                                                             'api_key': ''})
         self.assertEqual(response.status_code, 400)
 
     def test_unknown_model_is_refused(self):
@@ -576,6 +578,183 @@ class AiTagsTestCase(unittest.TestCase):
         self.assertEqual([m['id'] for m in data['models']],
                          ['google/gemma-4-31b-it:free', 'anthropic/claude-haiku-5.5', 'openai/gpt-5-mini'])
         self.assertTrue(data['models'][0]['name'].endswith('(gratuit)'))
+
+    # ===== aiautotagging.com =====
+
+    def _tagging_response(self, tags, status=200):
+        response = mock.Mock(status_code=status, ok=status < 400, text='')
+        response.json.return_value = {'tags': tags, 'count': len(tags), 'model': '@cf/meta/llama-3-8b-instruct'}
+        return response
+
+    def no_wait(self):
+        """Pas d'attente entre deux requêtes (time.sleep ne peut pas être simulé : wait_job s'en sert)."""
+        from blueprints.ai import service
+        service._aiautotagging_last[0] = 0.0
+        return mock.patch.multiple(service, AIAUTOTAGGING_INTERVAL=0, AIAUTOTAGGING_RETRY_DELAYS=(0, 0))
+
+    def test_aiautotagging_is_default_and_needs_no_key(self):
+        public = self.client.get('/api/ai/config').get_json()
+        self.assertEqual(public['provider'], 'aiautotagging')
+        self.assertEqual(public['providers'][0]['id'], 'aiautotagging')
+        self.assertEqual(self.provider('aiautotagging')['key'], 'none')
+        response = self.client.post('/api/ai/config', json={'enabled': True})
+        self.assertEqual(response.status_code, 200, response.get_json())
+
+    def test_aiautotagging_generates_tags_one_series_at_a_time(self):
+        self.client.post('/api/ai/config', json={'enabled': True})
+        answers = [
+            self._tagging_response([{'label': 'Politique', 'confidence': 0.9},
+                                    {'label': 'Seconde Guerre mondiale', 'confidence': 0.8},
+                                    {'label': 'Sans tags', 'confidence': 0.9},
+                                    {'label': 'vague', 'confidence': 0.1}]),
+        ]
+        with mock.patch('blueprints.ai.service.requests.request', side_effect=answers) as request, \
+                self.no_wait():
+            self.assertEqual(self.client.post('/api/ai/tags/generate', json={'scope': 'untagged'}).status_code, 200)
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'done', job)
+        self.assertEqual(request.call_count, 1)
+        args, kwargs = request.call_args
+        self.assertEqual(args, ('POST', 'https://aiautotagging.com/api/tag/text'))
+        self.assertIn('Résumé de Sans tags', kwargs['json']['text'])
+        self.assertEqual(kwargs['json']['options']['language'], 'fr')
+        self.assertNotIn('Authorization', kwargs['headers'])
+        # titre retiré, confiance trop basse retirée, forme existante (« de-gaulle »…) gardée
+        self.assertEqual(self.tags(4), ['politique', 'seconde-guerre-mondiale'])
+
+    def test_aiautotagging_reuses_existing_tag_spelling(self):
+        from blueprints.ai.service import aiautotag_series
+        with mock.patch('blueprints.ai.service.requests.request',
+                        return_value=self._tagging_response([{'label': 'Héroïc Fantasy', 'confidence': 0.9}])), \
+                self.no_wait():
+            data = aiautotag_series([{'id': 7, 'titre': 'X', 'auteurs': ''}], ['heroic-fantasy'])
+        self.assertEqual(data, {'series': [{'id': 7, 'tags': ['heroic-fantasy']}]})
+
+    def test_aiautotagging_rate_limit_is_retried_then_explained(self):
+        self.client.post('/api/ai/config', json={'enabled': True})
+        limited = self._tagging_response([], status=429)
+        with mock.patch('blueprints.ai.service.requests.request', return_value=limited) as request, \
+                self.no_wait():
+            data = self.client.post('/api/ai/series/4/suggest').get_json()
+        self.assertFalse(data['success'])
+        self.assertIn('500 par jour', data['error'])
+        self.assertEqual(request.call_count, 3)
+
+    def test_aiautotagging_cannot_normalize(self):
+        self.client.post('/api/ai/config', json={'enabled': True})
+        response = self.client.post('/api/ai/tags/normalize')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('modèle de langage', response.get_json()['error'])
+
+    # ===== LLM local =====
+
+    def enable_local(self, **extra):
+        response = self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'local', 'model': 'qwen3:8b',
+            'base_url': 'http://192.168.1.20:11434/v1/', **extra})
+        self.assertEqual(response.status_code, 200, response.get_json())
+
+    def test_local_llm_needs_no_key_and_keeps_its_address(self):
+        self.enable_local()
+        local = self.provider('local')
+        self.assertEqual(local['base_url'], 'http://192.168.1.20:11434/v1')
+        self.assertEqual(local['key'], 'optional')
+        bad = self.client.post('/api/ai/config', json={'provider': 'local', 'base_url': 'ftp://x'})
+        self.assertEqual(bad.status_code, 400)
+        self.client.post('/api/ai/config', json={'provider': 'local', 'base_url': ''})
+        self.assertEqual(self.provider('local')['base_url'], 'http://host.docker.internal:11434/v1')
+
+    def test_local_llm_call_without_key_then_schema_in_prompt_fallback(self):
+        self.enable_local()
+        refused = mock.Mock(status_code=400, ok=False, text='response_format unsupported')
+        refused.json.return_value = {'error': {'message': 'response_format unsupported'}}
+        answer = {'series': [{'id': 4, 'tags': ['aventure']}]}
+        ok = self._openai_response('<think>hmm</think>\n```json\n' + json.dumps(answer) + '\n```')
+        with mock.patch('blueprints.ai.service.requests.request', side_effect=[refused, ok]) as request:
+            data = self.client.post('/api/ai/series/4/suggest').get_json()
+        self.assertTrue(data['success'], data)
+        self.assertEqual(data['tags'], ['aventure'])
+        first, second = request.call_args_list
+        self.assertEqual(first.args, ('POST', 'http://192.168.1.20:11434/v1/chat/completions'))
+        self.assertNotIn('Authorization', first.kwargs['headers'])
+        self.assertIn('response_format', first.kwargs['json'])
+        self.assertNotIn('response_format', second.kwargs['json'])
+        self.assertIn('schéma JSON', second.kwargs['json']['messages'][0]['content'])
+
+    def test_local_llm_sends_optional_key(self):
+        self.enable_local(api_key='local-secret-123456')
+        answer = {'series': [{'id': 4, 'tags': ['aventure']}]}
+        with mock.patch('blueprints.ai.service.requests.request',
+                        return_value=self._openai_response(json.dumps(answer))) as request:
+            self.client.post('/api/ai/series/4/suggest')
+        self.assertEqual(request.call_args.kwargs['headers']['Authorization'], 'Bearer local-secret-123456')
+
+    def test_local_llm_models_and_unreachable_server(self):
+        import requests as real_requests
+        self.enable_local()
+        listing = mock.Mock(status_code=200, ok=True)
+        listing.json.return_value = {'data': [{'id': 'qwen3:8b'}, {'id': 'nomic-embed-text'}, {'id': 'Llama3.1:8B'}]}
+        with mock.patch('blueprints.ai.service.requests.request', return_value=listing):
+            data = self.client.post('/api/ai/models', json={'provider': 'local'}).get_json()
+            self.assertEqual([m['id'] for m in data['models']], ['Llama3.1:8B', 'qwen3:8b'])
+            test = self.client.post('/api/ai/test', json={'provider': 'local', 'model': 'mistral'}).get_json()
+            self.assertFalse(test['success'])
+            self.assertIn('absent', test['error'])
+        with mock.patch('blueprints.ai.service.requests.request',
+                        side_effect=real_requests.ConnectionError('refused')):
+            test = self.client.post('/api/ai/test', json={'provider': 'local'}).get_json()
+        self.assertFalse(test['success'])
+        self.assertIn('Impossible de joindre le LLM local', test['error'])
+
+    # ===== Groq =====
+
+    def enable_groq(self, model='openai/gpt-oss-20b'):
+        response = self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'groq', 'api_key': 'gsk_test-key-123456', 'model': model})
+        self.assertEqual(response.status_code, 200, response.get_json())
+
+    def test_groq_needs_a_key(self):
+        response = self.client.post('/api/ai/config', json={'enabled': True, 'provider': 'groq'})
+        self.assertEqual(response.status_code, 400)
+
+    def test_groq_call_uses_strict_schema_then_json_mode_fallback(self):
+        self.enable_groq('llama-3.3-70b-versatile')
+        refused = mock.Mock(status_code=400, ok=False, text='', headers={})
+        refused.json.return_value = {'error': {'message': 'json_schema not supported'}}
+        answer = {'series': [{'id': 4, 'tags': ['aventure']}]}
+        with mock.patch('blueprints.ai.service.requests.request',
+                        side_effect=[refused, self._openai_response(json.dumps(answer))]) as request:
+            data = self.client.post('/api/ai/series/4/suggest').get_json()
+        self.assertTrue(data['success'], data)
+        first, second = request.call_args_list
+        self.assertEqual(first.args, ('POST', 'https://api.groq.com/openai/v1/chat/completions'))
+        self.assertEqual(first.kwargs['headers']['Authorization'], 'Bearer gsk_test-key-123456')
+        self.assertFalse(first.kwargs['json']['response_format']['json_schema']['strict'])
+        self.assertEqual(second.kwargs['json']['response_format'], {'type': 'json_object'})
+
+    def test_groq_gpt_oss_is_strict_and_errors_are_explained(self):
+        self.enable_groq()
+        answer = {'series': [{'id': 4, 'tags': ['aventure']}]}
+        with mock.patch('blueprints.ai.service.requests.request',
+                        return_value=self._openai_response(json.dumps(answer))) as request:
+            self.client.post('/api/ai/series/4/suggest')
+        self.assertTrue(request.call_args.kwargs['json']['response_format']['json_schema']['strict'])
+        bad = mock.Mock(status_code=401, ok=False, text='', headers={})
+        bad.json.return_value = {'error': {'message': 'Invalid API Key'}}
+        with mock.patch('blueprints.ai.service.requests.request', return_value=bad):
+            test = self.client.post('/api/ai/test', json={'provider': 'groq'}).get_json()
+        self.assertIn('Clé API refusée par Groq', test['error'])
+
+    def test_groq_model_list_keeps_text_models(self):
+        self.enable_groq()
+        listing = mock.Mock(status_code=200, ok=True, headers={})
+        listing.json.return_value = {'data': [
+            {'id': 'openai/gpt-oss-20b', 'active': True}, {'id': 'whisper-large-v3', 'active': True},
+            {'id': 'meta-llama/llama-guard-4-12b', 'active': True}, {'id': 'groq/compound', 'active': True},
+            {'id': 'old-model', 'active': False}, {'id': 'llama-3.3-70b-versatile', 'active': True}]}
+        with mock.patch('blueprints.ai.service.requests.request', return_value=listing):
+            data = self.client.post('/api/ai/models', json={'provider': 'groq'}).get_json()
+        self.assertEqual([m['id'] for m in data['models']], ['llama-3.3-70b-versatile', 'openai/gpt-oss-20b'])
 
 
 if __name__ == '__main__':

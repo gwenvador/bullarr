@@ -141,7 +141,7 @@
                                 <span class="overview-card-icon" data-icon="sparkles"></span>
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">IA</span>
-                                    <span class="overview-card-desc">Claude, Gemini, ChatGPT ou OpenRouter : tags des séries</span>
+                                    <span class="overview-card-desc">aiautotagging.com, Claude, Gemini, ChatGPT, OpenRouter, Groq ou LLM local : tags des séries</span>
                                 </span>
                             </button>
                         </div>
@@ -2107,7 +2107,7 @@
                     </div>
                 </div>
 
-                <!-- Onglet IA : clé API Claude, Gemini, ChatGPT ou OpenRouter et traitements des tags,
+                <!-- Onglet IA : aiautotagging.com, Claude, Gemini, ChatGPT, OpenRouter, Groq ou LLM local et traitements des tags,
                      voir blueprints/ai et la partie « IA » de settings.js. -->
                 <div class="tab-content" id="tab-ai">
                     <div class="settings-section">
@@ -2115,7 +2115,7 @@
                             <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
                             <h2>🤖 IA</h2>
                             <p class="section-description">
-                                Une IA (Claude, Gemini, ChatGPT ou un modèle via OpenRouter) crée les tags des séries et regroupe les tags qui
+                                Une IA (aiautotagging.com gratuit et sans clé, Claude, Gemini, ChatGPT, un modèle via OpenRouter, Groq ou un LLM local) crée les tags des séries et regroupe les tags qui
                                 veulent dire la même chose. Les requêtes passent par votre propre clé API.
                             </p>
                         </div>
@@ -2133,11 +2133,18 @@
                                 <label for="aiProvider">Fournisseur</label>
                                 <select id="aiProvider" class="form-select" onchange="onAiProviderChange()"></select>
                             </div>
+                            <div class="form-group" id="aiBaseUrlGroup" hidden>
+                                <label for="aiBaseUrl">Adresse du serveur (API compatible OpenAI)</label>
+                                <input type="url" id="aiBaseUrl" autocomplete="off" spellcheck="false">
+                                <small class="help-text">Ollama : http://&lt;machine&gt;:11434/v1, LM Studio : http://&lt;machine&gt;:1234/v1. Le serveur doit écouter sur le réseau (OLLAMA_HOST=0.0.0.0, « Serve on Local Network » dans LM Studio). Sur la même machine que Bullarr : host.docker.internal.</small>
+                            </div>
+                            <p class="help-text" id="aiNoKeyHelp" style="display:block;" hidden>Aucune clé ni compte : les textes des séries (titre, auteurs, genre, résumé) sont envoyés à <a href="https://aiautotagging.com" target="_blank" rel="noopener noreferrer">aiautotagging.com</a>, service gratuit sans garantie. Une requête par série, au plus 10 par minute et 500 par jour : une grande bibliothèque se tague en plusieurs jours. Il ne sait pas normaliser les tags.</p>
                             <div class="form-row">
-                                <div class="form-group">
-                                    <label for="aiApiKey">Clé API</label>
+                                <div class="form-group" id="aiKeyGroup">
+                                    <label for="aiApiKey" id="aiKeyLabel">Clé API</label>
                                     <input type="password" id="aiApiKey" autocomplete="off">
-                                    <small class="help-text">Créez-la sur <a id="aiKeyLink" href="#" target="_blank" rel="noopener noreferrer"></a>. Elle est stockée chiffrée.</small>
+                                    <small class="help-text" id="aiKeyHelp">Créez-la sur <a id="aiKeyLink" href="#" target="_blank" rel="noopener noreferrer"></a>. Elle est stockée chiffrée.</small>
+                                    <small class="help-text" id="aiKeyOptionalHelp" hidden>Seulement si votre serveur en demande une. Elle est stockée chiffrée.</small>
                                 </div>
                                 <div class="form-group">
                                     <label for="aiModel">Modèle</label>

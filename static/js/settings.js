@@ -3277,7 +3277,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// ===== IA (Claude, Gemini, ChatGPT ou OpenRouter) : clé API, création et normalisation des tags =====
+// ===== IA (aiautotagging.com, Claude, Gemini, ChatGPT, OpenRouter, Groq ou LLM local) : clé API, création et normalisation des tags =====
 // Voir blueprints/ai. Les traitements tournent côté serveur ; on suit GET /api/ai/job.
 let aiJobTimer = null;
 let aiConfig = null;
@@ -3286,6 +3286,9 @@ let aiLastJobStatus = null;  // history_id du dernier traitement vu
 const aiDrafts = {};
 
 const AI_MODEL_HELP = {
+    aiautotagging: 'Modèle choisi par le service. Gratuit, sans clé, plus simple qu\'un vrai modèle de langage : pour des tags plus fins, prenez Claude, Gemini ou OpenRouter.',
+    groq: 'GPT-OSS 20B : rapide, JSON strict. Offre gratuite avec une clé (limites par minute et par jour, traité par lots de 5 séries). ↻ lit les modèles disponibles.',
+    local: '↻ lit les modèles installés sur le serveur. Un modèle de 7-8 milliards de paramètres ou plus (qwen3:8b, llama3.1:8b…) donne de meilleurs tags. Traité par lots de 5 séries.',
     anthropic: 'Opus : le plus précis. Haiku : le moins cher.',
     gemini: 'Flash-Lite : rapide et peu cher. ↻ lit les modèles disponibles avec votre clé.',
     openai: 'mini : bon rapport qualité/prix. ↻ lit les modèles disponibles avec votre clé.',
@@ -3309,6 +3312,16 @@ function _aiShowProvider(id) {
     const provider = _aiProvider(id);
     if (!provider) return;
     const draft = aiDrafts[id] || {};
+    const keyMode = provider.key || 'required';
+    document.getElementById('aiKeyGroup').hidden = keyMode === 'none';
+    document.getElementById('aiNoKeyHelp').hidden = keyMode !== 'none';
+    document.getElementById('aiKeyLabel').textContent = keyMode === 'optional' ? 'Clé API (facultative)' : 'Clé API';
+    document.getElementById('aiKeyHelp').hidden = keyMode !== 'required';
+    document.getElementById('aiKeyOptionalHelp').hidden = keyMode !== 'optional';
+    const urlInput = document.getElementById('aiBaseUrl');
+    document.getElementById('aiBaseUrlGroup').hidden = id !== 'local';
+    urlInput.placeholder = provider.default_base_url || '';
+    urlInput.value = draft.base_url !== undefined ? draft.base_url : (provider.base_url || '');
     const keyInput = document.getElementById('aiApiKey');
     keyInput.value = draft.api_key !== undefined ? draft.api_key : (provider.api_key || '');
     keyInput.placeholder = provider.has_api_key
@@ -3326,6 +3339,7 @@ function _aiSaveDraft() {
     if (!id) return;
     const select = document.getElementById('aiModel');
     aiDrafts[id] = {
+        base_url: document.getElementById('aiBaseUrl').value,
         api_key: document.getElementById('aiApiKey').value,
         model: select.value,
         models: [...select.options].map(o => ({ id: o.value, name: o.textContent.replace(/ \(.*\)$/, '') })),
@@ -3360,12 +3374,15 @@ async function loadAiSettings() {
 }
 
 function _aiFormValues() {
-    return {
+    const provider = document.getElementById('aiProvider').value;
+    const values = {
         enabled: document.getElementById('aiEnabled').checked,
-        provider: document.getElementById('aiProvider').value,
-        api_key: document.getElementById('aiApiKey').value.trim(),
+        provider,
         model: document.getElementById('aiModel').value,
     };
+    if ((_aiProvider(provider) || {}).key !== 'none') values.api_key = document.getElementById('aiApiKey').value.trim();
+    if (provider === 'local') values.base_url = document.getElementById('aiBaseUrl').value.trim();
+    return values;
 }
 
 async function refreshAiModels() {
@@ -3375,7 +3392,7 @@ async function refreshAiModels() {
         const response = await fetch('/api/ai/models', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ provider: values.provider, api_key: values.api_key }),
+            body: JSON.stringify({ provider: values.provider, api_key: values.api_key, base_url: values.base_url }),
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.error);
