@@ -59,6 +59,7 @@ def create_app(config_name='default'):
     from blueprints.auth import auth_bp
     from blueprints.telegram import telegram_bp
     from blueprints.ntfy import ntfy_bp
+    from blueprints.ai import ai_bp
     from blueprints.push import push_bp
     from blueprints.notification_events import notification_events_bp
     from blueprints.activity import activity_bp
@@ -84,6 +85,7 @@ def create_app(config_name='default'):
     app.register_blueprint(auth_bp)
     app.register_blueprint(telegram_bp, url_prefix='/api/telegram')
     app.register_blueprint(ntfy_bp, url_prefix='/api/ntfy')
+    app.register_blueprint(ai_bp, url_prefix='/api/ai')
     app.register_blueprint(push_bp, url_prefix='/api/push')
     app.register_blueprint(notification_events_bp, url_prefix='/api/notifications')
     app.register_blueprint(activity_bp)

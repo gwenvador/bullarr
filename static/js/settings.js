@@ -1799,6 +1799,8 @@ function switchTab(tabName) {
         loadRenameTemplateSettings();
     } else if (tabName === 'backup') {
         // Rien à charger: la carte "Créer un backup" est un simple lien de téléchargement
+    } else if (tabName === 'ai') {
+        loadAiSettings();
     }
 }
 
@@ -3274,3 +3276,184 @@ document.addEventListener('DOMContentLoaded', () => {
         el.innerHTML = svgIcon(el.dataset.icon);
     });
 });
+
+// ===== IA (Claude) : clé API, création et normalisation des tags =====
+// Voir blueprints/ai. Les traitements tournent côté serveur ; on suit GET /api/ai/job.
+let aiJobTimer = null;
+
+async function loadAiSettings() {
+    try {
+        const cfg = await (await fetch('/api/ai/config')).json();
+        document.getElementById('aiEnabled').checked = !!cfg.enabled;
+        const keyInput = document.getElementById('aiApiKey');
+        keyInput.value = cfg.api_key || '';
+        keyInput.placeholder = cfg.has_api_key ? `Clé enregistrée ${cfg.api_key_hint || ''}`.trim() : 'sk-ant-...';
+        const select = document.getElementById('aiModel');
+        select.innerHTML = (cfg.models || []).map(model =>
+            `<option value="${escapeHtml(model.id)}">${escapeHtml(model.name)}</option>`).join('');
+        select.value = cfg.model;
+    } catch (error) {
+        showMessage('aiMessage', '❌ Impossible de charger la configuration IA', 'error');
+    }
+    pollAiJob(true);
+}
+
+function _aiFormValues() {
+    return {
+        enabled: document.getElementById('aiEnabled').checked,
+        api_key: document.getElementById('aiApiKey').value.trim(),
+        model: document.getElementById('aiModel').value,
+    };
+}
+
+async function saveAiSettings() {
+    try {
+        const response = await fetch('/api/ai/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(_aiFormValues()),
+        });
+        const data = await response.json();
+        if (data.success) {
+            showMessage('aiMessage', '✅ Configuration IA enregistrée', 'success');
+            loadAiSettings();
+        } else {
+            showMessage('aiMessage', '❌ ' + data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('aiMessage', '❌ Erreur lors de la sauvegarde', 'error');
+    }
+}
+
+async function testAiConnection() {
+    showMessage('aiMessage', 'Test en cours…', 'info');
+    try {
+        const response = await fetch('/api/ai/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(_aiFormValues()),
+        });
+        const data = await response.json();
+        showMessage('aiMessage', data.success ? '✅ ' + data.message : '❌ ' + data.error, data.success ? 'success' : 'error');
+    } catch (error) {
+        showMessage('aiMessage', '❌ Test impossible', 'error');
+    }
+}
+
+async function _startAiJob(url, body) {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body || {}),
+    });
+    const data = await response.json();
+    if (!data.success) {
+        _showAiJob({ status: 'error', message: data.error });
+        return false;
+    }
+    pollAiJob();
+    return true;
+}
+
+function startAiTagGeneration() {
+    const scope = document.getElementById('aiGenerateScope').value;
+    if (scope === 'all' && !confirm('Proposer des tags pour toutes les séries ? Les tags actuels sont gardés, de nouveaux s\'y ajoutent.')) return;
+    _startAiJob('/api/ai/tags/generate', { scope });
+}
+
+function startAiTagNormalization() {
+    document.getElementById('aiNormalizeProposals').hidden = true;
+    _startAiJob('/api/ai/tags/normalize');
+}
+
+function _showAiJob(job) {
+    const card = document.getElementById('aiJobCard');
+    if (!card) return;
+    const running = job.status === 'running';
+    card.hidden = !job.status || job.status === 'idle';
+    card.classList.toggle('ai-job-error', job.status === 'error');
+    const prefix = running ? '⏳ ' : job.status === 'error' ? '❌ ' : job.status === 'done' ? '✅ ' : '';
+    document.getElementById('aiJobMessage').textContent = prefix + (job.message || '');
+    const progress = document.getElementById('aiJobProgress');
+    progress.hidden = !(running && job.total);
+    progress.max = job.total || 1;
+    progress.value = job.progress || 0;
+    document.getElementById('aiGenerateButton').disabled = running;
+    document.getElementById('aiNormalizeButton').disabled = running;
+}
+
+async function pollAiJob(once) {
+    clearTimeout(aiJobTimer);
+    let job;
+    try {
+        job = await (await fetch('/api/ai/job')).json();
+    } catch (error) {
+        return;
+    }
+    _showAiJob(job);
+    if (job.status === 'running') {
+        aiJobTimer = setTimeout(() => pollAiJob(), 2000);
+    } else if (job.status === 'done' && job.kind === 'normalize' && !job.applied) {
+        // Aussi au retour sur l'onglet (once) : les propositions restent à valider.
+        renderAiNormalizeProposals((job.result || {}).groups || []);
+    }
+}
+
+function renderAiNormalizeProposals(groups) {
+    const box = document.getElementById('aiNormalizeProposals');
+    if (!groups.length) {
+        box.hidden = true;
+        return;
+    }
+    box.innerHTML = `
+        <div class="ai-proposals-toolbar">
+            <label><input type="checkbox" checked onchange="toggleAllAiProposals(this.checked)"> Tout cocher</label>
+            <span class="help-text">Modifiez le tag à garder si besoin, décochez les regroupements à ignorer.</span>
+        </div>
+        <ul class="ai-proposal-list">${groups.map((group, index) => `
+            <li class="ai-proposal" data-index="${index}">
+                <input type="checkbox" class="ai-proposal-check" checked aria-label="Appliquer ce regroupement">
+                <div class="ai-proposal-body">
+                    <div class="ai-proposal-tags">
+                        ${group.variants.map(v => `<span class="ai-proposal-variant" data-tag="${escapeHtml(v.tag)}">${escapeHtml(v.tag)} <small>${v.series}</small></span>`).join('')}
+                        <span class="ai-proposal-arrow">→</span>
+                        <input type="text" class="ai-proposal-canonical" value="${escapeHtml(group.canonical)}" aria-label="Tag à garder">
+                    </div>
+                    ${group.reason ? `<p class="ai-proposal-reason">${escapeHtml(group.reason)}</p>` : ''}
+                </div>
+            </li>`).join('')}
+        </ul>
+        <button class="btn" onclick="applyAiNormalization()">Appliquer les regroupements cochés</button>
+        <div id="aiNormalizeMessage" class="message"></div>`;
+    box.hidden = false;
+}
+
+function toggleAllAiProposals(checked) {
+    document.querySelectorAll('#aiNormalizeProposals .ai-proposal-check').forEach(box => { box.checked = checked; });
+}
+
+async function applyAiNormalization() {
+    const groups = [...document.querySelectorAll('#aiNormalizeProposals .ai-proposal')]
+        .filter(item => item.querySelector('.ai-proposal-check').checked)
+        .map(item => ({
+            canonical: item.querySelector('.ai-proposal-canonical').value,
+            variants: [...item.querySelectorAll('.ai-proposal-variant')].map(el => el.dataset.tag),
+        }));
+    if (!groups.length) {
+        showMessage('aiNormalizeMessage', '⚠️ Aucun regroupement coché', 'warning');
+        return;
+    }
+    try {
+        const response = await fetch('/api/ai/tags/normalize/apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ groups }),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        const box = document.getElementById('aiNormalizeProposals');
+        box.innerHTML = `<p class="ai-proposals-done">✅ ${data.renamed} tag${data.renamed > 1 ? 's' : ''} fusionné${data.renamed > 1 ? 's' : ''}, ${data.changed} série${data.changed > 1 ? 's' : ''} modifiée${data.changed > 1 ? 's' : ''}.</p>`;
+    } catch (error) {
+        showMessage('aiNormalizeMessage', '❌ ' + error.message, 'error');
+    }
+}

@@ -5,6 +5,7 @@ PyMuPDF==1.26.7
 rarfile==4.1
 gunicorn>=23,<24
 requests==2.33.0
+anthropic==2.5.0
 beautifulsoup4==4.12.2
 defusedxml==0.7.1
 cryptography==50.0.0

@@ -42,6 +42,7 @@
                 <a href="#search-formats" class="nav-sublink" data-tab="search-formats" onclick="switchTab('search-formats'); return false;">🗂️ Recherche</a>
                 <a href="#libraries" class="nav-sublink" data-tab="libraries" onclick="switchTab('libraries'); return false;">✏️ Format</a>
                 <a href="#backup" class="nav-sublink" data-tab="backup" onclick="switchTab('backup'); return false;">💾 Backup</a>
+                <a href="#ai" class="nav-sublink" data-tab="ai" onclick="switchTab('ai'); return false;">🤖 IA</a>
             </div>
         </div>
 
@@ -134,6 +135,13 @@
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">Backup</span>
                                     <span class="overview-card-desc">Sauvegarde et restauration</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('ai')">
+                                <span class="overview-card-icon" data-icon="sparkles"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">IA</span>
+                                    <span class="overview-card-desc">Clé API Claude, création et normalisation des tags</span>
                                 </span>
                             </button>
                         </div>
@@ -2095,6 +2103,80 @@
                                 <button class="btn btn-danger" onclick="restoreBackup()">⬆️ Importer et restaurer</button>
                             </div>
                             <div id="backupRestoreMessage" class="message"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet IA : clé API Anthropic (Claude) et traitements des tags,
+                     voir blueprints/ai et la partie « IA » de settings.js. -->
+                <div class="tab-content" id="tab-ai">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>🤖 IA</h2>
+                            <p class="section-description">
+                                Claude (Anthropic) crée les tags des séries et regroupe les tags qui veulent
+                                dire la même chose. Les requêtes sont facturées sur votre compte Anthropic.
+                            </p>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 style="margin-top:0;">Connexion</h3>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="aiEnabled">
+                                <label for="aiEnabled">
+                                    <strong>Activer l'IA</strong>
+                                    <span class="help-text">Nécessaire pour lancer les traitements ci-dessous</span>
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="aiApiKey">Clé API</label>
+                                    <input type="password" id="aiApiKey" placeholder="sk-ant-..." autocomplete="off">
+                                    <small class="help-text">Créez-la sur <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener noreferrer">platform.claude.com</a>. Elle est stockée chiffrée.</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="aiModel">Modèle</label>
+                                    <select id="aiModel" class="form-select"></select>
+                                    <small class="help-text">Opus : le plus précis. Haiku : le moins cher.</small>
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button class="btn" onclick="saveAiSettings()">💾 Enregistrer</button>
+                                <button class="btn btn-secondary" onclick="testAiConnection()">Tester la connexion</button>
+                            </div>
+                            <div id="aiMessage" class="message"></div>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 style="margin-top:0;">Créer des tags</h3>
+                            <p class="help-text" style="display:block; margin-bottom:10px;">
+                                L'IA lit le titre, les auteurs, le genre et le résumé de chaque série, et ajoute des
+                                tags en réutilisant ceux qui existent déjà. Les tags actuels sont conservés.
+                            </p>
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                <select id="aiGenerateScope" class="form-select" style="width:auto;">
+                                    <option value="untagged">Séries sans tags</option>
+                                    <option value="all">Toutes les séries</option>
+                                </select>
+                                <button class="btn" id="aiGenerateButton" onclick="startAiTagGeneration()">✨ Créer les tags</button>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 style="margin-top:0;">Normaliser les tags</h3>
+                            <p class="help-text" style="display:block; margin-bottom:10px;">
+                                L'IA repère les tags qui désignent la même chose (par exemple « de-gaulle »,
+                                « charles-de-gaulle », « general de gaulle ») et propose un tag commun. Rien n'est
+                                modifié avant que vous validiez les regroupements.
+                            </p>
+                            <button class="btn" id="aiNormalizeButton" onclick="startAiTagNormalization()">🔀 Analyser les tags</button>
+                            <div id="aiNormalizeProposals" class="ai-proposals" hidden></div>
+                        </div>
+
+                        <div class="settings-card ai-job-card" id="aiJobCard" hidden>
+                            <p class="ai-job-message" id="aiJobMessage"></p>
+                            <progress id="aiJobProgress" class="ai-job-progress" max="1" value="0" hidden></progress>
                         </div>
                     </div>
                 </div>
