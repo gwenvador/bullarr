@@ -106,6 +106,10 @@
                         <button class="toolbar-dropdown-item" data-filter="favorite" onclick="toggleSeriesFilter(this.dataset.filter)">⭐ Favoris</button>
                     </div>
                 </div>
+                <button type="button" class="toolbar-btn select-mode-btn" id="series-select-mode-btn" onclick="toggleSeriesSelectMode()" aria-pressed="false" title="Sélectionner des séries pour agir sur plusieurs à la fois">
+                    <span class="toolbar-btn-icon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="m9 12 2 2 4-4" /></svg></span>
+                    <span class="toolbar-btn-label">Sélectionner</span>
+                </button>
                 <div class="view-switcher">
                     <button class="view-switch-btn" data-view="poster" onclick="setSeriesViewMode('poster')" title="Vue affiches"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></svg> Affiches</button>
                     <button class="view-switch-btn" data-view="overview" onclick="setSeriesViewMode('overview')" title="Vue aperçu"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h.01" /><path d="M3 12h.01" /><path d="M3 19h.01" /><path d="M8 5h13" /><path d="M8 12h13" /><path d="M8 19h13" /></svg> Aperçu</button>
@@ -129,7 +133,7 @@
                  même pattern que volume-bulk-actions-bar (fiche série): repliée tant
                  qu'aucune série n'est cochée, voir updateSeriesBulkActionsBar/
                  toggleSeriesSelection côté library.js. -->
-            <div id="series-bulk-actions-bar" class="volume-bulk-actions-bar" style="display:none;"></div>
+            <div id="series-bulk-actions-bar" class="series-bulk-bar" role="toolbar" aria-label="Actions sur les séries sélectionnées" style="display:none;"></div>
 
             <div class="series-grid poster-grid" id="series-grid">
                 <div class="loading">
