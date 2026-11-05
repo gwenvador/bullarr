@@ -1282,6 +1282,8 @@ input[type="checkbox"].switch-input:disabled {
     transition: border-color 0.15s ease, color 0.15s ease;
 }
 .about-card a.about-action:hover { border-color: var(--color-accent); color: var(--color-accent); text-decoration: none; }
+.about-card a.about-fdroid { display: inline-flex; align-items: center; }
+.about-fdroid img { height: 36px; width: auto; display: block; }
 
 /* Liens externes : groupes en colonnes, chaque lien = tuile avec logo */
 .about-links {

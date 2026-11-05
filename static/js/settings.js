@@ -3258,6 +3258,9 @@ async function loadAboutUpdates() {
                 ? `<a class="about-badge about-badge-update" href="${escapeHtml(bullarr.url)}" target="_blank" rel="noopener noreferrer">⬆ Mise à jour : <strong>v${escapeHtml(bullarr.latest)}</strong></a>`
                 : '<span class="about-badge about-badge-ok">✓ À jour</span>';
             box.hidden = false;
+        } else {
+            box.innerHTML = '<span class="about-badge">Vérification de version indisponible</span>';
+            box.hidden = false;
         }
     } catch (error) { /* GitHub injoignable: la carte reste sans ligne de mise à jour */ }
 }
