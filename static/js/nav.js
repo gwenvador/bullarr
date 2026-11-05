@@ -1198,7 +1198,8 @@ const SIDEBAR_ICON_MAP = {
     '🎨': 'palette',
     '🗂️': 'search',
     '✏️': 'pencil',
-    '💾': 'save'
+    '💾': 'save',
+    '🤖': 'sparkles'
 };
 
 // page à l'autre via localStorage
@@ -1608,7 +1609,10 @@ function selectHeaderSearchTag(tag) {
     const first = (navHeaderSearchAllSeries || []).find(s => (s.tags || []).some(t => _navSearchFlat(t) === tagFlat));
     if (!first || first.library_id == null) return;
     // Déjà sur cette bibliothèque : on filtre sur place, sans recharger la page.
-    if (typeof applyTagFilterInPlace === 'function' && Number(window.libraryId) === Number(first.library_id)) {
+    // libraryId est une constante déclarée par templates/library.html (pas sur window).
+    const currentLibraryId = typeof libraryId !== 'undefined' ? libraryId : window.libraryId;
+    if (typeof applyTagFilterInPlace === 'function' && currentLibraryId != null
+            && Number(currentLibraryId) === Number(first.library_id)) {
         closeHeaderSearch();
         applyTagFilterInPlace(tag);
         return;
