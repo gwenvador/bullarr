@@ -3812,7 +3812,7 @@ body.comic-reader-open { overflow: hidden; }
 .series-bulk-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .series-bulk-sep { width: 1px; height: 22px; background: var(--color-border); margin: 0 4px; }
 
-@media (max-width: 768px) {
+@media screen and (max-width: 768px) {
     .series-grid.poster-grid {
         grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
         gap: 16px 12px;
@@ -3845,7 +3845,7 @@ body.comic-reader-open { overflow: hidden; }
     border-radius: 9px;
 }
 .library-content > .search-row .view-switch-btn { padding: 6px 12px; }
-@media (max-width: 768px) {
+@media screen and (max-width: 768px) {
     .library-content > .search-row { margin: 8px 0 12px; padding: 6px 8px; border-radius: 10px; }
     /* Icônes seules : les libellés (Affiches, Aperçu, Tableau) faisaient déborder la barre. */
     .library-content > .search-row .view-switch-btn { font-size: 0; padding: 7px 10px; }
@@ -3858,3 +3858,14 @@ body.comic-reader-open { overflow: hidden; }
 body:has(.library-content .poster-grid) { overflow-x: clip; overflow-y: visible; }
 .container:has(.library-content .poster-grid) { overflow: clip; }
 .library-content:has(.poster-grid) { overflow-x: clip; overflow-y: visible; }
+
+/* Compteur dans les menus Statut / Langue */
+.toolbar-dropdown-item .filter-count {
+    margin-left: auto;
+    padding-left: 12px;
+    opacity: .6;
+    font-size: .85em;
+    font-variant-numeric: tabular-nums;
+}
+#status-filter-menu .toolbar-dropdown-item,
+#language-filter-menu .toolbar-dropdown-item { display: flex; align-items: center; }

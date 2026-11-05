@@ -97,6 +97,18 @@
                         <button class="toolbar-dropdown-item" data-sort="volumes" onclick="setSeriesSortMode('volumes')">📚 Nombre de tomes</button>
                     </div>
                 </div>
+                <div class="toolbar-dropdown" id="status-filter-section">
+                    <button class="toolbar-btn" id="status-filter-btn" onclick="toggleToolbarDropdown('status-filter-menu', this)" title="Filtrer par statut de la collection">
+                        <span class="toolbar-btn-label">📊 Statut</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu toolbar-dropdown-menu-right" id="status-filter-menu" style="display: none;"></div>
+                </div>
+                <div class="toolbar-dropdown" id="language-filter-section">
+                    <button class="toolbar-btn" id="language-filter-btn" onclick="toggleToolbarDropdown('language-filter-menu', this)" title="Filtrer par langue (Bédéthèque)">
+                        <span class="toolbar-btn-label">🌐 Langue</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu toolbar-dropdown-menu-right" id="language-filter-menu" style="display: none;"></div>
+                </div>
                 <div class="toolbar-dropdown" id="lists-filter-section">
                     <button class="toolbar-btn" id="lists-filter-btn" onclick="toggleToolbarDropdown('lists-filter-menu', this)" title="Listes personnelles : à lire plus tard et favoris">
                         <span class="toolbar-btn-label">📚 Listes</span>

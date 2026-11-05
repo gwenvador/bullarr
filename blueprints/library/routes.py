@@ -2458,7 +2458,7 @@ def get_library_series(library_id):
                    s.komga_series_id, s.komga_match_status, s.komga_matched_title, s.komga_url,
                    s.komga_cover_path,
                    s.bedetheque_url, s.bedetheque_cover_path, s.bedetheque_total_volumes, s.bedetheque_status,
-                   s.bedetheque_editeurs, s.bedetheque_origin,
+                   s.bedetheque_editeurs, s.bedetheque_origin, s.bedetheque_language,
                    (SELECT COALESCE(SUM(v.file_size), 0) FROM volumes v
                      WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.filepath != ''
                        AND COALESCE(v.filesystem_present, 1) = 1) AS total_size,
@@ -2542,6 +2542,7 @@ def get_library_series(library_id):
                 'bedetheque_total_volumes': row['bedetheque_total_volumes'],
                 'bedetheque_editeurs': row['bedetheque_editeurs'],
                 'bedetheque_origin': row['bedetheque_origin'],
+                'bedetheque_language': row['bedetheque_language'],
                 # Octets des tomes présents sur le disque (filtre « Taille » de l'app Android).
                 'total_size': row['total_size'] or 0,
                 'total_votes': row['total_votes'] or 0,
