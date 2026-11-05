@@ -3620,12 +3620,11 @@ body.comic-reader-open { overflow: hidden; }
 .keep-reading-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #fbd9a8; }
 .keep-reading-progress span { display: block; height: 100%; background: #f28c13; }
 /* Textes comme Komga : une ligne chacun, coupée par « … » (le titre complet est dans l'infobulle) */
-.keep-reading-title, .keep-reading-meta, .keep-reading-pages {
+.keep-reading-title, .keep-reading-meta {
     display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .keep-reading-title { font-weight: 500; font-size: 0.85em; line-height: 1.3; margin-top: 2px; }
 .keep-reading-meta { color: var(--color-text-muted); font-size: 0.76em; line-height: 1.3; }
-.keep-reading-pages { color: var(--color-text-muted); font-size: 0.72em; line-height: 1.3; opacity: 0.85; }
 .keep-reading-toggle {
     display: inline-flex; align-items: center; gap: 6px; padding: 0; background: none; border: none;
     color: inherit; font: inherit; cursor: pointer;
