@@ -736,11 +736,11 @@ function buildOverviewRowHtml(s) {
             <div class="overview-tags">
                 ${bedethequeOriginHtml(s.bedetheque_origin)}
                 ${statusInfo ? `<span class="overview-tag">${svgIcon(statusInfo.icon)} ${escapeHtml(statusInfo.label)}</span>` : ''}
-                <span class="overview-tag">📖 ${volumeLabel}</span>
+                <span class="overview-tag">${svgIcon('book-open')} ${volumeLabel}</span>
                 ${komgaReadingInfo(s)?.started ? `<span class="overview-tag overview-tag-reading" title="Avancement de lecture (Komga)">✓ ${escapeHtml(komgaReadingLabel(komgaReadingInfo(s)))}</span>` : ''}
-                ${s.to_read_later ? '<span class="overview-tag">📚 À lire</span>' : ''}
-                ${s.is_favorite ? '<span class="overview-tag">⭐ Favori</span>' : ''}
-                ${(s.tags || []).map(tag => `<span class="overview-tag">${escapeHtml(tag)}</span>`).join('')}
+                ${s.to_read_later ? `<span class="overview-tag">${svgIcon('pin')} À lire</span>` : ''}
+                ${s.is_favorite ? `<span class="overview-tag">${svgIcon('star')} Favori</span>` : ''}
+                ${overviewUserTagsHtml(s.tags)}
             </div>
         </div>
         <div class="overview-actions">${buildQuickActionsHtml(s, 'poster-action-btn poster-action-btn-light')}</div>
@@ -986,6 +986,21 @@ function renderTableColumnsMenu() {
 }
 
 document.addEventListener('DOMContentLoaded', applyTableDensity);
+
+// Tags de l'utilisateur dans la vue Aperçu : « #tag » discrets, distincts des puces
+// d'information (statut, tomes) ; au-delà de OVERVIEW_MAX_TAGS, une puce « +N ».
+const OVERVIEW_MAX_TAGS = 8;
+function overviewUserTagsHtml(tags) {
+    const list = tags || [];
+    if (!list.length) return '';
+    const shown = list.slice(0, OVERVIEW_MAX_TAGS);
+    const rest = list.slice(OVERVIEW_MAX_TAGS);
+    const more = rest.length
+        ? `<span class="overview-user-tag overview-user-tag-more" data-tooltip="${escapeHtml(rest.join(', '))}">+${rest.length}</span>`
+        : '';
+    return `<span class="overview-user-tags">${shown.map(tag =>
+        `<span class="overview-user-tag"><span class="overview-user-tag-hash">#</span>${escapeHtml(tag)}</span>`).join('')}${more}</span>`;
+}
 
 // Icônes des listes personnelles, affichées à côté du titre quand la série y figure
 function seriesListIconsHtml(s) {

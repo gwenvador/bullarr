@@ -1840,12 +1840,42 @@
 }
 
 .overview-tag {
-    background: #f0f0f0;
-    color: #555;
-    padding: 3px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    padding: 2px 9px;
     border-radius: 20px;
-    font-size: 0.78em;
+    font-size: 0.76em;
+    line-height: 1.5;
     white-space: nowrap;
+}
+.overview-tag .icon { width: 12px; height: 12px; flex-shrink: 0; }
+
+/* Tags de l'utilisateur (vue Aperçu) : texte couleur d'accent, fond à peine teinté. */
+.overview-user-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+}
+.overview-user-tag {
+    color: color-mix(in srgb, var(--color-accent) 85%, var(--color-text));
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+    padding: 1px 8px;
+    border-radius: 6px;
+    font-size: 0.74em;
+    line-height: 1.6;
+    white-space: nowrap;
+}
+.overview-user-tag-hash { opacity: 0.5; margin-right: 1px; }
+.overview-user-tag-more {
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px dashed var(--color-border);
+    cursor: default;
 }
 
 .overview-actions {
@@ -3193,7 +3223,7 @@ a.result-title:hover {
 }
 
 [data-theme="dark"] .overview-tag {
-    background: var(--color-surface-alt);
+    background: transparent;
     color: var(--color-text-muted);
 }
 
@@ -3982,7 +4012,7 @@ body:has(.library-content .poster-grid) { overflow-x: clip; overflow-y: visible;
 
 /* ===== Panneau « Affichage » du tableau des séries (densité, préréglages, colonnes) ===== */
 .toolbar-dropdown-menu.table-display-panel {
-    width: 320px;
+    width: 340px;
     max-width: calc(100vw - 24px);
     max-height: min(80vh, 760px);
     overflow-y: auto;
@@ -4035,21 +4065,35 @@ body:has(.library-content .poster-grid) { overflow-x: clip; overflow-y: visible;
     color: var(--color-text-muted);
     margin-bottom: 8px;
 }
-.table-display-segment { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.table-display-segment {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    padding: 3px;
+    border-radius: 9px;
+    background: var(--color-surface-alt);
+}
 .table-display-segment button {
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-    color: var(--color-text);
-    border-radius: 8px;
-    padding: 7px 4px;
-    font-size: 0.88em;
+    min-width: 0;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-text-muted);
+    border-radius: 7px;
+    padding: 6px 2px;
+    font: inherit;
+    font-size: 0.82em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     cursor: pointer;
 }
 .table-display-segment button:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); }
+.table-display-segment button:hover { color: var(--color-text); }
 .table-display-segment button.active {
-    border-color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
     color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+    background: var(--color-surface);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     font-weight: 600;
 }
 .table-display-preset {
