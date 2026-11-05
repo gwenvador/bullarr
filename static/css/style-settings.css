@@ -1364,3 +1364,22 @@ input[type="checkbox"].switch-input:disabled {
     .notification-events-table th, .notification-events-table td { padding: 10px 8px; }
     .notification-events-channel, .notification-events-cell { width: 72px; }
 }
+
+/* ===== Onglet IA (voir settings.js, partie « IA ») ===== */
+.ai-job-card { display: flex; flex-direction: column; gap: 8px; }
+.ai-job-card.ai-job-error { border-color: var(--color-danger, #c0392b); }
+.ai-job-message { margin: 0; font-weight: 600; }
+.ai-job-progress { width: 100%; height: 8px; accent-color: var(--color-accent); }
+.ai-proposals { margin-top: 14px; }
+.ai-proposals-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 8px; }
+.ai-proposal-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+.ai-proposal { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); }
+.ai-proposal-check { margin-top: 6px; flex: 0 0 auto; }
+.ai-proposal-body { min-width: 0; flex: 1 1 auto; }
+.ai-proposal-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ai-proposal-variant { padding: 2px 8px; border-radius: 999px; background: var(--color-surface-alt); font-size: 0.88em; overflow-wrap: anywhere; }
+.ai-proposal-variant small { color: var(--color-text-muted); }
+.ai-proposal-arrow { color: var(--color-text-muted); }
+.ai-proposal-canonical { flex: 1 1 160px; min-width: 0; padding: 4px 8px; font-weight: 600; }
+.ai-proposal-reason { margin: 4px 0 0; color: var(--color-text-muted); font-size: 0.85em; }
+.ai-proposals-done { margin: 0; font-weight: 600; }

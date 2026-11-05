@@ -89,6 +89,7 @@ class Config:
     RENAME_CONFIG_FILE = os.path.join(DATA_DIR, 'rename_config.json')
     TELEGRAM_CONFIG_FILE = os.path.join(DATA_DIR, 'telegram_config.json')
     NTFY_CONFIG_FILE = os.path.join(DATA_DIR, 'ntfy_config.json')
+    AI_CONFIG_FILE = os.path.join(DATA_DIR, 'ai_config.json')
     # Adresses UnifiedPush des téléphones abonnés (application Android), voir blueprints/push.
     PUSH_ENDPOINTS_FILE = os.path.join(DATA_DIR, 'push_endpoints.json')
     TELEGRAM_CHANNELS_CONFIG_FILE = os.path.join(DATA_DIR, 'telegram_channels_config.json')
@@ -147,6 +148,13 @@ class Config:
 
     # Notifications ntfy (https://ntfy.sh ou serveur auto-hébergé), voir blueprints/ntfy.
     # auth: 'none', 'token' (jeton d'accès tk_...) ou 'basic' (identifiant + mot de passe).
+    # IA (API Claude d'Anthropic), voir blueprints/ai : création et normalisation des tags.
+    AI_CONFIG = {
+        'enabled': False,
+        'api_key': '',
+        'model': 'claude-opus-5-5',
+    }
+
     NTFY_CONFIG = {
         'enabled': False,
         'server_url': 'https://ntfy.sh',
