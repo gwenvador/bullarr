@@ -5,8 +5,8 @@ Quatre fournisseurs au choix (Configuration → IA), chacun avec sa clé API et 
 - Gemini (Google), via l'API REST generativelanguage.googleapis.com ;
 - ChatGPT (OpenAI), via l'API REST api.openai.com (Chat Completions, sortie JSON stricte) ;
 - OpenRouter, une seule clé pour des centaines de modèles (Claude, GPT, Gemini, DeepSeek,
-  Mistral…), via son API compatible OpenAI ; seuls les modèles à sortie JSON structurée
-  sont proposés.
+  Mistral…), via son API compatible OpenAI. Modèles à sortie JSON structurée, plus les
+  modèles gratuits (JSON demandé dans la consigne quand le modèle ne sait pas faire mieux).
 
 Deux traitements utilisent l'IA :
 - création des tags : propose des tags pour des séries (sans tags, ou toutes) à partir du
@@ -75,6 +75,7 @@ PROVIDERS = {
             'openai/gpt-5-mini': 'OpenAI: GPT-5 Mini',
             'anthropic/claude-haiku-5.5': 'Anthropic: Claude Haiku 5.5',
             'deepseek/deepseek-v4.1-flash': 'DeepSeek: DeepSeek V4.1 Flash',
+            'openrouter/free': 'OpenRouter: Free (gratuit, modèle choisi par OpenRouter)',
         },
         'default_model': 'google/gemini-3.5-flash-lite',
         'key_placeholder': 'sk-or-v1-...',
@@ -96,6 +97,10 @@ _OPENAI_SKIP = ('audio', 'realtime', 'tts', 'transcribe', 'image', 'embedding', 
 OPENROUTER_API = 'https://openrouter.ai/api/v1'
 # Identifiants OpenRouter : « fournisseur/modèle », avec un suffixe éventuel (« :free »).
 _OPENROUTER_MODEL_RE = re.compile(r'^[a-z0-9][a-z0-9._\-]{0,40}/[a-z0-9][a-z0-9._\-]{0,100}(:[a-z0-9\-]{1,20})?$')
+# Modèles gratuits sans intérêt pour des tags (modération, code).
+_OPENROUTER_SKIP = ('content-safety', 'guard', '-code')
+OPENROUTER_CATALOG_TTL = 3600
+_openrouter_catalog_cache = {'at': 0.0, 'models': None}
 MASK = '****'
 
 GENERATE_BATCH_SIZE = 20
@@ -538,50 +543,93 @@ def _openrouter_request(cfg, method, path, **kwargs):
     raise AiError(f'Erreur de l\'API OpenRouter ({response.status_code}) : {message}')
 
 
-def _openrouter_catalog(cfg):
-    """Modèles texte d'OpenRouter qui acceptent une sortie JSON structurée (hors « :batch »)."""
+def _openrouter_is_free(item):
+    pricing = item.get('pricing') or {}
+    return str(item.get('id') or '').endswith(':free') or (
+        str(pricing.get('prompt')) in ('0', '0.0') and str(pricing.get('completion')) in ('0', '0.0'))
+
+
+def _openrouter_catalog(cfg, refresh=False):
+    """Modèles texte d'OpenRouter utilisables ici (hors « :batch ») : ceux à sortie JSON
+    structurée, plus les gratuits. Chaque entrée dit comment obtenir du JSON :
+    json_mode 'schema' (schéma strict), 'object' (JSON libre) ou 'prompt' (consigne seule)."""
+    cache = _openrouter_catalog_cache
+    if not refresh and cache['models'] is not None and time.time() - cache['at'] < OPENROUTER_CATALOG_TTL:
+        return cache['models']
     data = _openrouter_request(cfg, 'GET', 'models', timeout=30)
     models = []
     for item in data.get('data') or []:
         model_id = str(item.get('id') or '')
         if model_id.endswith(':batch') or not _OPENROUTER_MODEL_RE.match(model_id):
             continue
-        if 'structured_outputs' not in (item.get('supported_parameters') or []):
-            continue
         outputs = ((item.get('architecture') or {}).get('output_modalities')) or ['text']
         if outputs != ['text']:
             continue
-        models.append({'id': model_id, 'name': item.get('name') or model_id})
+        params = item.get('supported_parameters') or []
+        free = _openrouter_is_free(item)
+        if 'structured_outputs' in params:
+            mode = 'schema'
+        elif free and not any(word in model_id for word in _OPENROUTER_SKIP):
+            mode = 'object' if 'response_format' in params else 'prompt'
+        else:
+            continue
+        name = item.get('name') or model_id
+        if free:
+            name = re.sub(r'\s*\(free\)\s*', ' ', name).strip() + ' (gratuit)'
+        models.append({'id': model_id, 'name': name, 'free': free, 'json_mode': mode})
+    cache.update(at=time.time(), models=models)
     return models
 
 
 def _openrouter_models(cfg):
-    models = _openrouter_catalog(cfg)
-    models.sort(key=lambda item: item['name'].lower())
-    return models
+    # Gratuits en tête, puis par nom.
+    models = sorted(_openrouter_catalog(cfg, refresh=True),
+                    key=lambda item: (not item['free'], item['name'].lower()))
+    return [{'id': item['id'], 'name': item['name']} for item in models]
 
 
 def _openrouter_test(cfg):
     _openrouter_request(cfg, 'GET', 'key', timeout=30)  # vérifie la clé
+    item = _openrouter_model_info(cfg, refresh=True)
+    if not item:
+        raise AiError('Modèle OpenRouter introuvable ou sans sortie JSON structurée')
+    return item['name']
+
+
+def _openrouter_model_info(cfg, refresh=False):
     model = active_model(cfg)
-    for item in _openrouter_catalog(cfg):
+    for item in _openrouter_catalog(cfg, refresh=refresh):
         if item['id'] == model:
-            return item['name']
-    raise AiError('Modèle OpenRouter introuvable ou sans sortie JSON structurée')
+            return item
+    return None
 
 
 def _openrouter_json(cfg, system, user, schema, max_tokens):
+    # Mode JSON du modèle : liste en cache ; si OpenRouter n'est pas joignable, schéma strict.
+    try:
+        info = _openrouter_model_info(cfg) or {}
+    except AiError:
+        info = {}
+    mode = info.get('json_mode', 'schema')
+    if mode != 'schema':
+        # Modèle sans sortie structurée (souvent gratuit) : le schéma va dans la consigne.
+        system = (f'{system}\n\nRéponds uniquement par un objet JSON valide, sans texte autour ni '
+                  f'bloc de code, conforme à ce schéma JSON :\n{json.dumps(schema, ensure_ascii=False)}')
     body = {
         'model': active_model(cfg),
         'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
-        'response_format': {
-            'type': 'json_schema',
-            'json_schema': {'name': 'reponse', 'strict': True, 'schema': schema},
-        },
-        # Seulement les hébergeurs qui respectent response_format (sortie JSON garantie).
-        'provider': {'require_parameters': True},
         'max_tokens': min(max_tokens, 64000),
     }
+    if mode == 'schema':
+        body['response_format'] = {
+            'type': 'json_schema',
+            'json_schema': {'name': 'reponse', 'strict': True, 'schema': schema},
+        }
+    elif mode == 'object':
+        body['response_format'] = {'type': 'json_object'}
+    if mode != 'prompt':
+        # Seulement les hébergeurs qui respectent response_format.
+        body['provider'] = {'require_parameters': True}
     data = _openrouter_request(cfg, 'POST', 'chat/completions', json=body, timeout=900)
     if data.get('error'):
         raise AiError(f'Erreur OpenRouter : {(data["error"] or {}).get("message") or data["error"]}')
@@ -636,8 +684,16 @@ def call_json(cfg, system, user, schema, cache_system=False, max_tokens=64000):
         text = re.sub(r'^```[a-zA-Z]*\s*|\s*```$', '', text)
     try:
         return json.loads(text)
-    except ValueError as exc:
-        raise AiError('Réponse du modèle illisible') from exc
+    except ValueError:
+        pass
+    # Modèles sans sortie structurée : texte autour de l'objet JSON.
+    start, end = text.find('{'), text.rfind('}')
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except ValueError:
+            pass
+    raise AiError('Réponse du modèle illisible (JSON invalide) : essayez un autre modèle')
 
 
 # ===== Tags =====

@@ -506,6 +506,27 @@ class AiTagsTestCase(unittest.TestCase):
             self.assertIn(expected, response.get_json()['error'])
             self.assertEqual(request.call_count, 1)
 
+    def test_openrouter_free_model_without_structured_output_gets_schema_in_prompt(self):
+        from blueprints.ai import service
+        service._openrouter_catalog_cache.update(at=0.0, models=None)
+        self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'openrouter', 'api_key': 'sk-or-v1-test-123456',
+            'model': 'google/gemma-4-31b-it:free'})
+        listing = mock.Mock(status_code=200, ok=True)
+        listing.json.return_value = {'data': [
+            {'id': 'google/gemma-4-31b-it:free', 'name': 'Google: Gemma 4 31B (free)',
+             'architecture': {'output_modalities': ['text']}, 'supported_parameters': ['response_format'],
+             'pricing': {'prompt': '0', 'completion': '0'}}]}
+        answer = self._openai_response('Voici : {"groups": []} Bonne journée')
+        with mock.patch('blueprints.ai.service.requests.request', side_effect=[listing, answer]) as request:
+            self.client.post('/api/ai/tags/normalize')
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'done', job)
+        body = request.call_args.kwargs['json']
+        self.assertEqual(body['response_format'], {'type': 'json_object'})
+        self.assertIn('schéma JSON', body['messages'][0]['content'])
+        service._openrouter_catalog_cache.update(at=0.0, models=None)
+
     def test_openrouter_model_list_keeps_structured_text_models(self):
         self.client.post('/api/ai/config', json={'provider': 'openrouter', 'api_key': 'sk-or-v1-test-123456'})
         listing = mock.Mock(status_code=200, ok=True)
@@ -518,13 +539,19 @@ class AiTagsTestCase(unittest.TestCase):
             {'id': 'anthropic/claude-haiku-5.5', 'name': 'Anthropic: Claude Haiku 5.5', 'architecture': text,
              'supported_parameters': ['structured_outputs']},
             {'id': 'meta/old-model', 'name': 'Old', 'architecture': text, 'supported_parameters': ['tools']},
+            {'id': 'google/gemma-4-31b-it:free', 'name': 'Google: Gemma 4 31B', 'architecture': text,
+             'supported_parameters': ['response_format'], 'pricing': {'prompt': '0', 'completion': '0'}},
+            {'id': 'nvidia/nemotron-3.5-content-safety:free', 'name': 'Safety', 'architecture': text,
+             'supported_parameters': [], 'pricing': {'prompt': '0', 'completion': '0'}},
             {'id': 'google/image-model', 'name': 'Image', 'architecture': {'output_modalities': ['image', 'text']},
              'supported_parameters': ['structured_outputs']},
         ]}
         with mock.patch('blueprints.ai.service.requests.request', return_value=listing):
             data = self.client.post('/api/ai/models', json={'provider': 'openrouter'}).get_json()
         self.assertTrue(data['success'], data)
-        self.assertEqual([m['id'] for m in data['models']], ['anthropic/claude-haiku-5.5', 'openai/gpt-5-mini'])
+        self.assertEqual([m['id'] for m in data['models']],
+                         ['google/gemma-4-31b-it:free', 'anthropic/claude-haiku-5.5', 'openai/gpt-5-mini'])
+        self.assertTrue(data['models'][0]['name'].endswith('(gratuit)'))
 
 
 if __name__ == '__main__':

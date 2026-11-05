@@ -3289,7 +3289,7 @@ const AI_MODEL_HELP = {
     anthropic: 'Opus : le plus précis. Haiku : le moins cher.',
     gemini: 'Flash-Lite : rapide et peu cher. ↻ lit les modèles disponibles avec votre clé.',
     openai: 'mini : bon rapport qualité/prix. ↻ lit les modèles disponibles avec votre clé.',
-    openrouter: 'Une seule clé pour Claude, GPT, Gemini, DeepSeek… ↻ lit les modèles à sortie JSON (prix sur openrouter.ai/models).',
+    openrouter: 'Une seule clé pour Claude, GPT, Gemini, DeepSeek… ↻ lit les modèles, gratuits en tête. Gratuits : limités à environ 50 requêtes par jour sans crédit, et plus lents.',
 };
 
 function _aiProvider(id) {
