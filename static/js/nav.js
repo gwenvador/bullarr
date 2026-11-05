@@ -1607,6 +1607,12 @@ function selectHeaderSearchTag(tag) {
     const tagFlat = _navSearchFlat(tag);
     const first = (navHeaderSearchAllSeries || []).find(s => (s.tags || []).some(t => _navSearchFlat(t) === tagFlat));
     if (!first || first.library_id == null) return;
+    // Déjà sur cette bibliothèque : on filtre sur place, sans recharger la page.
+    if (typeof applyTagFilterInPlace === 'function' && Number(window.libraryId) === Number(first.library_id)) {
+        closeHeaderSearch();
+        applyTagFilterInPlace(tag);
+        return;
+    }
     window.location.href = `/library/${first.library_id}?tag=${encodeURIComponent(tag)}`;
 }
 

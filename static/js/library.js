@@ -1845,6 +1845,19 @@ function toggleSeriesFilter(key) {
     filterSeries();
 }
 
+// Clic sur un tag dans la recherche du haut de page alors qu'on est déjà sur cette
+// bibliothèque : filtre sur ce tag seul sans recharger la page (voir selectHeaderSearchTag).
+function applyTagFilterInPlace(tag) {
+    activeFilters = new Set([...activeFilters].filter(key => !key.startsWith('tag:')));
+    activeFilters.add('tag:' + tag);
+    refreshFilterDropdownUI();
+    saveFilterState();
+    filterSeries();
+    const url = new URL(window.location.href);
+    url.searchParams.set('tag', tag);
+    window.history.replaceState(null, '', url);
+}
+
 function clearSeriesFilters() {
     activeFilters.clear();
     refreshFilterDropdownUI();
