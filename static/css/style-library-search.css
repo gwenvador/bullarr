@@ -3637,3 +3637,224 @@ body.comic-reader-open { overflow: hidden; }
 }
 .keep-reading-collapsed .keep-reading-body { display: none; }
 .keep-reading-collapsed .keep-reading-header { margin-bottom: 0; }
+
+/* ===== Affiches façon Booklore : couvertures nettes, pastille en bas à droite, titre et
+   actions au survol, cases à cocher seulement en mode « Sélectionner », barre d'actions
+   flottante. Remplace les règles « poster wall » plus haut. ===== */
+.series-grid.poster-grid {
+    grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+    gap: 26px 20px;
+}
+.poster-card {
+    border-radius: 6px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 6px 14px -4px rgba(0,0,0,0.28);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.poster-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.12), 0 14px 26px -6px rgba(0,0,0,0.38);
+}
+.poster-overlay {
+    padding: 34px 9px 30px;
+    background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.55) 60%, transparent 100%);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.poster-card:hover .poster-overlay,
+.poster-card:focus-within .poster-overlay {
+    opacity: 1;
+    transform: none;
+}
+.poster-title { font-size: 0.86em; }
+.poster-subtitle { font-size: 0.72em; }
+
+.poster-corner {
+    position: absolute;
+    right: 6px;
+    bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 1;
+    pointer-events: none;
+}
+.poster-corner .series-list-icons {
+    display: inline-flex;
+    gap: 2px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.55);
+    font-size: 0.7em;
+    line-height: 1.6;
+}
+.poster-badge {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #2f9e57;
+    color: #fff;
+    font-size: 0.66em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.5;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    pointer-events: auto;
+}
+.poster-badge-read { background: #2563eb; }
+.poster-badge-empty { background: #6b7280; }
+
+/* Barre de lecture Komga : orange, comme « Continuer la lecture ». */
+.poster-read-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(251,217,168,0.7); z-index: 1; }
+.poster-read-progress span { background: #f28c13; }
+
+/* Case à cocher : cachée hors mode sélection (sauf si déjà cochée). */
+.poster-select {
+    position: absolute;
+    top: 7px;
+    left: 7px;
+    z-index: 3;
+    display: none;
+    cursor: pointer;
+}
+.series-select-mode .poster-select,
+.poster-card.is-selected .poster-select { display: block; }
+.poster-select .series-select-checkbox {
+    position: absolute;
+    opacity: 0;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+}
+.poster-select-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 2px solid rgba(255,255,255,0.9);
+    background: rgba(0,0,0,0.35);
+    color: transparent;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    transition: background 0.12s ease;
+}
+.poster-select-box .icon { width: 14px; height: 14px; stroke-width: 3; }
+.poster-select .series-select-checkbox:checked + .poster-select-box {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+}
+.poster-select .series-select-checkbox:focus-visible + .poster-select-box {
+    outline: 2px solid #fff;
+    box-shadow: 0 0 0 4px var(--color-accent);
+}
+.series-select-mode .poster-link { display: none; }
+.series-select-mode .poster-actions { display: none; }
+.series-select-mode .poster-card:hover { transform: none; }
+.poster-card.is-selected { box-shadow: 0 0 0 3px var(--color-accent), 0 10px 22px -6px rgba(0,0,0,0.35); }
+.poster-card.is-selected .poster-image { filter: brightness(0.82); }
+
+.select-mode-btn.active {
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+/* Barre d'actions flottante, centrée en bas. */
+.series-bulk-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 900;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border-radius: 999px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.12);
+    max-width: calc(100vw - 32px);
+}
+.series-bulk-count {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+    color: var(--color-accent);
+    font-weight: 700;
+    font-size: 0.9em;
+    margin-right: 2px;
+}
+.series-bulk-btn {
+    width: 38px;
+    height: 38px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.series-bulk-btn .icon { width: 18px; height: 18px; }
+.series-bulk-btn:hover:not(:disabled) { background: var(--color-surface-alt); color: var(--color-text); }
+.series-bulk-btn:disabled { opacity: 0.4; cursor: default; }
+.series-bulk-danger:hover:not(:disabled) { color: var(--color-danger, #c0392b); }
+.series-bulk-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.series-bulk-sep { width: 1px; height: 22px; background: var(--color-border); margin: 0 4px; }
+
+@media (max-width: 768px) {
+    .series-grid.poster-grid {
+        grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+        gap: 16px 12px;
+    }
+    .poster-badge { font-size: 0.6em; padding: 1px 6px; }
+    .series-bulk-bar { bottom: 14px; }
+    .series-bulk-btn { width: 40px; height: 40px; }
+}
+/* Écrans tactiles : pas de survol, le titre n'apparaît pas (la couverture le porte). */
+@media (pointer: coarse) {
+    .poster-select-box { width: 26px; height: 26px; }
+    .poster-select .series-select-checkbox { width: 26px; height: 26px; }
+}
+
+/* Barre d outils de la bibliothèque en bandeau arrondi, qui reste visible au défilement. */
+.library-content > .search-row {
+    position: sticky;
+    top: 8px;
+    z-index: 40;
+    margin: 12px 0 18px;
+    padding: 8px 10px 8px 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 4px 14px -6px rgba(0,0,0,0.12);
+}
+.library-content > .search-row .view-switcher {
+    padding: 3px;
+    background: var(--color-surface-alt);
+    border-radius: 9px;
+}
+.library-content > .search-row .view-switch-btn { padding: 6px 12px; }
+@media (max-width: 768px) {
+    .library-content > .search-row { margin: 8px 0 12px; padding: 6px 8px; border-radius: 10px; }
+    /* Icônes seules : les libellés (Affiches, Aperçu, Tableau) faisaient déborder la barre. */
+    .library-content > .search-row .view-switch-btn { font-size: 0; padding: 7px 10px; }
+    .library-content > .search-row .view-switch-btn .icon { width: 18px; height: 18px; }
+}
+/* Pour que la barre reste collée en haut en vue Affiches : body, .container et .content
+   (overflow auto/hidden) deviendraient sinon le conteneur du « sticky ». clip coupe pareil
+   sans créer de conteneur de défilement. Limité à la vue Affiches (le tableau garde son
+   défilement horizontal). */
+body:has(.library-content .poster-grid) { overflow-x: clip; overflow-y: visible; }
+.container:has(.library-content .poster-grid) { overflow: clip; }
+.library-content:has(.poster-grid) { overflow-x: clip; overflow-y: visible; }

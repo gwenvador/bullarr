@@ -664,18 +664,38 @@ function buildPosterReadingHtml(s) {
     return `<div class="poster-read-progress" title="Lecture (Komga) : ${escapeHtml(komgaReadingLabel(info))}"><span style="width:${info.percent}%"></span></div>`;
 }
 
-// Construit l'affiche (poster) d'une série: couverture, pastilles de statut,
-// actions au survol, et titre/nb de tomes en surimpression en bas
+// Pastille en bas à droite de l'affiche : nombre d'albums possédés, ou « Lu » quand
+// Komga dit que tout est lu. Le détail (tomes, intégrales…) est dans l'infobulle.
+function buildPosterBadgeHtml(s) {
+    const info = komgaReadingInfo(s);
+    if (info && info.read >= info.total) {
+        return `<span class="poster-badge poster-badge-read" title="Tout est lu (Komga)">✓ Lu</span>`;
+    }
+    const tomes = Number(s.owned_tomes) || 0;
+    const total = tomes + ['owned_integrals', 'owned_hs', 'owned_episodes', 'owned_specials']
+        .reduce((sum, key) => sum + (Number(s[key]) || 0), 0);
+    if (!total) return `<span class="poster-badge poster-badge-empty" title="Aucun album possédé">0</span>`;
+    const label = s.is_oneshot && total === 1 ? 'One-shot'
+        : `${total} ${pluralize(total, total === tomes ? 'tome' : 'album')}`;
+    return `<span class="poster-badge" title="${escapeHtml(buildVolumeCountLabel(s))}">${label}</span>`;
+}
+
+// Construit l'affiche (poster) d'une série : couverture nette, pastille du nombre
+// d'albums, titre et actions au survol, case à cocher en mode sélection.
 function buildPosterCardHtml(s) {
     const imageHtml = buildCoverHtml(s, 'poster-image', 'poster-placeholder');
     const volumeLabel = buildVolumeCountLabel(s);
+    const selected = selectedSeriesIds.has(s.id);
 
     return `
-    <div class="poster-card" data-series-id="${s.id}" onclick="viewSeries(${s.id})">
+    <div class="poster-card${selected ? ' is-selected' : ''}" data-series-id="${s.id}" onclick="onPosterCardClick(event, ${s.id})">
         <div class="poster-image-wrapper">
             ${imageHtml}
             <a class="poster-link" href="/series/${s.id}" aria-label="Ouvrir ${escapeHtml(s.title)}" onclick="event.stopPropagation()"></a>
-            <input type="checkbox" class="series-select-checkbox" data-series-id="${s.id}" ${selectedSeriesIds.has(s.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleSeriesSelection(${s.id}, this.checked)" style="position:absolute; top:6px; left:6px; width:18px; height:18px; cursor:pointer; z-index:2;" title="Sélectionner" aria-label="Sélectionner ${escapeHtml(s.title)}">
+            <label class="poster-select" onclick="event.stopPropagation()" title="Sélectionner">
+                <input type="checkbox" class="series-select-checkbox" data-series-id="${s.id}" ${selected ? 'checked' : ''} onchange="toggleSeriesSelection(${s.id}, this.checked)" aria-label="Sélectionner ${escapeHtml(s.title)}">
+                <span class="poster-select-box" aria-hidden="true">${svgIcon('check')}</span>
+            </label>
             <div class="poster-actions">
                 <button class="poster-action-btn" onclick="event.stopPropagation(); scanSeries(${s.id})"
                         title="Actualiser: scan rapide de cette série" aria-label="Actualiser: scan rapide de cette série">${svgIcon('refresh-cw')}</button>
@@ -685,9 +705,10 @@ function buildPosterCardHtml(s) {
                         title="Éditer: renommer, matcher EBDZ, matcher Komga" aria-label="Éditer: renommer, matcher EBDZ, matcher Komga">${svgIcon('settings')}</button>
             </div>
             <div class="poster-overlay">
-                <div class="poster-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}${seriesListIconsHtml(s)}</div>
+                <div class="poster-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
                 <div class="poster-subtitle">${bedethequeOriginHtml(s.bedetheque_origin)} ${volumeLabel}${komgaReadingInfo(s)?.started ? ` · ${escapeHtml(komgaReadingLabel(komgaReadingInfo(s)))}` : ''}</div>
             </div>
+            <div class="poster-corner">${seriesListIconsHtml(s)}${buildPosterBadgeHtml(s)}</div>
             ${buildPosterReadingHtml(s)}
         </div>
         ${buildHiddenStatusAnchorsHtml(s)}
@@ -1234,8 +1255,56 @@ function displaySeries(series) {
 
 function toggleSeriesSelection(seriesId, checked) {
     if (checked) selectedSeriesIds.add(seriesId); else selectedSeriesIds.delete(seriesId);
+    document.querySelectorAll(`.poster-card[data-series-id="${seriesId}"]`)
+        .forEach(card => card.classList.toggle('is-selected', checked));
     updateSeriesBulkActionsBar();
 }
+
+// Mode sélection (bouton « Sélectionner ») : les cases apparaissent sur les affiches et
+// un clic sur une affiche la coche au lieu d'ouvrir la série. Échap ou ✕ pour en sortir.
+let seriesSelectMode = false;
+
+function setSeriesSelectMode(on) {
+    seriesSelectMode = !!on;
+    document.body.classList.toggle('series-select-mode', seriesSelectMode);
+    const button = document.getElementById('series-select-mode-btn');
+    if (button) {
+        button.classList.toggle('active', seriesSelectMode);
+        button.setAttribute('aria-pressed', String(seriesSelectMode));
+    }
+    if (seriesSelectMode) updateSeriesBulkActionsBar(); else clearSeriesSelection();
+}
+
+function toggleSeriesSelectMode() {
+    setSeriesSelectMode(!seriesSelectMode);
+}
+
+function onPosterCardClick(event, seriesId) {
+    if (!seriesSelectMode) { viewSeries(seriesId); return; }
+    const checkbox = event.currentTarget.querySelector('.series-select-checkbox');
+    if (!checkbox) return;
+    checkbox.checked = !checkbox.checked;
+    toggleSeriesSelection(seriesId, checkbox.checked);
+}
+
+// Coche toutes les séries affichées (celles qui passent la recherche et les filtres).
+function selectAllVisibleSeries() {
+    document.querySelectorAll('#series-grid .series-select-checkbox').forEach(checkbox => {
+        const row = checkbox.closest('.series-table-row');
+        if (row && row.style.display === 'none') return;
+        const id = parseInt(checkbox.dataset.seriesId, 10);
+        checkbox.checked = true;
+        selectedSeriesIds.add(id);
+        checkbox.closest('.poster-card')?.classList.add('is-selected');
+    });
+    updateSeriesBulkActionsBar();
+}
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && seriesSelectMode && !document.querySelector('.modal.show, .modal[style*="block"]')) {
+        setSeriesSelectMode(false);
+    }
+});
 
 // "Tout sélectionner" de la vue tableau - seulement les lignes VISIBLES (respecte un
 // filtre de colonne déjà actif), même raisonnement que toggleAllVolumeTableSelection.
@@ -1254,6 +1323,7 @@ function toggleAllSeriesTableSelection(checked) {
 function clearSeriesSelection() {
     selectedSeriesIds.clear();
     document.querySelectorAll('.series-select-checkbox').forEach(cb => { cb.checked = false; });
+    document.querySelectorAll('.poster-card.is-selected').forEach(card => card.classList.remove('is-selected'));
     const selectAll = document.getElementById('series-table-select-all');
     if (selectAll) selectAll.checked = false;
     updateSeriesBulkActionsBar();
@@ -1263,19 +1333,28 @@ function updateSeriesBulkActionsBar() {
     const bar = document.getElementById('series-bulk-actions-bar');
     if (!bar) return;
     const count = selectedSeriesIds.size;
-    if (count === 0) {
+    if (count === 0 && !seriesSelectMode) {
         bar.style.display = 'none';
         bar.innerHTML = '';
         return;
     }
+    // Barre flottante en bas de l'écran (façon Booklore) : nombre sélectionné, actions en
+    // icônes (libellé en infobulle), ✕ pour quitter la sélection.
+    const disabled = count ? '' : ' disabled';
+    const action = (onclick, icon, label, extra = '') =>
+        `<button type="button" class="series-bulk-btn${extra}" onclick="${onclick}" data-tooltip="${label}" aria-label="${label}"${disabled}>${svgIcon(icon)}</button>`;
     bar.style.display = 'flex';
     bar.innerHTML = `
-        <span class="volume-bulk-actions-count">${count} ${pluralize(count, 'série')} ${pluralize(count, 'sélectionnée')}</span>
-        <button class="btn-neutral-sm" onclick="bulkScanSelectedSeries()">${svgIcon('refresh-cw')} Actualiser</button>
-        <button class="btn-neutral-sm" onclick="bulkUpdateMetadataSelectedSeries()">${svgIcon('tag')} MAJ métadonnées</button>
-        <button class="btn-neutral-sm" onclick="bulkAutoAcquireSelectedSeries()">${svgIcon('radar')} Recherche automatique</button>
-        <button class="btn-danger-sm" onclick="bulkDeleteSelectedSeries()">${svgIcon('trash-2')} Supprimer</button>
-        <button class="btn-neutral-sm" onclick="clearSeriesSelection()">Annuler la sélection</button>
+        <span class="series-bulk-count" title="${count} ${pluralize(count, 'série')} ${pluralize(count, 'sélectionnée')}">${count}</span>
+        <button type="button" class="series-bulk-btn" onclick="selectAllVisibleSeries()" data-tooltip="Tout sélectionner (séries affichées)" aria-label="Tout sélectionner">${svgIcon('check-check')}</button>
+        <span class="series-bulk-sep" aria-hidden="true"></span>
+        ${action('bulkScanSelectedSeries()', 'refresh-cw', 'Actualiser')}
+        ${action('bulkUpdateMetadataSelectedSeries()', 'tag', 'Mettre à jour les métadonnées')}
+        ${action('bulkAutoAcquireSelectedSeries()', 'radar', 'Recherche automatique')}
+        <span class="series-bulk-sep" aria-hidden="true"></span>
+        ${action('bulkDeleteSelectedSeries()', 'trash-2', 'Supprimer', ' series-bulk-danger')}
+        <span class="series-bulk-sep" aria-hidden="true"></span>
+        <button type="button" class="series-bulk-btn" onclick="setSeriesSelectMode(false)" data-tooltip="Quitter la sélection" aria-label="Quitter la sélection">${svgIcon('x')}</button>
     `;
 }
 
