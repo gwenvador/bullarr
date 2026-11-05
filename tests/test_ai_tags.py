@@ -468,6 +468,64 @@ class AiTagsTestCase(unittest.TestCase):
         self.assertTrue(data['success'], data)
         self.assertEqual([m['id'] for m in data['models']], ['o4-mini', 'gpt-5-mini', 'gpt-5'])
 
+    def enable_openrouter(self):
+        response = self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'openrouter', 'api_key': 'sk-or-v1-test-123456',
+            'model': 'anthropic/claude-haiku-5.5'})
+        self.assertEqual(response.status_code, 200, response.get_json())
+
+    def test_openrouter_call_requires_structured_output_providers(self):
+        self.enable_openrouter()
+        answer = {'groups': []}
+        with mock.patch('blueprints.ai.service.requests.request',
+                        return_value=self._openai_response('```json\n' + json.dumps(answer) + '\n```')) as request:
+            self.client.post('/api/ai/tags/normalize')
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'done', job)
+        method, url = request.call_args.args
+        self.assertEqual((method, url), ('POST', 'https://openrouter.ai/api/v1/chat/completions'))
+        kwargs = request.call_args.kwargs
+        self.assertEqual(kwargs['headers']['Authorization'], 'Bearer sk-or-v1-test-123456')
+        body = kwargs['json']
+        self.assertEqual(body['model'], 'anthropic/claude-haiku-5.5')
+        self.assertEqual(body['provider'], {'require_parameters': True})
+        self.assertTrue(body['response_format']['json_schema']['strict'])
+        with open(self.app.config['AI_CONFIG_FILE'], encoding='utf-8') as handle:
+            self.assertNotIn('sk-or-v1', handle.read())
+
+    def test_openrouter_rejects_bad_model_ids_and_explains_errors(self):
+        response = self.client.post('/api/ai/config', json={'provider': 'openrouter', 'model': 'pas un modèle'})
+        self.assertEqual(response.status_code, 400)
+        self.client.post('/api/ai/config', json={'provider': 'openrouter', 'api_key': 'sk-or-v1-bad-000000'})
+        for status, expected in ((401, 'Clé API refusée par OpenRouter'), (402, 'Crédit OpenRouter insuffisant')):
+            bad = mock.Mock(status_code=status, ok=False, text='')
+            bad.json.return_value = {'error': {'message': 'x', 'code': status}}
+            with mock.patch('blueprints.ai.service.requests.request', return_value=bad) as request:
+                response = self.client.post('/api/ai/test', json={'provider': 'openrouter'})
+            self.assertEqual(response.status_code, 400)
+            self.assertIn(expected, response.get_json()['error'])
+            self.assertEqual(request.call_count, 1)
+
+    def test_openrouter_model_list_keeps_structured_text_models(self):
+        self.client.post('/api/ai/config', json={'provider': 'openrouter', 'api_key': 'sk-or-v1-test-123456'})
+        listing = mock.Mock(status_code=200, ok=True)
+        text = {'output_modalities': ['text']}
+        listing.json.return_value = {'data': [
+            {'id': 'openai/gpt-5-mini', 'name': 'OpenAI: GPT-5 Mini', 'architecture': text,
+             'supported_parameters': ['response_format', 'structured_outputs']},
+            {'id': 'openai/gpt-5-mini:batch', 'name': 'batch', 'architecture': text,
+             'supported_parameters': ['structured_outputs']},
+            {'id': 'anthropic/claude-haiku-5.5', 'name': 'Anthropic: Claude Haiku 5.5', 'architecture': text,
+             'supported_parameters': ['structured_outputs']},
+            {'id': 'meta/old-model', 'name': 'Old', 'architecture': text, 'supported_parameters': ['tools']},
+            {'id': 'google/image-model', 'name': 'Image', 'architecture': {'output_modalities': ['image', 'text']},
+             'supported_parameters': ['structured_outputs']},
+        ]}
+        with mock.patch('blueprints.ai.service.requests.request', return_value=listing):
+            data = self.client.post('/api/ai/models', json={'provider': 'openrouter'}).get_json()
+        self.assertTrue(data['success'], data)
+        self.assertEqual([m['id'] for m in data['models']], ['anthropic/claude-haiku-5.5', 'openai/gpt-5-mini'])
+
 
 if __name__ == '__main__':
     unittest.main()

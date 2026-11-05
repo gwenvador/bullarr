@@ -3277,7 +3277,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// ===== IA (Claude, Gemini ou ChatGPT) : clé API, création et normalisation des tags =====
+// ===== IA (Claude, Gemini, ChatGPT ou OpenRouter) : clé API, création et normalisation des tags =====
 // Voir blueprints/ai. Les traitements tournent côté serveur ; on suit GET /api/ai/job.
 let aiJobTimer = null;
 let aiConfig = null;
@@ -3289,6 +3289,7 @@ const AI_MODEL_HELP = {
     anthropic: 'Opus : le plus précis. Haiku : le moins cher.',
     gemini: 'Flash-Lite : rapide et peu cher. ↻ lit les modèles disponibles avec votre clé.',
     openai: 'mini : bon rapport qualité/prix. ↻ lit les modèles disponibles avec votre clé.',
+    openrouter: 'Une seule clé pour Claude, GPT, Gemini, DeepSeek… ↻ lit les modèles à sortie JSON (prix sur openrouter.ai/models).',
 };
 
 function _aiProvider(id) {

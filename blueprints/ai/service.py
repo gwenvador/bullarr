@@ -1,9 +1,12 @@
 """IA : configuration, appel du modèle et logique des tags.
 
-Trois fournisseurs au choix (Configuration → IA), chacun avec sa clé API et son modèle :
+Quatre fournisseurs au choix (Configuration → IA), chacun avec sa clé API et son modèle :
 - Claude (Anthropic), via le SDK officiel « anthropic » ;
 - Gemini (Google), via l'API REST generativelanguage.googleapis.com ;
-- ChatGPT (OpenAI), via l'API REST api.openai.com (Chat Completions, sortie JSON stricte).
+- ChatGPT (OpenAI), via l'API REST api.openai.com (Chat Completions, sortie JSON stricte) ;
+- OpenRouter, une seule clé pour des centaines de modèles (Claude, GPT, Gemini, DeepSeek,
+  Mistral…), via son API compatible OpenAI ; seuls les modèles à sortie JSON structurée
+  sont proposés.
 
 Deux traitements utilisent l'IA :
 - création des tags : propose des tags pour des séries (sans tags, ou toutes) à partir du
@@ -64,6 +67,20 @@ PROVIDERS = {
         'key_url': 'https://platform.openai.com/api-keys',
         'dynamic_models': True,
     },
+    'openrouter': {
+        'name': 'OpenRouter',
+        # Liste de départ : la liste réelle est lue chez OpenRouter (list_models).
+        'models': {
+            'google/gemini-3.5-flash-lite': 'Google: Gemini 3.5 Flash Lite',
+            'openai/gpt-5-mini': 'OpenAI: GPT-5 Mini',
+            'anthropic/claude-haiku-5.5': 'Anthropic: Claude Haiku 5.5',
+            'deepseek/deepseek-v4.1-flash': 'DeepSeek: DeepSeek V4.1 Flash',
+        },
+        'default_model': 'google/gemini-3.5-flash-lite',
+        'key_placeholder': 'sk-or-v1-...',
+        'key_url': 'https://openrouter.ai/settings/keys',
+        'dynamic_models': True,
+    },
 }
 DEFAULT_PROVIDER = 'anthropic'
 # Modèles Claude qui acceptent le repli côté serveur (fallbacks: "default") quand une
@@ -76,6 +93,9 @@ OPENAI_API = 'https://api.openai.com/v1'
 # Modèles OpenAI sans intérêt ici (audio, image, embeddings…), retirés de la liste.
 _OPENAI_SKIP = ('audio', 'realtime', 'tts', 'transcribe', 'image', 'embedding', 'search',
                 'moderation', 'instruct', 'whisper', 'dall-e', 'codex', 'computer-use')
+OPENROUTER_API = 'https://openrouter.ai/api/v1'
+# Identifiants OpenRouter : « fournisseur/modèle », avec un suffixe éventuel (« :free »).
+_OPENROUTER_MODEL_RE = re.compile(r'^[a-z0-9][a-z0-9._\-]{0,40}/[a-z0-9][a-z0-9._\-]{0,100}(:[a-z0-9\-]{1,20})?$')
 MASK = '****'
 
 GENERATE_BATCH_SIZE = 20
@@ -147,6 +167,8 @@ def valid_model(provider, model):
     info = PROVIDERS.get(provider)
     if not info or not model:
         return False
+    if provider == 'openrouter':
+        return bool(_OPENROUTER_MODEL_RE.match(str(model)))
     if info['dynamic_models']:
         return bool(_MODEL_ID_RE.match(str(model)))
     return model in info['models']
@@ -352,6 +374,8 @@ def list_models(cfg):
         raise AiError('Saisissez une clé API pour lire la liste des modèles')
     if provider == 'openai':
         return _openai_models(cfg)
+    if provider == 'openrouter':
+        return _openrouter_models(cfg)
     models = []
     token = None
     for _ in range(10):
@@ -479,6 +503,104 @@ def _openai_json(cfg, system, user, schema, max_tokens):
     return message.get('content') or ''
 
 
+# ===== OpenRouter =====
+
+def _openrouter_request(cfg, method, path, **kwargs):
+    headers = {'Authorization': f'Bearer {active_key(cfg)}', 'Content-Type': 'application/json',
+               'X-Title': 'Bullarr'}
+    for attempt in range(len(GEMINI_RETRY_DELAYS) + 1):
+        try:
+            response = requests.request(method, f'{OPENROUTER_API}/{path}', headers=headers, **kwargs)
+        except requests.RequestException as exc:
+            raise AiError('Impossible de joindre OpenRouter') from exc
+        # Limite par minute ou modèle surchargé : on réessaie (pas quand le crédit manque).
+        if response.status_code in (429, 500, 502, 503) and attempt < len(GEMINI_RETRY_DELAYS):
+            time.sleep(GEMINI_RETRY_DELAYS[attempt])
+            continue
+        break
+    if response.ok:
+        return response.json()
+    try:
+        error = (response.json() or {}).get('error') or {}
+    except ValueError:
+        error = {}
+    message = error.get('message') or response.text[:200]
+    if response.status_code == 401:
+        raise AiError('Clé API refusée par OpenRouter')
+    if response.status_code == 402:
+        raise AiError('Crédit OpenRouter insuffisant : ajoutez du crédit sur openrouter.ai')
+    if response.status_code == 403:
+        raise AiError(f'OpenRouter a refusé cette demande (modération) : {message}')
+    if response.status_code == 404:
+        raise AiError('Modèle OpenRouter introuvable ou sans sortie JSON structurée')
+    if response.status_code == 429:
+        raise AiError('Limite de requêtes OpenRouter atteinte, réessayez plus tard')
+    raise AiError(f'Erreur de l\'API OpenRouter ({response.status_code}) : {message}')
+
+
+def _openrouter_catalog(cfg):
+    """Modèles texte d'OpenRouter qui acceptent une sortie JSON structurée (hors « :batch »)."""
+    data = _openrouter_request(cfg, 'GET', 'models', timeout=30)
+    models = []
+    for item in data.get('data') or []:
+        model_id = str(item.get('id') or '')
+        if model_id.endswith(':batch') or not _OPENROUTER_MODEL_RE.match(model_id):
+            continue
+        if 'structured_outputs' not in (item.get('supported_parameters') or []):
+            continue
+        outputs = ((item.get('architecture') or {}).get('output_modalities')) or ['text']
+        if outputs != ['text']:
+            continue
+        models.append({'id': model_id, 'name': item.get('name') or model_id})
+    return models
+
+
+def _openrouter_models(cfg):
+    models = _openrouter_catalog(cfg)
+    models.sort(key=lambda item: item['name'].lower())
+    return models
+
+
+def _openrouter_test(cfg):
+    _openrouter_request(cfg, 'GET', 'key', timeout=30)  # vérifie la clé
+    model = active_model(cfg)
+    for item in _openrouter_catalog(cfg):
+        if item['id'] == model:
+            return item['name']
+    raise AiError('Modèle OpenRouter introuvable ou sans sortie JSON structurée')
+
+
+def _openrouter_json(cfg, system, user, schema, max_tokens):
+    body = {
+        'model': active_model(cfg),
+        'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
+        'response_format': {
+            'type': 'json_schema',
+            'json_schema': {'name': 'reponse', 'strict': True, 'schema': schema},
+        },
+        # Seulement les hébergeurs qui respectent response_format (sortie JSON garantie).
+        'provider': {'require_parameters': True},
+        'max_tokens': min(max_tokens, 64000),
+    }
+    data = _openrouter_request(cfg, 'POST', 'chat/completions', json=body, timeout=900)
+    if data.get('error'):
+        raise AiError(f'Erreur OpenRouter : {(data["error"] or {}).get("message") or data["error"]}')
+    choices = data.get('choices') or []
+    if not choices:
+        raise AiError('OpenRouter n\'a renvoyé aucune réponse')
+    choice = choices[0]
+    if choice.get('error'):
+        raise AiError(f'Erreur du modèle via OpenRouter : {(choice["error"] or {}).get("message") or choice["error"]}')
+    message = choice.get('message') or {}
+    if message.get('refusal'):
+        raise AiError(f'Le modèle a refusé de traiter cette demande : {message["refusal"]}')
+    if choice.get('finish_reason') == 'length':
+        raise AiError('Réponse du modèle tronquée (trop longue)')
+    if choice.get('finish_reason') == 'content_filter':
+        raise AiError('Le modèle a refusé de traiter cette demande (filtre de contenu)')
+    return message.get('content') or ''
+
+
 # ===== Appel commun =====
 
 def _require_key(cfg):
@@ -493,6 +615,8 @@ def test_connection(cfg):
         return _gemini_test(cfg)
     if cfg.get('provider') == 'openai':
         return _openai_test(cfg)
+    if cfg.get('provider') == 'openrouter':
+        return _openrouter_test(cfg)
     return _anthropic_test(cfg)
 
 
@@ -503,8 +627,13 @@ def call_json(cfg, system, user, schema, cache_system=False, max_tokens=64000):
         text = _gemini_json(cfg, system, user, schema, max_tokens)
     elif cfg.get('provider') == 'openai':
         text = _openai_json(cfg, system, user, schema, max_tokens)
+    elif cfg.get('provider') == 'openrouter':
+        text = _openrouter_json(cfg, system, user, schema, max_tokens)
     else:
         text = _anthropic_json(cfg, system, user, schema, cache_system, max_tokens)
+    text = (text or '').strip()
+    if text.startswith('```'):
+        text = re.sub(r'^```[a-zA-Z]*\s*|\s*```$', '', text)
     try:
         return json.loads(text)
     except ValueError as exc:
