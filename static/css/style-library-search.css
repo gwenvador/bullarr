@@ -3939,3 +3939,36 @@ body:has(.library-content .poster-grid) { overflow-x: clip; overflow-y: visible;
 [data-theme="dark"] .toolbar-btn.toolbar-btn-filter-active:hover {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
+
+/* Fenêtre Tags : propositions de l'IA */
+.series-detail-tags-menu { max-width: 340px; }
+.series-tag-ai-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    width: 100%; justify-content: center;
+    margin-top: 8px; padding: 6px 10px;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color: var(--color-accent-hover);
+    font: inherit; font-size: 0.8em; font-weight: 600; cursor: pointer;
+}
+.series-tag-ai-btn:hover { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.series-tag-ai-btn .icon { width: 14px; height: 14px; }
+.series-tag-ai-btn.is-busy { opacity: .7; cursor: progress; }
+.series-tag-ai-btn.is-busy .icon { animation: series-tag-ai-pulse 1s ease-in-out infinite; }
+@keyframes series-tag-ai-pulse { 50% { transform: scale(.7) rotate(20deg); opacity: .5; } }
+.series-tag-ai-result { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--color-border); }
+.series-tag-ai-result[hidden] { display: none; }
+.series-tag-ai-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 0.75em; color: var(--color-text-muted); font-weight: 600; }
+.series-tag-ai-all { border: none; background: none; padding: 0; color: var(--color-accent); font: inherit; font-weight: 600; cursor: pointer; }
+.series-tag-ai-all:hover { text-decoration: underline; }
+.series-tag-ai-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.series-tag-ai-chip {
+    padding: 2px 9px; border-radius: 999px;
+    border: 1px dashed color-mix(in srgb, var(--color-accent) 55%, transparent);
+    background: transparent; color: var(--color-accent-hover);
+    font: inherit; font-size: 0.78em; cursor: pointer;
+}
+.series-tag-ai-chip:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); border-style: solid; }
+.series-tag-ai-empty, .series-tag-ai-error { margin: 0; font-size: 0.78em; color: var(--color-text-muted); white-space: normal; }
+.series-tag-ai-error { color: var(--color-danger, #c0392b); }

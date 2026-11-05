@@ -3590,8 +3590,9 @@ const AI_HISTORY_LABELS = {
     normalize: () => 'Analyse des tags',
     apply: () => 'Regroupements appliqués',
     auto: () => 'Tags des nouvelles séries',
+    series: entry => 'Tags proposés · ' + (entry.title || 'une série'),
 };
-const AI_HISTORY_ICONS = { generate: '✨', normalize: '🔀', apply: '✅', auto: '🆕' };
+const AI_HISTORY_ICONS = { generate: '✨', normalize: '🔀', apply: '✅', auto: '🆕', series: '🏷️' };
 
 function _aiHistoryDate(seconds) {
     if (!seconds) return '';

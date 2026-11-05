@@ -2505,6 +2505,62 @@ async function addSeriesTag(seriesId, event) {
     }
 }
 
+// Fenêtre Tags : l'IA propose des tags pour cette série ; un clic sur une proposition l'ajoute.
+const _aiTagSuggestions = {};
+
+function _renderAiTagSuggestions(seriesId) {
+    const box = document.getElementById(`series-tag-ai-result-${seriesId}`);
+    if (!box) return;
+    const tags = _aiTagSuggestions[seriesId] || [];
+    box.hidden = false;
+    box.innerHTML = tags.length
+        ? `<div class="series-tag-ai-head"><span>Propositions de l'IA</span>${tags.length > 1 ? `<button type="button" class="series-tag-ai-all" onclick="addAllAiSuggestedTags(${seriesId}, event)">Tout ajouter</button>` : ''}</div>
+           <div class="series-tag-ai-list">${tags.map(tag => `<button type="button" class="series-tag-ai-chip" onclick="addAiSuggestedTag(${seriesId}, '${escapeForAttribute(tag)}', event)" data-tooltip="Ajouter « ${escapeHtml(tag)} »">+ ${escapeHtml(tag)}</button>`).join('')}</div>`
+        : '<p class="series-tag-ai-empty">Rien à ajouter : l\'IA ne propose pas d\'autre tag.</p>';
+}
+
+async function suggestSeriesTagsWithAi(seriesId, event) {
+    if (event) event.stopPropagation();
+    const btn = document.getElementById(`series-tag-ai-btn-${seriesId}`);
+    const box = document.getElementById(`series-tag-ai-result-${seriesId}`);
+    if (btn) { btn.disabled = true; btn.classList.add('is-busy'); }
+    if (box) { box.hidden = false; box.innerHTML = '<p class="series-tag-ai-empty">L\'IA réfléchit…</p>'; }
+    try {
+        const response = await fetch(`/api/ai/series/${seriesId}/suggest`, { method: 'POST' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        _aiTagSuggestions[seriesId] = data.tags || [];
+        _renderAiTagSuggestions(seriesId);
+    } catch (error) {
+        if (box) box.innerHTML = `<p class="series-tag-ai-error">${escapeHtml(error.message)}</p>`;
+    } finally {
+        if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); }
+    }
+}
+
+async function _addSeriesTagsFromAi(seriesId, tags) {
+    const current = (currentSeriesDetail && currentSeriesDetail.id === seriesId ? currentSeriesDetail.tags : null) || [];
+    const merged = [...current, ...tags.filter(tag => !current.includes(tag))];
+    try {
+        const updated = await saveSeriesTags(seriesId, merged);
+        _aiTagSuggestions[seriesId] = (_aiTagSuggestions[seriesId] || []).filter(tag => !updated.includes(tag));
+        _refreshSeriesTagsEditor(seriesId, updated);
+        _renderAiTagSuggestions(seriesId);
+    } catch (error) {
+        alert('❌ Erreur: ' + error.message);
+    }
+}
+
+function addAiSuggestedTag(seriesId, tag, event) {
+    if (event) event.stopPropagation();
+    return _addSeriesTagsFromAi(seriesId, [tag]);
+}
+
+function addAllAiSuggestedTags(seriesId, event) {
+    if (event) event.stopPropagation();
+    return _addSeriesTagsFromAi(seriesId, _aiTagSuggestions[seriesId] || []);
+}
+
 async function removeSeriesTag(seriesId, tag, event) {
     if (event) event.stopPropagation();
     const current = (currentSeriesDetail && currentSeriesDetail.id === seriesId ? currentSeriesDetail.tags : null) || [];
@@ -4550,6 +4606,8 @@ async function renderSeriesDetail(seriesId) {
                             <input type="text" id="series-tag-input-${seriesId}" class="series-tag-input" placeholder="Nouveau tag" autocomplete="off" onclick="event.stopPropagation()" onkeydown="if(event.key==='Enter'){event.preventDefault();addSeriesTag(${seriesId}, event);}">
                             <button type="button" class="series-tag-add-btn" onclick="addSeriesTag(${seriesId}, event)" data-tooltip="Ajouter ce tag" aria-label="Ajouter ce tag">+</button>
                         </div>
+                        <button type="button" class="series-tag-ai-btn" id="series-tag-ai-btn-${seriesId}" onclick="suggestSeriesTagsWithAi(${seriesId}, event)" data-tooltip="L'IA propose des tags à partir du résumé, des auteurs et du genre (Configuration → IA)">${svgIcon('sparkles')}<span>Proposer avec l'IA</span></button>
+                        <div class="series-tag-ai-result" id="series-tag-ai-result-${seriesId}" hidden></div>
                     </div>
                 </div>
             `;

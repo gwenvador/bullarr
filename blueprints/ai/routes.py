@@ -20,7 +20,7 @@ from .history import add_entry, clear_history, load_history
 from .service import (
     GENERATE_BATCH_SIZE, GENERATE_SCHEMA, AiError, _db, apply_tag_mapping, call_json, clean_tag,
     active_key, active_model, count_series, generate_system, list_models, load_ai_config, merge_form, merge_generated_tags,
-    normalize_proposals, public_config, save_ai_config, series_brief, series_to_tag,
+    normalize_proposals, parse_tags, public_config, save_ai_config, series_brief, series_to_tag,
     test_connection, vocabulary,
 )
 
@@ -242,6 +242,45 @@ def run_auto_tag_tick():
         return None
     # Si un autre traitement tourne, on réessaie au prochain passage.
     return _start_job('auto', _run_auto, ids, extra={'scope': 'new'})
+
+
+@ai_bp.route('/series/<int:series_id>/suggest', methods=['POST'])
+def ai_suggest_series_tags(series_id):
+    """Propose des tags pour une seule série (fenêtre Tags de la fiche), sans rien enregistrer :
+    l'utilisateur choisit ensuite ceux qu'il ajoute."""
+    started = time.time()
+    try:
+        cfg = _enabled_config()
+    except AiError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    conn = _db()
+    try:
+        row = conn.execute('SELECT * FROM series WHERE id = ?', (series_id,)).fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Série introuvable'}), 404
+        system = generate_system(vocabulary(conn))
+        user = 'Séries à taguer (JSON) :\n' + json.dumps([series_brief(row)], ensure_ascii=False, indent=1)
+        data = call_json(cfg, system, user, GENERATE_SCHEMA, cache_system=True, max_tokens=4000)
+    except AiError as exc:
+        add_entry('series', 'error', str(exc), provider=cfg.get('provider'), model=active_model(cfg),
+                  started_at=started, extra={'title': row['title'] if row else ''})
+        return jsonify({'success': False, 'error': str(exc)}), 502
+    finally:
+        conn.close()
+    current = parse_tags(row['tags'])
+    proposed = []
+    for item in data.get('series') or []:
+        for tag in item.get('tags') or []:
+            tag = clean_tag(tag)
+            if tag and tag not in current and tag not in proposed:
+                proposed.append(tag)
+    count = len(proposed)
+    add_entry('series', 'done',
+              f'{count} tag{"s" if count > 1 else ""} proposé{"s" if count > 1 else ""}',
+              provider=cfg.get('provider'), model=active_model(cfg), started_at=started,
+              details=[{'series_id': series_id, 'title': row['title'], 'added': proposed}],
+              extra={'title': row['title']})
+    return jsonify({'success': True, 'tags': proposed, 'model': active_model(cfg)})
 
 
 @ai_bp.route('/tags/generate', methods=['POST'])

@@ -506,6 +506,30 @@ class AiTagsTestCase(unittest.TestCase):
             self.assertIn(expected, response.get_json()['error'])
             self.assertEqual(request.call_count, 1)
 
+    def test_suggest_tags_for_one_series_does_not_save(self):
+        self.enable_openai()
+        conn = sqlite3.connect(self.db_path)
+        series_id = conn.execute('SELECT id FROM series ORDER BY id LIMIT 1').fetchone()[0]
+        conn.execute('UPDATE series SET tags = ? WHERE id = ?', (json.dumps(['western']), series_id))
+        conn.commit()
+        answer = {'series': [{'id': series_id, 'tags': ['Western', 'far-west', 'far-west', 'humour']}]}
+        with mock.patch('blueprints.ai.service.requests.request',
+                        return_value=self._openai_response(json.dumps(answer))):
+            data = self.client.post(f'/api/ai/series/{series_id}/suggest').get_json()
+        self.assertTrue(data['success'], data)
+        self.assertEqual(data['tags'], ['far-west', 'humour'])
+        tags = conn.execute('SELECT tags FROM series WHERE id = ?', (series_id,)).fetchone()[0]
+        conn.close()
+        self.assertEqual(json.loads(tags), ['western'])
+        history = self.client.get('/api/ai/history').get_json()
+        entries = history.get('entries', history) if isinstance(history, dict) else history
+        self.assertEqual(entries[0]['kind'], 'series')
+
+    def test_suggest_tags_requires_enabled_ai(self):
+        response = self.client.post('/api/ai/series/1/suggest')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Configuration', response.get_json()['error'])
+
     def test_openrouter_free_model_without_structured_output_gets_schema_in_prompt(self):
         from blueprints.ai import service
         service._openrouter_catalog_cache.update(at=0.0, models=None)
