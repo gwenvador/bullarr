@@ -3618,5 +3618,20 @@ body.comic-reader-open { overflow: hidden; }
 .keep-reading-cover-placeholder { display: grid; place-items: center; height: 100%; font-size: 2em; }
 .keep-reading-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0, 0, 0, 0.4); }
 .keep-reading-progress span { display: block; height: 100%; background: var(--color-accent); }
-.keep-reading-title { font-weight: 600; font-size: 0.9em; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.keep-reading-meta { color: var(--color-text-muted); font-size: 0.8em; }
+.keep-reading-title {
+    font-weight: 600; font-size: 0.9em; line-height: 1.25; overflow-wrap: anywhere; hyphens: auto;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden;
+}
+.keep-reading-meta { color: var(--color-text-muted); font-size: 0.8em; line-height: 1.3; overflow-wrap: anywhere; }
+.keep-reading-toggle {
+    display: inline-flex; align-items: center; gap: 6px; padding: 0; background: none; border: none;
+    color: inherit; font: inherit; cursor: pointer;
+}
+.keep-reading-toggle svg { width: 18px; height: 18px; transition: transform 0.15s ease; }
+.keep-reading-collapsed .keep-reading-toggle svg { transform: rotate(-90deg); }
+.keep-reading-count {
+    font-size: 0.75em; font-weight: 600; padding: 1px 8px; border-radius: 999px;
+    background: var(--color-surface-alt); color: var(--color-text-muted);
+}
+.keep-reading-collapsed .keep-reading-body { display: none; }
+.keep-reading-collapsed .keep-reading-header { margin-bottom: 0; }
