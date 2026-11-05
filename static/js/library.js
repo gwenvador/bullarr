@@ -847,16 +847,145 @@ function toggleTableColumn(key) {
     filterSeries();
 }
 
+// ===== Panneau « Affichage » du tableau : densité, préréglages, colonnes =====
+const TABLE_DENSITIES = [['compact', 'Compacte'], ['comfortable', 'Confortable'], ['roomy', 'Aérée']];
+// hidden : colonnes de base masquées ; visible : colonnes facultatives affichées.
+const TABLE_BUILTIN_PRESETS = [
+    { name: 'Par défaut', hidden: [], visible: [] },
+    { name: 'Compact', hidden: ['year', 'genre', 'type'], visible: [] },
+    { name: 'Métadonnées', hidden: [], visible: ['author', 'publisher', 'oneshot', 'universe', 'tags'] },
+    { name: 'Suivi', hidden: ['genre', 'type'], visible: ['missing', 'lastChange', 'reading', 'votes'] },
+];
+
+function _tableDensity() {
+    try {
+        const value = localStorage.getItem('tableDensity');
+        return TABLE_DENSITIES.some(([key]) => key === value) ? value : 'comfortable';
+    } catch (e) {
+        return 'comfortable';
+    }
+}
+
+function applyTableDensity() {
+    if (document.body) document.body.dataset.tableDensity = _tableDensity();
+}
+
+function setTableDensity(density) {
+    try { localStorage.setItem('tableDensity', density); } catch (e) { /* stockage indisponible */ }
+    applyTableDensity();
+    renderTableColumnsMenu();
+}
+
+function _customTablePresets() {
+    try {
+        const presets = JSON.parse(localStorage.getItem('tablePresets') || '[]');
+        return Array.isArray(presets) ? presets.filter(p => p && p.name) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function _storeCustomTablePresets(presets) {
+    try { localStorage.setItem('tablePresets', JSON.stringify(presets)); } catch (e) { /* stockage indisponible */ }
+}
+
+function _setTableColumnsState(hidden, visible) {
+    hiddenTableColumns = new Set(hidden || []);
+    visibleTableColumns = new Set(visible || []);
+    localStorage.setItem('tableHiddenColumns', JSON.stringify([...hiddenTableColumns]));
+    localStorage.setItem('tableVisibleColumns', JSON.stringify([...visibleTableColumns]));
+    renderTableColumnsMenu();
+    filterSeries();
+}
+
+function _sameKeys(set, list) {
+    const other = new Set(list || []);
+    return set.size === other.size && [...set].every(key => other.has(key));
+}
+
+function _tablePresetIsActive(preset) {
+    return _sameKeys(hiddenTableColumns, preset.hidden) && _sameKeys(visibleTableColumns, preset.visible)
+        && (!preset.density || preset.density === _tableDensity());
+}
+
+function applyTablePreset(kind, index) {
+    const preset = kind === 'builtin' ? TABLE_BUILTIN_PRESETS[index] : _customTablePresets()[index];
+    if (!preset) return;
+    if (preset.density) {
+        try { localStorage.setItem('tableDensity', preset.density); } catch (e) { /* stockage indisponible */ }
+        applyTableDensity();
+    }
+    _setTableColumnsState(preset.hidden, preset.visible);
+}
+
+function saveTablePreset() {
+    const input = document.getElementById('table-preset-name');
+    const name = (input && input.value || '').trim().slice(0, 40);
+    if (!name) {
+        if (input) input.focus();
+        return;
+    }
+    const presets = _customTablePresets().filter(p => p.name !== name);
+    presets.push({ name, hidden: [...hiddenTableColumns], visible: [...visibleTableColumns], density: _tableDensity() });
+    _storeCustomTablePresets(presets);
+    renderTableColumnsMenu();
+}
+
+function deleteTablePreset(index) {
+    const presets = _customTablePresets();
+    presets.splice(index, 1);
+    _storeCustomTablePresets(presets);
+    renderTableColumnsMenu();
+}
+
+function resetTableDisplay() {
+    try { localStorage.removeItem('tableDensity'); } catch (e) { /* stockage indisponible */ }
+    applyTableDensity();
+    _setTableColumnsState([], []);
+}
+
 function renderTableColumnsMenu() {
     const menu = document.getElementById('table-columns-menu');
     if (!menu) return;
+    applyTableDensity();
+    const density = _tableDensity();
     const columns = [...TABLE_FIXED_COLUMNS, ..._availableTableOptionalColumns()]
         .filter(col => col.key !== 'title');
-    menu.innerHTML = columns.map(col => `
-        <button class="toolbar-dropdown-item${_isTableColumnVisible(col.key) ? ' active' : ''}"
-                onclick="toggleTableColumn('${col.key}')">${col.icon} ${col.label}</button>
-    `).join('');
+    const presetRow = (preset, kind, index) => `
+        <div class="table-display-preset${_tablePresetIsActive(preset) ? ' active' : ''}">
+            <button type="button" class="table-display-preset-name" onclick="applyTablePreset('${kind}', ${index})">${escapeHtml(preset.name)}</button>
+            ${kind === 'builtin'
+                ? '<span class="table-display-preset-tag">Intégré</span>'
+                : `<button type="button" class="table-display-preset-delete" onclick="deleteTablePreset(${index})" title="Supprimer ce préréglage" aria-label="Supprimer ${escapeHtml(preset.name)}">×</button>`}
+        </div>`;
+    menu.innerHTML = `
+        <div class="table-display-title">Affichage</div>
+        <div class="table-display-heading">
+            <span>Colonnes</span>
+            <button type="button" class="table-display-reset" onclick="resetTableDisplay()" title="Densité confortable et colonnes par défaut">↺ Réinitialiser</button>
+        </div>
+        <div class="table-display-card">
+            <div class="table-display-card-title">Densité du tableau</div>
+            <div class="table-display-segment">
+                ${TABLE_DENSITIES.map(([key, label]) => `<button type="button" class="${key === density ? 'active' : ''}" aria-pressed="${key === density}" onclick="setTableDensity('${key}')">${label}</button>`).join('')}
+            </div>
+        </div>
+        <div class="table-display-card">
+            <div class="table-display-card-title">Préréglages</div>
+            ${TABLE_BUILTIN_PRESETS.map((preset, index) => presetRow(preset, 'builtin', index)).join('')}
+            ${_customTablePresets().map((preset, index) => presetRow(preset, 'custom', index)).join('')}
+            <form class="table-display-save" onsubmit="event.preventDefault(); saveTablePreset();">
+                <input type="text" id="table-preset-name" maxlength="40" placeholder="Nom du préréglage actuel" autocomplete="off">
+                <button type="submit">Enregistrer</button>
+            </form>
+        </div>
+        <div class="table-display-card table-display-columns">
+            <label class="table-display-check"><input type="checkbox" checked disabled><span>Titre</span><span class="table-display-badge">Toujours affiché</span></label>
+            ${columns.map(col => `<label class="table-display-check"><input type="checkbox"${_isTableColumnVisible(col.key) ? ' checked' : ''} onchange="toggleTableColumn('${col.key}')"><span>${escapeHtml(col.label)}</span></label>`).join('')}
+        </div>`;
 }
+
+document.addEventListener('DOMContentLoaded', applyTableDensity);
 
 // Icônes des listes personnelles, affichées à côté du titre quand la série y figure
 function seriesListIconsHtml(s) {
@@ -1733,6 +1862,9 @@ document.addEventListener('click', (e) => {
         return;
     }
     if (e.target.closest('.toolbar-dropdown') || e.target.closest('.toolbar-dropdown-menu')) return;
+    // Clic dans un menu qui vient de se redessiner (panneau Affichage) : la cible n'est plus
+    // dans la page, ce n'est pas un clic à l'extérieur.
+    if (!e.target.isConnected) return;
     document.querySelectorAll('.toolbar-dropdown-menu').forEach(el => el.style.display = 'none');
 });
 

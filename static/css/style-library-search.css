@@ -3844,7 +3844,13 @@ body.comic-reader-open { overflow: hidden; }
     background: var(--color-surface-alt);
     border-radius: 9px;
 }
-.library-content > .search-row .view-switch-btn { padding: 6px 12px; }
+.library-content > .search-row .view-switch-btn {
+    padding: 6px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.library-content > .search-row .view-switch-btn .icon { width: 18px; height: 18px; }
 @media screen and (max-width: 768px) {
     .library-content > .search-row { margin: 8px 0 12px; padding: 6px 8px; border-radius: 10px; }
     /* Icônes seules : les libellés (Affiches, Aperçu, Tableau) faisaient déborder la barre. */
@@ -3972,3 +3978,158 @@ body:has(.library-content .poster-grid) { overflow-x: clip; overflow-y: visible;
 .series-tag-ai-chip:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); border-style: solid; }
 .series-tag-ai-empty, .series-tag-ai-error { margin: 0; font-size: 0.78em; color: var(--color-text-muted); white-space: normal; }
 .series-tag-ai-error { color: var(--color-danger, #c0392b); }
+
+
+/* ===== Panneau « Affichage » du tableau des séries (densité, préréglages, colonnes) ===== */
+.toolbar-dropdown-menu.table-display-panel {
+    width: 320px;
+    max-width: calc(100vw - 24px);
+    max-height: min(80vh, 760px);
+    overflow-y: auto;
+    padding: 14px;
+    border-radius: 12px;
+}
+.table-display-title {
+    font-size: 0.78em;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+.table-display-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.78em;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+.table-display-reset {
+    border: none;
+    background: none;
+    color: var(--color-text-muted);
+    font-size: 1.15em;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 6px;
+}
+.table-display-reset:hover { color: var(--color-text); background: var(--color-surface-alt); }
+.table-display-card {
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 12px;
+    background: color-mix(in srgb, var(--color-surface-alt) 45%, transparent);
+}
+.table-display-card:last-child { margin-bottom: 0; }
+.table-display-card-title {
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: 8px;
+}
+.table-display-segment { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.table-display-segment button {
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-radius: 8px;
+    padding: 7px 4px;
+    font-size: 0.88em;
+    cursor: pointer;
+}
+.table-display-segment button:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); }
+.table-display-segment button.active {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+    font-weight: 600;
+}
+.table-display-preset {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 7px;
+}
+.table-display-preset:hover { background: var(--color-surface-alt); }
+.table-display-preset.active { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.table-display-preset-name {
+    flex: 1;
+    border: none;
+    background: none;
+    color: var(--color-text);
+    text-align: left;
+    padding: 6px 8px;
+    font-size: 0.92em;
+    cursor: pointer;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.table-display-preset.active .table-display-preset-name { color: var(--color-accent); font-weight: 600; }
+.table-display-preset-tag { font-size: 0.7em; color: var(--color-text-muted); padding-right: 8px; }
+.table-display-preset-delete {
+    border: none;
+    background: none;
+    color: var(--color-text-muted);
+    font-size: 1.1em;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.table-display-preset-delete:hover { color: #dc2626; background: color-mix(in srgb, #dc2626 10%, transparent); }
+.table-display-save { display: flex; gap: 6px; margin-top: 8px; }
+.table-display-save input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 0.88em;
+}
+.table-display-save button {
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 0.88em;
+    cursor: pointer;
+}
+.table-display-save button:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.table-display-columns { display: flex; flex-direction: column; gap: 1px; }
+.table-display-check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 6px;
+    border-radius: 6px;
+    font-size: 0.92em;
+    cursor: pointer;
+}
+.table-display-check:hover { background: var(--color-surface-alt); }
+.table-display-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--color-accent); cursor: pointer; }
+.table-display-check input:disabled { cursor: default; }
+.table-display-check span:nth-of-type(1) { flex: 1; }
+.table-display-badge {
+    font-size: 0.72em;
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    border-radius: 999px;
+    padding: 2px 8px;
+}
+
+/* Densité du tableau des séries (panneau Affichage) ; « confortable » = réglage d'origine. */
+body[data-table-density="compact"] #series-grid .series-table-row td { padding: 3px 8px; }
+body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11px 12px; font-size: 0.9em; }
