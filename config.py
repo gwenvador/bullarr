@@ -155,6 +155,8 @@ class Config:
         'provider': 'anthropic',
         'api_keys': {},
         'models': {},
+        # Tags créés par l'IA pour chaque nouvelle série (voir blueprints/ai/auto_tag.py).
+        'auto_tag_new': False,
     }
 
     NTFY_CONFIG = {

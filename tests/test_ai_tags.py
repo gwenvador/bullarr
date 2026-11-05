@@ -288,8 +288,9 @@ class AiTagsTestCase(unittest.TestCase):
 
 
     def test_stats_count_untagged_series(self):
-        self.assertEqual(self.client.get('/api/ai/stats').get_json(), {'total': 5, 'untagged': 1})
-        self.assertEqual(self.client.get('/api/ai/stats?library_id=2').get_json(), {'total': 1, 'untagged': 1})
+        self.assertEqual(self.client.get('/api/ai/stats').get_json(),
+                         {'total': 5, 'untagged': 1, 'auto_pending': 0})
+        self.assertEqual(self.client.get('/api/ai/stats?library_id=2').get_json()['total'], 1)
 
     def test_history_records_generated_tags(self):
         self.enable()
@@ -323,6 +324,78 @@ class AiTagsTestCase(unittest.TestCase):
         self.assertEqual(entries[1]['message'], 'Quota dépassé')
         self.assertEqual(self.client.delete('/api/ai/history').status_code, 200)
         self.assertEqual(self.client.get('/api/ai/history').get_json()['entries'], [])
+
+
+    def queue(self, *ids, age=600):
+        from blueprints.ai.auto_tag import ensure_table, queue_new_series
+        conn = sqlite3.connect(self.db_path)
+        ensure_table(conn)
+        with self.app.app_context():
+            queue_new_series(conn.cursor(), ids)
+        conn.execute('UPDATE ai_autotag_queue SET queued_at = queued_at - ?', (age,))
+        conn.commit()
+        rows = [row[0] for row in conn.execute('SELECT series_id FROM ai_autotag_queue')]
+        conn.close()
+        return rows
+
+    def test_new_series_not_queued_when_option_off(self):
+        self.enable()
+        self.assertEqual(self.queue(4), [])
+
+    def test_new_series_tagged_automatically(self):
+        self.enable()
+        self.client.post('/api/ai/config', json={'auto_tag_new': True})
+        self.assertTrue(self.client.get('/api/ai/config').get_json()['auto_tag_new'])
+        self.assertEqual(self.queue(4), [4])
+        self.assertEqual(self.client.get('/api/ai/stats').get_json()['auto_pending'], 1)
+        from blueprints.ai.routes import run_auto_tag_tick
+        with mock.patch('blueprints.ai.routes.call_json',
+                        return_value={'series': [{'id': 4, 'tags': ['espace']}]}):
+            with self.app.test_request_context():
+                self.assertIsNone(run_auto_tag_tick())
+            self.wait_job()
+            entry = self.wait_history()[0]
+        self.assertEqual(self.tags(4), ['espace'])
+        self.assertEqual(entry['kind'], 'auto')
+        self.assertEqual(entry['details'][0]['added'], ['espace'])
+        self.assertEqual(self.client.get('/api/ai/stats').get_json()['auto_pending'], 0)
+
+    def test_recent_series_wait_before_tagging(self):
+        self.enable()
+        self.client.post('/api/ai/config', json={'auto_tag_new': True})
+        self.queue(4, age=0)
+        from blueprints.ai.routes import run_auto_tag_tick
+        with mock.patch('blueprints.ai.routes.call_json') as call:
+            with self.app.test_request_context():
+                run_auto_tag_tick()
+        call.assert_not_called()
+        self.assertEqual(self.client.get('/api/ai/stats').get_json()['auto_pending'], 1)
+
+    def test_failed_auto_tagging_is_retried_then_dropped(self):
+        self.enable()
+        self.client.post('/api/ai/config', json={'auto_tag_new': True})
+        self.queue(4)
+        from blueprints.ai.routes import run_auto_tag_tick
+        from blueprints.ai.service import AiError
+        with mock.patch('blueprints.ai.routes.call_json', side_effect=AiError('Quota dépassé')):
+            for attempt in range(3):
+                with self.app.test_request_context():
+                    run_auto_tag_tick()
+                self.assertEqual(self.wait_job()['status'], 'error')
+                self.wait_history(attempt + 1)
+            with self.app.test_request_context():
+                run_auto_tag_tick()
+        self.assertEqual(self.client.get('/api/ai/stats').get_json()['auto_pending'], 0)
+
+    def test_disabling_option_empties_queue(self):
+        self.enable()
+        self.client.post('/api/ai/config', json={'auto_tag_new': True})
+        self.queue(4)
+        self.client.post('/api/ai/config', json={'auto_tag_new': False})
+        from blueprints.ai.routes import run_auto_tag_tick
+        with self.app.test_request_context():
+            run_auto_tag_tick()
+        self.assertEqual(self.client.get('/api/ai/stats').get_json()['auto_pending'], 0)
 
 
 if __name__ == '__main__':

@@ -12,6 +12,10 @@ import time
 from flask import current_app, jsonify, request
 
 from . import ai_bp
+from .auto_tag import (
+    AUTO_TAG_DELAY, AUTO_TAG_MAX_ATTEMPTS, AUTO_TAG_MAX_SERIES, auto_tag_active, ensure_table,
+    pending_count,
+)
 from .history import add_entry, clear_history, load_history
 from .service import (
     GENERATE_BATCH_SIZE, GENERATE_SCHEMA, AiError, _db, apply_tag_mapping, call_json, clean_tag,
@@ -136,7 +140,9 @@ def ai_stats():
     """Nombre de séries et de séries sans tags, affichés dans le choix « Créer des tags »."""
     conn = _db()
     try:
-        return jsonify(count_series(conn, request.args.get('library_id') or None))
+        stats = count_series(conn, request.args.get('library_id') or None)
+        stats['auto_pending'] = pending_count(conn)
+        return jsonify(stats)
     finally:
         conn.close()
 
@@ -155,31 +161,87 @@ def _run_generate(scope, library_id, details):
     cfg = _enabled_config()
     conn = _db()
     try:
-        rows = series_to_tag(conn, scope, library_id)
-        if not rows:
-            _update_job(status='done', message='Aucune série à traiter', result={'changed': 0, 'added': 0})
-            return
-        system = generate_system(vocabulary(conn))
-        total = len(rows)
-        changed = added = 0
-        _update_job(total=total, message=f'0 / {total} séries')
-        for start in range(0, total, GENERATE_BATCH_SIZE):
-            batch = rows[start:start + GENERATE_BATCH_SIZE]
-            briefs = [series_brief(row) for row in batch]
-            user = 'Séries à taguer (JSON) :\n' + json.dumps(briefs, ensure_ascii=False, indent=1)
-            # Système identique pour tous les lots : mis en cache pour ne le payer qu'une fois.
-            data = call_json(cfg, system, user, GENERATE_SCHEMA, cache_system=True, max_tokens=32000)
-            batch_changed, batch_added = merge_generated_tags(
-                conn, data.get('series') or [], {row['id'] for row in batch}, details)
-            changed += batch_changed
-            added += batch_added
-            done = min(start + GENERATE_BATCH_SIZE, total)
-            _update_job(progress=done, message=f'{done} / {total} séries')
-        _update_job(status='done', result={'changed': changed, 'added': added, 'total': total},
-                    message=f'{changed} série{"s" if changed > 1 else ""} enrichie{"s" if changed > 1 else ""}, '
-                            f'{added} tag{"s" if added > 1 else ""} ajouté{"s" if added > 1 else ""}')
+        _tag_rows(cfg, conn, series_to_tag(conn, scope, library_id), details)
     finally:
         conn.close()
+
+
+def _tag_rows(cfg, conn, rows, details, after_batch=None):
+    """Fait créer par l'IA les tags des séries rows, par lots, en suivant l'avancement."""
+    if not rows:
+        _update_job(status='done', message='Aucune série à traiter', result={'changed': 0, 'added': 0})
+        return
+    system = generate_system(vocabulary(conn))
+    total = len(rows)
+    changed = added = 0
+    _update_job(total=total, message=f'0 / {total} séries')
+    for start in range(0, total, GENERATE_BATCH_SIZE):
+        batch = rows[start:start + GENERATE_BATCH_SIZE]
+        briefs = [series_brief(row) for row in batch]
+        user = 'Séries à taguer (JSON) :\n' + json.dumps(briefs, ensure_ascii=False, indent=1)
+        # Système identique pour tous les lots : mis en cache pour ne le payer qu'une fois.
+        data = call_json(cfg, system, user, GENERATE_SCHEMA, cache_system=True, max_tokens=32000)
+        batch_changed, batch_added = merge_generated_tags(
+            conn, data.get('series') or [], {row['id'] for row in batch}, details)
+        changed += batch_changed
+        added += batch_added
+        if after_batch:
+            after_batch([row['id'] for row in batch])
+        done = min(start + GENERATE_BATCH_SIZE, total)
+        _update_job(progress=done, message=f'{done} / {total} séries')
+    _update_job(status='done', result={'changed': changed, 'added': added, 'total': total},
+                message=f'{changed} série{"s" if changed > 1 else ""} enrichie{"s" if changed > 1 else ""}, '
+                        f'{added} tag{"s" if added > 1 else ""} ajouté{"s" if added > 1 else ""}')
+
+
+# ===== Tags des nouvelles séries (auto_tag.py) =====
+
+def _run_auto(series_ids, details):
+    cfg = _enabled_config()
+    conn = _db()
+    try:
+        marks = ','.join('?' * len(series_ids))
+        conn.execute(f'UPDATE ai_autotag_queue SET attempts = attempts + 1 WHERE series_id IN ({marks})',
+                     series_ids)
+        conn.commit()
+        rows = conn.execute(f'SELECT * FROM series WHERE id IN ({marks}) ORDER BY title COLLATE NOCASE',
+                            series_ids).fetchall()
+
+        def done(ids):
+            conn.execute(f'DELETE FROM ai_autotag_queue WHERE series_id IN ({",".join("?" * len(ids))})', ids)
+            conn.commit()
+
+        found = {row['id'] for row in rows}
+        gone = [series_id for series_id in series_ids if series_id not in found]
+        if gone:
+            done(gone)  # séries supprimées entre-temps
+        _tag_rows(cfg, conn, rows, details, after_batch=done)
+    finally:
+        conn.close()
+
+
+def run_auto_tag_tick():
+    """Appelé par le planificateur : lance l'IA sur les nouvelles séries en attente."""
+    cfg = load_ai_config()
+    conn = _db()
+    try:
+        ensure_table(conn)
+        if not auto_tag_active(cfg):
+            conn.execute('DELETE FROM ai_autotag_queue')
+            conn.commit()
+            return None
+        # Après AUTO_TAG_MAX_ATTEMPTS échecs (clé refusée, quota…), la série est abandonnée.
+        conn.execute('DELETE FROM ai_autotag_queue WHERE attempts >= ?', (AUTO_TAG_MAX_ATTEMPTS,))
+        conn.commit()
+        ids = [row[0] for row in conn.execute(
+            'SELECT series_id FROM ai_autotag_queue WHERE queued_at <= ? ORDER BY queued_at LIMIT ?',
+            (time.time() - AUTO_TAG_DELAY, AUTO_TAG_MAX_SERIES))]
+    finally:
+        conn.close()
+    if not ids:
+        return None
+    # Si un autre traitement tourne, on réessaie au prochain passage.
+    return _start_job('auto', _run_auto, ids, extra={'scope': 'new'})
 
 
 @ai_bp.route('/tags/generate', methods=['POST'])

@@ -1403,6 +1403,8 @@ class LibraryScanner:
                     existing_by_path = {}
                     self.series_created_or_changed.add(series_id)
                     self.newly_created_series.add(series_id)
+                    from blueprints.ai.auto_tag import queue_new_series
+                    queue_new_series(cursor, [series_id])
 
                 # Ajouter tous les volumes
                 for volume in volumes:

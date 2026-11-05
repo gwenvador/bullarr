@@ -2398,6 +2398,8 @@ def create_series():
         series_id = cursor.lastrowid
         if bedetheque_url:
             cursor.execute('UPDATE series SET bedetheque_url = ? WHERE id = ?', (bedetheque_url, series_id))
+        from blueprints.ai.auto_tag import queue_new_series
+        queue_new_series(cursor, [series_id])
         conn.commit()
         conn.close()
         if bedetheque_url:
@@ -7308,6 +7310,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                             VALUES (?, ?, ?, 0, '[]', 0)
                         ''', (library_id, series_title, series_path))
                         series_id = cursor.lastrowid
+                        from blueprints.ai.auto_tag import queue_new_series
+                        queue_new_series(cursor, [series_id])
 
                         # Le match Bédéthèque choisi côté client au moment de créer la
                         # série ("➕ Créer une nouvelle série" + icône Bédéthèque de la
