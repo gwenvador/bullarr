@@ -2185,6 +2185,16 @@
                             <p class="ai-job-message" id="aiJobMessage"></p>
                             <progress id="aiJobProgress" class="ai-job-progress" max="1" value="0" hidden></progress>
                         </div>
+                        <div class="settings-card">
+                            <div class="ai-history-header">
+                                <h3 style="margin:0;">Historique</h3>
+                                <button type="button" class="btn btn-secondary btn-small" id="aiHistoryClear" onclick="clearAiHistory()" hidden>Vider</button>
+                            </div>
+                            <p class="help-text" style="display:block; margin:6px 0 10px;">
+                                Les derniers traitements IA, avec le détail des tags ajoutés ou fusionnés.
+                            </p>
+                            <ul class="ai-history-list" id="aiHistoryList"></ul>
+                        </div>
                     </div>
                 </div>
 
