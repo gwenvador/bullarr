@@ -1582,7 +1582,7 @@ function seriesMatchesFilterKey(s, key) {
     if (key.startsWith('author:')) return splitMultiValue(s.local_author).includes(key.slice('author:'.length));
     if (key.startsWith('year:')) return (s.year || '') === key.slice('year:'.length);
     if (key.startsWith('status:')) return _seriesStatusLabel(s) === key.slice('status:'.length);
-    if (key.startsWith('lang:')) return _seriesLanguageLabel(s) === key.slice('lang:'.length);
+    if (key.startsWith('origin:')) return _seriesOriginLabel(s) === key.slice('origin:'.length);
     if (key.startsWith('tag:')) {
         const wanted = normalizeForSearch(key.slice('tag:'.length)).replace(/-/g, ' ');
         return (s.tags || []).some(tag => normalizeForSearch(tag).replace(/-/g, ' ') === wanted);
@@ -1783,16 +1783,31 @@ function splitMultiValue(value) {
 // déroulant, champ de seriesData à lire, préfixe de mode utilisé par filterSeries(),
 // icône affichée devant chaque option, si la valeur doit être découpée (multi-valeur)
 // ou utilisée telle quelle (valeur unique, ex: année)
-function _seriesLanguageLabel(s) {
-    const lang = (s.bedetheque_language || '').trim();
-    return lang || 'Inconnue';
+// Origine Bédéthèque regroupée en BD / Comics / Manga (bedethequeOriginLabel, nav.js).
+function _seriesOriginLabel(s) {
+    const label = bedethequeOriginLabel(s.bedetheque_origin);
+    return label === '—' ? 'Inconnue' : label;
 }
 
-// Statut (même libellé que le badge des affiches) et langue Bédéthèque : menus construits
-// depuis les valeurs présentes dans la bibliothèque, avec le nombre de séries pour chacune.
+// Statut (même libellé que le badge des affiches) et origine : menus construits depuis
+// les valeurs présentes dans la bibliothèque, avec le nombre de séries pour chacune.
 const _STATUS_FILTER_ORDER = ['Terminé', 'En cours', 'Incomplet', 'Manquant', 'Vide', '—'];
+const _ORIGIN_FILTER_ORDER = ['BD', 'Comics', 'Manga'];
+const _STATUS_DOT_CLASS = { 'Terminé': 'complete', 'En cours': 'ongoing', 'Incomplet': 'incomplete', 'Manquant': 'missing', 'Vide': 'empty' };
+const _ORIGIN_ICONS = { BD: '/static/img/origin-bd.svg', Comics: '/static/img/origin-comics.svg', Manga: '/static/img/origin-manga.svg' };
 
-function _fillCountFilterMenu(menuId, prefix, getValue, order) {
+function _statusFilterIcon(v) {
+    return `<span class="filter-status-dot filter-status-${_STATUS_DOT_CLASS[v] || 'none'}"></span>`;
+}
+
+function _originFilterIcon(v) {
+    const src = _ORIGIN_ICONS[v];
+    return src
+        ? `<img class="filter-origin-icon" src="${src}" alt="" aria-hidden="true">`
+        : `<span class="filter-item-icon">${svgIcon('info')}</span>`;
+}
+
+function _fillCountFilterMenu(menuId, prefix, getValue, order, iconFor) {
     const menu = document.getElementById(menuId);
     if (!menu) return;
     const counts = new Map();
@@ -1800,21 +1815,17 @@ function _fillCountFilterMenu(menuId, prefix, getValue, order) {
         const v = getValue(s);
         counts.set(v, (counts.get(v) || 0) + 1);
     });
-    const values = [...counts.keys()].sort((a, b) => {
-        if (order) {
-            const ia = order.indexOf(a), ib = order.indexOf(b);
-            if (ia !== ib) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-        }
-        return (counts.get(b) - counts.get(a)) || a.localeCompare(b, 'fr');
-    });
+    const rank = v => { const i = order.indexOf(v); return i < 0 ? 99 : i; };
+    const values = [...counts.keys()].sort((a, b) =>
+        (rank(a) - rank(b)) || (counts.get(b) - counts.get(a)) || a.localeCompare(b, 'fr'));
     menu.innerHTML = values.length
-        ? values.map(v => `<button class="toolbar-dropdown-item" data-filter="${escapeHtml(prefix + v)}" onclick="toggleSeriesFilter(this.dataset.filter)">${escapeHtml(v === '—' ? 'Sans statut' : v)} <span class="filter-count">${counts.get(v)}</span></button>`).join('')
+        ? values.map(v => `<button class="toolbar-dropdown-item" data-filter="${escapeHtml(prefix + v)}" onclick="toggleSeriesFilter(this.dataset.filter)">${iconFor(v)}<span>${escapeHtml(v === '—' ? 'Sans statut' : v)}</span><span class="filter-count">${counts.get(v)}</span></button>`).join('')
         : '<div class="toolbar-dropdown-empty">Aucune valeur</div>';
 }
 
 function populateStatusLanguageFilters() {
-    _fillCountFilterMenu('status-filter-menu', 'status:', _seriesStatusLabel, _STATUS_FILTER_ORDER);
-    _fillCountFilterMenu('language-filter-menu', 'lang:', _seriesLanguageLabel, null);
+    _fillCountFilterMenu('status-filter-menu', 'status:', _seriesStatusLabel, _STATUS_FILTER_ORDER, _statusFilterIcon);
+    _fillCountFilterMenu('origin-filter-menu', 'origin:', _seriesOriginLabel, _ORIGIN_FILTER_ORDER, _originFilterIcon);
 }
 
 const DYNAMIC_FILTER_SECTIONS = [
@@ -1870,8 +1881,8 @@ function getFilterKeyLabel(key) {
     if (key === 'to-read') return '📚 À lire plus tard';
     if (key === 'favorite') return '⭐ Favoris';
     if (key.startsWith('tag:')) return '🏷️ ' + key.slice('tag:'.length);
-    if (key.startsWith('status:')) return '📊 ' + key.slice('status:'.length);
-    if (key.startsWith('lang:')) return '🌐 ' + key.slice('lang:'.length);
+    if (key.startsWith('status:')) return 'Statut : ' + key.slice('status:'.length);
+    if (key.startsWith('origin:')) return 'Origine : ' + key.slice('origin:'.length);
     for (const section of DYNAMIC_FILTER_SECTIONS) {
         if (key.startsWith(section.prefix)) {
             return `${section.icon} ${key.slice(section.prefix.length)}`;
@@ -1985,7 +1996,7 @@ function clearSeriesFilters() {
 // bouton lui-même dès qu'un filtre de sa catégorie est actif, même dropdown fermé
 const FILTER_TOOLBAR_BUTTONS = [
     { id: 'status-filter-btn', match: key => key.startsWith('status:') },
-    { id: 'language-filter-btn', match: key => key.startsWith('lang:') },
+    { id: 'origin-filter-btn', match: key => key.startsWith('origin:') },
     { id: 'lists-filter-btn', match: key => key === 'to-read' || key === 'favorite' },
     { id: 'genre-filter-btn', match: key => key.startsWith('genre:') },
     { id: 'author-filter-btn', match: key => key.startsWith('author:') },

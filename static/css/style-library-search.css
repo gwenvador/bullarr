@@ -3867,5 +3867,14 @@ body:has(.library-content .poster-grid) { overflow-x: clip; overflow-y: visible;
     font-size: .85em;
     font-variant-numeric: tabular-nums;
 }
-#status-filter-menu .toolbar-dropdown-item,
-#language-filter-menu .toolbar-dropdown-item { display: flex; align-items: center; }
+.filter-item-icon { display: inline-flex; color: var(--color-text-muted); }
+.filter-item-icon .icon { width: 15px; height: 15px; }
+.filter-origin-icon { width: 16px; height: 16px; object-fit: contain; }
+.filter-status-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; margin: 0 3px; background: #9ca3af; }
+.filter-status-complete { background: #16a34a; }
+.filter-status-ongoing { background: #2563eb; }
+.filter-status-incomplete { background: #d97706; }
+.filter-status-missing { background: #dc2626; }
+.filter-status-empty { background: #6b7280; }
+/* « Continuer la lecture » est maintenant au-dessus de la barre d'outils */
+.library-content > .keep-reading { margin: 4px 0 14px; }
