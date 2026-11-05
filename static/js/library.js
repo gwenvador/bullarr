@@ -588,14 +588,30 @@ async function loadKeepReading() {
     }).join('');
     section.innerHTML = `
         <div class="keep-reading-header">
-            <h3>Continuer la lecture</h3>
+            <h3><button type="button" class="keep-reading-toggle" onclick="toggleKeepReading()" aria-expanded="${!_isKeepReadingCollapsed()}" aria-controls="keep-reading-body">${svgIcon('chevron-down')}<span>Continuer la lecture</span>${items.length ? `<span class="keep-reading-count">${items.length}</span>` : ''}</button></h3>
             <button type="button" class="toolbar-btn keep-reading-sync" onclick="syncKomgaReading(this)" title="Relire l'avancement de lecture dans Komga">${svgIcon('refresh-cw')} Synchroniser avec Komga</button>
             <span class="keep-reading-status" id="keep-reading-status"></span>
         </div>
-        ${items.length
+        <div class="keep-reading-body" id="keep-reading-body">${items.length
             ? `<div class="keep-reading-row">${cards}</div>`
-            : '<p class="keep-reading-empty">Aucun album en cours de lecture.</p>'}`;
+            : '<p class="keep-reading-empty">Aucun album en cours de lecture.</p>'}</div>`;
+    section.classList.toggle('keep-reading-collapsed', _isKeepReadingCollapsed());
     section.hidden = false;
+}
+
+// Rangée repliable ; l'état est gardé dans le navigateur (comme les groupes de tomes).
+function _isKeepReadingCollapsed() {
+    try { return localStorage.getItem('keepReadingCollapsed') === 'true'; } catch (e) { return false; }
+}
+
+function toggleKeepReading() {
+    const collapsed = !_isKeepReadingCollapsed();
+    try { localStorage.setItem('keepReadingCollapsed', String(collapsed)); } catch (e) { /* ignore */ }
+    const section = document.getElementById('keep-reading-section');
+    if (!section) return;
+    section.classList.toggle('keep-reading-collapsed', collapsed);
+    const toggle = section.querySelector('.keep-reading-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', String(!collapsed));
 }
 
 async function syncKomgaReading(button) {
