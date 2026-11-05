@@ -1873,6 +1873,20 @@ function populateDynamicFilterOptions() {
 }
 
 // Libellé lisible d'une clé de filtre, utilisé pour les badges dans la toolbar
+// [catégorie, valeur] d'un filtre actif, pour les puces sous la barre d'outils.
+const _FILTER_KEY_CATEGORIES = { 'status:': 'Statut', 'origin:': 'Origine', 'genre:': 'Genre', 'author:': 'Auteur', 'year:': 'Année', 'tag:': 'Tag' };
+const _FILTER_KEY_FIXED = {
+    'missing': ['', 'Volumes manquants'], 'oneshot': ['', 'One-shot'], 'ebdz-unmatched': ['', 'Matching EBDZ'],
+    'missing-metadata': ['', 'Sans métadonnées'], 'to-read': ['Liste', 'À lire plus tard'], 'favorite': ['Liste', 'Favoris'],
+};
+function getFilterKeyParts(key) {
+    if (_FILTER_KEY_FIXED[key]) return _FILTER_KEY_FIXED[key];
+    for (const [prefix, cat] of Object.entries(_FILTER_KEY_CATEGORIES)) {
+        if (key.startsWith(prefix)) return [cat, key.slice(prefix.length)];
+    }
+    return ['', key];
+}
+
 function getFilterKeyLabel(key) {
     if (key === 'missing') return '⚠️ Volumes manquants';
     if (key === 'oneshot') return '🔸 One-Shot';
@@ -1905,14 +1919,16 @@ function updateActiveFilterBadges() {
     }
 
     container.style.display = 'inline-flex';
-    const pills = [...activeFilters].map(key => `
+    const pills = [...activeFilters].map(key => {
+        const [cat, value] = getFilterKeyParts(key);
+        return `
         <span class="active-filter-badge" data-filter-key="${escapeHtml(key)}">
-            <span>${escapeHtml(getFilterKeyLabel(key))}</span>
+            ${cat ? `<span class="active-filter-badge-cat">${escapeHtml(cat)}</span>` : ''}<span class="active-filter-badge-value">${escapeHtml(value)}</span>
             <button type="button" class="active-filter-badge-clear" onclick="toggleSeriesFilter(this.parentElement.dataset.filterKey)" aria-label="Retirer ce filtre">${svgIcon('x')}</button>
-        </span>
-    `).join('');
+        </span>`;
+    }).join('');
     const clearAll = activeFilters.size > 1
-        ? `<button type="button" class="active-filter-clear-all" onclick="clearSeriesFilters()">Tout effacer</button>`
+        ? `<button type="button" class="active-filter-clear-all" onclick="clearSeriesFilters()">${svgIcon('x')}Tout effacer</button>`
         : '';
     container.innerHTML = pills + clearAll;
 }
