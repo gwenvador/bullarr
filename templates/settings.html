@@ -141,7 +141,7 @@
                                 <span class="overview-card-icon" data-icon="sparkles"></span>
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">IA</span>
-                                    <span class="overview-card-desc">Clé API Claude, création et normalisation des tags</span>
+                                    <span class="overview-card-desc">Claude ou Gemini : création et normalisation des tags</span>
                                 </span>
                             </button>
                         </div>
@@ -2107,7 +2107,7 @@
                     </div>
                 </div>
 
-                <!-- Onglet IA : clé API Anthropic (Claude) et traitements des tags,
+                <!-- Onglet IA : clé API Claude ou Gemini et traitements des tags,
                      voir blueprints/ai et la partie « IA » de settings.js. -->
                 <div class="tab-content" id="tab-ai">
                     <div class="settings-section">
@@ -2115,8 +2115,8 @@
                             <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
                             <h2>🤖 IA</h2>
                             <p class="section-description">
-                                Claude (Anthropic) crée les tags des séries et regroupe les tags qui veulent
-                                dire la même chose. Les requêtes sont facturées sur votre compte Anthropic.
+                                Une IA (Claude ou Gemini) crée les tags des séries et regroupe les tags qui
+                                veulent dire la même chose. Les requêtes passent par votre propre clé API.
                             </p>
                         </div>
 
@@ -2129,16 +2129,23 @@
                                     <span class="help-text">Nécessaire pour lancer les traitements ci-dessous</span>
                                 </label>
                             </div>
+                            <div class="form-group">
+                                <label for="aiProvider">Fournisseur</label>
+                                <select id="aiProvider" class="form-select" onchange="onAiProviderChange()"></select>
+                            </div>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="aiApiKey">Clé API</label>
-                                    <input type="password" id="aiApiKey" placeholder="sk-ant-..." autocomplete="off">
-                                    <small class="help-text">Créez-la sur <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener noreferrer">platform.claude.com</a>. Elle est stockée chiffrée.</small>
+                                    <input type="password" id="aiApiKey" autocomplete="off">
+                                    <small class="help-text">Créez-la sur <a id="aiKeyLink" href="#" target="_blank" rel="noopener noreferrer"></a>. Elle est stockée chiffrée.</small>
                                 </div>
                                 <div class="form-group">
                                     <label for="aiModel">Modèle</label>
-                                    <select id="aiModel" class="form-select"></select>
-                                    <small class="help-text">Opus : le plus précis. Haiku : le moins cher.</small>
+                                    <div style="display:flex; gap:6px;">
+                                        <select id="aiModel" class="form-select" style="flex:1 1 auto; min-width:0;"></select>
+                                        <button type="button" class="btn btn-secondary" id="aiRefreshModels" onclick="refreshAiModels()" title="Lire la liste des modèles avec cette clé" hidden>↻</button>
+                                    </div>
+                                    <small class="help-text" id="aiModelHelp"></small>
                                 </div>
                             </div>
                             <div style="display:flex; gap:10px; flex-wrap:wrap;">

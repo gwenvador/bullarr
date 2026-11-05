@@ -12,8 +12,9 @@ from flask import current_app, jsonify, request
 from . import ai_bp
 from .service import (
     GENERATE_BATCH_SIZE, GENERATE_SCHEMA, AiError, _db, apply_tag_mapping, call_json, clean_tag,
-    generate_system, load_ai_config, merge_form, merge_generated_tags, normalize_proposals,
-    public_config, save_ai_config, series_brief, series_to_tag, test_connection, vocabulary,
+    active_key, generate_system, list_models, load_ai_config, merge_form, merge_generated_tags,
+    normalize_proposals, public_config, save_ai_config, series_brief, series_to_tag,
+    test_connection, vocabulary,
 )
 
 _job_lock = threading.Lock()
@@ -56,7 +57,7 @@ def _start_job(kind, target, *args):
 
 def _enabled_config():
     cfg = load_ai_config()
-    if not cfg.get('enabled') or not cfg.get('api_key_decrypted'):
+    if not cfg.get('enabled') or not active_key(cfg):
         raise AiError('Activez l\'IA et renseignez une clé API dans Configuration → IA')
     return cfg
 
@@ -90,6 +91,21 @@ def ai_test():
     except AiError as exc:
         return jsonify({'success': False, 'error': str(exc)}), 400
     return jsonify({'success': True, 'message': f'Connexion réussie : {name}'})
+
+
+@ai_bp.route('/models', methods=['POST'])
+def ai_models():
+    """Modèles du fournisseur saisi dans le formulaire (clé pas forcément enregistrée)."""
+    data = request.get_json(silent=True) or {}
+    cfg = load_ai_config()
+    error = merge_form(cfg, {key: data[key] for key in ('provider', 'api_key') if key in data})
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
+    try:
+        models = list_models(cfg)
+    except AiError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    return jsonify({'success': True, 'models': models})
 
 
 @ai_bp.route('/job', methods=['GET'])

@@ -56,6 +56,10 @@ class AiTagsTestCase(unittest.TestCase):
             conn.close()
         return json.loads(raw)
 
+    def provider(self, provider_id):
+        public = self.client.get('/api/ai/config').get_json()
+        return next(p for p in public['providers'] if p['id'] == provider_id)
+
     def enable(self):
         response = self.client.post('/api/ai/config', json={
             'enabled': True, 'api_key': 'sk-ant-test-123456789', 'model': 'claude-haiku-5-5'})
@@ -74,13 +78,13 @@ class AiTagsTestCase(unittest.TestCase):
         with open(self.app.config['AI_CONFIG_FILE'], encoding='utf-8') as handle:
             stored = json.load(handle)
         self.assertNotIn('sk-ant-test', json.dumps(stored))
-        public = self.client.get('/api/ai/config').get_json()
+        public = self.provider('anthropic')
         self.assertEqual(public['api_key'], '****')
         self.assertEqual(public['model'], 'claude-haiku-5-5')
         self.assertTrue(public['has_api_key'])
         # Renvoyer le masque garde la clé enregistrée
         self.client.post('/api/ai/config', json={'api_key': '****', 'enabled': True})
-        self.assertTrue(self.client.get('/api/ai/config').get_json()['has_api_key'])
+        self.assertTrue(self.provider('anthropic')['has_api_key'])
 
     def test_enabling_without_key_is_refused(self):
         response = self.client.post('/api/ai/config', json={'enabled': True, 'api_key': ''})
@@ -172,6 +176,107 @@ class AiTagsTestCase(unittest.TestCase):
             job = self.wait_job()
         self.assertEqual(job['status'], 'error')
         self.assertEqual(job['message'], 'Clé API refusée par Anthropic')
+
+
+    def test_each_provider_keeps_its_own_key_and_model(self):
+        self.enable()
+        response = self.client.post('/api/ai/config', json={
+            'provider': 'gemini', 'api_key': 'AIza-gemini-key-123456', 'model': 'models/gemini-3.5-flash'})
+        self.assertEqual(response.status_code, 200, response.get_json())
+        public = self.client.get('/api/ai/config').get_json()
+        self.assertEqual(public['provider'], 'gemini')
+        gemini = self.provider('gemini')
+        self.assertEqual(gemini['model'], 'gemini-3.5-flash')
+        self.assertEqual(gemini['api_key_hint'], '…3456')
+        self.assertEqual(self.provider('anthropic')['api_key_hint'], '…6789')
+        with open(self.app.config['AI_CONFIG_FILE'], encoding='utf-8') as handle:
+            self.assertNotIn('AIza', handle.read())
+
+    def test_switching_to_provider_without_key_cannot_enable(self):
+        self.enable()
+        response = self.client.post('/api/ai/config', json={'provider': 'gemini', 'enabled': True})
+        self.assertEqual(response.status_code, 400)
+
+    def test_legacy_single_key_config_is_read_as_claude(self):
+        from encryption import encrypt
+        with open(self.app.config['AI_CONFIG_FILE'], 'w', encoding='utf-8') as handle:
+            json.dump({'enabled': True, 'api_key': encrypt('sk-ant-legacy-987654321'),
+                       'model': 'claude-sonnet-5-5'}, handle)
+        anthropic_cfg = self.provider('anthropic')
+        self.assertTrue(anthropic_cfg['has_api_key'])
+        self.assertEqual(anthropic_cfg['model'], 'claude-sonnet-5-5')
+
+    def test_gemini_schema_conversion(self):
+        from blueprints.ai.service import NORMALIZE_SCHEMA, gemini_schema
+        converted = gemini_schema(NORMALIZE_SCHEMA)
+        self.assertEqual(converted['type'], 'OBJECT')
+        self.assertEqual(converted['properties']['groups']['items']['properties']['variants']['type'], 'ARRAY')
+        self.assertNotIn('additionalProperties', json.dumps(converted))
+
+    def _gemini_response(self, payload, finish='STOP'):
+        response = mock.Mock(status_code=200, ok=True)
+        response.json.return_value = {'candidates': [{
+            'finishReason': finish,
+            'content': {'parts': [{'text': 'réflexion', 'thought': True}, {'text': json.dumps(payload)}]},
+        }]}
+        return response
+
+    def test_gemini_call_sends_key_header_and_schema(self):
+        self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'gemini', 'api_key': 'AIza-gemini-key-123456',
+            'model': 'gemini-3.5-flash-lite'})
+        answer = {'groups': [{'canonical': 'charles-de-gaulle', 'reason': 'Même personne',
+                              'variants': ['de-gaulle', 'charles-de-gaulle']}]}
+        with mock.patch('blueprints.ai.service.requests.request',
+                        return_value=self._gemini_response(answer)) as request:
+            self.client.post('/api/ai/tags/normalize')
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'done', job)
+        self.assertEqual(job['result']['groups'][0]['canonical'], 'charles-de-gaulle')
+        method, url = request.call_args.args
+        self.assertEqual(method, 'POST')
+        self.assertTrue(url.endswith('/models/gemini-3.5-flash-lite:generateContent'))
+        kwargs = request.call_args.kwargs
+        self.assertEqual(kwargs['headers']['x-goog-api-key'], 'AIza-gemini-key-123456')
+        self.assertNotIn('key=', url)
+        config = kwargs['json']['generationConfig']
+        self.assertEqual(config['responseMimeType'], 'application/json')
+        self.assertEqual(config['responseSchema']['type'], 'OBJECT')
+
+    def test_gemini_truncated_answer_is_an_error(self):
+        self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'gemini', 'api_key': 'AIza-gemini-key-123456'})
+        with mock.patch('blueprints.ai.service.requests.request',
+                        return_value=self._gemini_response({}, finish='MAX_TOKENS')):
+            self.client.post('/api/ai/tags/normalize')
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'error')
+        self.assertIn('tronquée', job['message'])
+
+    def test_gemini_invalid_key_message(self):
+        self.client.post('/api/ai/config', json={
+            'provider': 'gemini', 'api_key': 'AIza-bad-key-0000000'})
+        bad = mock.Mock(status_code=400, ok=False, text='')
+        bad.json.return_value = {'error': {'message': 'API key not valid',
+                                           'details': [{'reason': 'API_KEY_INVALID'}]}}
+        with mock.patch('blueprints.ai.service.requests.request', return_value=bad):
+            response = self.client.post('/api/ai/test', json={'provider': 'gemini'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], 'Clé API refusée par Google')
+
+    def test_gemini_model_list_keeps_text_models(self):
+        self.client.post('/api/ai/config', json={
+            'provider': 'gemini', 'api_key': 'AIza-gemini-key-123456'})
+        listing = mock.Mock(status_code=200, ok=True)
+        listing.json.return_value = {'models': [
+            {'name': 'models/gemini-3.5-flash-lite', 'displayName': 'Gemini 3.5 Flash-Lite',
+             'supportedGenerationMethods': ['generateContent']},
+            {'name': 'models/text-embedding-004', 'supportedGenerationMethods': ['embedContent']},
+        ]}
+        with mock.patch('blueprints.ai.service.requests.request', return_value=listing):
+            data = self.client.post('/api/ai/models', json={'provider': 'gemini'}).get_json()
+        self.assertTrue(data['success'], data)
+        self.assertEqual([m['id'] for m in data['models']], ['gemini-3.5-flash-lite'])
 
 
 if __name__ == '__main__':

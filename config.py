@@ -148,11 +148,13 @@ class Config:
 
     # Notifications ntfy (https://ntfy.sh ou serveur auto-hébergé), voir blueprints/ntfy.
     # auth: 'none', 'token' (jeton d'accès tk_...) ou 'basic' (identifiant + mot de passe).
-    # IA (API Claude d'Anthropic), voir blueprints/ai : création et normalisation des tags.
+    # IA (Claude d'Anthropic ou Gemini de Google), voir blueprints/ai : création et
+    # normalisation des tags. Une clé chiffrée et un modèle par fournisseur.
     AI_CONFIG = {
         'enabled': False,
-        'api_key': '',
-        'model': 'claude-opus-5-5',
+        'provider': 'anthropic',
+        'api_keys': {},
+        'models': {},
     }
 
     NTFY_CONFIG = {
