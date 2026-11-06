@@ -3357,60 +3357,133 @@ function onAiProviderChange() {
 }
 
 function _aiInitFallbacks() {
-    const chosen = (aiConfig && aiConfig.fallbacks) || [];
+    const primary = (aiConfig && aiConfig.provider) || '';
+    const chosen = [primary, ...((aiConfig && aiConfig.fallbacks) || [])].filter(Boolean);
     const others = ((aiConfig && aiConfig.providers) || []).map(p => p.id).filter(id => !chosen.includes(id));
     aiFallbackOrder = [...chosen.map(id => ({ id, on: true })), ...others.map(id => ({ id, on: false }))];
 }
 
-// Le fournisseur principal (liste Fournisseur) est en tête, hors de la liste.
+function _aiStatus(provider) {
+    const status = provider.ready
+        ? (provider.key === 'none' ? 'sans clé' : provider.key === 'optional' ? 'prêt' : 'clé enregistrée')
+        : 'clé manquante';
+    return [status, provider.llm === false ? 'pas de normalisation' : ''].filter(Boolean).join(' · ');
+}
+
+// Liste déroulante « Fournisseurs » : toutes les IA, cochées = utilisées, dans l'ordre.
+// La première cochée répond, les suivantes servent de secours. Le nom choisit l'IA
+// dont la clé et le modèle sont affichés dessous (liste cachée #aiProvider).
 function renderAiFallbacks() {
     const list = document.getElementById('aiFallbackList');
     if (!list) return;
-    const primary = document.getElementById('aiProvider').value;
-    const primaryInfo = _aiProvider(primary);
-    const items = aiFallbackOrder.filter(item => item.id !== primary);
-    const row = (item, index) => {
+    const editing = document.getElementById('aiProvider').value;
+    const used = aiFallbackOrder.filter(item => item.on);
+    list.innerHTML = aiFallbackOrder.map((item, index) => {
         const provider = _aiProvider(item.id) || { name: item.id };
-        const status = provider.ready
-            ? (provider.key === 'none' ? 'sans clé' : provider.key === 'optional' ? 'prêt' : 'clé enregistrée')
-            : 'clé manquante';
-        const notes = [status, provider.llm === false ? 'pas de normalisation' : ''].filter(Boolean).join(' · ');
+        const rank = item.on ? used.indexOf(item) + 1 : '';
         return `
-            <li class="ai-fallback-item${item.on ? '' : ' ai-fallback-off'}${provider.ready ? '' : ' ai-fallback-unready'}">
-                <input type="checkbox" ${item.on ? 'checked' : ''} aria-label="Utiliser ${escapeHtml(provider.name)} en secours"
+            <li class="ai-fallback-item${item.on ? '' : ' ai-fallback-off'}${provider.ready ? '' : ' ai-fallback-unready'}${item.id === editing ? ' ai-fallback-editing' : ''}">
+                <input type="checkbox" ${item.on ? 'checked' : ''} aria-label="Utiliser ${escapeHtml(provider.name)}"
                        data-id="${escapeHtml(item.id)}" onchange="toggleAiFallback(this.dataset.id, this.checked)">
-                <span class="ai-fallback-name">${escapeHtml(provider.name)}</span>
-                <span class="ai-fallback-status">${escapeHtml(notes)}</span>
+                <span class="ai-fallback-rank">${rank}</span>
+                <button type="button" class="ai-fallback-name" data-id="${escapeHtml(item.id)}" onclick="editAiProvider(this.dataset.id)"
+                        title="Régler la clé et le modèle">${escapeHtml(provider.name)}</button>
+                <span class="ai-fallback-status">${escapeHtml(_aiStatus(provider))}</span>
                 <span class="ai-fallback-moves">
                     <button type="button" class="btn btn-secondary btn-small" data-id="${escapeHtml(item.id)}" onclick="moveAiFallback(this.dataset.id, -1)" ${index === 0 ? 'disabled' : ''} aria-label="Monter">▲</button>
-                    <button type="button" class="btn btn-secondary btn-small" data-id="${escapeHtml(item.id)}" onclick="moveAiFallback(this.dataset.id, 1)" ${index === items.length - 1 ? 'disabled' : ''} aria-label="Descendre">▼</button>
+                    <button type="button" class="btn btn-secondary btn-small" data-id="${escapeHtml(item.id)}" onclick="moveAiFallback(this.dataset.id, 1)" ${index === aiFallbackOrder.length - 1 ? 'disabled' : ''} aria-label="Descendre">▼</button>
                 </span>
             </li>`;
-    };
-    list.innerHTML = `
-        <li class="ai-fallback-item ai-fallback-primary">
-            <span class="ai-fallback-rank">1</span>
-            <span class="ai-fallback-name">${escapeHtml(primaryInfo ? primaryInfo.name : primary)}</span>
-            <span class="ai-fallback-status">fournisseur principal</span>
-        </li>` + items.map(row).join('');
+    }).join('');
+    const names = used.map(item => (_aiProvider(item.id) || { name: item.id }).name);
+    document.getElementById('aiProviderButton').textContent = names.length ? names.join(' → ') : 'Aucune IA cochée';
+    const edited = _aiProvider(editing);
+    document.getElementById('aiEditing').textContent = edited ? `Clé et modèle ci-dessous : ${edited.name}` : '';
+}
+
+function toggleAiProviderMenu(open) {
+    const menu = document.getElementById('aiProviderMenu');
+    const show = open !== undefined ? open : menu.hidden;
+    menu.hidden = !show;
+    document.getElementById('aiProviderButton').setAttribute('aria-expanded', String(show));
+}
+
+document.addEventListener('click', event => {
+    const dropdown = document.getElementById('aiProviderDropdown');
+    if (dropdown && event.target.isConnected && !dropdown.contains(event.target)) toggleAiProviderMenu(false);
+});
+
+function editAiProvider(id) {
+    const select = document.getElementById('aiProvider');
+    select.value = id;
+    onAiProviderChange();
+    toggleAiProviderMenu(false);
 }
 
 function toggleAiFallback(id, on) {
     const item = aiFallbackOrder.find(entry => entry.id === id);
     if (item) item.on = on;
+    if (!aiFallbackOrder.some(entry => entry.on) && item) {
+        item.on = true;
+        showMessage('aiMessage', '⚠️ Gardez au moins une IA cochée', 'warning');
+    }
     renderAiFallbacks();
 }
 
 function moveAiFallback(id, delta) {
-    const primary = document.getElementById('aiProvider').value;
-    const visible = aiFallbackOrder.filter(item => item.id !== primary);
-    const index = visible.findIndex(item => item.id === id);
+    const index = aiFallbackOrder.findIndex(item => item.id === id);
     const target = index + delta;
-    if (index < 0 || target < 0 || target >= visible.length) return;
-    [visible[index], visible[target]] = [visible[target], visible[index]];
-    const primaryItem = aiFallbackOrder.find(item => item.id === primary);
-    aiFallbackOrder = primaryItem ? [primaryItem, ...visible] : visible;
+    if (index < 0 || target < 0 || target >= aiFallbackOrder.length) return;
+    [aiFallbackOrder[index], aiFallbackOrder[target]] = [aiFallbackOrder[target], aiFallbackOrder[index]];
     renderAiFallbacks();
+}
+
+const AI_PROMPT_FIELDS = { generate: 'aiPromptGenerate', normalize: 'aiPromptNormalize' };
+
+function _aiFillPrompts() {
+    const prompts = (aiConfig && aiConfig.prompts) || {};
+    Object.entries(AI_PROMPT_FIELDS).forEach(([kind, id]) => {
+        const field = document.getElementById(id);
+        if (field && prompts[kind]) field.value = prompts[kind].value;
+        markAiPrompt(kind);
+    });
+}
+
+function markAiPrompt(kind) {
+    const prompt = ((aiConfig && aiConfig.prompts) || {})[kind];
+    const field = document.getElementById(AI_PROMPT_FIELDS[kind]);
+    const state = document.getElementById(AI_PROMPT_FIELDS[kind] + 'State');
+    if (!prompt || !field || !state) return;
+    const changed = field.value.trim() !== prompt.default.trim();
+    state.textContent = changed ? 'modifiée' : 'd\'origine';
+    state.classList.toggle('ai-prompt-custom', changed);
+}
+
+function resetAiPrompt(kind) {
+    const prompt = ((aiConfig && aiConfig.prompts) || {})[kind];
+    if (!prompt) return;
+    document.getElementById(AI_PROMPT_FIELDS[kind]).value = prompt.default;
+    markAiPrompt(kind);
+    showMessage('aiPromptMessage', 'Consigne d\'origine remise : enregistrez pour l\'appliquer', 'info');
+}
+
+async function saveAiPrompts() {
+    const prompts = {};
+    Object.entries(AI_PROMPT_FIELDS).forEach(([kind, id]) => { prompts[kind] = document.getElementById(id).value; });
+    try {
+        const response = await fetch('/api/ai/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ prompts }),
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        aiConfig.prompts = data.config.prompts;
+        _aiFillPrompts();
+        showMessage('aiPromptMessage', '✅ Consignes enregistrées', 'success');
+    } catch (error) {
+        showMessage('aiPromptMessage', '❌ ' + error.message, 'error');
+    }
 }
 
 async function loadAiSettings() {
@@ -3427,6 +3500,7 @@ async function loadAiSettings() {
         _aiShowProvider(aiConfig.provider);
         _aiInitFallbacks();
         renderAiFallbacks();
+        _aiFillPrompts();
     } catch (error) {
         showMessage('aiMessage', '❌ Impossible de charger la configuration IA', 'error');
     }
@@ -3441,7 +3515,7 @@ function _aiFormValues() {
         enabled: document.getElementById('aiEnabled').checked,
         provider,
         model: document.getElementById('aiModel').value,
-        fallbacks: aiFallbackOrder.filter(item => item.on && item.id !== provider).map(item => item.id),
+        order: aiFallbackOrder.filter(item => item.on).map(item => item.id),
     };
     if ((_aiProvider(provider) || {}).key !== 'none') values.api_key = document.getElementById('aiApiKey').value.trim();
     if (provider === 'local') values.base_url = document.getElementById('aiBaseUrl').value.trim();

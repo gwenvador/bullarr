@@ -417,13 +417,18 @@ def public_config(cfg):
         'provider': cfg.get('provider') or DEFAULT_PROVIDER,
         'fallbacks': fallback_list(cfg, cfg.get('fallbacks')),
         'providers': providers,
+        'prompts': {kind: {'value': custom_prompt(cfg, kind) or default, 'default': default,
+                           'custom': bool(custom_prompt(cfg, kind))}
+                    for kind, default in PROMPT_DEFAULTS.items()},
     }
 
 
 def merge_form(cfg, data):
     """Reporte le formulaire dans cfg. Renvoie un message d'erreur ou None.
 
-    data : enabled, provider, et la clé / le modèle de ce fournisseur (api_key, model)."""
+    data : enabled, provider, et la clé / le modèle de ce fournisseur (api_key, model).
+    order (facultatif) : IA cochées dans l'ordre de préférence ; la première devient le
+    fournisseur principal, les autres les IA de secours (provider reste celle réglée)."""
     if 'provider' in data:
         provider = str(data.get('provider') or '')
         if provider not in PROVIDERS:
@@ -461,7 +466,25 @@ def merge_form(cfg, data):
             return 'Adresse du LLM local invalide (exemple : http://192.168.1.10:11434/v1)'
         else:
             urls['local'] = url
-    if cfg.get('enabled') and not provider_ready(cfg):
+    if isinstance(data.get('prompts'), dict):
+        prompts = dict(cfg.get('prompts') or {})
+        for kind, default in PROMPT_DEFAULTS.items():
+            if kind not in data['prompts']:
+                continue
+            text = str(data['prompts'][kind] or '').strip().replace('\r\n', '\n')
+            if len(text) > PROMPT_MAX_CHARS:
+                return f'Consigne trop longue (au plus {PROMPT_MAX_CHARS} caractères)'
+            # Vide ou identique à l'origine : consigne d'origine (suit les mises à jour).
+            prompts[kind] = '' if text == default.strip() else text
+        cfg['prompts'] = prompts
+    if 'order' in data:
+        order = data.get('order') if isinstance(data.get('order'), list) else []
+        order = [str(item) for item in order if str(item) in PROVIDERS]
+        if not order:
+            return 'Cochez au moins une IA'
+        cfg['provider'] = order[0]
+        cfg['fallbacks'] = fallback_list(cfg, order[1:])
+    if cfg.get('enabled') and not provider_chain(cfg):
         return 'Saisissez une clé API pour activer l\'IA'
     return None
 
@@ -1378,7 +1401,8 @@ def normalize_proposals(cfg, conn, progress=None):
         else:
             user = (f'Tags de la bibliothèque, partie {index + 1} sur {len(chunks)} (les tags voisins '
                     f'sont rapprochés ; regroupe seulement ceux de cette partie) :\n{listing}')
-        answer = chain.call(lambda current: call_json(current, NORMALIZE_SYSTEM, user, NORMALIZE_SCHEMA))
+        system = custom_prompt(chain.current, 'normalize') or NORMALIZE_SYSTEM
+        answer = chain.call(lambda current: call_json(current, system, user, NORMALIZE_SCHEMA))
         answers.extend(answer.get('groups') or [])
         if progress:
             progress(index + 1, len(chunks))
@@ -1440,9 +1464,14 @@ GENERATE_SCHEMA = {
 }
 
 
-def generate_system(vocabulary):
+def generate_system(vocabulary, prompt=None):
+    """Consigne de création des tags (prompt : consigne personnalisée, sinon GENERATE_PROMPT),
+    suivie de la liste des tags déjà employés."""
     listing = ', '.join(vocabulary) if vocabulary else '(aucun tag pour l\'instant)'
-    return (
+    return f"{(prompt or GENERATE_PROMPT).rstrip()}\n\nTags déjà employés dans la bibliothèque :\n{listing}"
+
+
+GENERATE_PROMPT = (
         "Tu ajoutes des tags aux séries d'une bibliothèque personnelle de bandes dessinées "
         "(francophone). Les tags servent à retrouver des séries : genre, thèmes, époque, "
         "lieux, personnages historiques ou événements réels, public, ton.\n\n"
@@ -1454,9 +1483,16 @@ def generate_system(vocabulary):
         "ne convient ;\n"
         "- pas de tag pour le titre de la série, ses auteurs ou son éditeur ;\n"
         "- renvoie chaque série reçue avec son id, même avec une liste vide si tu ne sais rien en "
-        "dire.\n\n"
-        f"Tags déjà employés dans la bibliothèque :\n{listing}"
-    )
+        "dire."
+)
+PROMPT_DEFAULTS = {'generate': GENERATE_PROMPT, 'normalize': NORMALIZE_SYSTEM}
+PROMPT_MAX_CHARS = 8000
+
+
+def custom_prompt(cfg, kind):
+    """Consigne modifiée dans Configuration → IA, ou None (consigne d'origine)."""
+    value = ((cfg or {}).get('prompts') or {}).get(kind)
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def _first(*values):

@@ -2130,8 +2130,16 @@
                                 </label>
                             </div>
                             <div class="form-group">
-                                <label for="aiProvider">Fournisseur</label>
-                                <select id="aiProvider" class="form-select" onchange="onAiProviderChange()"></select>
+                                <label for="aiProviderButton">Fournisseurs</label>
+                                <div class="ai-provider-dropdown" id="aiProviderDropdown">
+                                    <button type="button" class="form-select ai-provider-button" id="aiProviderButton" onclick="toggleAiProviderMenu()" aria-haspopup="true" aria-expanded="false"></button>
+                                    <div class="ai-provider-menu" id="aiProviderMenu" hidden>
+                                        <p class="help-text ai-provider-menu-help">Cochez les IA à utiliser, dans l'ordre de préférence : la première répond ; si elle échoue (quota, panne, clé refusée…), la suivante prend le relais jusqu'à la fin du traitement. Cliquez sur un nom pour régler sa clé et son modèle.</p>
+                                        <ol class="ai-fallback-list" id="aiFallbackList"></ol>
+                                    </div>
+                                </div>
+                                <select id="aiProvider" hidden onchange="onAiProviderChange()"></select>
+                                <small class="help-text" id="aiEditing"></small>
                             </div>
                             <div class="form-group" id="aiBaseUrlGroup" hidden>
                                 <label for="aiBaseUrl">Adresse du serveur (API compatible OpenAI)</label>
@@ -2154,11 +2162,6 @@
                                     </div>
                                     <small class="help-text" id="aiModelHelp"></small>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label>Ordre de préférence</label>
-                                <small class="help-text" style="display:block; margin-bottom:6px;">Si le fournisseur ci-dessus ne répond pas (quota atteint, panne, clé refusée…), Bullarr passe au suivant coché, dans cet ordre, jusqu'à la fin du traitement. Chaque fournisseur garde sa clé et son modèle : choisissez-le dans la liste Fournisseur pour les régler.</small>
-                                <ol class="ai-fallback-list" id="aiFallbackList"></ol>
                             </div>
                             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                                 <button class="btn" onclick="saveAiSettings()">💾 Enregistrer</button>
@@ -2205,6 +2208,33 @@
                             </p>
                             <button class="btn" id="aiNormalizeButton" onclick="startAiTagNormalization()">🔀 Analyser les tags</button>
                             <div id="aiNormalizeProposals" class="ai-proposals" hidden></div>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 style="margin-top:0;">Consignes de l'IA</h3>
+                            <p class="help-text" style="display:block; margin-bottom:10px;">
+                                Le texte envoyé au modèle avant les séries ou les tags. La liste des tags déjà
+                                employés est ajoutée à la fin de la consigne de création, et le format de réponse
+                                est imposé à part. Sans effet sur aiautotagging.com, qui n'a pas de consigne.
+                            </p>
+                            <div class="form-group">
+                                <div class="ai-prompt-head">
+                                    <label for="aiPromptGenerate">Création des tags</label>
+                                    <span class="ai-prompt-state" id="aiPromptGenerateState"></span>
+                                    <button type="button" class="btn btn-secondary btn-small" onclick="resetAiPrompt('generate')">Rétablir l'original</button>
+                                </div>
+                                <textarea id="aiPromptGenerate" class="ai-prompt" rows="12" maxlength="8000" spellcheck="true" oninput="markAiPrompt('generate')"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <div class="ai-prompt-head">
+                                    <label for="aiPromptNormalize">Normalisation des tags</label>
+                                    <span class="ai-prompt-state" id="aiPromptNormalizeState"></span>
+                                    <button type="button" class="btn btn-secondary btn-small" onclick="resetAiPrompt('normalize')">Rétablir l'original</button>
+                                </div>
+                                <textarea id="aiPromptNormalize" class="ai-prompt" rows="12" maxlength="8000" spellcheck="true" oninput="markAiPrompt('normalize')"></textarea>
+                            </div>
+                            <button class="btn" onclick="saveAiPrompts()">💾 Enregistrer les consignes</button>
+                            <div id="aiPromptMessage" class="message"></div>
                         </div>
 
                         <div class="settings-card ai-job-card" id="aiJobCard" hidden>

@@ -807,6 +807,49 @@ class AiTagsTestCase(unittest.TestCase):
             'fallbacks': ['groq', 'anthropic', 'inconnu', 'groq', 'openai']})
         self.assertEqual(response.status_code, 200, response.get_json())
 
+    def test_order_sets_primary_and_fallbacks_while_editing_another_ai(self):
+        response = self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'groq', 'api_key': 'gsk_test_123456789',
+            'order': ['aiautotagging', 'groq', 'inconnu', 'openai']})
+        self.assertEqual(response.status_code, 200, response.get_json())
+        public = self.client.get('/api/ai/config').get_json()
+        self.assertEqual(public['provider'], 'aiautotagging')
+        self.assertEqual(public['fallbacks'], ['groq', 'openai'])
+        self.assertTrue(self.provider('groq')['has_api_key'])
+        self.assertEqual(self.client.post('/api/ai/config', json={'order': []}).status_code, 400)
+
+    def test_custom_prompts_are_used_and_can_be_reset(self):
+        self.enable()
+        from blueprints.ai.service import GENERATE_PROMPT, NORMALIZE_SYSTEM
+        public = self.client.get('/api/ai/config').get_json()
+        self.assertEqual(public['prompts']['generate']['value'], GENERATE_PROMPT)
+        self.assertFalse(public['prompts']['generate']['custom'])
+        response = self.client.post('/api/ai/config', json={'prompts': {
+            'generate': 'Uniquement des tags de genre.', 'normalize': NORMALIZE_SYSTEM}})
+        self.assertEqual(response.status_code, 200, response.get_json())
+        prompts = response.get_json()['config']['prompts']
+        self.assertTrue(prompts['generate']['custom'])
+        self.assertFalse(prompts['normalize']['custom'])  # identique à l'origine
+        systems = []
+
+        def fake(cfg, system, user, schema, **kwargs):
+            systems.append(system)
+            return {'series': []}
+
+        with mock.patch('blueprints.ai.routes.call_json', side_effect=fake):
+            self.client.post('/api/ai/tags/generate', json={'scope': 'untagged'})
+            self.wait_job()
+        self.assertTrue(systems[0].startswith('Uniquement des tags de genre.'))
+        self.assertIn('Tags déjà employés dans la bibliothèque', systems[0])
+        with mock.patch('blueprints.ai.service.call_json', return_value={'groups': []}) as call:
+            self.client.post('/api/ai/config', json={'prompts': {'normalize': 'Fusionne les doublons.'}})
+            self.client.post('/api/ai/tags/normalize')
+            self.wait_job()
+        self.assertEqual(call.call_args.args[1], 'Fusionne les doublons.')
+        self.client.post('/api/ai/config', json={'prompts': {'generate': ''}})
+        self.assertFalse(self.client.get('/api/ai/config').get_json()['prompts']['generate']['custom'])
+        self.assertEqual(self.client.post('/api/ai/config', json={'prompts': {'generate': 'x' * 9000}}).status_code, 400)
+
     def test_fallbacks_are_cleaned_and_listed(self):
         self.enable_with_fallback()
         public = self.client.get('/api/ai/config').get_json()

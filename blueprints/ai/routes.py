@@ -26,7 +26,7 @@ from .resume import clear_state, load_state, new_state, save_state
 from .resume import summary as resume_summary
 from .service import (
     GENERATE_SCHEMA, AiError, ProviderChain, _db, aiautotag_series, generate_batch_size, provider_chain,
-    apply_tag_mapping, call_json, clean_tag, active_model, count_series, generate_system, list_models,
+    apply_tag_mapping, call_json, clean_tag, custom_prompt, active_model, count_series, generate_system, list_models,
     load_ai_config, merge_form, merge_generated_tags, normalize_proposals, parse_tags, public_config,
     save_ai_config, series_brief, series_to_tag, test_connection, vocabulary,
 )
@@ -134,7 +134,7 @@ def ai_test():
     """Vérifie la clé et le modèle saisis, sans devoir les enregistrer d'abord."""
     data = request.get_json(silent=True) or {}
     cfg = load_ai_config()
-    error = merge_form(cfg, {**data, 'enabled': True})
+    error = merge_form(cfg, {**{key: value for key, value in data.items() if key != 'order'}, 'enabled': True})
     if error:
         return jsonify({'success': False, 'error': error}), 400
     try:
@@ -268,7 +268,7 @@ def _tag_rows(cfg, conn, rows, details, after_batch=None, done_before=0, total=N
         return True
     chain = _job_chain(cfg)
     known_tags = vocabulary(conn)
-    system = generate_system(known_tags)
+    system = generate_system(known_tags, custom_prompt(cfg, 'generate'))
     _update_job(total=total, progress=done_before, message=f'{done_before} / {total} séries')
     position = 0
     while position < len(rows):
@@ -365,7 +365,7 @@ def ai_suggest_series_tags(series_id):
         if not row:
             return jsonify({'success': False, 'error': 'Série introuvable'}), 404
         known_tags = vocabulary(conn)
-        system = generate_system(known_tags)
+        system = generate_system(known_tags, custom_prompt(cfg, 'generate'))
         chain = ProviderChain(cfg)
         data = chain.call(lambda current: _generate(current, known_tags, system, [series_brief(row)], 4000))
     except AiError as exc:
