@@ -2217,22 +2217,28 @@
                                 employés est ajoutée à la fin de la consigne de création, et le format de réponse
                                 est imposé à part. Sans effet sur aiautotagging.com, qui n'a pas de consigne.
                             </p>
-                            <div class="form-group">
-                                <div class="ai-prompt-head">
-                                    <label for="aiPromptGenerate">Création des tags</label>
+                            <details class="ai-prompt-details">
+                                <summary>
+                                    <span class="ai-prompt-title">Création des tags</span>
                                     <span class="ai-prompt-state" id="aiPromptGenerateState"></span>
+                                </summary>
+                                <div class="ai-prompt-tools">
+                                    <label for="aiPromptGenerate" class="ai-visually-hidden">Création des tags</label>
                                     <button type="button" class="btn btn-secondary btn-small" onclick="resetAiPrompt('generate')">Rétablir l'original</button>
                                 </div>
                                 <textarea id="aiPromptGenerate" class="ai-prompt" rows="12" maxlength="8000" spellcheck="true" oninput="markAiPrompt('generate')"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <div class="ai-prompt-head">
-                                    <label for="aiPromptNormalize">Normalisation des tags</label>
+                            </details>
+                            <details class="ai-prompt-details">
+                                <summary>
+                                    <span class="ai-prompt-title">Normalisation des tags</span>
                                     <span class="ai-prompt-state" id="aiPromptNormalizeState"></span>
+                                </summary>
+                                <div class="ai-prompt-tools">
+                                    <label for="aiPromptNormalize" class="ai-visually-hidden">Normalisation des tags</label>
                                     <button type="button" class="btn btn-secondary btn-small" onclick="resetAiPrompt('normalize')">Rétablir l'original</button>
                                 </div>
                                 <textarea id="aiPromptNormalize" class="ai-prompt" rows="12" maxlength="8000" spellcheck="true" oninput="markAiPrompt('normalize')"></textarea>
-                            </div>
+                            </details>
                             <button class="btn" onclick="saveAiPrompts()">💾 Enregistrer les consignes</button>
                             <div id="aiPromptMessage" class="message"></div>
                         </div>
