@@ -1380,6 +1380,8 @@ input[type="checkbox"].switch-input:disabled {
 .ai-resume-actions { display: flex; gap: 8px; }
 .ai-fallback-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .ai-provider-dropdown { position: relative; }
+.ai-provider-dropdown::after { content: "▾"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--color-text-muted); }
+.ai-provider-dropdown .ai-provider-button { padding-right: 34px; background-image: none; }
 .ai-prompt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
 .ai-prompt-head label { margin: 0; }
 .ai-prompt-head .btn { margin-left: auto; }
