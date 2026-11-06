@@ -22,6 +22,10 @@ Deux traitements utilisent l'IA :
 - normalisation des tags : repère les tags qui veulent dire la même chose
   (« de-gaulle », « charles-de-gaulle », « general de gaulle ») et propose un tag commun.
   Rien n'est modifié tant que l'utilisateur n'a pas validé les regroupements.
+
+IA de secours (cfg['fallbacks']) : fournisseurs essayés dans l'ordre quand le principal
+échoue (quota, panne, clé refusée…), voir ProviderChain. Un fournisseur en échec est
+laissé de côté jusqu'à la fin du traitement.
 """
 import copy
 import json
@@ -223,6 +227,7 @@ def load_ai_config():
         cfg['models']['anthropic'] = legacy_model
     if cfg.get('provider') not in PROVIDERS:
         cfg['provider'] = DEFAULT_PROVIDER
+    cfg['fallbacks'] = fallback_list(cfg, cfg.get('fallbacks'))
     cfg['api_keys_decrypted'] = {}
     for provider, encrypted in cfg['api_keys'].items():
         if provider in PROVIDERS and encrypted:
@@ -292,6 +297,89 @@ def local_base_url(cfg):
     return (cfg.get('base_urls') or {}).get('local') or LOCAL_DEFAULT_URL
 
 
+def fallback_list(cfg, values):
+    """IA de secours valides, sans doublon ni fournisseur principal, dans l'ordre donné."""
+    primary = cfg.get('provider') or DEFAULT_PROVIDER
+    result = []
+    for provider in values if isinstance(values, list) else []:
+        provider = str(provider or '')
+        if provider in PROVIDERS and provider != primary and provider not in result:
+            result.append(provider)
+    return result
+
+
+def provider_chain(cfg, llm_only=False):
+    """Configurations à essayer dans l'ordre : le fournisseur principal puis ceux de secours,
+    seulement ceux qui peuvent être appelés (clé renseignée, modèle de langage si llm_only)."""
+    chain = []
+    primary = cfg.get('provider') or DEFAULT_PROVIDER
+    for provider in [primary] + fallback_list(cfg, cfg.get('fallbacks')):
+        candidate = {**cfg, 'provider': provider}
+        if provider_ready(candidate) and (not llm_only or supports_llm(candidate)):
+            chain.append(candidate)
+    return chain
+
+
+def provider_name(provider):
+    return (PROVIDERS.get(provider) or {}).get('name', provider)
+
+
+class ProviderChain:
+    """Fournisseur principal puis IA de secours. Quand un appel échoue, le fournisseur est
+    laissé de côté pour la suite du traitement et le suivant prend le relais.
+
+    current : configuration à utiliser ; fail(exc) passe au suivant (AiError s'il n'y en
+    a plus) ; call(fn) appelle fn(cfg) en passant de l'un à l'autre."""
+
+    def __init__(self, cfg, llm_only=False, on_switch=None):
+        self.chain = provider_chain(cfg, llm_only)
+        self.failures = []
+        self.used = []
+        self.on_switch = on_switch
+        if not self.chain:
+            if llm_only and provider_chain(cfg):
+                raise AiError('Ce traitement demande un modèle de langage : aiautotagging.com ne sait que '
+                              'proposer des tags. Choisissez un autre fournisseur ci-dessus (Claude, Gemini, '
+                              'ChatGPT, OpenRouter, Groq ou un LLM local), ou ajoutez-en un en secours')
+            raise AiError('Aucune clé API : renseignez-la dans Configuration → IA')
+
+    @property
+    def current(self):
+        return self.chain[0] if self.chain else None
+
+    def succeeded(self, cfg):
+        if cfg['provider'] not in self.used:
+            self.used.append(cfg['provider'])
+
+    def fail(self, exc):
+        failed = self.chain.pop(0)
+        if isinstance(exc, AiError):
+            message = str(exc)
+        else:
+            current_app.logger.exception('IA : appel en échec')
+            message = f'Erreur inattendue : {exc}'
+        self.failures.append({'provider': failed['provider'], 'name': provider_name(failed['provider']),
+                              'message': message})
+        if not self.chain:
+            if len(self.failures) == 1:
+                raise AiError(message)
+            raise AiError('Aucune IA n\'a répondu. ' + ' ; '.join(
+                f'{item["name"]} : {item["message"]}' for item in self.failures))
+        if self.on_switch:
+            self.on_switch(self)
+
+    def call(self, fn):
+        while True:
+            cfg = self.current
+            try:
+                result = fn(cfg)
+            except Exception as exc:  # noqa: BLE001 - on passe au fournisseur suivant
+                self.fail(exc)
+                continue
+            self.succeeded(cfg)
+            return result
+
+
 def active_model(cfg):
     provider = cfg.get('provider') or DEFAULT_PROVIDER
     return cfg['models'].get(provider) or PROVIDERS[provider]['default_model']
@@ -318,6 +406,7 @@ def public_config(cfg):
             'key_url': info['key_url'],
             'key': key_mode(provider),
             'llm': info.get('llm', True),
+            'ready': provider_ready({**cfg, 'provider': provider}),
         })
         if provider == 'local':
             providers[-1]['base_url'] = local_base_url(cfg)
@@ -326,6 +415,7 @@ def public_config(cfg):
         'enabled': bool(cfg.get('enabled')),
         'auto_tag_new': bool(cfg.get('auto_tag_new')),
         'provider': cfg.get('provider') or DEFAULT_PROVIDER,
+        'fallbacks': fallback_list(cfg, cfg.get('fallbacks')),
         'providers': providers,
     }
 
@@ -340,6 +430,9 @@ def merge_form(cfg, data):
             return 'Fournisseur d\'IA inconnu'
         cfg['provider'] = provider
     provider = cfg.get('provider') or DEFAULT_PROVIDER
+    if 'fallbacks' in data:
+        cfg['fallbacks'] = data.get('fallbacks')
+    cfg['fallbacks'] = fallback_list(cfg, cfg.get('fallbacks'))
     if 'enabled' in data:
         cfg['enabled'] = bool(data.get('enabled'))
     if 'auto_tag_new' in data:
@@ -1271,11 +1364,13 @@ def normalize_chunks(cfg, counts):
 
 def normalize_proposals(cfg, conn, progress=None):
     """Regroupements proposés par le modèle, filtrés sur les tags qui existent vraiment.
-    progress(fait, total) est appelé après chaque morceau de la liste."""
+    cfg : configuration ou ProviderChain (IA de secours). progress(fait, total) est appelé
+    après chaque morceau de la liste."""
+    chain = cfg if isinstance(cfg, ProviderChain) else ProviderChain(cfg, llm_only=True)
     counts = tag_counts(conn)
     if len(counts) < 2:
         return []
-    chunks = normalize_chunks(cfg, counts)
+    chunks = normalize_chunks(chain.current, counts)
     answers = []
     for index, listing in enumerate(chunks):
         if len(chunks) == 1:
@@ -1283,7 +1378,8 @@ def normalize_proposals(cfg, conn, progress=None):
         else:
             user = (f'Tags de la bibliothèque, partie {index + 1} sur {len(chunks)} (les tags voisins '
                     f'sont rapprochés ; regroupe seulement ceux de cette partie) :\n{listing}')
-        answers.extend(call_json(cfg, NORMALIZE_SYSTEM, user, NORMALIZE_SCHEMA).get('groups') or [])
+        answer = chain.call(lambda current: call_json(current, NORMALIZE_SYSTEM, user, NORMALIZE_SCHEMA))
+        answers.extend(answer.get('groups') or [])
         if progress:
             progress(index + 1, len(chunks))
     groups, used = [], set()

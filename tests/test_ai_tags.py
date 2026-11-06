@@ -798,5 +798,151 @@ class AiTagsTestCase(unittest.TestCase):
         self.assertEqual(len(service.normalize_chunks({'provider': 'openai'}, counts)), 1)
 
 
+    # ===== IA de secours et reprise de la création des tags =====
+
+    def enable_with_fallback(self):
+        self.client.post('/api/ai/config', json={'provider': 'groq', 'api_key': 'gsk_test_123456789'})
+        response = self.client.post('/api/ai/config', json={
+            'enabled': True, 'provider': 'anthropic', 'api_key': 'sk-ant-test-123456789',
+            'fallbacks': ['groq', 'anthropic', 'inconnu', 'groq', 'openai']})
+        self.assertEqual(response.status_code, 200, response.get_json())
+
+    def test_fallbacks_are_cleaned_and_listed(self):
+        self.enable_with_fallback()
+        public = self.client.get('/api/ai/config').get_json()
+        # Principal retiré, doublons et inconnus aussi ; OpenAI (sans clé) gardé mais pas prêt.
+        self.assertEqual(public['fallbacks'], ['groq', 'openai'])
+        self.assertTrue(self.provider('groq')['ready'])
+        self.assertFalse(self.provider('openai')['ready'])
+        with self.app.app_context():
+            from blueprints.ai.service import load_ai_config, provider_chain
+            self.assertEqual([c['provider'] for c in provider_chain(load_ai_config())], ['anthropic', 'groq'])
+
+    def test_generation_switches_to_next_ai_when_one_fails(self):
+        self.enable_with_fallback()
+        from blueprints.ai.service import AiError
+        used = []
+
+        def fake(cfg, system, user, schema, **kwargs):
+            used.append(cfg['provider'])
+            if cfg['provider'] == 'anthropic':
+                raise AiError('Crédit Anthropic épuisé')
+            payload = json.loads(user.split('\n', 1)[1])
+            return {'series': [{'id': item['id'], 'tags': ['secours']} for item in payload]}
+
+        with mock.patch('blueprints.ai.routes.call_json', side_effect=fake):
+            self.client.post('/api/ai/tags/generate', json={'scope': 'all'})
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'done', job)
+        # Anthropic essayé une fois, puis laissé de côté pour toute la suite.
+        self.assertEqual(used[0], 'anthropic')
+        self.assertEqual(set(used[1:]), {'groq'})
+        self.assertIn('secours', self.tags(5))
+        entry = self.wait_history()[0]
+        self.assertEqual(entry['provider'], 'groq')
+        self.assertEqual(entry['fallbacks'][0]['provider'], 'anthropic')
+        self.assertIn('Crédit Anthropic épuisé', entry['fallbacks'][0]['message'])
+
+    def test_all_ais_failing_lists_each_error(self):
+        self.enable_with_fallback()
+        from blueprints.ai.service import AiError
+
+        def fake(cfg, *args, **kwargs):
+            raise AiError(f'panne {cfg["provider"]}')
+
+        with mock.patch('blueprints.ai.routes.call_json', side_effect=fake):
+            self.client.post('/api/ai/tags/generate', json={'scope': 'all'})
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'error')
+        self.assertIn('Claude', job['message'])
+        self.assertIn('panne anthropic', job['message'])
+        self.assertIn('panne groq', job['message'])
+
+    def test_normalization_skips_tag_only_service_for_next_ai(self):
+        self.client.post('/api/ai/config', json={'provider': 'anthropic', 'api_key': 'sk-ant-test-123456789'})
+        self.client.post('/api/ai/config', json={'enabled': True, 'provider': 'aiautotagging',
+                                                 'fallbacks': ['anthropic']})
+        with mock.patch('blueprints.ai.service.call_json', return_value={'groups': []}) as call:
+            self.assertEqual(self.client.post('/api/ai/tags/normalize').status_code, 200)
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'done', job)
+        self.assertEqual(call.call_args.args[0]['provider'], 'anthropic')
+
+    def test_suggest_uses_fallback(self):
+        self.enable_with_fallback()
+        from blueprints.ai.service import AiError
+
+        def fake(cfg, *args, **kwargs):
+            if cfg['provider'] == 'anthropic':
+                raise AiError('Surcharge')
+            return {'series': [{'id': 4, 'tags': ['espace']}]}
+
+        with mock.patch('blueprints.ai.routes.call_json', side_effect=fake):
+            data = self.client.post('/api/ai/series/4/suggest').get_json()
+        self.assertTrue(data['success'], data)
+        self.assertEqual(data['tags'], ['espace'])
+        self.assertEqual(data['model'], 'openai/gpt-oss-20b')
+
+    def test_interrupted_generation_resumes_where_it_stopped(self):
+        self.enable()
+        from blueprints.ai.service import AiError
+        sent = []
+
+        def failing(cfg, system, user, schema, **kwargs):
+            payload = json.loads(user.split('\n', 1)[1])
+            if sent:
+                raise AiError('Quota atteint')
+            sent.append([item['id'] for item in payload])
+            return {'series': [{'id': item['id'], 'tags': ['lot-1']} for item in payload]}
+
+        with mock.patch('blueprints.ai.routes.generate_batch_size', return_value=2), \
+                mock.patch('blueprints.ai.routes.call_json', side_effect=failing):
+            self.client.post('/api/ai/tags/generate', json={'scope': 'all'})
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'error')
+        self.assertEqual(job['resume']['done'], 2)
+        self.assertEqual(job['resume']['total'], 5)
+        self.assertEqual(job['resume']['scope'], 'all')
+
+        resumed = []
+
+        def working(cfg, system, user, schema, **kwargs):
+            payload = json.loads(user.split('\n', 1)[1])
+            resumed.extend(item['id'] for item in payload)
+            return {'series': [{'id': item['id'], 'tags': ['lot-2']} for item in payload]}
+
+        with mock.patch('blueprints.ai.routes.generate_batch_size', return_value=2), \
+                mock.patch('blueprints.ai.routes.call_json', side_effect=working):
+            self.assertEqual(self.client.post('/api/ai/tags/generate', json={'resume': True}).status_code, 200)
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'done', job)
+        self.assertEqual(sorted(resumed + sent[0]), [1, 2, 3, 4, 5])
+        self.assertFalse(set(resumed) & set(sent[0]))
+        self.assertEqual(job['result'], {'changed': 5, 'added': 5, 'total': 5})
+        self.assertIsNone(job['resume'])
+        self.assertTrue(self.wait_history(2)[0].get("resumed"))
+        # Plus rien à reprendre
+        self.assertEqual(self.client.post('/api/ai/tags/generate', json={'resume': True}).status_code, 400)
+
+    def test_stopped_generation_can_be_resumed_or_abandoned(self):
+        self.enable()
+
+        def slow(cfg, system, user, schema, **kwargs):
+            payload = json.loads(user.split('\n', 1)[1])
+            self.client.post('/api/ai/job/stop')
+            return {'series': [{'id': item['id'], 'tags': ['vu']} for item in payload]}
+
+        with mock.patch('blueprints.ai.routes.generate_batch_size', return_value=2), \
+                mock.patch('blueprints.ai.routes.call_json', side_effect=slow):
+            self.client.post('/api/ai/tags/generate', json={'scope': 'all'})
+            job = self.wait_job()
+        self.assertEqual(job['status'], 'stopped', job)
+        self.assertEqual(job['resume']['done'], 2)
+        self.assertEqual(self.wait_history()[0]['status'], 'stopped')
+        self.assertEqual(self.client.delete('/api/ai/tags/generate').status_code, 200)
+        self.assertIsNone(self.client.get('/api/ai/job').get_json()['resume'])
+        self.assertEqual(self.client.post('/api/ai/job/stop').status_code, 409)
+
+
 if __name__ == '__main__':
     unittest.main()

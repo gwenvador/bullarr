@@ -4,6 +4,10 @@ Les traitements longs (création et normalisation des tags) tournent dans un fil
 l'interface suit leur avancement avec GET /api/ai/job. Un seul traitement à la fois.
 Chaque traitement, et chaque application de regroupements, est noté dans l'historique
 (history.py, GET /api/ai/history).
+
+Quand une IA échoue, la suivante de l'ordre de préférence prend le relais (ProviderChain).
+La création des tags enregistre son avancement après chaque lot (resume.py) : arrêtée,
+en erreur ou coupée par un redémarrage, elle se reprend où elle en était.
 """
 import json
 import threading
@@ -18,11 +22,13 @@ from .auto_tag import (
     pending_count,
 )
 from .history import add_entry, clear_history, load_history
+from .resume import clear_state, load_state, new_state, save_state
+from .resume import summary as resume_summary
 from .service import (
-    GENERATE_SCHEMA, AiError, _db, aiautotag_series, generate_batch_size, provider_ready, supports_llm, apply_tag_mapping, call_json, clean_tag,
-    active_key, active_model, count_series, generate_system, list_models, load_ai_config, merge_form, merge_generated_tags,
-    normalize_proposals, parse_tags, public_config, save_ai_config, series_brief, series_to_tag,
-    test_connection, vocabulary,
+    GENERATE_SCHEMA, AiError, ProviderChain, _db, aiautotag_series, generate_batch_size, provider_chain,
+    apply_tag_mapping, call_json, clean_tag, active_model, count_series, generate_system, list_models,
+    load_ai_config, merge_form, merge_generated_tags, normalize_proposals, parse_tags, public_config,
+    save_ai_config, series_brief, series_to_tag, test_connection, vocabulary,
 )
 
 _job_lock = threading.Lock()
@@ -66,9 +72,14 @@ def _start_job(kind, target, *args, extra=None):
                 _update_job(status='error', message=f'Erreur inattendue : {exc}')
             job = _job_snapshot()
             try:
-                entry = add_entry(kind, job.get('status'), job.get('message'), provider=provider,
-                                  model=model, started_at=job.get('started_at'), details=details,
-                                  extra=extra)
+                # IA de secours : le dernier fournisseur utilisé, et les échecs rencontrés.
+                more = dict(extra or {})
+                if job.get('fallbacks'):
+                    more['fallbacks'] = job['fallbacks']
+                entry = add_entry(kind, job.get('status'), job.get('message'),
+                                  provider=job.get('provider') or provider,
+                                  model=job.get('model') or model, started_at=job.get('started_at'),
+                                  details=details, extra=more)
                 # L'interface recharge l'historique quand cet identifiant apparaît.
                 _update_job(history_id=entry['id'])
             except Exception:  # noqa: BLE001 - l'historique ne doit pas casser le traitement
@@ -80,9 +91,26 @@ def _start_job(kind, target, *args, extra=None):
 
 def _enabled_config():
     cfg = load_ai_config()
-    if not cfg.get('enabled') or not provider_ready(cfg):
+    if not cfg.get('enabled') or not provider_chain(cfg):
         raise AiError('Activez l\'IA et renseignez une clé API dans Configuration → IA')
     return cfg
+
+
+def _job_chain(cfg, llm_only=False):
+    """ProviderChain dont les changements de fournisseur sont notés dans le traitement en cours."""
+    def note(chain):
+        current = chain.current
+        _update_job(provider=current['provider'], model=active_model(current),
+                    fallbacks=list(chain.failures))
+
+    chain = ProviderChain(cfg, llm_only=llm_only, on_switch=note)
+    note(chain)
+    return chain
+
+
+def _stop_requested():
+    with _job_lock:
+        return bool(_job.get('stop_requested'))
 
 
 # ===== Configuration =====
@@ -133,7 +161,21 @@ def ai_models():
 
 @ai_bp.route('/job', methods=['GET'])
 def ai_job():
-    return jsonify(_job_snapshot())
+    job = _job_snapshot()
+    # Création des tags interrompue : l'interface propose de la reprendre.
+    job['resume'] = None if job.get('status') == 'running' and job.get('kind') == 'generate' else resume_summary()
+    return jsonify(job)
+
+
+@ai_bp.route('/job/stop', methods=['POST'])
+def ai_job_stop():
+    """Arrête la création des tags après le lot en cours (elle peut être reprise)."""
+    with _job_lock:
+        if _job.get('status') != 'running' or _job.get('kind') != 'generate':
+            return jsonify({'success': False, 'error': 'Aucune création de tags en cours'}), 409
+        _job['stop_requested'] = True
+        _job['message'] = (_job.get('message') or '') + ' · arrêt après ce lot…'
+    return jsonify({'success': True})
 
 
 @ai_bp.route('/stats', methods=['GET'])
@@ -158,11 +200,43 @@ def ai_history():
 
 # ===== Création des tags =====
 
-def _run_generate(scope, library_id, details):
+def _rows_by_ids(conn, ids):
+    """Séries ids, dans cet ordre (celles supprimées entre-temps sont ignorées)."""
+    found = {}
+    for start in range(0, len(ids), 500):
+        part = ids[start:start + 500]
+        for row in conn.execute(f'SELECT * FROM series WHERE id IN ({",".join("?" * len(part))})', part):
+            found[row['id']] = row
+    return [found[series_id] for series_id in ids if series_id in found]
+
+
+def _run_generate(scope, library_id, resume=False, *, details):
     cfg = _enabled_config()
     conn = _db()
     try:
-        _tag_rows(cfg, conn, series_to_tag(conn, scope, library_id), details)
+        state = load_state() if resume else None
+        if resume and not state:
+            raise AiError('Aucune création de tags à reprendre')
+        if state:
+            rows = _rows_by_ids(conn, [int(series_id) for series_id in state['remaining']])
+        else:
+            rows = series_to_tag(conn, scope, library_id)
+            state = new_state(scope, library_id, [row['id'] for row in rows])
+            save_state(state)
+
+        def after_batch(ids, changed, added):
+            done = set(ids)
+            state['remaining'] = [series_id for series_id in state['remaining'] if series_id not in done]
+            state['changed'] += changed
+            state['added'] += added
+            save_state(state)
+
+        total = int(state.get('total') or len(rows))
+        finished = _tag_rows(cfg, conn, rows, details, after_batch=after_batch,
+                             done_before=total - len(rows), total=total,
+                             counts=(state.get('changed', 0), state.get('added', 0)))
+        if finished:
+            clear_state()
     finally:
         conn.close()
 
@@ -176,31 +250,54 @@ def _generate(cfg, known_tags, system, briefs, max_tokens):
     return call_json(cfg, system, user, GENERATE_SCHEMA, cache_system=True, max_tokens=max_tokens)
 
 
-def _tag_rows(cfg, conn, rows, details, after_batch=None):
-    """Fait créer par l'IA les tags des séries rows, par lots, en suivant l'avancement."""
+def _tag_summary(changed, added):
+    return (f'{changed} série{"s" if changed > 1 else ""} enrichie{"s" if changed > 1 else ""}, '
+            f'{added} tag{"s" if added > 1 else ""} ajouté{"s" if added > 1 else ""}')
+
+
+def _tag_rows(cfg, conn, rows, details, after_batch=None, done_before=0, total=None, counts=(0, 0)):
+    """Fait créer par l'IA les tags des séries rows, par lots, en suivant l'avancement.
+    after_batch(ids, séries modifiées, tags ajoutés) est appelé après chaque lot enregistré.
+    done_before, total, counts : avancement d'une création reprise. Renvoie True si toutes
+    les séries ont été traitées, False si le traitement a été arrêté."""
+    total = total if total is not None else len(rows)
+    changed, added = counts
     if not rows:
-        _update_job(status='done', message='Aucune série à traiter', result={'changed': 0, 'added': 0})
-        return
+        _update_job(status='done', message='Aucune série à traiter' if not done_before else _tag_summary(changed, added),
+                    result={'changed': changed, 'added': added, 'total': total})
+        return True
+    chain = _job_chain(cfg)
     known_tags = vocabulary(conn)
     system = generate_system(known_tags)
-    total = len(rows)
-    size = generate_batch_size(cfg)
-    changed = added = 0
-    _update_job(total=total, message=f'0 / {total} séries')
-    for start in range(0, total, size):
-        batch = rows[start:start + size]
-        data = _generate(cfg, known_tags, system, [series_brief(row) for row in batch], 32000)
+    _update_job(total=total, progress=done_before, message=f'{done_before} / {total} séries')
+    position = 0
+    while position < len(rows):
+        if _stop_requested():
+            done = done_before + position
+            _update_job(status='stopped', result={'changed': changed, 'added': added, 'total': total},
+                        message=f'Arrêtée à {done} / {total} séries : {_tag_summary(changed, added)}')
+            return False
+        current = chain.current
+        # La taille des lots dépend du fournisseur : recalculée après un passage en secours.
+        batch = rows[position:position + generate_batch_size(current)]
+        try:
+            data = _generate(current, known_tags, system, [series_brief(row) for row in batch], 32000)
+        except Exception as exc:  # noqa: BLE001 - IA suivante, ou AiError s'il n'y en a plus
+            chain.fail(exc)
+            continue
+        chain.succeeded(current)
         batch_changed, batch_added = merge_generated_tags(
             conn, data.get('series') or [], {row['id'] for row in batch}, details)
         changed += batch_changed
         added += batch_added
         if after_batch:
-            after_batch([row['id'] for row in batch])
-        done = min(start + size, total)
+            after_batch([row['id'] for row in batch], batch_changed, batch_added)
+        position += len(batch)
+        done = done_before + position
         _update_job(progress=done, message=f'{done} / {total} séries')
     _update_job(status='done', result={'changed': changed, 'added': added, 'total': total},
-                message=f'{changed} série{"s" if changed > 1 else ""} enrichie{"s" if changed > 1 else ""}, '
-                        f'{added} tag{"s" if added > 1 else ""} ajouté{"s" if added > 1 else ""}')
+                message=_tag_summary(changed, added))
+    return True
 
 
 # ===== Tags des nouvelles séries (auto_tag.py) =====
@@ -216,7 +313,7 @@ def _run_auto(series_ids, details):
         rows = conn.execute(f'SELECT * FROM series WHERE id IN ({marks}) ORDER BY title COLLATE NOCASE',
                             series_ids).fetchall()
 
-        def done(ids):
+        def done(ids, *_counts):
             conn.execute(f'DELETE FROM ai_autotag_queue WHERE series_id IN ({",".join("?" * len(ids))})', ids)
             conn.commit()
 
@@ -268,13 +365,18 @@ def ai_suggest_series_tags(series_id):
         if not row:
             return jsonify({'success': False, 'error': 'Série introuvable'}), 404
         known_tags = vocabulary(conn)
-        data = _generate(cfg, known_tags, generate_system(known_tags), [series_brief(row)], 4000)
+        system = generate_system(known_tags)
+        chain = ProviderChain(cfg)
+        data = chain.call(lambda current: _generate(current, known_tags, system, [series_brief(row)], 4000))
     except AiError as exc:
         add_entry('series', 'error', str(exc), provider=cfg.get('provider'), model=active_model(cfg),
                   started_at=started, extra={'title': row['title'] if row else ''})
         return jsonify({'success': False, 'error': error_message(exc)}), 502
     finally:
         conn.close()
+    # IA de secours : celle qui a répondu.
+    cfg = chain.current
+    fallback_extra = {'fallbacks': chain.failures} if chain.failures else {}
     current = parse_tags(row['tags'])
     proposed = []
     for item in data.get('series') or []:
@@ -287,20 +389,34 @@ def ai_suggest_series_tags(series_id):
               f'{count} tag{"s" if count > 1 else ""} proposé{"s" if count > 1 else ""}',
               provider=cfg.get('provider'), model=active_model(cfg), started_at=started,
               details=[{'series_id': series_id, 'title': row['title'], 'added': proposed}],
-              extra={'title': row['title']})
+              extra={'title': row['title'], **fallback_extra})
     return jsonify({'success': True, 'tags': proposed, 'model': active_model(cfg)})
 
 
-@ai_bp.route('/tags/generate', methods=['POST'])
+@ai_bp.route('/tags/generate', methods=['POST', 'DELETE'])
 def ai_generate_tags():
+    """POST {scope, library_id} : nouvelle création ; POST {resume: true} : reprend celle
+    interrompue. DELETE : abandonne la création interrompue."""
+    if request.method == 'DELETE':
+        job = _job_snapshot()
+        if job.get('status') == 'running' and job.get('kind') == 'generate':
+            return jsonify({'success': False, 'error': 'Arrêtez d\'abord la création en cours'}), 409
+        clear_state()
+        return jsonify({'success': True})
     data = request.get_json(silent=True) or {}
-    scope = data.get('scope') if data.get('scope') in ('untagged', 'all') else 'untagged'
-    library_id = data.get('library_id') or None
+    resume = bool(data.get('resume'))
+    state = load_state() if resume else None
+    if resume and not state:
+        return jsonify({'success': False, 'error': 'Aucune création de tags à reprendre'}), 400
+    scope = (state or data).get('scope')
+    scope = scope if scope in ('untagged', 'all') else 'untagged'
+    library_id = (state or data).get('library_id') or None
     try:
         _enabled_config()
     except AiError as exc:
         return jsonify({'success': False, 'error': error_message(exc)}), 400
-    error = _start_job('generate', _run_generate, scope, library_id, extra={'scope': scope})
+    extra = {'scope': scope, **({'resumed': True} if resume else {})}
+    error = _start_job('generate', _run_generate, scope, library_id, resume, extra=extra)
     if error:
         return jsonify({'success': False, 'error': error}), 409
     return jsonify({'success': True})
@@ -318,7 +434,7 @@ def _run_normalize(details):
                 _update_job(progress=done, total=total,
                             message=f'Analyse des tags par l\'IA : partie {done} / {total}…')
 
-        groups = normalize_proposals(cfg, conn, progress)
+        groups = normalize_proposals(_job_chain(cfg, llm_only=True), conn, progress)
     finally:
         conn.close()
     details.extend({'canonical': group['canonical'], 'variants': [v['tag'] for v in group['variants']]}
@@ -332,11 +448,7 @@ def _run_normalize(details):
 @ai_bp.route('/tags/normalize', methods=['POST'])
 def ai_normalize_tags():
     try:
-        cfg = _enabled_config()
-        if not supports_llm(cfg):
-            raise AiError('La normalisation demande un modèle de langage : aiautotagging.com ne sait que '
-                          'proposer des tags. Choisissez un autre fournisseur ci-dessus (Claude, Gemini, '
-                          'ChatGPT, OpenRouter, Groq ou un LLM local)')
+        ProviderChain(_enabled_config(), llm_only=True)  # au moins un modèle de langage
     except AiError as exc:
         return jsonify({'success': False, 'error': error_message(exc)}), 400
     error = _start_job('normalize', _run_normalize)

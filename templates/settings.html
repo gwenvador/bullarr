@@ -2155,6 +2155,11 @@
                                     <small class="help-text" id="aiModelHelp"></small>
                                 </div>
                             </div>
+                            <div class="form-group">
+                                <label>Ordre de préférence</label>
+                                <small class="help-text" style="display:block; margin-bottom:6px;">Si le fournisseur ci-dessus ne répond pas (quota atteint, panne, clé refusée…), Bullarr passe au suivant coché, dans cet ordre, jusqu'à la fin du traitement. Chaque fournisseur garde sa clé et son modèle : choisissez-le dans la liste Fournisseur pour les régler.</small>
+                                <ol class="ai-fallback-list" id="aiFallbackList"></ol>
+                            </div>
                             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                                 <button class="btn" onclick="saveAiSettings()">💾 Enregistrer</button>
                                 <button class="btn btn-secondary" onclick="testAiConnection()">Tester la connexion</button>
@@ -2174,6 +2179,13 @@
                                     <option value="all">Toutes les séries</option>
                                 </select>
                                 <button class="btn" id="aiGenerateButton" onclick="startAiTagGeneration()">✨ Créer les tags</button>
+                            </div>
+                            <div class="ai-resume" id="aiResumeBox" hidden>
+                                <p class="ai-resume-text" id="aiResumeText"></p>
+                                <div class="ai-resume-actions">
+                                    <button class="btn" id="aiResumeButton" onclick="resumeAiTagGeneration()">▶ Reprendre</button>
+                                    <button class="btn btn-secondary" onclick="abandonAiTagGeneration()">Abandonner</button>
+                                </div>
                             </div>
                             <div class="checkbox-group" style="margin-top:14px;">
                                 <input type="checkbox" id="aiAutoTagNew" onchange="saveAiAutoTag()">
@@ -2196,8 +2208,12 @@
                         </div>
 
                         <div class="settings-card ai-job-card" id="aiJobCard" hidden>
-                            <p class="ai-job-message" id="aiJobMessage"></p>
+                            <div class="ai-job-head">
+                                <p class="ai-job-message" id="aiJobMessage"></p>
+                                <button type="button" class="btn btn-secondary btn-small" id="aiJobStop" onclick="stopAiJob()" hidden title="S'arrête après le lot en cours ; la création pourra être reprise">⏸ Arrêter</button>
+                            </div>
                             <progress id="aiJobProgress" class="ai-job-progress" max="1" value="0" hidden></progress>
+                            <p class="ai-job-fallback" id="aiJobFallback" hidden></p>
                         </div>
                         <div class="settings-card">
                             <div class="ai-history-header">

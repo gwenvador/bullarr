@@ -25,8 +25,8 @@ def ensure_table(conn):
 
 
 def auto_tag_active(cfg):
-    from .service import provider_ready
-    return bool(cfg.get('enabled') and cfg.get('auto_tag_new') and provider_ready(cfg))
+    from .service import provider_chain
+    return bool(cfg.get('enabled') and cfg.get('auto_tag_new') and provider_chain(cfg))
 
 
 def queue_new_series(cursor, series_ids):

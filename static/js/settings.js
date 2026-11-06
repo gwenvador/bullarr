@@ -3284,6 +3284,8 @@ let aiConfig = null;
 let aiLastJobStatus = null;  // history_id du dernier traitement vu
 // Saisies non enregistrées, gardées quand on passe d'un fournisseur à l'autre.
 const aiDrafts = {};
+// Ordre de préférence : [{id, on}] pour tous les fournisseurs sauf le principal.
+let aiFallbackOrder = [];
 
 const AI_MODEL_HELP = {
     aiautotagging: 'Modèle choisi par le service. Gratuit, sans clé, plus simple qu\'un vrai modèle de langage : pour des tags plus fins, prenez Claude, Gemini ou OpenRouter.',
@@ -3351,6 +3353,64 @@ function onAiProviderChange() {
     const select = document.getElementById('aiProvider');
     select.dataset.current = select.value;
     _aiShowProvider(select.value);
+    renderAiFallbacks();
+}
+
+function _aiInitFallbacks() {
+    const chosen = (aiConfig && aiConfig.fallbacks) || [];
+    const others = ((aiConfig && aiConfig.providers) || []).map(p => p.id).filter(id => !chosen.includes(id));
+    aiFallbackOrder = [...chosen.map(id => ({ id, on: true })), ...others.map(id => ({ id, on: false }))];
+}
+
+// Le fournisseur principal (liste Fournisseur) est en tête, hors de la liste.
+function renderAiFallbacks() {
+    const list = document.getElementById('aiFallbackList');
+    if (!list) return;
+    const primary = document.getElementById('aiProvider').value;
+    const primaryInfo = _aiProvider(primary);
+    const items = aiFallbackOrder.filter(item => item.id !== primary);
+    const row = (item, index) => {
+        const provider = _aiProvider(item.id) || { name: item.id };
+        const status = provider.ready
+            ? (provider.key === 'none' ? 'sans clé' : provider.key === 'optional' ? 'prêt' : 'clé enregistrée')
+            : 'clé manquante';
+        const notes = [status, provider.llm === false ? 'pas de normalisation' : ''].filter(Boolean).join(' · ');
+        return `
+            <li class="ai-fallback-item${item.on ? '' : ' ai-fallback-off'}${provider.ready ? '' : ' ai-fallback-unready'}">
+                <input type="checkbox" ${item.on ? 'checked' : ''} aria-label="Utiliser ${escapeHtml(provider.name)} en secours"
+                       data-id="${escapeHtml(item.id)}" onchange="toggleAiFallback(this.dataset.id, this.checked)">
+                <span class="ai-fallback-name">${escapeHtml(provider.name)}</span>
+                <span class="ai-fallback-status">${escapeHtml(notes)}</span>
+                <span class="ai-fallback-moves">
+                    <button type="button" class="btn btn-secondary btn-small" data-id="${escapeHtml(item.id)}" onclick="moveAiFallback(this.dataset.id, -1)" ${index === 0 ? 'disabled' : ''} aria-label="Monter">▲</button>
+                    <button type="button" class="btn btn-secondary btn-small" data-id="${escapeHtml(item.id)}" onclick="moveAiFallback(this.dataset.id, 1)" ${index === items.length - 1 ? 'disabled' : ''} aria-label="Descendre">▼</button>
+                </span>
+            </li>`;
+    };
+    list.innerHTML = `
+        <li class="ai-fallback-item ai-fallback-primary">
+            <span class="ai-fallback-rank">1</span>
+            <span class="ai-fallback-name">${escapeHtml(primaryInfo ? primaryInfo.name : primary)}</span>
+            <span class="ai-fallback-status">fournisseur principal</span>
+        </li>` + items.map(row).join('');
+}
+
+function toggleAiFallback(id, on) {
+    const item = aiFallbackOrder.find(entry => entry.id === id);
+    if (item) item.on = on;
+    renderAiFallbacks();
+}
+
+function moveAiFallback(id, delta) {
+    const primary = document.getElementById('aiProvider').value;
+    const visible = aiFallbackOrder.filter(item => item.id !== primary);
+    const index = visible.findIndex(item => item.id === id);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= visible.length) return;
+    [visible[index], visible[target]] = [visible[target], visible[index]];
+    const primaryItem = aiFallbackOrder.find(item => item.id === primary);
+    aiFallbackOrder = primaryItem ? [primaryItem, ...visible] : visible;
+    renderAiFallbacks();
 }
 
 async function loadAiSettings() {
@@ -3365,6 +3425,8 @@ async function loadAiSettings() {
         select.value = aiConfig.provider;
         select.dataset.current = aiConfig.provider;
         _aiShowProvider(aiConfig.provider);
+        _aiInitFallbacks();
+        renderAiFallbacks();
     } catch (error) {
         showMessage('aiMessage', '❌ Impossible de charger la configuration IA', 'error');
     }
@@ -3379,6 +3441,7 @@ function _aiFormValues() {
         enabled: document.getElementById('aiEnabled').checked,
         provider,
         model: document.getElementById('aiModel').value,
+        fallbacks: aiFallbackOrder.filter(item => item.on && item.id !== provider).map(item => item.id),
     };
     if ((_aiProvider(provider) || {}).key !== 'none') values.api_key = document.getElementById('aiApiKey').value.trim();
     if (provider === 'local') values.base_url = document.getElementById('aiBaseUrl').value.trim();
@@ -3453,10 +3516,61 @@ async function _startAiJob(url, body) {
     return true;
 }
 
+let aiResume = null;  // création des tags interrompue (GET /api/ai/job → resume)
+
 function startAiTagGeneration() {
     const scope = document.getElementById('aiGenerateScope').value;
+    if (aiResume && !confirm(`Une création des tags interrompue (${aiResume.done} / ${aiResume.total} séries) sera abandonnée. Recommencer quand même ?`)) return;
     if (scope === 'all' && !confirm('Proposer des tags pour toutes les séries ? Les tags actuels sont gardés, de nouveaux s\'y ajoutent.')) return;
     _startAiJob('/api/ai/tags/generate', { scope });
+}
+
+function resumeAiTagGeneration() {
+    _startAiJob('/api/ai/tags/generate', { resume: true });
+}
+
+async function abandonAiTagGeneration() {
+    if (!confirm('Abandonner la création des tags interrompue ? Les tags déjà ajoutés restent.')) return;
+    try {
+        const data = await (await fetch('/api/ai/tags/generate', { method: 'DELETE' })).json();
+        if (!data.success) throw new Error(data.error);
+    } catch (error) {
+        showMessage('aiMessage', '❌ ' + error.message, 'error');
+    }
+    pollAiJob();
+}
+
+async function stopAiJob() {
+    const button = document.getElementById('aiJobStop');
+    button.disabled = true;
+    try {
+        const data = await (await fetch('/api/ai/job/stop', { method: 'POST' })).json();
+        if (!data.success) throw new Error(data.error);
+    } catch (error) {
+        button.disabled = false;
+        showMessage('aiMessage', '❌ ' + error.message, 'error');
+    }
+    pollAiJob();
+}
+
+function _aiFallbackText(failures, current) {
+    if (!failures || !failures.length) return '';
+    const failed = failures.map(item => `${item.name} (${item.message})`).join(', ');
+    const now = current ? _aiProvider(current) : null;
+    return `⚠️ En échec : ${failed}` + (now ? ` → ${now.name} prend le relais` : '');
+}
+
+function _showAiResume(resume) {
+    aiResume = resume || null;
+    const box = document.getElementById('aiResumeBox');
+    if (!box) return;
+    box.hidden = !aiResume;
+    if (!aiResume) return;
+    const scope = aiResume.scope === 'all' ? 'toutes les séries' : 'séries sans tags';
+    const when = aiResume.updated_at ? ` le ${_aiHistoryDate(aiResume.updated_at)}` : '';
+    document.getElementById('aiResumeText').textContent =
+        `⏸ Création des tags (${scope}) interrompue${when} : ${aiResume.done} / ${aiResume.total} séries faites, ` +
+        `${aiResume.remaining} restante${aiResume.remaining > 1 ? 's' : ''}.`;
 }
 
 function startAiTagNormalization() {
@@ -3477,8 +3591,16 @@ function _showAiJob(job) {
     progress.hidden = !(running && job.total);
     progress.max = job.total || 1;
     progress.value = job.progress || 0;
+    const stop = document.getElementById('aiJobStop');
+    stop.hidden = !(running && job.kind === 'generate');
+    stop.disabled = !!job.stop_requested;
+    const fallback = document.getElementById('aiJobFallback');
+    fallback.textContent = running ? _aiFallbackText(job.fallbacks, job.provider) : '';
+    fallback.hidden = !fallback.textContent;
     document.getElementById('aiGenerateButton').disabled = running;
     document.getElementById('aiNormalizeButton').disabled = running;
+    document.getElementById('aiResumeButton').disabled = running;
+    _showAiResume(job.resume);
 }
 
 async function pollAiJob() {
@@ -3603,7 +3725,7 @@ async function saveAiAutoTag() {
 }
 
 const AI_HISTORY_LABELS = {
-    generate: entry => 'Création des tags · ' + (entry.scope === 'all' ? 'toutes les séries' : 'séries sans tags'),
+    generate: entry => 'Création des tags · ' + (entry.scope === 'all' ? 'toutes les séries' : 'séries sans tags') + (entry.resumed ? ' · reprise' : ''),
     normalize: () => 'Analyse des tags',
     apply: () => 'Regroupements appliqués',
     auto: () => 'Tags des nouvelles séries',
@@ -3643,7 +3765,8 @@ function _aiHistoryItem(entry) {
     const details = entry.details || [];
     const more = (entry.details_total || 0) - details.length;
     const label = (AI_HISTORY_LABELS[entry.kind] || (() => entry.kind))(entry);
-    const icon = entry.status === 'error' ? '❌' : (AI_HISTORY_ICONS[entry.kind] || '•');
+    const icon = entry.status === 'error' ? '❌' : entry.status === 'stopped' ? '⏸' : (AI_HISTORY_ICONS[entry.kind] || '•');
+    const fallback = _aiFallbackText(entry.fallbacks, entry.status === 'error' ? null : entry.provider);
     return `
         <li class="ai-history-item${entry.status === 'error' ? ' ai-history-error' : ''}">
             <div class="ai-history-head">
@@ -3653,6 +3776,7 @@ function _aiHistoryItem(entry) {
             </div>
             <p class="ai-history-message">${escapeHtml(entry.message || '')}</p>
             ${meta ? `<p class="ai-history-meta">${escapeHtml(meta)}</p>` : ''}
+            ${fallback ? `<p class="ai-history-meta ai-history-fallback">${escapeHtml(fallback)}</p>` : ''}
             ${details.length ? `
             <details class="ai-history-details">
                 <summary>Détail (${entry.details_total || details.length})</summary>
