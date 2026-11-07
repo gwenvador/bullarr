@@ -9,6 +9,7 @@ function reqEscape(value) {
 
 const REQUEST_STATES = {
     pending:   {label: 'En attente de validation', icon: 'clock', tone: 'wait'},
+    adding:    {label: 'Ajout en cours', icon: 'loader-circle', tone: 'wait'},
     added:     {label: 'Ajoutée', icon: 'check', tone: 'ok'},
     already:   {label: 'Déjà disponible', icon: 'library', tone: 'ok'},
     rejected:  {label: 'Refusée', icon: 'circle-x', tone: 'no'},
@@ -135,7 +136,11 @@ async function askForSeries(item, card) {
         });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Demande impossible');
-        if (data.series_id && data.status !== 'pending') {
+        if (data.status === 'adding') {
+            slot.innerHTML = reqChip('adding');
+            reqToast('Série validée : elle arrive dans la bibliothèque dans un instant.');
+            setTimeout(loadRequests, 15000);
+        } else if (data.series_id && data.status !== 'pending') {
             slot.innerHTML = `<a class="rq-btn rq-btn-ghost" href="/series/${data.series_id}">${svgIcon('book-open')}<span>Ouvrir</span></a>`;
             reqToast(data.status === 'already' ? 'Cette série est déjà dans la bibliothèque.'
                 : 'Série ajoutée : la recherche des tomes est lancée.');
@@ -171,6 +176,7 @@ function requestMatches(item) {
     if (reqFilter === 'all') return true;
     if (reqFilter === 'done') return item.status === 'added' || item.status === 'already';
     if (reqFilter === 'rejected') return item.status === 'rejected' || item.status === 'error';
+    if (reqFilter === 'pending') return item.status === 'pending' || item.status === 'adding';
     return item.status === reqFilter;
 }
 
@@ -178,7 +184,8 @@ function requestRow(item) {
     const title = item.series_id
         ? `<a href="/series/${item.series_id}">${reqEscape(item.title)}</a>`
         : reqEscape(item.title || item.url);
-    const note = item.status === 'rejected' && item.error ? `<div class="rq-note">${svgIcon('info')}${reqEscape(item.error)}</div>`
+    const note = item.status === 'pending' && item.error ? `<div class="rq-note">${svgIcon('triangle-alert')}${reqEscape(item.error)}</div>`
+        : item.status === 'rejected' && item.error ? `<div class="rq-note">${svgIcon('info')}${reqEscape(item.error)}</div>`
         : item.status === 'error' && item.error ? `<div class="rq-note">${svgIcon('triangle-alert')}${reqEscape(item.error)}</div>` : '';
     const when = item.decided_at && item.status !== 'pending'
         ? `Demandée le ${reqDate(item.created_at)} · traitée le ${reqDate(item.decided_at)}`

@@ -323,11 +323,11 @@ def login_password():
         _record_password_login_failure(address)
         log_activity('login_failed', actor_key=None, actor_name=username[:80] or '?',
                      target_name=username[:80] or None, success=False,
-                     detail=f'Mot de passe · {address}')
+                     detail=f'Par mot de passe · IP {address}')
         return _render_login(config, error='Identifiant ou mot de passe incorrect.', status=401)
     if row['status'] == accounts.STATUS_PENDING:
         log_activity('login_failed', actor_key=row['user_key'], actor_name=row['name'] or username,
-                     success=False, detail=f'Compte en attente de validation · {address}')
+                     success=False, detail=f'Compte en attente de validation · IP {address}')
         return _render_login(config, error='Votre demande de compte attend la validation d’un administrateur.', status=403)
     with _app_login_lock:
         _password_login_failures.pop(address, None)
@@ -339,7 +339,7 @@ def login_password():
         record_login(session['user'])
     except Exception:
         current_app.logger.exception('Compte non enregistré')
-    log_activity('login', detail=f'Mot de passe · {address}')
+    log_activity('login', detail=f'Par mot de passe · IP {address}')
     return redirect(next_url)
 
 
@@ -391,8 +391,8 @@ def callback():
             current_app.logger.exception('Compte non enregistré')
 
         log_activity('login', actor_key=user_key(user), actor_name=user.get('name') or user.get('email'),
-                     detail=('SSO · application Android' if session.get('app_login') else 'SSO')
-                     + f" · {request.remote_addr or '-'}")
+                     detail=('Par SSO · application Android' if session.get('app_login') else 'Par SSO')
+                     + f" · IP {request.remote_addr or '-'}")
         if session.pop('app_login', False):
             # Application Android : pas de session dans le navigateur, un code à usage unique
             # vers l'adresse fixe de l'app (jamais une adresse venant de la requête).

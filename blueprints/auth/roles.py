@@ -99,6 +99,8 @@ def init_tables(cursor):
     for column, kind in (('library_id', 'INTEGER'), ('decided_at', 'TIMESTAMP'), ('decided_by', 'TEXT')):
         if column not in request_columns:
             cursor.execute(f'ALTER TABLE book_requests ADD COLUMN {column} {kind}')
+    cursor.execute("UPDATE book_requests SET status = 'pending', decided_at = NULL, decided_by = NULL, "
+                   "error = 'Ajout interrompu par un redémarrage : à valider de nouveau' WHERE status = 'adding'")
     from .activity import init_table as init_activity_table
     init_activity_table(cursor)
     # Sessions ouvertes avant revoked_at refusées (compte supprimé, mot de passe changé).

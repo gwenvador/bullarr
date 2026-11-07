@@ -63,7 +63,7 @@ function vrBookCard(item) {
                     <input type="text" maxlength="300" placeholder="Motif (facultatif, visible par le lecteur)" data-vr-reason>
                     <button type="button" class="vr-btn vr-btn-no" data-vr-reject-confirm>${svgIcon('x')}<span>Confirmer le refus</span></button>
                 </div>
-                <div class="vr-error" hidden></div>
+                <div class="vr-error"${item.error ? '' : ' hidden'}>${vrEscape(item.error || '')}</div>
             </div>
         </article>`;
 }
@@ -135,9 +135,7 @@ function vrBind(section) {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(select ? {library_id: Number(select.value)} : {}),
                     });
-                    vrDone(card, data.status === 'already'
-                        ? 'Déjà dans la bibliothèque'
-                        : `Ajoutée dans ${vrEscape(data.library || 'la bibliothèque')}, recherche des tomes lancée`);
+                    vrDone(card, `Validée : ajout dans ${vrEscape(data.library || 'la bibliothèque')} en arrière-plan, puis recherche des tomes`);
                 } else {
                     await vrJson('/api/auth/users/approve', {
                         method: 'POST', headers: {'Content-Type': 'application/json'},

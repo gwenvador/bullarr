@@ -188,6 +188,7 @@ class UserRolesTest(unittest.TestCase):
         with mock.patch('blueprints.bedetheque.routes.add_series_from_bedetheque', side_effect=self._fake_add(seen)):
             approved = self.send('POST', f'/api/requests/{request_id}/approve', json={})
         self.assertEqual(approved.status_code, 200, approved.get_json())
+        self.assertEqual(approved.get_json()['status'], 'adding')
         self.assertEqual(seen['library_id'], 2)
         self.assertTrue(seen['force_auto_acquire'])
         self.assertEqual(self.db("SELECT status, series_id, decided_by FROM book_requests"), [('added', 99, 'Alice')])
@@ -209,8 +210,10 @@ class UserRolesTest(unittest.TestCase):
 
         with mock.patch('blueprints.bedetheque.routes.add_series_from_bedetheque', side_effect=failing_add):
             response = self.send('POST', f'/api/requests/{request_id}/approve', json={})
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(self.db('SELECT status FROM book_requests'), [('pending',)])
+        # La validation répond tout de suite ; l'échec de l'ajout en arrière-plan remet la demande à valider.
+        self.assertEqual(response.get_json()['status'], 'adding')
+        self.assertEqual(self.db('SELECT status, error, decided_by FROM book_requests'),
+                         [('pending', "Échec de l'ajout : Bédéthèque injoignable", None)])
 
     def test_admin_rejects_with_a_reason_and_reader_sees_it(self):
         self.login('bob')
@@ -249,7 +252,8 @@ class UserRolesTest(unittest.TestCase):
         with mock.patch('blueprints.bedetheque.routes.add_series_from_bedetheque', side_effect=self._fake_add(seen)), \
                 mock.patch('notifications.send_notification') as notify:
             response = self.send('POST', '/api/requests', json={'url': 'https://www.bedetheque.com/serie-1-BD-X.html', 'title': 'X'})
-        self.assertEqual(response.get_json()['status'], 'added')
+        self.assertEqual(response.get_json()['status'], 'added')  # fil exécuté en ligne pendant les tests
+        self.assertEqual(self.db('SELECT status, series_id FROM book_requests'), [('added', 99)])
         self.assertEqual(seen['library_id'], 1)
         notify.assert_not_called()
 

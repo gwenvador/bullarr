@@ -8,10 +8,16 @@ choisie au moment de la demande (la bibliothèque par défaut si le lecteur y a 
 sinon la première qui lui est permise) et la recherche automatique des tomes est lancée,
 comme un ajout fait par un administrateur.
 
-Statuts : pending (à valider), added, already (déjà dans la bibliothèque), error,
-rejected (refusée, motif dans error), cancelled (annulée par le lecteur)."""
+Statuts : pending (à valider), adding (validée, ajout Bédéthèque en cours en arrière-plan),
+added, already (déjà dans la bibliothèque), error, rejected (refusée, motif dans error),
+cancelled (annulée par le lecteur).
+
+La validation rend la main tout de suite : la lecture de la fiche Bédéthèque (plusieurs
+secondes, parfois plus d'une minute) se fait dans un fil à part. En cas d'échec la demande
+revient « à valider » avec le message d'erreur, l'administrateur peut réessayer."""
 import json
 import sqlite3
+import threading
 
 from flask import current_app, jsonify, redirect, render_template, request, session
 
@@ -20,6 +26,7 @@ from blueprints.auth.roles import current_user_key, is_reader
 from . import library_bp
 
 STATUS_PENDING = 'pending'
+STATUS_ADDING = 'adding'
 MAX_PENDING_PER_USER = 30
 BEDETHEQUE_PREFIX = 'https://www.bedetheque.com/'
 
@@ -74,6 +81,43 @@ def _add_series(url, library_id):
     if result.get('success'):
         return ('already' if result.get('already_exists') else 'added'), result.get('series_id'), result.get('title'), None
     return 'error', None, None, result.get('error') or 'Erreur inconnue'
+
+
+def _in_background(fn, *args):
+    """Lance fn dans un fil avec le contexte de l'application (en ligne pendant les tests)."""
+    app = current_app._get_current_object()
+
+    def run():
+        with app.app_context():
+            try:
+                fn(*args)
+            except Exception:  # pragma: no cover - le fil ne doit jamais tuer le serveur
+                app.logger.exception('Ajout de série demandée')
+
+    if app.config.get('TESTING'):
+        run()
+    else:
+        threading.Thread(target=run, daemon=True, name='book-request-add').start()
+
+
+def _finish_adding(url, library_id, library_name, actor_key, actor_name, requester_key, requester_name, label):
+    """Ajoute la série puis met à jour toutes les demandes « adding » de cette fiche."""
+    status, series_id, title, error = _add_series(url, library_id)
+    conn = _connect()
+    try:
+        if status == 'error':
+            conn.execute('UPDATE book_requests SET status = ?, error = ?, decided_at = NULL, decided_by = NULL '
+                         'WHERE bedetheque_url = ? AND status = ?',
+                         (STATUS_PENDING, f"Échec de l'ajout : {error}", url, STATUS_ADDING))
+        else:
+            conn.execute('UPDATE book_requests SET status = ?, series_id = ?, error = NULL, title = COALESCE(?, title) '
+                         'WHERE bedetheque_url = ? AND status = ?', (status, series_id, title, url, STATUS_ADDING))
+        conn.commit()
+    finally:
+        conn.close()
+    detail = error if status == 'error' else f"Demandée par {requester_name or '?'} · {library_name}"
+    log_activity('request_approved', target_key=requester_key, target_name=title or label, series_id=series_id,
+                 detail=detail, success=status != 'error', actor_key=actor_key, actor_name=actor_name)
 
 
 def _cover_url(row):
@@ -165,10 +209,10 @@ def lookup_requests():
                                             'owned': _owned(row['total_volumes'], row['missing_volumes']),
                                             'total': row['total_volumes']}
         for row in conn.execute(f'SELECT bedetheque_url, status FROM book_requests WHERE user_key = ? '
-                                f"AND status IN ('pending', 'rejected') AND bedetheque_url IN ({marks}) "
+                                f"AND status IN ('pending', 'adding', 'rejected') AND bedetheque_url IN ({marks}) "
                                 f'ORDER BY id', (current_user_key(), *urls)):
             if items.get(row['bedetheque_url'], {}).get('state') != 'library':
-                items[row['bedetheque_url']] = {'state': row['status']}
+                items[row['bedetheque_url']] = {'state': 'pending' if row['status'] == STATUS_ADDING else row['status']}
     finally:
         conn.close()
     return jsonify({'success': True, 'items': items})
@@ -203,8 +247,7 @@ def create_request():
     if existing:
         status, series_id, error, title = 'already', existing['id'], None, existing['title']
     elif immediate:
-        status, series_id, added_title, error = _add_series(url, library['id'])
-        title = added_title or title
+        status, series_id, error = STATUS_ADDING, None, None
     else:
         if pending_mine >= MAX_PENDING_PER_USER:
             return jsonify({'success': False, 'error': 'Trop de demandes en attente : patientez qu’elles soient traitées'}), 429
@@ -223,16 +266,22 @@ def create_request():
     finally:
         conn.close()
 
-    detail = {'pending': 'En attente de validation', 'added': f"Ajoutée dans {library['name']}",
-              'already': 'Déjà dans la bibliothèque', 'error': error}.get(status)
-    if status == 'added' and is_reader():
+    detail = {'pending': 'En attente de validation', 'adding': f"Ajout dans {library['name']}",
+              'already': 'Déjà dans la bibliothèque'}.get(status)
+    if status == STATUS_ADDING and is_reader():
         detail += ' (validation automatique)'
-    log_activity('request_created', target_name=title or url, series_id=series_id, detail=detail,
-                 success=status != 'error')
+    log_activity('request_created', target_name=title or url, series_id=series_id, detail=detail)
     if status == STATUS_PENDING:
         _notify_pending(name, title, url)
-    if status == 'error':
-        return jsonify({'success': False, 'error': error}), 502
+    if status == STATUS_ADDING:
+        _in_background(_finish_adding, url, library['id'], library['name'], key if not is_reader() else None,
+                       name if not is_reader() else 'Validation automatique', key, name, title or url)
+        conn = _connect()
+        try:
+            status = conn.execute('SELECT status FROM book_requests WHERE id = ?', (request_id,)).fetchone()['status']
+            series_id = conn.execute('SELECT series_id FROM book_requests WHERE id = ?', (request_id,)).fetchone()[0]
+        finally:
+            conn.close()
     return jsonify({'success': True, 'status': status, 'id': request_id, 'series_id': series_id, 'title': title,
                     'library': library['name']})
 
@@ -261,26 +310,22 @@ def approve_request(request_id):
     if library is None:
         return jsonify({'success': False, 'error': 'Aucune bibliothèque'}), 400
 
-    status, series_id, title, error = _add_series(row['bedetheque_url'], library['id'])
-    _key, name = _session_user()
-    label = title or row['title'] or row['bedetheque_url']
-    if status == 'error':
-        # La demande reste en attente : l'administrateur peut réessayer ou la refuser.
-        log_activity('request_approved', target_key=row['user_key'], target_name=label, success=False, detail=error)
-        return jsonify({'success': False, 'error': error}), 502
+    key, name = _session_user()
     conn = _connect()
     try:
-        # Toutes les demandes en attente de la même série sont satisfaites ensemble.
-        conn.execute('UPDATE book_requests SET status = ?, series_id = ?, error = NULL, title = COALESCE(?, title), '
-                     'library_id = ?, decided_at = CURRENT_TIMESTAMP, decided_by = ? '
-                     'WHERE bedetheque_url = ? AND status = ?',
-                     (status, series_id, title, library['id'], name, row['bedetheque_url'], STATUS_PENDING))
+        # Toutes les demandes en attente de la même série sont satisfaites ensemble ; la demande
+        # quitte Validation tout de suite, l'ajout Bédéthèque se fait en arrière-plan.
+        claimed = conn.execute('UPDATE book_requests SET status = ?, error = NULL, library_id = ?, '
+                               'decided_at = CURRENT_TIMESTAMP, decided_by = ? WHERE bedetheque_url = ? AND status = ?',
+                               (STATUS_ADDING, library['id'], name, row['bedetheque_url'], STATUS_PENDING)).rowcount
         conn.commit()
     finally:
         conn.close()
-    log_activity('request_approved', target_key=row['user_key'], target_name=label, series_id=series_id,
-                 detail=f"Demandée par {row['user_name'] or '?'} · {library['name']}")
-    return jsonify({'success': True, 'status': status, 'series_id': series_id, 'title': title, 'library': library['name']})
+    if not claimed:
+        return jsonify({'success': False, 'error': 'Cette demande a déjà été traitée'}), 409
+    _in_background(_finish_adding, row['bedetheque_url'], library['id'], library['name'], key, name,
+                   row['user_key'], row['user_name'], row['title'] or row['bedetheque_url'])
+    return jsonify({'success': True, 'status': STATUS_ADDING, 'title': row['title'], 'library': library['name']})
 
 
 @library_bp.route('/api/requests/<int:request_id>/reject', methods=['POST'])

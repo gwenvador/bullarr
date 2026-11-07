@@ -281,6 +281,16 @@ const USER_ACTIVITY = {
     request_cancelled: ['request', 'undo', 'Demande de BD annulée'],
 };
 
+// Anciennes entrées de connexion « Mot de passe · 1.2.3.4 » : la méthode et l'adresse IP
+// étaient ambiguës (l'IP se lisait comme le mot de passe).
+function _activityDetail(detail) {
+    if (!detail) return detail;
+    const m = /^(Mot de passe|SSO(?: · application Android)?|Compte en attente de validation) · (\d[\d.]*|[0-9a-f:]+:[0-9a-f:]*|-)$/i.exec(detail);
+    if (!m) return detail;
+    const how = m[1].startsWith('Compte') ? m[1] : `Par ${m[1].startsWith('Mot') ? 'mot de passe' : m[1]}`;
+    return `${how} · IP ${m[2]}`;
+}
+
 function mapUserActivityToEvents(entries) {
     return (entries || []).map(h => {
         const [type, icon, label] = USER_ACTIVITY[h.action] || ['user', 'users', h.action];
@@ -293,7 +303,7 @@ function mapUserActivityToEvents(entries) {
             seriesId: h.series_id || null,
             seriesTitle: h.series_title || '',
             label: target && !self ? `${label} · ${target}` : (h.actor_name && h.action.startsWith('log') ? `${label} · ${h.actor_name}` : label),
-            detail: [h.action.startsWith('log') ? '' : actor, h.detail].filter(Boolean).join(' · '),
+            detail: [h.action.startsWith('log') ? '' : actor, _activityDetail(h.detail)].filter(Boolean).join(' · '),
             searchExtra: [h.actor_name, h.target_name, h.detail].filter(Boolean).join(' '),
             success: h.success,
         };
