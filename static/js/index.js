@@ -37,10 +37,10 @@ async function loadLibraries() {
 }
 
 function _libraryScanText(lib) {
-    if (!lib.last_scanned) return { text: 'Jamais analysée', cls: 'lib-card-scan-never' };
+    if (!lib.last_scanned) return { text: 'Jamais scannée', cls: 'lib-card-scan-never' };
     const date = parseDbUtcDate(lib.last_scanned);
-    if (!date) return { text: 'Analysée', cls: '' };
-    return { text: 'Analysée le ' + date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: BULLARR_DISPLAY_TZ }), cls: '' };
+    if (!date) return { text: 'Scannée', cls: '' };
+    return { text: 'Dernier scan le ' + date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: BULLARR_DISPLAY_TZ }), cls: '' };
 }
 
 function displayLibraries(libs) {
@@ -66,7 +66,7 @@ function displayLibraries(libs) {
                 <div class="lib-card-foot">
                     <span class="lib-card-scan ${scan.cls}">${escapeHtml(scan.text)}</span>
                     <span class="lib-card-actions">
-                        <button type="button" class="lib-icon-btn" data-tooltip="Scanner" aria-label="Scanner ${escapeHtml(lib.name)}"
+                        <button type="button" class="lib-icon-btn" data-tooltip="Scanner : relire le dossier sur le disque (BD copiées, renommées ou supprimées à la main) et resynchroniser Komga" aria-label="Scanner ${escapeHtml(lib.name)} : relire le dossier sur le disque"
                                 onclick="event.preventDefault(); event.stopPropagation(); scanLibrary(${lib.id})">${svgIcon('refresh-cw')}</button>
                         <button type="button" class="lib-icon-btn lib-icon-btn-danger" data-tooltip="Supprimer" aria-label="Supprimer ${escapeHtml(lib.name)}"
                                 onclick="event.preventDefault(); event.stopPropagation(); deleteLibraryConfirm(${lib.id})">${svgIcon('trash-2')}</button>
