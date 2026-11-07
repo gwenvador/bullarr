@@ -4409,3 +4409,10 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
 .lib-modal-editing .lib-create-intro,
 .lib-modal-editing .lib-check { display: none; }
 .lib-input-icon input[readonly] { color: var(--color-text-muted); cursor: not-allowed; background: var(--color-surface-alt); }
+
+/* Déplacer des séries vers une autre bibliothèque (openMoveSeriesDialog, library.js) */
+.move-series-targets { display: flex; flex-direction: column; gap: 8px; }
+.move-series-target { margin: 0; }
+.move-series-target:has(input:checked) { border-color: var(--color-accent); }
+.move-series-list { margin: 16px 0 0; padding-left: 18px; font-size: .88em; color: var(--color-text-muted); max-height: 160px; overflow: auto; }
+.move-series-list li { margin: 2px 0; }

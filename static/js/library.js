@@ -1524,6 +1524,7 @@ function updateSeriesBulkActionsBar() {
         ${action('bulkScanSelectedSeries()', 'refresh-cw', 'Actualiser')}
         ${action('bulkUpdateMetadataSelectedSeries()', 'tag', 'Mettre à jour les métadonnées')}
         ${action('bulkAutoAcquireSelectedSeries()', 'radar', 'Recherche automatique')}
+        ${action('openMoveSeriesDialog()', 'folder-input', 'Déplacer vers une autre bibliothèque')}
         <span class="series-bulk-sep" aria-hidden="true"></span>
         ${action('bulkDeleteSelectedSeries()', 'trash-2', 'Supprimer', ' series-bulk-danger')}
         <span class="series-bulk-sep" aria-hidden="true"></span>
@@ -1557,6 +1558,85 @@ async function _runBulkSeriesAction(seriesList, toastId, verbFn, actionFn) {
     showToast(toastId, failures.length ? `Terminé avec ${failures.length} ${pluralize(failures.length, 'erreur')}` : 'Terminé',
         { icon: failures.length ? 'triangle-alert' : 'check', autoHideMs: 4000 });
     if (failures.length) alert('❌ Échecs:\n' + failures.join('\n'));
+    clearSeriesSelection();
+    if (typeof loadLibraryData === 'function') loadLibraryData();
+}
+
+// « Déplacer vers… » : choix de la bibliothèque cible, puis déplacement côté serveur en
+// arrière-plan (dossiers copiés entre montages : peut prendre du temps), suivi ici.
+async function openMoveSeriesDialog() {
+    const series = _selectedSeriesData();
+    if (series.length === 0) return;
+    let libs = [];
+    try { libs = await (await fetch('/api/libraries')).json(); } catch (error) { /* liste vide ci-dessous */ }
+    const targets = (Array.isArray(libs) ? libs : []).filter(lib => lib.id !== Number(libraryId));
+    document.getElementById('move-series-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'move-series-modal';
+    modal.className = 'modal active';
+    const count = `${series.length} ${pluralize(series.length, 'série')}`;
+    modal.innerHTML = `
+        <div class="modal-content lib-create-modal" role="dialog" aria-modal="true" aria-labelledby="move-series-title">
+            <button type="button" class="lib-create-close" aria-label="Fermer" data-close>${svgIcon('x')}</button>
+            <h2 class="lib-create-title" id="move-series-title">Déplacer ${count}</h2>
+            <p class="lib-create-intro">Les dossiers sont déplacés sur le disque vers la bibliothèque choisie.</p>
+            ${targets.length ? `<div class="move-series-targets" role="radiogroup">
+                ${targets.map((lib, index) => `
+                    <label class="lib-check move-series-target">
+                        <input type="radio" name="move-series-target" value="${lib.id}" ${index === 0 ? 'checked' : ''}>
+                        <span><strong>${escapeHtml(lib.name)}</strong><small>${escapeHtml(lib.path)} · ${Number(lib.series_count || 0).toLocaleString('fr-FR')} séries</small></span>
+                    </label>`).join('')}
+            </div>` : '<p class="lib-hint">Aucune autre bibliothèque. Créez-en une depuis « Mes bibliothèques ».</p>'}
+            <ul class="move-series-list">${series.slice(0, 8).map(s => `<li>${escapeHtml(s.title)}</li>`).join('')}${series.length > 8 ? `<li>… et ${series.length - 8} autres</li>` : ''}</ul>
+            <div class="lib-create-actions">
+                <button type="button" class="lib-btn lib-btn-ghost" data-close>Annuler</button>
+                <button type="button" class="lib-btn lib-btn-primary" data-confirm ${targets.length ? '' : 'disabled'}>${svgIcon('folder-input')} Déplacer</button>
+            </div>
+        </div>`;
+    const close = () => modal.remove();
+    modal.addEventListener('click', event => {
+        if (event.target === modal || event.target.closest('[data-close]')) close();
+    });
+    modal.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+    modal.querySelector('[data-confirm]').addEventListener('click', () => {
+        const checked = modal.querySelector('input[name="move-series-target"]:checked');
+        if (!checked) return;
+        const target = targets.find(lib => String(lib.id) === checked.value);
+        close();
+        moveSelectedSeries(series, target);
+    });
+    document.body.appendChild(modal);
+    modal.querySelector('[data-confirm]').focus();
+}
+
+async function moveSelectedSeries(series, target) {
+    const toastId = 'move-series';
+    showToast(toastId, `Déplacement vers ${target.name}…`);
+    try {
+        const response = await fetch('/api/series/move', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ library_id: target.id, series_ids: series.map(s => s.id) })
+        });
+        const started = await response.json();
+        if (!started.success) throw new Error(started.error || 'Erreur inconnue');
+        let job;
+        for (;;) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            job = (await (await fetch(`/api/series/move/${started.job_id}`)).json()).job;
+            if (!job) throw new Error('Suivi du déplacement perdu');
+            if (job.status !== 'running') break;
+            showToast(toastId, `Déplacement vers ${target.name}… (${job.current}/${job.total})`);
+        }
+        if (job.status === 'failed') throw new Error(job.error || 'Erreur inconnue');
+        const failures = job.results.filter(r => !r.success);
+        const moved = job.results.filter(r => r.success && !r.skipped).length;
+        showToast(toastId, `${moved} ${pluralize(moved, 'série')} ${pluralize(moved, 'déplacée')} vers ${target.name}`,
+            { icon: failures.length ? 'triangle-alert' : 'check', autoHideMs: 5000 });
+        if (failures.length) alert('❌ Non déplacées :\n' + failures.map(r => `${r.title} : ${r.error}`).join('\n'));
+    } catch (error) {
+        showToast(toastId, 'Déplacement interrompu', { icon: 'triangle-alert', autoHideMs: 5000 });
+        alert('❌ ' + error.message);
+    }
     clearSeriesSelection();
     if (typeof loadLibraryData === 'function') loadLibraryData();
 }
