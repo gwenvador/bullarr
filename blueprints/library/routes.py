@@ -2028,10 +2028,8 @@ def _reader_komga_progress(komga_book_id):
         return None, False
     conn = get_db_connection()
     try:
-        from blueprints.komga.user_link import current_progress_source
-        source, params = current_progress_source()
-        row = conn.execute(f'SELECT page, completed FROM {source} p WHERE komga_book_id = ?',
-                           (*params, komga_book_id)).fetchone()
+        row = conn.execute('SELECT page, completed FROM komga_read_progress WHERE komga_book_id = ?',
+                           (komga_book_id,)).fetchone()
     except sqlite3.Error:
         return None, False
     finally:
@@ -2098,27 +2096,11 @@ def post_volume_reader_progress(volume_id):
         return jsonify({'success': False, 'error': 'Page invalide'}), 400
     if page < 1:
         return jsonify({'success': False, 'error': 'Page invalide'}), 400
-    from blueprints.auth.roles import current_user_key, is_reader
-    from blueprints.komga.user_link import record_user_progress, user_client
-    config = load_komga_config()
-    user_key = current_user_key()
-    personal = user_client(user_key) if user_key and config.get('enabled') else None
-    if personal is not None:
-        # Compte Komga relié (Réglages → Intégrations de l'app) : son avancement à lui.
-        if not row['komga_book_id']:
-            return jsonify({'success': True, 'synced': False, 'reason': 'no_komga_book'})
-        try:
-            personal.update_read_progress(row['komga_book_id'], page, bool(data.get('completed')))
-        except KomgaError as e:
-            return jsonify({'success': True, 'synced': False, 'reason': 'komga_error', 'error': error_message(e)})
-        try:
-            record_user_progress(user_key, row['komga_book_id'], page, bool(data.get('completed')))
-        except sqlite3.Error as e:
-            print(f"Avancement de lecture local non enregistré: {e}")
-        return jsonify({'success': True, 'synced': True})
+    from blueprints.auth.roles import is_reader
     if is_reader():
-        # Sans compte Komga relié : l'avancement Komga du serveur est celui de l'administrateur.
+        # L'avancement Komga est celui du compte administrateur : ne pas le mélanger.
         return jsonify({'success': True, 'synced': False, 'reason': 'reader'})
+    config = load_komga_config()
     if not config.get('enabled') or config.get('sync_read_progress', True) is False:
         return jsonify({'success': True, 'synced': False, 'reason': 'disabled'})
     if not row['komga_book_id']:
@@ -2212,16 +2194,14 @@ def get_series_volumes(series_id):
     cursor = conn.cursor()
 
     try:
-        from blueprints.komga.user_link import current_progress_source
-        progress_sql, progress_params = current_progress_source()
-        cursor.execute(f'''
+        cursor.execute('''
             SELECT v.*, p.page AS komga_read_page, p.pages_count AS komga_pages_count,
                    p.completed AS komga_read_completed, p.read_at AS komga_read_at
             FROM volumes v
-            LEFT JOIN {progress_sql} p ON p.komga_book_id = v.komga_book_id
+            LEFT JOIN komga_read_progress p ON p.komga_book_id = v.komga_book_id
             WHERE v.series_id = ?
             ORDER BY v.part_number, (v.volume_number IS NULL), v.volume_number, v.integral_number, v.hs_number
-        ''', (*progress_params, series_id))
+        ''', (series_id,))
     except sqlite3.OperationalError:
         # Base sans l'avancement de lecture Komga (schéma pas encore migré) : tomes seuls.
         cursor.execute('''
@@ -2513,9 +2493,7 @@ def get_library_series(library_id):
             from blueprints.auth.roles import apply_personal_lists, filter_visible_series
             return jsonify(apply_personal_lists(filter_visible_series(series_list)))
 
-        from blueprints.komga.user_link import current_progress_source
-        progress_sql, progress_params = current_progress_source()
-        cursor.execute(f'''
+        cursor.execute('''
             SELECT s.id, s.title, s.path, s.total_volumes, s.missing_volumes, s.has_parts, s.last_scanned, s.added_at,
                    s.ebdz_volumes_count, s.ebdz_missing_volumes, s.ebdz_checked_at, s.ebdz_thread_url,
                    s.ebdz_thread_id, s.ebdz_matched_title, s.ebdz_match_status,
@@ -2556,13 +2534,13 @@ def get_library_series(library_id):
                 SELECT v.series_id, COUNT(*) AS book_count,
                        SUM(CASE WHEN p.completed = 1 THEN 1 ELSE 0 END) AS read_count,
                        SUM(CASE WHEN COALESCE(p.completed, 0) = 0 AND COALESCE(p.page, 0) > 0 THEN 1 ELSE 0 END) AS reading_count
-                FROM volumes v LEFT JOIN {progress_sql} p ON p.komga_book_id = v.komga_book_id
+                FROM volumes v LEFT JOIN komga_read_progress p ON p.komga_book_id = v.komga_book_id
                 WHERE v.komga_book_id IS NOT NULL AND v.filepath IS NOT NULL
                 GROUP BY v.series_id
             ) rp ON rp.series_id = s.id
             WHERE s.library_id = ?
             ORDER BY s.title
-        ''', (*progress_params, library_id))
+        ''', (library_id,))
 
         series_rows = cursor.fetchall()
         try:
