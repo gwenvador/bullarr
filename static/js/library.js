@@ -1392,10 +1392,10 @@ function updateViewSwitcherButtons() {
     if (columnsSection) columnsSection.style.display = seriesViewMode === 'table' ? '' : 'none';
     const posterSize = document.getElementById('poster-size-control');
     if (posterSize) posterSize.style.display = seriesViewMode === 'poster' ? '' : 'none';
-    // Le tableau a ses propres cases à cocher : pas de mode « Sélectionner ».
+    // Mode « Sélectionner » : vue affiches seulement (le tableau a ses propres cases).
     const selectButton = document.getElementById('series-select-mode-btn');
-    if (selectButton) selectButton.style.display = seriesViewMode === 'table' ? 'none' : '';
-    if (seriesViewMode === 'table' && seriesSelectMode) setSeriesSelectMode(false);
+    if (selectButton) selectButton.style.display = seriesViewMode === 'poster' ? '' : 'none';
+    if (seriesViewMode !== 'poster' && seriesSelectMode) setSeriesSelectMode(false);
     applyPosterScale();
     // Le tableau se trie par ses en-têtes de colonnes ; affiches et aperçu ont le menu « Trier ».
     const sortSection = document.getElementById('series-sort-section');
