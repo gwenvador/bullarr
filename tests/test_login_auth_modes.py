@@ -146,6 +146,16 @@ class LoginPageBehaviourTest(unittest.TestCase):
         with self.client.session_transaction() as session:
             self.assertEqual(session['user']['name'], 'admin')
 
+    def test_legacy_account_already_seen_at_login_gets_its_password(self):
+        # Les connexions d'avant créaient déjà la ligne users, sans mot de passe.
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("INSERT INTO users (user_key, name, auth_method) VALUES ('password:admin', 'admin', 'password')")
+        conn.commit()
+        conn.close()
+        self.write_config(mode='both', username='admin', password_hash=generate_password_hash('secret-pass'))
+        self.page()
+        self.assertEqual(self.login(self.client).status_code, 302)
+
     def test_legacy_enabled_flag_still_means_oidc_without_auto_login(self):
         with open(self.config_path, 'w', encoding='utf-8') as handle:
             json.dump({'enabled': True, 'issuer': 'https://sso.example.test', 'client_id': 'bullarr'}, handle)

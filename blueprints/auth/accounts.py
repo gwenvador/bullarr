@@ -44,7 +44,10 @@ def migrate_legacy_account(config):
         conn.execute('''
             INSERT INTO users (user_key, name, auth_method, password_hash, role_override)
             VALUES (?, ?, 'password', ?, 'admin')
-            ON CONFLICT(user_key) DO NOTHING''', (local_key(username), username, password_hash))
+            ON CONFLICT(user_key) DO UPDATE SET
+                auth_method = 'password',
+                password_hash = COALESCE(users.password_hash, excluded.password_hash)''',
+            (local_key(username), username, password_hash))
         conn.commit()
     finally:
         conn.close()
