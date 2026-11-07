@@ -1459,7 +1459,7 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
 .history-filter-tabs .history-refresh { margin-left: auto; flex-shrink: 0; }
 /* Types en icônes seules, le nom en infobulle : tout tient sur une ligne. */
 .history-filter-tabs { align-items: center; }
-.history-filter-tabs .tab-button:not(#history-filter-all) { padding: 8px 10px; display: inline-flex; align-items: center; }
+.history-filter-tabs .tab-button.history-tab-icon { padding: 8px 10px; display: inline-flex; align-items: center; }
 /* Le nom s ouvre à côté de l icône au survol (ou au clavier). */
 .history-tab-label { display: inline-block; max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
                      transition: max-width .2s ease, margin-left .2s ease, opacity .15s ease; }
@@ -1467,11 +1467,13 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
 @media (hover: hover) {
     .history-filter-tabs .tab-button:hover .history-tab-label { max-width: 160px; margin-left: 6px; opacity: 1; }
 }
-.history-filter-tabs .tab-button:not(#history-filter-all) svg { width: 18px; height: 18px; }
+.history-filter-tabs .tab-button.history-tab-icon svg,
+.history-filter-tabs .tab-button.history-tab-icon img { width: 18px !important; height: 18px !important; vertical-align: middle !important; }
 @media (max-width: 768px) {
     .history-filter-tabs { gap: 2px !important; }
     .history-filter-tabs .tab-button,
-    .history-filter-tabs .tab-button:not(#history-filter-all) { padding: 6px 5px; }
+    .history-filter-tabs .tab-button.history-tab-icon { padding: 6px 5px; }
     .history-filter-tabs .history-refresh { padding: 5px 9px !important; }
     .history-filter-tabs .history-refresh svg { width: 16px; height: 16px; }
+    .history-filter-tabs .history-tab-icon img { width: 16px !important; height: 16px !important; }
 }
