@@ -778,13 +778,20 @@ def library_operations(library_id):
     """Récupère, renomme ou supprime une bibliothèque"""
 
     if request.method == 'PUT':
-        # Renomme la bibliothèque (le chemin sur le disque n'est pas modifié, seulement
-        # le nom affiché - le déplacer nécessiterait de bouger tous ses fichiers)
+        # Modifie le nom et/ou la description (champs absents : inchangés). Le chemin sur
+        # le disque n'est pas modifiable ici : le changer demanderait de déplacer tous
+        # les fichiers et de réécrire les chemins des séries et des tomes.
         data = request.get_json(silent=True) or {}
-        name = (data.get('name') or '').strip()
-
-        if not name:
-            return jsonify({'success': False, 'error': 'Le nom est requis'}), 400
+        updates = {}
+        if 'name' in data:
+            name = (data.get('name') or '').strip()
+            if not name:
+                return jsonify({'success': False, 'error': 'Le nom est requis'}), 400
+            updates['name'] = name
+        if 'description' in data:
+            updates['description'] = (data.get('description') or '').strip()
+        if not updates:
+            return jsonify({'success': False, 'error': 'Rien à modifier'}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -793,11 +800,16 @@ def library_operations(library_id):
             conn.close()
             return jsonify({'success': False, 'error': 'Bibliothèque non trouvée'}), 404
 
-        cursor.execute('UPDATE libraries SET name = ? WHERE id = ?', (name, library_id))
-        conn.commit()
+        try:
+            assignments = ', '.join(f'{column} = ?' for column in updates)
+            cursor.execute(f'UPDATE libraries SET {assignments} WHERE id = ?', (*updates.values(), library_id))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Une bibliothèque avec ce nom existe déjà'}), 400
         conn.close()
 
-        return jsonify({'success': True, 'name': name})
+        return jsonify({'success': True, **updates})
 
     if request.method == 'GET':
         conn = get_db_connection()

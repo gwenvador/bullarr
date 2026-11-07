@@ -66,6 +66,8 @@ function displayLibraries(libs) {
                 <div class="lib-card-foot">
                     <span class="lib-card-scan ${scan.cls}">${escapeHtml(scan.text)}</span>
                     <span class="lib-card-actions">
+                        <button type="button" class="lib-icon-btn" data-tooltip="Modifier le nom ou la description" aria-label="Modifier ${escapeHtml(lib.name)}"
+                                onclick="event.preventDefault(); event.stopPropagation(); openEditModal(${lib.id})">${svgIcon('pencil')}</button>
                         <button type="button" class="lib-icon-btn" data-tooltip="Scanner : relire le dossier sur le disque (BD copiées, renommées ou supprimées à la main) et resynchroniser Komga" aria-label="Scanner ${escapeHtml(lib.name)} : relire le dossier sur le disque"
                                 onclick="event.preventDefault(); event.stopPropagation(); scanLibrary(${lib.id})">${svgIcon('refresh-cw')}</button>
                         <button type="button" class="lib-icon-btn lib-icon-btn-danger" data-tooltip="Supprimer" aria-label="Supprimer ${escapeHtml(lib.name)}"
@@ -85,7 +87,31 @@ function displayLibraries(libs) {
     container.innerHTML = `<div class="libraries-grid lib-grid">${cardsHtml}${addCard}</div>`;
 }
 
+let editingLibraryId = null;
+
+function _setLibraryModalMode(library) {
+    editingLibraryId = library ? library.id : null;
+    const modal = document.getElementById('create-modal');
+    modal.classList.toggle('lib-modal-editing', !!library);
+    document.getElementById('lib-create-title').textContent = library ? 'Modifier la bibliothèque' : 'Nouvelle bibliothèque';
+    document.querySelector('#create-form .lib-btn-primary').textContent = library ? 'Enregistrer' : 'Créer la bibliothèque';
+    const path = document.getElementById('library-path');
+    path.readOnly = !!library;
+    document.getElementById('library-name').value = library ? library.name : '';
+    path.value = library ? library.path : '';
+    document.getElementById('library-description').value = library ? (library.description || '') : '';
+}
+
+function openEditModal(libraryId) {
+    const library = libraries.find(lib => lib.id === libraryId);
+    if (!library) return;
+    _setLibraryModalMode(library);
+    document.getElementById('create-modal').classList.add('active');
+    setTimeout(() => document.getElementById('library-name')?.focus(), 50);
+}
+
 function openCreateModal() {
+    _setLibraryModalMode(null);
     document.getElementById('create-modal').classList.add('active');
     setTimeout(() => document.getElementById('library-name')?.focus(), 50);
 }
@@ -107,10 +133,30 @@ function closeCreateModal() {
     document.getElementById('onboard-progress').style.display = 'none';
     document.getElementById('onboard-summary').style.display = 'none';
     document.getElementById('onboard-summary').innerHTML = '';
+    _setLibraryModalMode(null);
+}
+
+async function saveLibraryEdits() {
+    const name = document.getElementById('library-name').value.trim();
+    const description = document.getElementById('library-description').value;
+    try {
+        const response = await fetch(`/api/libraries/${editingLibraryId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Erreur inconnue');
+        closeCreateModal();
+        loadLibraries();
+    } catch (error) {
+        alert('❌ ' + error.message);
+    }
 }
 
 async function createLibrary(event) {
     event.preventDefault();
+    if (editingLibraryId) return saveLibraryEdits();
 
     const name = document.getElementById('library-name').value;
     const path = document.getElementById('library-path').value;

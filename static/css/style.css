@@ -4401,3 +4401,11 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
     .lib-create-actions { flex-direction: column-reverse; }
     .lib-create-actions .lib-btn { justify-content: center; }
 }
+
+/* Fenêtre de bibliothèque en mode modification (openEditModal, index.js) */
+.lib-hint-edit { display: none; }
+.lib-modal-editing .lib-hint-edit { display: block; }
+.lib-modal-editing .lib-hint-create,
+.lib-modal-editing .lib-create-intro,
+.lib-modal-editing .lib-check { display: none; }
+.lib-input-icon input[readonly] { color: var(--color-text-muted); cursor: not-allowed; background: var(--color-surface-alt); }

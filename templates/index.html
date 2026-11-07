@@ -81,7 +81,8 @@
                         <input type="text" id="library-path" required placeholder="/BD" autocomplete="off" spellcheck="false">
                     </div>
                     <input type="file" id="folder-browser" webkitdirectory directory multiple style="display: none;" onchange="handleFolderSelect(event)">
-                    <small class="lib-hint">Chemin vu par le conteneur, tel que monté dans docker-compose (par exemple /BD). Les espaces sont acceptés.</small>
+                    <small class="lib-hint lib-hint-edit">Le dossier ne se change pas ici : il faudrait déplacer tous les fichiers.</small>
+                    <small class="lib-hint lib-hint-create">Chemin vu par le conteneur, tel que monté dans docker-compose (par exemple /BD). Les espaces sont acceptés.</small>
                 </div>
 
                 <div class="lib-field">
