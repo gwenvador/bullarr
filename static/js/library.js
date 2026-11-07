@@ -5968,12 +5968,13 @@ async function openSeriesHistoryModal(seriesId, seriesTitle) {
     modal.classList.add('active');
 
     try {
-        const [importResp, downloadResp, actionResp] = await Promise.all([
+        const [importResp, downloadResp, actionResp, aiResp] = await Promise.all([
             fetch(`/api/import/history?limit=100&series_id=${seriesId}`).then(r => r.json()).catch(() => ({ history: [] })),
             fetch(`/api/missing-monitor/history?limit=100&series_id=${seriesId}`).then(r => r.json()).catch(() => ({ history: [] })),
-            fetch(`/api/actions/history?limit=100&series_id=${seriesId}`).then(r => r.json()).catch(() => ({ history: [] }))
+            fetch(`/api/actions/history?limit=100&series_id=${seriesId}`).then(r => r.json()).catch(() => ({ history: [] })),
+            fetch(`/api/ai/history?series_id=${encodeURIComponent(seriesId)}`).then(r => r.json()).catch(() => ({ entries: [] }))
         ]);
-        const events = mapHistoryResponsesToEvents(importResp, downloadResp, actionResp);
+        const events = mapHistoryResponsesToEvents(importResp, downloadResp, actionResp, aiResp, seriesId);
         const body = document.getElementById('series-history-body');
         if (!body) return;
         if (events.length === 0) {

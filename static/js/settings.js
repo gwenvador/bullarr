@@ -3073,10 +3073,8 @@ async function loadMonitoringConfig() {
         const missingConfig = config.monitor_missing_volumes || {};
 
         const settingsMonitorMissing = document.getElementById('settingsMonitorMissing');
-        const settingsMissingAction = document.getElementById('settingsMissingAction');
 
         if (settingsMonitorMissing) settingsMonitorMissing.checked = missingConfig.enabled !== false;
-        if (settingsMissingAction) settingsMissingAction.value = missingConfig.action || 'download';
 
         // Configuration de l'upgrade qualité (tomes déjà possédés)
         const qualityConfig = config.quality_upgrade || {};
@@ -3096,9 +3094,8 @@ async function saveMonitoringConfig() {
     try {
         // Vérifier que tous les éléments existent avant d'accéder à leurs valeurs
         const settingsMonitorMissing = document.getElementById('settingsMonitorMissing');
-        const settingsMissingAction = document.getElementById('settingsMissingAction');
 
-        if (!settingsMonitorMissing || !settingsMissingAction) {
+        if (!settingsMonitorMissing) {
             console.error('Éléments manquants pour la section volumes manquants');
             return;
         }
@@ -3112,8 +3109,10 @@ async function saveMonitoringConfig() {
 
         const config = {
             monitor_missing_volumes: {
+                // Plus de choix Télécharger / Notifier : le switch suffit, un tome trouvé
+                // est téléchargé.
                 enabled: settingsMonitorMissing.checked,
-                action: settingsMissingAction.value
+                action: 'download'
             },
             quality_upgrade: {
                 enabled: settingsQualityUpgrade ? settingsQualityUpgrade.checked : false,

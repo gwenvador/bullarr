@@ -850,6 +850,21 @@ class AiTagsTestCase(unittest.TestCase):
         self.assertFalse(self.client.get('/api/ai/config').get_json()['prompts']['generate']['custom'])
         self.assertEqual(self.client.post('/api/ai/config', json={'prompts': {'generate': 'x' * 9000}}).status_code, 400)
 
+    def test_history_can_be_limited_to_one_series(self):
+        with self.app.app_context():
+            from blueprints.ai.history import add_entry
+            add_entry('generate', 'done', '2 séries modifiées', details=[
+                {'series_id': 4, 'title': 'Quatre', 'added': ['espace']},
+                {'series_id': 5, 'title': 'Cinq', 'added': ['drame']}])
+            add_entry('apply', 'done', '1 tag fusionné', details=[{'canonical': 'sf', 'variants': ['SF']}])
+        everything = self.client.get('/api/ai/history').get_json()['entries']
+        self.assertEqual(len(everything), 2)
+        mine = self.client.get('/api/ai/history?series_id=5').get_json()['entries']
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0]['details'], [{'series_id': 5, 'title': 'Cinq', 'added': ['drame']}])
+        self.assertEqual(mine[0]['details_total'], 1)
+        self.assertEqual(self.client.get('/api/ai/history?series_id=99').get_json()['entries'], [])
+
     def test_fallbacks_are_cleaned_and_listed(self):
         self.enable_with_fallback()
         public = self.client.get('/api/ai/config').get_json()

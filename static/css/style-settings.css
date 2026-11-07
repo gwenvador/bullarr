@@ -1448,3 +1448,7 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
 .ai-history-details ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
 .ai-history-tag { display: inline-block; padding: 0 6px; border-radius: 999px; background: var(--color-surface-alt); font-size: 0.9em; overflow-wrap: anywhere; }
 .ai-history-empty { color: var(--color-text-muted); padding: 4px 0; }
+
+/* Historique : tags ajoutés par un traitement IA (history-shared.js, toggleAiDetail). */
+.ai-history-tag { display: inline-block; padding: 1px 8px; margin: 1px 0; border-radius: 999px; font-size: .9em;
+                  background: var(--color-surface-alt); border: 1px solid var(--color-border); }

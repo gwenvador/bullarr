@@ -195,7 +195,18 @@ def ai_history():
     if request.method == 'DELETE':
         clear_history()
         return jsonify({'success': True})
-    return jsonify({'entries': load_history()})
+    entries = load_history()
+    series_id = request.args.get('series_id', type=int)
+    if series_id is not None:
+        # Historique d'une série : les traitements qui la concernent, réduits à ses tags.
+        kept = []
+        for entry in entries:
+            mine = [item for item in entry.get('details') or []
+                    if isinstance(item, dict) and item.get('series_id') == series_id]
+            if mine:
+                kept.append({**entry, 'details': mine, 'details_total': len(mine)})
+        entries = kept
+    return jsonify({'entries': entries})
 
 
 # ===== Création des tags =====

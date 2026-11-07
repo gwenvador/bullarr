@@ -17,14 +17,14 @@ const HISTORY_TYPE_ICONS = {
     import: 'package', download: 'download', rename: 'pencil', delete: 'trash-2', delete_volume: 'trash-2',
     renumber_volume: 'tag', convert: 'refresh-cw', merge: 'git-merge', move_volume: 'git-merge',
     add_series: 'plus', auto_acquire: 'radar', search: 'search', quality_upgrade: 'sparkles',
-    missing_volume_match: 'eye'
+    missing_volume_match: 'eye', ai: 'bot'
 };
 const HISTORY_TYPE_LABELS = {
     import: 'Import', download: 'Téléchargement', rename: 'Renommage', delete: 'Suppression',
     delete_volume: 'Suppression de tome', renumber_volume: 'Changement de numéro',
     convert: 'Conversion', merge: 'Fusion', move_volume: 'Déplacement de tome',
     add_series: 'Ajout de série', auto_acquire: 'Recherche automatique', search: 'Recherche manuelle',
-    quality_upgrade: 'Upgrade qualité', missing_volume_match: 'Tome manquant détecté'
+    quality_upgrade: 'Upgrade qualité', missing_volume_match: 'Tome manquant détecté', ai: 'IA'
 };
 
 const HISTORY_SOURCE_LABELS = { ebdz: 'EBDZ', prowlarr: 'Prowlarr', telegram: 'Telegram', fourtoutici: 'fourtoutici', vk: 'VK' };
@@ -157,7 +157,105 @@ function mapImportHistoryToEvents(historyList) {
 // différente ("widget history and /history should have the same UI [...] no need to do
 // double code for the same things", déjà le principe qui a amené mapImportHistoryToEvents
 // ci-dessus dans ce même fichier).
-function mapHistoryResponsesToEvents(importResp, downloadResp, actionResp) {
+// Traitements IA (GET /api/ai/history, voir blueprints/ai/history.py) : une ligne « IA »
+// par traitement. finished_at est un epoch en secondes, converti au format UTC
+// « aaaa-MM-jj HH:mm:ss » des autres historiques pour le tri et parseDbUtcDate.
+// seriesId (historique d'une série) : le serveur n'a déjà gardé que cette série, la
+// ligne affiche directement ses tags.
+const AI_HISTORY_KIND_LABELS = {
+    generate: 'Création des tags', auto: 'Tags automatiques', series: 'Suggestion de tags',
+    normalize: 'Normalisation des tags', apply: 'Fusion de tags'
+};
+const AI_HISTORY_STATUS = { done: true, error: false, stopped: false, running: null };
+const _aiHistoryEvents = {};
+
+function aiHistoryUtcDate(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return new Date(value * 1000).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function _aiTagList(tags) {
+    return (tags || []).filter(Boolean).join(', ');
+}
+
+function mapAiHistoryToEvents(entries, seriesId = null) {
+    return (entries || []).filter(h => h && typeof h === 'object').map(h => {
+        const details = Array.isArray(h.details) ? h.details : [];
+        const seriesItems = details.filter(d => d && d.series_id != null);
+        const single = seriesItems.length === 1 && details.length === 1 && (h.details_total || 1) === 1 ? seriesItems[0] : null;
+        const model = h.model ? ` · ${h.model}` : '';
+        let detail = (h.message || '') + model;
+        if (seriesId != null && seriesItems.length) {
+            const tags = _aiTagList(seriesItems.flatMap(d => d.added || []));
+            const verb = h.kind === 'series' ? 'Tags proposés' : 'Tags ajoutés';
+            detail = (tags ? `${verb} : ${tags}` : (h.kind === 'series' ? 'Aucun tag proposé' : 'Aucun tag ajouté')) + model;
+        }
+        return {
+            type: 'ai',
+            aiId: h.id,
+            aiKind: h.kind,
+            date: aiHistoryUtcDate(h.finished_at),
+            status: h.status === 'stopped' ? 'stopped' : h.status,
+            seriesId: single ? single.series_id : null,
+            seriesTitle: single ? single.title : '',
+            label: (AI_HISTORY_KIND_LABELS[h.kind] || 'IA') + (h.resumed ? ' · reprise' : ''),
+            detail,
+            searchExtra: details.map(d => [d.title, _aiTagList(d.added), d.canonical, _aiTagList(d.variants)].filter(Boolean).join(' ')).join(' '),
+            aiDetails: seriesId != null ? [] : details,
+            aiDetailsTotal: h.details_total || details.length,
+            aiFallbacks: Array.isArray(h.fallbacks) ? h.fallbacks : [],
+            success: AI_HISTORY_STATUS[h.status] ?? false
+        };
+    });
+}
+
+function _aiEventExpandable(e) {
+    return e.type === 'ai' && ((e.aiDetails && e.aiDetails.length > 0) || (e.aiFallbacks && e.aiFallbacks.length > 0));
+}
+
+function toggleAiDetail(rowId, aiId, fullDate) {
+    const detailRow = document.getElementById(`${rowId}-files`);
+    const e = _aiHistoryEvents[aiId];
+    if (!detailRow || !e) return;
+    if (detailRow.style.display !== 'none') {
+        detailRow.style.display = 'none';
+        return;
+    }
+    detailRow.style.display = 'table-row';
+    const dateHtml = fullDate ? `<div style="padding:6px 8px 2px; color:var(--color-text-muted); font-size:0.85em;">🕐 ${escapeHtmlHistory(fullDate)}</div>` : '';
+    const rows = (e.aiDetails || []).map(d => {
+        if (d.canonical) {
+            return `<tr style="border-top:1px solid var(--color-border);">
+                <td style="padding:6px 8px; color:var(--color-text-muted);">${escapeHtmlHistory(_aiTagList(d.variants))}</td>
+                <td style="padding:6px 8px;">→ <strong>${escapeHtmlHistory(d.canonical)}</strong></td>
+            </tr>`;
+        }
+        const title = escapeHtmlHistory(d.title || `Série #${d.series_id}`);
+        const link = d.series_id != null
+            ? `<a href="/series/${encodeURIComponent(d.series_id)}" style="color:var(--color-accent); text-decoration:underline;">${title}</a>`
+            : title;
+        const tags = (d.added || []).length
+            ? (d.added || []).map(tag => `<span class="ai-history-tag">${escapeHtmlHistory(tag)}</span>`).join(' ')
+            : '<span style="color:var(--color-text-muted);">aucun tag ajouté</span>';
+        return `<tr style="border-top:1px solid var(--color-border);">
+            <td style="padding:6px 8px;">${link}</td>
+            <td style="padding:6px 8px;">${tags}</td>
+        </tr>`;
+    });
+    const more = e.aiDetailsTotal > (e.aiDetails || []).length
+        ? `<div style="padding:6px 8px; color:var(--color-text-muted); font-size:0.85em;">… et ${e.aiDetailsTotal - e.aiDetails.length} autres</div>`
+        : '';
+    const fallbacks = (e.aiFallbacks || []).map(f =>
+        `<div style="padding:4px 8px; color:var(--color-text-muted); font-size:0.85em;">↪ ${escapeHtmlHistory(f.name || f.provider || 'IA')} a échoué : ${escapeHtmlHistory(f.message || '')}</div>`
+    ).join('');
+    const cell = detailRow.querySelector('td');
+    cell.innerHTML = dateHtml + fallbacks
+        + (rows.length ? `<table style="width:100%; border-collapse:collapse; font-size:13px;"><tbody>${rows.join('')}</tbody></table>` : '')
+        + more;
+}
+
+function mapHistoryResponsesToEvents(importResp, downloadResp, actionResp, aiResp = null, seriesId = null) {
     const imports = mapImportHistoryToEvents(importResp.history);
 
     const downloads = (downloadResp.history || []).map(h => ({
@@ -185,7 +283,9 @@ function mapHistoryResponsesToEvents(importResp, downloadResp, actionResp) {
         success: !!h.success
     }));
 
-    return imports.concat(downloads, actions).sort((a, b) => new Date(b.date) - new Date(a.date));
+    const ais = mapAiHistoryToEvents(aiResp && aiResp.entries, seriesId);
+
+    return imports.concat(downloads, actions, ais).sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
 // Classification à 3 états d'un événement (pas juste succès/échec) - factorisée hors de
@@ -194,6 +294,7 @@ function mapHistoryResponsesToEvents(importResp, downloadResp, actionResp) {
 // badge affiché, pas d'une seconde logique divergente. Voir le commentaire original
 // (encore visible dans le diff) pour le "started"/success==null.
 function historyEventStatus(e) {
+    if (e.status === 'stopped') return 'stopped';
     if (e.status === 'started' || e.success == null) return 'progress';
     return e.success ? 'ok' : 'failed';
 }
@@ -223,13 +324,16 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
     const status = historyEventStatus(e);
     const statusBadge = status === 'progress'
         ? '<span style="color:#e67e22; font-weight:600;">⏳</span>'
+        : status === 'stopped'
+        ? '<span style="color:#e67e22; font-weight:600;">⏸ Arrêté</span>'
         : status === 'ok'
             ? '<span style="color:var(--color-success); font-weight:600;">✓ OK</span>'
             : '<span style="color:#dc3545; font-weight:600;">✗ Échec</span>';
     // Seuls les imports et les renommages ont un détail par fichier consultable - les
     // téléchargements n'ont qu'un seul fichier/tome et les suppressions un seul résumé,
     // déjà entièrement décrits par le libellé de la ligne.
-    const expandable = e.type === 'import' || e.type === 'rename';
+    if (e.type === 'ai' && e.aiId) _aiHistoryEvents[e.aiId] = e;
+    const expandable = e.type === 'import' || e.type === 'rename' || _aiEventExpandable(e);
     // Une série supprimée n'a plus de fiche à ouvrir (seriesId volontairement null pour
     // 'delete', voir loadHistoryEvents côté history.js) - un lien reste affiché pour
     // rename/delete_volume, mais pour rename il ouvre la fiche sans déclencher le
@@ -245,6 +349,7 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
     const rowId = `${idPrefix}-${index}`;
     const rowOnclick = e.type === 'import' ? `onclick="toggleImportFiles('${rowId}', '${escapeAttrHistory(e.operationId)}', '${escapeAttrHistory(date)}')"`
         : e.type === 'rename' ? `onclick="toggleActionDetail('${rowId}', ${e.actionId}, '${escapeAttrHistory(date)}')"`
+        : expandable && e.type === 'ai' ? `onclick="toggleAiDetail('${rowId}', '${escapeAttrHistory(e.aiId)}', '${escapeAttrHistory(date)}')"`
         : clickableSeries ? `onclick="window.location.href='/series/${e.seriesId}'"`
         : '';
     const seriesLinkHtml = clickableSeries
