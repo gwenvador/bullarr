@@ -39,15 +39,6 @@ def load_oidc_config():
         cfg.setdefault('oidc_enabled', cfg['mode'] == 'auth')
     cfg['oidc_enabled'] = bool(cfg.get('oidc_enabled', False))
 
-    # L'ancien compte unique devient un compte administrateur de « Utilisateurs et rôles ».
-    if cfg.get('username') and cfg.get('password_hash'):
-        try:
-            from .accounts import migrate_legacy_account
-            if migrate_legacy_account(cfg):
-                save_oidc_config(dict(cfg))  # chiffre à partir des valeurs déchiffrées, comme un POST
-        except Exception as error:
-            print(f'Migration du compte local impossible : {error}')
-
     # Pas de redirection automatique vers le SSO tant qu'elle n'est pas demandée.
     cfg['auto_redirect'] = bool(cfg.get('auto_redirect', False))
 
@@ -61,6 +52,15 @@ def load_oidc_config():
     api_key = cfg.get('api_key', '')
     if api_key:
         cfg['api_key_decrypted'] = decrypt(api_key) or ''
+
+    # L'ancien compte unique devient un compte administrateur de « Utilisateurs et rôles ».
+    if cfg.get('username') and cfg.get('password_hash'):
+        try:
+            from .accounts import migrate_legacy_account
+            if migrate_legacy_account(cfg):
+                save_oidc_config(dict(cfg))  # après déchiffrement : les secrets ne sont chiffrés qu'une fois
+        except Exception as error:
+            print(f'Migration du compte local impossible : {error}')
 
     return cfg
 

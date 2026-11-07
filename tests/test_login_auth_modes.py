@@ -146,6 +146,13 @@ class LoginPageBehaviourTest(unittest.TestCase):
         with self.client.session_transaction() as session:
             self.assertEqual(session['user']['name'], 'admin')
 
+    def test_migration_does_not_encrypt_the_client_secret_twice(self):
+        from encryption import encrypt, decrypt
+        self.write_config(mode='both', username='admin', password_hash=generate_password_hash('secret-pass'),
+                          client_secret=encrypt('client-secret-value'))
+        self.page()
+        self.assertEqual(decrypt(self.saved_config()['client_secret']), 'client-secret-value')
+
     def test_legacy_account_already_seen_at_login_gets_its_password(self):
         # Les connexions d'avant créaient déjà la ligne users, sans mot de passe.
         conn = sqlite3.connect(self.db_path)
