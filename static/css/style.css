@@ -4946,3 +4946,6 @@ button.ua-avatar:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-ac
 
 /* Fiche série : la liste/le tableau des tomes commence juste sous Aperçu / Tableau. */
 #series-volumes-section > .view-switcher { margin-bottom: 6px !important; }
+
+/* /profil : toute la largeur, comme les autres pages */
+.pf-page { max-width: none; align-content: start; }
