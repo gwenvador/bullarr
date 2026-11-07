@@ -554,12 +554,16 @@ def index():
     """Technical rationale and compatibility constraints for this code path."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT id FROM libraries')
+    cursor.execute('SELECT id, COALESCE(is_default, 0) AS is_default FROM libraries')
     libraries = cursor.fetchall()
     conn.close()
 
-    if len(libraries) == 1 and not request.args.get('all'):
-        return redirect(url_for('library.library_detail', library_id=libraries[0]['id']))
+    if not request.args.get('all'):
+        default = next((lib for lib in libraries if lib['is_default']), None)
+        if default is None and len(libraries) == 1:
+            default = libraries[0]
+        if default is not None:
+            return redirect(url_for('library.library_detail', library_id=default['id']))
 
     return render_template('index.html')
 
@@ -679,13 +683,14 @@ def libraries():
                 l.description,
                 l.created_at,
                 l.last_scanned,
+                COALESCE(l.is_default, 0) as is_default,
                 COUNT(DISTINCT s.id) as series_count,
                 COUNT(v.id) as volumes_count
             FROM libraries l
             LEFT JOIN series s ON s.library_id = l.id
             LEFT JOIN volumes v ON v.series_id = s.id
             GROUP BY l.id
-            ORDER BY l.name
+            ORDER BY COALESCE(l.is_default, 0) DESC, l.name
         ''')
         
         libraries = []
@@ -697,6 +702,7 @@ def libraries():
                 'description': row['description'],
                 'created_at': row['created_at'],
                 'last_scanned': row['last_scanned'],
+                'is_default': bool(row['is_default']),
                 'series_count': row['series_count'],
                 'volumes_count': row['volumes_count']
             })
@@ -790,6 +796,9 @@ def library_operations(library_id):
             updates['name'] = name
         if 'description' in data:
             updates['description'] = (data.get('description') or '').strip()
+        make_default = data.get('is_default') if 'is_default' in data else None
+        if make_default is not None:
+            updates['is_default'] = 1 if make_default else 0
         if not updates:
             return jsonify({'success': False, 'error': 'Rien à modifier'}), 400
 
@@ -801,6 +810,8 @@ def library_operations(library_id):
             return jsonify({'success': False, 'error': 'Bibliothèque non trouvée'}), 404
 
         try:
+            if updates.get('is_default'):
+                cursor.execute('UPDATE libraries SET is_default = 0 WHERE id != ?', (library_id,))
             assignments = ', '.join(f'{column} = ?' for column in updates)
             cursor.execute(f'UPDATE libraries SET {assignments} WHERE id = ?', (*updates.values(), library_id))
             conn.commit()

@@ -428,6 +428,13 @@ class Config:
         ]
 
         # Vérifier quelles colonnes existent
+        # Bibliothèque par défaut : ouverte par « Bibliothèque » et utilisée par les pages
+        # qui ajoutent une série sans demander où (Nouveautés, Top, Sorties...).
+        cursor.execute("PRAGMA table_info(libraries)")
+        library_columns = {row[1] for row in cursor.fetchall()}
+        if library_columns and 'is_default' not in library_columns:
+            cursor.execute("ALTER TABLE libraries ADD COLUMN is_default INTEGER DEFAULT 0")
+
         cursor.execute("PRAGMA table_info(series)")
         existing_columns = {row[1] for row in cursor.fetchall()}
 

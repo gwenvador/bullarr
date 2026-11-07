@@ -54,7 +54,7 @@ function displayLibraries(libs) {
                 <div class="lib-card-head">
                     <span class="lib-card-icon">${svgIcon('library')}</span>
                     <div class="lib-card-title">
-                        <div class="lib-card-name">${escapeHtml(lib.name)}</div>
+                        <div class="lib-card-name">${escapeHtml(lib.name)}${lib.is_default ? ' <span class="lib-card-default" data-tooltip="Ouverte en cliquant sur « Bibliothèque »">Par défaut</span>' : ''}</div>
                         <div class="lib-card-path" title="${escapeHtml(lib.path)}">${svgIcon('folder')}<span>${escapeHtml(lib.path)}</span></div>
                     </div>
                 </div>
@@ -100,6 +100,7 @@ function _setLibraryModalMode(library) {
     document.getElementById('library-name').value = library ? library.name : '';
     path.value = library ? library.path : '';
     document.getElementById('library-description').value = library ? (library.description || '') : '';
+    document.getElementById('library-default').checked = library ? !!library.is_default : false;
 }
 
 function openEditModal(libraryId) {
@@ -143,7 +144,7 @@ async function saveLibraryEdits() {
         const response = await fetch(`/api/libraries/${editingLibraryId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, description })
+            body: JSON.stringify({ name, description, is_default: document.getElementById('library-default').checked })
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Erreur inconnue');
@@ -173,6 +174,13 @@ async function createLibrary(event) {
         });
 
         const data = await response.json();
+
+        if (data.success && data.id && document.getElementById('library-default').checked) {
+            await fetch(`/api/libraries/${data.id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_default: true })
+            });
+        }
 
         if (data.success) {
             if (onboardExisting && data.id) {

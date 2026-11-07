@@ -41,6 +41,20 @@ class LibraryEditTest(unittest.TestCase):
         self.assertEqual(self.client.put('/api/libraries/1', json={'description': ''}).status_code, 200)
         self.assertEqual(self.row(1), ('BD', '/BD', ''))
 
+    def test_default_library_is_unique_listed_first_and_opened(self):
+        self.assertEqual(self.client.get('/').status_code, 200)  # deux bibliothèques, pas de défaut : la liste
+        self.assertEqual(self.client.put('/api/libraries/2', json={'is_default': True}).status_code, 200)
+        libs = self.client.get('/api/libraries').get_json()
+        self.assertEqual([(lib['id'], lib['is_default']) for lib in libs], [(2, True), (1, False)])
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers['Location'].endswith('/library/2'))
+        self.assertEqual(self.client.get('/?all=1').status_code, 200)
+        self.client.put('/api/libraries/1', json={'is_default': True})
+        self.assertEqual([lib['id'] for lib in self.client.get('/api/libraries').get_json() if lib['is_default']], [1])
+        self.client.put('/api/libraries/1', json={'is_default': False})
+        self.assertEqual(self.client.get('/').status_code, 200)
+
     def test_rejects_empty_or_duplicate_name(self):
         self.assertEqual(self.client.put('/api/libraries/1', json={'name': '  '}).status_code, 400)
         response = self.client.put('/api/libraries/1', json={'name': 'Comics'})

@@ -96,7 +96,15 @@
                      qui contient déjà des BD) ; décochable pour une bibliothèque
                      volontairement vide (future zone de téléchargement, rien à scanner
                      tout de suite). Voir startLibraryOnboarding (index.js). -->
-                <label class="lib-check">
+                <label class="lib-check lib-check-default">
+                    <input type="checkbox" id="library-default">
+                    <span>
+                        <strong>Bibliothèque par défaut</strong>
+                        <small>Ouverte directement en cliquant sur « Bibliothèque », et utilisée pour les séries ajoutées depuis Nouveautés, Top, Sorties ou Thèmes.</small>
+                    </span>
+                </label>
+
+                <label class="lib-check lib-check-onboard">
                     <input type="checkbox" id="library-onboard-existing" checked>
                     <span>
                         <strong>Le dossier contient déjà des BD</strong>

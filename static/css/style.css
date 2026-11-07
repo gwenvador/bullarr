@@ -4407,7 +4407,11 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
 .lib-modal-editing .lib-hint-edit { display: block; }
 .lib-modal-editing .lib-hint-create,
 .lib-modal-editing .lib-create-intro,
-.lib-modal-editing .lib-check { display: none; }
+.lib-modal-editing .lib-check-onboard { display: none; }
+.lib-check + .lib-check { margin-top: 10px; }
+.lib-card-default { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; vertical-align: 2px;
+                    font-size: .62em; font-weight: 600; color: var(--color-accent);
+                    background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
 .lib-input-icon input[readonly] { color: var(--color-text-muted); cursor: not-allowed; background: var(--color-surface-alt); }
 
 /* Déplacer des séries vers une autre bibliothèque (openMoveSeriesDialog, library.js) */
