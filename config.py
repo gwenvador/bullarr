@@ -357,6 +357,10 @@ class Config:
             )
         ''')
         
+        # Comptes, listes personnelles et demandes (voir blueprints/auth/roles.py)
+        from blueprints.auth.roles import init_tables as init_role_tables
+        init_role_tables(cursor)
+
         # Table des séries
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS series (

@@ -38,7 +38,7 @@
         @media (max-width:520px) { .login-container { padding:28px 22px; border-radius:20px; } }
     </style>
 </head>
-<body>
+<body data-role="{{ user_role }}">
     <div class="login-container">
         <div class="login-brand">
             <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="">

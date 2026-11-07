@@ -557,6 +557,13 @@ def index():
     cursor.execute('SELECT id, COALESCE(is_default, 0) AS is_default FROM libraries')
     libraries = cursor.fetchall()
     conn.close()
+    from blueprints.auth.roles import filter_libraries
+    libraries = filter_libraries(libraries)
+    if libraries and not any(lib['is_default'] for lib in libraries):
+        # Lecteur sans accès à la bibliothèque par défaut : sa première bibliothèque.
+        from blueprints.auth.roles import has_restrictions
+        if has_restrictions() and not request.args.get('all'):
+            return redirect(url_for('library.library_detail', library_id=libraries[0]['id']))
 
     if not request.args.get('all'):
         default = next((lib for lib in libraries if lib['is_default']), None)
@@ -708,7 +715,8 @@ def libraries():
             })
         
         conn.close()
-        return jsonify(libraries)
+        from blueprints.auth.roles import filter_libraries
+        return jsonify(filter_libraries(libraries))
     
     else:  # POST
         # Créer une nouvelle bibliothèque
@@ -2082,6 +2090,10 @@ def post_volume_reader_progress(volume_id):
         return jsonify({'success': False, 'error': 'Page invalide'}), 400
     if page < 1:
         return jsonify({'success': False, 'error': 'Page invalide'}), 400
+    from blueprints.auth.roles import is_reader
+    if is_reader():
+        # L'avancement Komga est celui du compte administrateur : ne pas le mélanger.
+        return jsonify({'success': True, 'synced': False, 'reason': 'reader'})
     config = load_komga_config()
     if not config.get('enabled') or config.get('sync_read_progress', True) is False:
         return jsonify({'success': True, 'synced': False, 'reason': 'disabled'})
@@ -2472,7 +2484,8 @@ def get_library_series(library_id):
                 for row in cursor.fetchall()
             ]
             conn.close()
-            return jsonify(series_list)
+            from blueprints.auth.roles import apply_personal_lists, filter_visible_series
+            return jsonify(apply_personal_lists(filter_visible_series(series_list)))
 
         cursor.execute('''
             SELECT s.id, s.title, s.path, s.total_volumes, s.missing_volumes, s.has_parts, s.last_scanned, s.added_at,
@@ -2600,7 +2613,8 @@ def get_library_series(library_id):
             })
 
         conn.close()
-        return jsonify(series_list)
+        from blueprints.auth.roles import apply_personal_lists, filter_visible_series
+        return jsonify(apply_personal_lists(filter_visible_series(series_list)))
 
     except Exception as e:
         return jsonify({'error': error_message(e)}), 500
@@ -3211,6 +3225,8 @@ def get_series_details(series_id):
         universes = [{'id': row['id'], 'name': row['name']} for row in cursor.fetchall()]
         conn.close()
 
+        from blueprints.auth.roles import is_reader, apply_personal_lists
+        personal = apply_personal_lists([{'id': series_row['id']}])[0] if is_reader() else None
         return jsonify({
             'id': series_row['id'],
             'title': series_row['title'],
@@ -3221,8 +3237,8 @@ def get_series_details(series_id):
             'is_oneshot': bool(series_row['is_oneshot']),
             'manual_complete_override': bool(series_row['manual_complete_override']),
             'tags': json.loads(series_row['tags']) if series_row['tags'] else [],
-            'to_read_later': bool(series_row['to_read_later']),
-            'is_favorite': bool(series_row['is_favorite']),
+            'to_read_later': personal['to_read_later'] if personal else bool(series_row['to_read_later']),
+            'is_favorite': personal['is_favorite'] if personal else bool(series_row['is_favorite']),
             'bedetheque_complete': series_row['bedetheque_complete'] if series_row['bedetheque_complete'] is None else bool(series_row['bedetheque_complete']),
             'bedetheque_complete_reason': series_row['bedetheque_complete_reason'],
             'filesystem_state': series_row['filesystem_state'],
@@ -8132,6 +8148,9 @@ def set_series_reading_lists(series_id):
         cursor.execute('SELECT 1 FROM series WHERE id = ?', (series_id,))
         if cursor.fetchone() is None:
             return jsonify({'success': False, 'error': 'Série introuvable'}), 404
+        from blueprints.auth.roles import is_reader, set_personal_lists
+        if is_reader():
+            return jsonify({'success': True, **set_personal_lists(series_id, updates)})
         assignments = ', '.join(f'{column} = ?' for column in updates)
         cursor.execute(f'UPDATE series SET {assignments} WHERE id = ?', (*updates.values(), series_id))
         conn.commit()

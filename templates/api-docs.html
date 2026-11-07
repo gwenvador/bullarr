@@ -23,7 +23,7 @@
         @media (max-width: 600px) { .api-route { grid-template-columns: 1fr; } .api-summary { grid-column: 1; } }
     </style>
 </head>
-<body>
+<body data-role="{{ user_role }}">
 <main class="api-docs">
     <h1>API Bullarr</h1>
     <p>{{ count }} routes. Envoyez la clé API (Paramètres → Login → Accès API) dans l'en-tête <code>X-Api-Key</code>,

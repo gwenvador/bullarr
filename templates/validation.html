@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-validation.css') }}?v={{ asset_version('css/style-validation.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
 </head>
-<body>
+<body data-role="{{ user_role }}">
     <div class="container">
         <!-- Navigation verticale -->
         <div class="sidebar-nav">
@@ -21,6 +21,7 @@
             <a href="/" class="nav-link">📚 Bibliothèque</a>
             <a href="/import" class="nav-link">📥 Activités</a>
             <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/demandes" class="nav-link">📮 Demandes</a>
             <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
             <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
             <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>

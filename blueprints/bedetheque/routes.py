@@ -2467,6 +2467,9 @@ def add_series_from_bedetheque():
     library_id = data.get('library_id')
     from_discover = bool(data.get('from_discover'))
     skip_auto_acquire = bool(data.get('skip_auto_acquire'))
+    # Demande d'un lecteur (book_requests.py) : la recherche part même si la recherche
+    # automatique est coupée dans les réglages.
+    force_auto_acquire = bool(data.get('force_auto_acquire'))
 
     if not url or not library_id:
         return jsonify({'success': False, 'error': 'url et library_id requis'}), 400
@@ -2622,7 +2625,7 @@ def add_series_from_bedetheque():
             threading.Thread(
                 target=run_auto_acquire_for_series,
                 args=(current_app._get_current_object(), series_id, series_title, missing),
-                kwargs={'gate_on_global_setting': True},
+                kwargs={'gate_on_global_setting': not force_auto_acquire},
                 daemon=True
             ).start()
             auto_acquire_started = True

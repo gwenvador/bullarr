@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
 </head>
-<body>
+<body data-role="{{ user_role }}">
     <div class="container">
         <!-- Navigation verticale -->
         <div class="sidebar-nav">
@@ -21,6 +21,7 @@
             <a href="/" class="nav-link">📚 Bibliothèque</a>
             <a href="/import" class="nav-link">📥 Activités</a>
             <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/demandes" class="nav-link">📮 Demandes</a>
             <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
             <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
             <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
@@ -1736,6 +1737,28 @@
                             <div id="oidcMessage" class="message"></div>
                         </div>
 
+                        <div class="settings-card" id="usersRolesCard">
+                            <h3>Utilisateurs et rôles</h3>
+                            <p class="settings-help">Les <strong>administrateurs</strong> ont accès à tout. Les <strong>lecteurs</strong> peuvent seulement parcourir, lire, télécharger les fichiers, tenir leurs propres listes (À lire / Favoris) et demander des BD.
+                                Le rôle vient du groupe Pocket ID ci-dessous (laissé vide : tout le monde est administrateur) et peut être forcé compte par compte. La connexion par mot de passe est toujours administrateur.<br>
+                                <strong>Accès</strong> : pour chaque lecteur, les bibliothèques visibles et le contrôle parental (genres Bédéthèque masqués, avec un préréglage « Enfant »).</p>
+                            <div class="form-group">
+                                <label for="adminGroupInput">Groupe Pocket ID des administrateurs</label>
+                                <div class="users-group-row">
+                                    <input type="text" id="adminGroupInput" placeholder="ex. bullarr-admins">
+                                    <button type="button" class="btn btn-primary" onclick="saveAdminGroup()">Enregistrer</button>
+                                </div>
+                                <small>Le client OIDC de Bullarr demande alors aussi le scope <code>groups</code>. Chaque compte doit se reconnecter pour que son groupe soit relu.</small>
+                            </div>
+                            <div class="users-table-wrap">
+                                <table class="users-table">
+                                    <thead><tr><th>Compte</th><th>Groupes</th><th>Rôle</th><th>Forcer</th><th>Accès</th></tr></thead>
+                                    <tbody id="usersRolesBody"><tr><td colspan="5" class="users-empty">Chargement…</td></tr></tbody>
+                                </table>
+                            </div>
+                            <div id="usersRolesMessage" class="message" style="display:none"></div>
+                        </div>
+
                         <div class="settings-card" id="apiAccessCard">
                             <h3>Accès API</h3>
                             <p class="help-text">
@@ -2417,6 +2440,7 @@
     <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
     <script src="{{ url_for('static', filename='js/search-results-table.js') }}?v={{ asset_version('js/search-results-table.js') }}"></script>
     <script src="{{ url_for('static', filename='js/settings.js') }}?v={{ asset_version('js/settings.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings-users.js') }}?v={{ asset_version('js/settings-users.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
 </body>
 </html>

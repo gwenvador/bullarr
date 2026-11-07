@@ -4420,3 +4420,73 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
 .move-series-target:has(input:checked) { border-color: var(--color-accent); }
 .move-series-list { margin: 16px 0 0; padding-left: 18px; font-size: .88em; color: var(--color-text-muted); max-height: 160px; overflow: auto; }
 .move-series-list li { margin: 2px 0; }
+
+
+/* ===== Demandes de BD (templates/requests.html) ===== */
+.request-intro { color: var(--text-secondary, #666); margin: 0 0 14px; }
+.request-search { display: flex; gap: 8px; margin-bottom: 14px; }
+.request-search input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border-color, #ddd); border-radius: 8px; background: var(--input-bg, #fff); color: inherit; font-size: 15px; }
+.request-result, .request-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border-color, #eee); }
+.request-result:first-child, .request-row:first-child { border-top: none; }
+.request-result-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.request-result-title { font-weight: 600; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+a.request-result-title:hover { text-decoration: underline; }
+.request-result-genre, .request-meta { font-size: 13px; color: var(--text-secondary, #777); }
+.request-who { font-weight: 600; margin-right: 6px; }
+.request-who::after { content: ' ·'; font-weight: normal; }
+.request-progress { flex-shrink: 0; font-size: 13px; padding: 3px 9px; border-radius: 999px; background: var(--bg-secondary, #f2f2f2); }
+.request-error .request-meta { color: #c0392b; }
+.request-empty { color: var(--text-secondary, #777); padding: 8px 0; margin: 0; }
+.request-ask { flex-shrink: 0; }
+
+/* ===== Utilisateurs et rôles (Paramètres > Connexion) ===== */
+.users-group-row { display: flex; gap: 8px; }
+.users-group-row input { flex: 1; min-width: 0; }
+.users-table-wrap { overflow-x: auto; margin-top: 12px; }
+.users-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.users-table th, .users-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #eee); vertical-align: middle; }
+.users-sub { font-size: 12px; color: var(--text-secondary, #777); }
+.users-empty { text-align: center; color: var(--text-secondary, #777); }
+.users-me { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--bg-secondary, #eee); }
+.users-group { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 999px; background: var(--bg-secondary, #eee); margin: 1px 0; }
+.users-role { font-weight: 600; }
+.users-role-reader { color: var(--text-secondary, #666); }
+
+/* ===== Compte lecteur (body[data-role="reader"], voir blueprints/auth/roles.py) =====
+   Le serveur refuse déjà ces actions (403) ; on masque simplement leurs boutons. Restent :
+   lire, télécharger, À lire plus tard / Favoris, À lire aussi, Acheter. */
+body[data-role="reader"] .poster-actions,
+body[data-role="reader"] .overview-actions,
+body[data-role="reader"] .series-table-actions,
+body[data-role="reader"] #series-select-mode-btn,
+body[data-role="reader"] button[onclick^="renameCurrentLibrary"],
+body[data-role="reader"] .btn-icon-only[onclick^="openSeriesPathCorrection"],
+body[data-role="reader"] .series-detail-links-trigger[onclick*="series-tags-menu-"],
+body[data-role="reader"] .detail-toolbar-actions > button[onclick^="searchSeriesInSearchTab"],
+body[data-role="reader"] .detail-toolbar-actions > button[onclick^="searchMissingVolume"],
+body[data-role="reader"] .detail-toolbar-actions > button[onclick^="runSeriesAutoAcquire"],
+body[data-role="reader"] .detail-toolbar-actions > button[onclick^="toggleSeriesMonitor"],
+body[data-role="reader"] .detail-toolbar-actions > button[onclick^="openSeriesHistoryModal"],
+body[data-role="reader"] .detail-toolbar-actions > .toolbar-dropdown:has(> button[onclick*="series-metadata-menu-"]),
+body[data-role="reader"] [id^="series-actions-menu-"] > .toolbar-dropdown-item:not([onclick^="setSeriesReadingList"]):not([onclick^="downloadSeriesZip"]):not([onclick^="window.location.href"]),
+body[data-role="reader"] [id^="volume-actions-menu-"] > .toolbar-dropdown-item:not([onclick^="window.location.href"]),
+body[data-role="reader"] .toolbar-dropdown:has(> [id^="volume-missing-actions-gear-"]),
+body[data-role="reader"] .volume-table-row-checkbox,
+body[data-role="reader"] .read-also-add-btn {
+    display: none !important;
+}
+
+.users-access-row > td { background: var(--bg-secondary, #f7f5f0); }
+.users-access-editor { display: flex; flex-direction: column; gap: 14px; padding: 6px 2px; }
+.users-access-section h4 { margin: 0 0 8px; font-size: 14px; }
+.users-check { display: inline-flex; align-items: center; gap: 6px; margin: 0 16px 6px 0; }
+.users-access-tools { display: flex; gap: 8px; margin-bottom: 8px; }
+.users-genres { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; }
+.users-genre-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; padding: 3px 9px; border: 1px solid var(--border-color, #ddd); border-radius: 999px; cursor: pointer; }
+.users-genre-chip:has(input:checked) { border-color: #c0392b; color: #c0392b; }
+.users-genre-chip small { color: var(--text-secondary, #888); }
+.users-access-actions { display: flex; justify-content: flex-end; }
+.users-access-btn { font-size: 13px; padding: 4px 10px; white-space: nowrap; }
+
+#usersRolesCard .settings-help { color: var(--text-secondary, #666); line-height: 1.5; margin: 6px 0 16px; }
+#usersRolesCard h3 { margin-bottom: 4px; }

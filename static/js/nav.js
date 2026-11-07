@@ -904,6 +904,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // l'ancien flash (un échec silencieux qui casse complètement la navigation serait pire
     // que le problème qu'on corrige).
     try {
+    const isReader = document.body?.dataset.role === 'reader';
+    if (isReader) {
+        // Compte lecteur : seulement Bibliothèque et Demandes (le reste renverrait 403).
+        document.querySelectorAll('.sidebar-nav > a.nav-link').forEach(link => {
+            if (!['/', '/demandes'].includes(link.getAttribute('href'))) link.remove();
+        });
+    }
     wrapSidebarNavLinks();
     _resolveActiveNavGroupStorage();
     initActivityGroup();
@@ -960,15 +967,19 @@ document.addEventListener('DOMContentLoaded', function() {
         '.sidebar-nav-scroll > a, #activity-nav-subgroup > a, #actions-nav-subgroup > a, #settings-nav-subgroup > a'
     );
     initSidebarCollapse(navLinksWithSettings);
-    initImportBadge(navLinks);
-    initNouveautesBadge(navLinks);
     initUserBadge();
-    initManualReviewBadge();
-    initConfigSubgroupToggle(navLinks);
-    refreshEnabledDownloadClients().then(() => {
+    if (isReader) {
         window.dispatchEvent(new CustomEvent('download-clients-ready'));
-    });
-    refreshEnabledIntegrations();
+    } else {
+        initImportBadge(navLinks);
+        initNouveautesBadge(navLinks);
+        initManualReviewBadge();
+        initConfigSubgroupToggle(navLinks);
+        refreshEnabledDownloadClients().then(() => {
+            window.dispatchEvent(new CustomEvent('download-clients-ready'));
+        });
+        refreshEnabledIntegrations();
+    }
     } finally {
         const sidebar = document.querySelector('.sidebar-nav');
         if (sidebar) sidebar.style.visibility = 'visible';
@@ -1176,6 +1187,7 @@ const SIDEBAR_ICON_MAP = {
     '📚': 'library',
     '📥': 'download',
     '🎯': 'target',
+    '📮': 'inbox',
     '🔍': 'search',
     '🆕': 'sparkles',
     '↔️': 'arrow-left-right',

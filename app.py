@@ -209,7 +209,12 @@ def create_app(config_name='default'):
                 return int(os.path.getmtime(path))
             except OSError:
                 return 0
-        return {'asset_version': asset_version,
+        try:
+            from blueprints.auth.roles import current_role
+            user_role = current_role()
+        except Exception:
+            user_role = 'admin'
+        return {'asset_version': asset_version, 'user_role': user_role,
                 'app_version': app.config.get('APP_VERSION', ''),
                 'source_url': app.config.get('SOURCE_URL', '')}
 

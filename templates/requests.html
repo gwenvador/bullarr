@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Demandes</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    </head>
+<body data-role="{{ user_role }}">
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Activités</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/demandes" class="nav-link active">📮 Demandes</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon"><svg class="icon header-title-svg" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg></span> <span class="header-title-full">Demander une BD</span><span class="header-title-short">Demandes</span></h1>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+                    <div class="settings-card">
+                        <h2>Demander une série</h2>
+                        <p class="request-intro">Cherchez une série sur Bédéthèque (titre, ou adresse de la fiche). Une fois demandée, elle est ajoutée à la bibliothèque et la recherche des tomes démarre toute seule.</p>
+                        <form id="request-search-form" class="request-search">
+                            <input type="search" id="request-search-input" placeholder="Titre de la série…" autocomplete="off" required>
+                            <button type="submit" class="btn btn-primary">Chercher</button>
+                        </form>
+                        <div id="request-search-results"></div>
+                    </div>
+                    <div class="settings-card">
+                        <h2 id="request-list-title">Mes demandes</h2>
+                        <div id="request-list"><div class="loading"><div class="spinner"></div><p>Chargement...</p></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/requests.js') }}?v={{ asset_version('js/requests.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

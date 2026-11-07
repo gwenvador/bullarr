@@ -15,6 +15,8 @@ import requests
 from . import auth_bp
 from encryption import decrypt
 from .config_store import AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url, generate_api_key
+from .roles import (ROLES, ROLE_READER, PARENTAL_PRESET, all_genres, computed_role, current_role, normalize_groups,
+                    reader_allowed, reader_scope_allowed, record_login, user_key)
 
 # Endpoints toujours accessibles, même quand le SSO/OIDC est activé (sans quoi
 # l'utilisateur ne pourrait jamais atteindre le flux de connexion ou les assets statiques)
@@ -160,6 +162,8 @@ def _get_oidc_client(config):
     client_id = config.get('client_id', '')
     client_secret = config.get('client_secret_decrypted') or decrypt(config.get('client_secret', '')) or ''
     scopes = config.get('scopes') or 'openid profile email'
+    if (config.get('admin_group') or '').strip() and 'groups' not in scopes.split():
+        scopes = f'{scopes} groups'
 
     oauth = OAuth(current_app)
     oauth.register(
@@ -211,6 +215,18 @@ def enforce_login():
             supplied = request.headers.get('X-CSRF-Token', '')
             if not expected or not hmac.compare_digest(expected, supplied):
                 return jsonify({'success': False, 'error': 'Jeton de sécurité manquant ou invalide'}), 403
+        # Compte lecteur : seules les routes de READER_ENDPOINTS (roles.py) sont permises.
+        is_reader_account = current_role(config) == ROLE_READER
+        if is_reader_account and not reader_allowed(request.endpoint, request.method):
+            if request.path.startswith('/api/') or request.method != 'GET':
+                return jsonify({'success': False, 'error': 'Réservé aux administrateurs'}), 403
+            return redirect('/')
+        # Bibliothèques permises et contrôle parental (genres masqués) d'un lecteur.
+        if is_reader_account and not reader_scope_allowed(
+                request.view_args, request.get_json(silent=True) if request.method == 'POST' else None):
+            if request.path.startswith('/api/'):
+                return jsonify({'success': False, 'error': 'Contenu non disponible pour ce compte'}), 404
+            return redirect('/')
         return None
 
     # Keep the post-login destination same-origin. Storing request.url trusted the
@@ -255,6 +271,10 @@ def login_password():
     next_url = session.get('next_url') or '/'
     session.clear()
     session['user'] = {'name': username, 'auth_method': 'password'}
+    try:
+        record_login(session['user'])
+    except Exception:
+        current_app.logger.exception('Compte non enregistré')
     return redirect(next_url)
 
 
@@ -297,7 +317,13 @@ def callback():
             'sub': userinfo.get('sub'),
             'email': userinfo.get('email'),
             'name': userinfo.get('name') or userinfo.get('preferred_username') or userinfo.get('email'),
+            'groups': normalize_groups(userinfo.get('groups')),
+            'auth_method': 'oidc',
         }
+        try:
+            record_login(user)
+        except Exception:
+            current_app.logger.exception('Compte non enregistré')
 
         if session.pop('app_login', False):
             # Application Android : pas de session dans le navigateur, un code à usage unique
@@ -373,7 +399,7 @@ def logout_provider():
 @auth_bp.route('/api/auth/me')
 def current_user():
     """Retourne l'utilisateur de la session courante (ou null si non connecté)"""
-    return jsonify({'user': session.get('user')})
+    return jsonify({'user': session.get('user'), 'role': current_role()})
 
 
 @auth_bp.route('/api/auth/csrf')
@@ -399,7 +425,8 @@ def oidc_config():
             'issuer': config.get('issuer', ''),
             'client_id': config.get('client_id', ''),
             'client_secret': '****' if config.get('client_secret') else '',
-            'scopes': config.get('scopes', 'openid profile email')
+            'scopes': config.get('scopes', 'openid profile email'),
+            'admin_group': config.get('admin_group', ''),
         })
 
     else:  # POST
@@ -437,6 +464,127 @@ def oidc_config():
 
         except Exception as e:
             return jsonify({'success': False, 'error': 'Erreur interne'}), 500
+
+
+@auth_bp.route('/api/auth/users', methods=['GET'])
+def list_users():
+    """Comptes déjà connectés, avec leur rôle (calculé et éventuellement forcé)."""
+    import json as _json
+    from .roles import _connect
+    config = load_oidc_config()
+    admin_group = (config.get('admin_group') or '').strip()
+    conn = _connect()
+    try:
+        rows = conn.execute('SELECT * FROM users ORDER BY last_seen DESC').fetchall()
+    finally:
+        conn.close()
+    me = user_key(session.get('user'))
+    users = []
+    for row in rows:
+        groups = _json.loads(row['groups_json'] or '[]')
+        password = row['auth_method'] == 'password'
+        computed = 'admin' if password else computed_role(groups, admin_group)
+        users.append({
+            'key': row['user_key'], 'name': row['name'], 'email': row['email'],
+            'auth_method': row['auth_method'], 'groups': groups,
+            'computed_role': computed, 'role_override': row['role_override'],
+            'role': row['role_override'] if (row['role_override'] in ROLES and not password) else computed,
+            'is_me': row['user_key'] == me, 'locked': password,
+            'last_seen': row['last_seen'],
+            'allowed_libraries': _json.loads(row['allowed_libraries_json']) if row['allowed_libraries_json'] else None,
+            'blocked_genres': _json.loads(row['blocked_genres_json']) if row['blocked_genres_json'] else [],
+        })
+    return jsonify({'success': True, 'admin_group': admin_group, 'users': users})
+
+
+@auth_bp.route('/api/auth/users/role', methods=['PUT'])
+def set_user_role():
+    """Force le rôle d'un compte (admin / reader), ou revient au rôle calculé (null)."""
+    from .roles import _connect
+    data = request.get_json(silent=True) or {}
+    key = data.get('key') or ''
+    role = data.get('role')
+    if role not in (*ROLES, None):
+        return jsonify({'success': False, 'error': 'Rôle invalide'}), 400
+    if key == user_key(session.get('user')) and role == ROLE_READER:
+        return jsonify({'success': False, 'error': 'Vous ne pouvez pas retirer vos propres droits d\'administrateur'}), 400
+    conn = _connect()
+    try:
+        cursor = conn.execute('UPDATE users SET role_override = ? WHERE user_key = ? AND auth_method != ?',
+                              (role, key, 'password'))
+        conn.commit()
+        changed = cursor.rowcount
+    finally:
+        conn.close()
+    if not changed:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    return jsonify({'success': True})
+
+
+@auth_bp.route('/api/auth/users/access', methods=['PUT'])
+def set_user_access():
+    """Ce qu'un lecteur peut voir : bibliothèques permises (null = toutes) et genres
+    Bédéthèque masqués (contrôle parental). Sans effet sur un administrateur."""
+    import json as _json
+    from .roles import _connect
+    data = request.get_json(silent=True) or {}
+    key = data.get('key') or ''
+    allowed = data.get('allowed_libraries')
+    if allowed is not None:
+        if not isinstance(allowed, list) or not all(str(i).isdigit() for i in allowed):
+            return jsonify({'success': False, 'error': 'Bibliothèques invalides'}), 400
+        allowed = sorted({int(i) for i in allowed})
+    genres = data.get('blocked_genres') or []
+    if not isinstance(genres, list):
+        return jsonify({'success': False, 'error': 'Genres invalides'}), 400
+    genres = sorted({str(gn).strip()[:80] for gn in genres if str(gn).strip()}, key=str.casefold)
+    conn = _connect()
+    try:
+        cursor = conn.execute('UPDATE users SET allowed_libraries_json = ?, blocked_genres_json = ? WHERE user_key = ?',
+                              (_json.dumps(allowed) if allowed is not None else None,
+                               _json.dumps(genres, ensure_ascii=False) if genres else None, key))
+        conn.commit()
+        changed = cursor.rowcount
+    finally:
+        conn.close()
+    if not changed:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    return jsonify({'success': True})
+
+
+@auth_bp.route('/api/auth/genres', methods=['GET'])
+def list_genres():
+    """Genres présents dans la bibliothèque + préréglage « Enfant » du contrôle parental."""
+    return jsonify({'success': True, 'preset': PARENTAL_PRESET,
+                    'genres': [{'name': name, 'count': count} for name, count in all_genres()]})
+
+
+@auth_bp.route('/api/auth/roles', methods=['POST'])
+def save_roles_config():
+    """Groupe OIDC des administrateurs (vide : tout le monde est administrateur)."""
+    data = request.get_json(silent=True) or {}
+    admin_group = (data.get('admin_group') or '').strip()
+    if admin_group and current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'Réservé aux administrateurs'}), 403
+    config = load_oidc_config()
+    me = session.get('user')
+    # Ne pas se couper l'accès : le compte qui enregistre doit rester administrateur.
+    if admin_group and me and me.get('auth_method') != 'password':
+        from .roles import _connect
+        conn = _connect()
+        try:
+            row = conn.execute('SELECT role_override FROM users WHERE user_key = ?', (user_key(me),)).fetchone()
+        finally:
+            conn.close()
+        override = row['role_override'] if row else None
+        if override != 'admin' and computed_role(me.get('groups'), admin_group) != 'admin':
+            return jsonify({'success': False, 'error': (
+                f"Vous n'êtes pas dans le groupe « {admin_group} » : vous perdriez l'accès administrateur. "
+                "Ajoutez-vous au groupe dans Pocket ID puis reconnectez-vous, ou forcez d'abord votre rôle à Admin.")}), 400
+    config['admin_group'] = admin_group
+    if save_oidc_config(config):
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
 
 @auth_bp.route('/api/auth/test', methods=['POST'])
