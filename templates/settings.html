@@ -1725,29 +1725,64 @@
                             <div id="oidcMessage" class="message"></div>
                         </div>
 
-                        <div class="settings-card" id="usersRolesCard">
-                            <h3>Utilisateurs et rôles</h3>
-                            <p class="settings-help">Les <strong>administrateurs</strong> ont accès à tout. Les <strong>lecteurs</strong> peuvent seulement parcourir, lire, télécharger les fichiers, tenir leurs propres listes (À lire / Favoris) et demander des BD.
-                                Les <strong>comptes locaux</strong> se créent ici (identifiant et mot de passe) ; les <strong>comptes OIDC</strong> apparaissent après leur première connexion, avec le rôle donné par le groupe Pocket ID ci-dessous (vide : tout le monde est administrateur), que « Modifier » permet de forcer.<br>
-                                <strong>Accès</strong> : pour chaque lecteur, les bibliothèques visibles et le contrôle parental (genres Bédéthèque masqués, avec un préréglage « Enfant »).</p>
-                            <div class="form-group" id="adminGroupBlock">
-                                <label for="adminGroupInput">Groupe Pocket ID des administrateurs</label>
-                                <div class="users-group-row">
-                                    <input type="text" id="adminGroupInput" placeholder="ex. bullarr-admins">
-                                    <button type="button" class="btn btn-primary" onclick="saveAdminGroup()">Enregistrer</button>
+                        <div class="settings-card ua-card" id="usersRolesCard">
+                            <div class="ua-head">
+                                <div class="ua-head-title">
+                                    <span class="ua-head-icon" data-ua-icon="users"></span>
+                                    <div>
+                                        <h3>Utilisateurs et rôles</h3>
+                                        <p>Comptes, rôles et accès de chaque lecteur.</p>
+                                    </div>
                                 </div>
-                                <small>Le client OIDC de Bullarr demande alors aussi le scope <code>groups</code>. Chaque compte doit se reconnecter pour que son groupe soit relu.</small>
+                                <button type="button" class="btn btn-primary ua-btn" onclick="openCreateAccount()"><span data-ua-icon="user-plus"></span>Créer un compte</button>
                             </div>
-                            <div class="users-toolbar">
-                                <button type="button" class="btn btn-primary" onclick="openCreateAccount()">＋ Créer un compte</button>
+                            <div id="usersCreatePanel" class="ua-panel" hidden></div>
+
+                            <div class="ua-options">
+                                <div class="ua-option">
+                                    <span class="ua-option-icon" data-ua-icon="door-open"></span>
+                                    <div class="ua-option-copy">
+                                        <strong>Inscription ouverte</strong>
+                                        <small>Un lien « Créer un compte » apparaît sur la page de connexion. Chaque demande attend votre validation.</small>
+                                    </div>
+                                    <label class="switch" data-tooltip="Autoriser les demandes de compte">
+                                        <input type="checkbox" id="allowSignup" aria-label="Autoriser les demandes de compte" onchange="saveAllowSignup()">
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="ua-option" id="adminGroupBlock">
+                                    <span class="ua-option-icon" data-ua-icon="shield-check"></span>
+                                    <div class="ua-option-copy">
+                                        <strong>Groupe Pocket ID des administrateurs</strong>
+                                        <small>Les comptes OIDC de ce groupe sont Admin, les autres Lecteur (vide : tout le monde est Admin). Reconnexion nécessaire pour relire le groupe.</small>
+                                        <div class="ua-inline-form">
+                                            <input type="text" id="adminGroupInput" placeholder="ex. bullarr-admins">
+                                            <button type="button" class="btn btn-primary" onclick="saveAdminGroup()">Enregistrer</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div id="usersCreatePanel" class="users-create-panel" hidden></div>
-                            <div class="users-table-wrap">
-                                <table class="users-table">
-                                    <thead><tr><th>Compte</th><th>Type</th><th>Groupes</th><th>Rôle</th><th>Accès</th><th></th></tr></thead>
-                                    <tbody id="usersRolesBody"><tr><td colspan="6" class="users-empty">Chargement…</td></tr></tbody>
-                                </table>
-                            </div>
+
+                            <section id="usersPendingSection" class="ua-section ua-pending" hidden>
+                                <h4 class="ua-section-title"><span data-ua-icon="clock"></span>Demandes en attente <span class="ua-count" id="usersPendingCount"></span></h4>
+                                <div id="usersPendingList" class="ua-list"></div>
+                            </section>
+
+                            <section class="ua-section">
+                                <h4 class="ua-section-title"><span data-ua-icon="users"></span>Comptes <span class="ua-count" id="usersCount"></span></h4>
+                                <div id="usersRolesBody" class="ua-list"><div class="ua-empty">Chargement…</div></div>
+                            </section>
+
+                            <details class="ua-help">
+                                <summary><span data-ua-icon="info"></span>Comment fonctionnent les rôles</summary>
+                                <ul>
+                                    <li><strong>Admin</strong> : accès à tout, paramètres compris.</li>
+                                    <li><strong>Lecteur</strong> : parcourir, lire, télécharger les fichiers, tenir ses listes (À lire / Favoris) et demander des BD.</li>
+                                    <li><strong>Comptes locaux</strong> : créés ici ou par inscription, avec identifiant et mot de passe.</li>
+                                    <li><strong>Comptes OIDC</strong> : apparaissent après leur première connexion ; leur rôle vient du groupe Pocket ID et peut être forcé avec « Modifier ».</li>
+                                    <li><strong>Accès</strong> d’un lecteur : bibliothèques visibles et contrôle parental (genres masqués, préréglage « Enfant »).</li>
+                                </ul>
+                            </details>
                             <div id="usersRolesMessage" class="message" style="display:none"></div>
                         </div>
 

@@ -86,7 +86,8 @@ def init_tables(cursor):
     # Restrictions d'un lecteur : bibliothèques permises (NULL = toutes) et genres
     # Bédéthèque masqués (contrôle parental).
     columns = {row[1] for row in cursor.execute('PRAGMA table_info(users)').fetchall()}
-    for column in ('allowed_libraries_json', 'blocked_genres_json', 'password_hash'):
+    # status : NULL = actif, 'pending' = demande d'inscription à valider par un admin.
+    for column in ('allowed_libraries_json', 'blocked_genres_json', 'password_hash', 'status'):
         if column not in columns:
             cursor.execute(f'ALTER TABLE users ADD COLUMN {column} TEXT')
     # Sessions ouvertes avant revoked_at refusées (compte supprimé, mot de passe changé).

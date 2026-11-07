@@ -1,15 +1,48 @@
 // Carte « Utilisateurs et rôles » (onglet Connexion des paramètres).
-// Comptes locaux : créés ici (identifiant + mot de passe), modifiables et supprimables.
-// Comptes OIDC : apparaissent après leur première connexion ; rôle calculé depuis le groupe
-// d'administrateurs Pocket ID (aucun groupe : tout le monde est Admin), forçable ici.
+// Comptes locaux : créés ici ou par inscription (validée par un admin), modifiables et
+// supprimables. Comptes OIDC : apparaissent après leur première connexion ; rôle calculé
+// depuis le groupe d'administrateurs Pocket ID (aucun groupe : tout le monde est Admin).
 function usersEscape(value) {
     return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 }
 
 const ROLE_LABELS = {admin: 'Admin', reader: 'Lecteur'};
-const USERS_COLS = 6;
 let usersByKey = {};
 let accessCatalog = null;
+
+function uaIcon(name) {
+    return typeof svgIcon === 'function' ? svgIcon(name, 'ua-icon') : '';
+}
+
+function uaInitials(text) {
+    const words = String(text || '?').replace(/[@._-]+/g, ' ').trim().split(/\s+/);
+    return ((words[0] || '?')[0] + (words.length > 1 ? words[words.length - 1][0] : (words[0][1] || ''))).toUpperCase();
+}
+
+function uaHue(text) {
+    let hash = 0;
+    for (const char of String(text)) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+    return hash;
+}
+
+// Dates SQLite (UTC, « AAAA-MM-JJ HH:MM:SS ») → « 7 nov. 2026 ».
+function uaDate(value) {
+    if (!value) return '';
+    const date = new Date(String(value).replace(' ', 'T') + 'Z');
+    return isNaN(date) ? '' : date.toLocaleDateString('fr-FR', {day: 'numeric', month: 'short', year: 'numeric'});
+}
+
+function uaIdentity(user) {
+    const title = user.name || user.username || user.email || user.key;
+    const meta = [];
+    if (user.type === 'local' && user.username) meta.push(`${uaIcon('at-sign')}${usersEscape(user.username)}`);
+    if (user.email) meta.push(`${uaIcon('mail')}${usersEscape(user.email)}`);
+    return `<span class="ua-avatar" style="--ua-hue:${uaHue(user.key)}" aria-hidden="true">${usersEscape(uaInitials(title))}</span>
+        <div class="ua-ident">
+            <div class="ua-name">${usersEscape(title)}${user.is_me ? '<span class="ua-me">vous</span>' : ''}</div>
+            ${meta.length ? `<div class="ua-meta">${meta.map(m => `<span>${m}</span>`).join('')}</div>` : ''}
+        </div>`;
+}
 
 function accessSummary(user) {
     const parts = [];
@@ -39,7 +72,7 @@ async function toggleAccessEditor(key) {
     // Genres bloqués absents de la bibliothèque actuelle (ou du préréglage) restent listés.
     const genreNames = [...new Set([...catalog.genres.map(g => g.name), ...catalog.preset, ...user.blocked_genres])];
     const counts = Object.fromEntries(catalog.genres.map(g => [g.name, g.count]));
-    row.querySelector('td').innerHTML = `
+    row.innerHTML = `
         <div class="users-access-editor">
             <div class="users-access-section">
                 <h4>Bibliothèques visibles</h4>
@@ -102,8 +135,8 @@ function showUsersMessage(text, ok) {
     box.style.display = text ? 'block' : 'none';
 }
 
-async function usersRequest(method, payload) {
-    const response = await fetch('/api/auth/users', {
+async function usersRequest(method, payload, url = '/api/auth/users') {
+    const response = await fetch(url, {
         method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({}));
@@ -121,20 +154,24 @@ function roleOptions(user) {
             <option value="reader" ${isReader ? 'selected' : ''} ${user && user.is_me ? 'disabled' : ''}>Lecteur</option>`;
 }
 
-// Formulaire de création (user absent) ou d'édition, affiché dans une ligne sous le compte.
+// Formulaire de création (user absent) ou d'édition, affiché sous le compte.
 function accountForm(user) {
     const local = !user || user.type === 'local';
-    return `<form class="users-account-form" autocomplete="off">
+    return `<form class="ua-form" autocomplete="off">
+        <div class="ua-form-title">${uaIcon(user ? 'pencil' : 'user-plus')}${user ? 'Modifier le compte' : 'Nouveau compte local'}</div>
+        <div class="ua-form-grid">
         ${!user ? `<label>Identifiant<input type="text" name="username" required minlength="2" maxlength="64"
                     pattern="[A-Za-z0-9._@\\-]+" placeholder="ex. camille" autocomplete="off"></label>` : ''}
         ${local ? `<label>Nom affiché<input type="text" name="name" maxlength="120" value="${usersEscape(user ? user.name : '')}"></label>
             <label>E-mail<input type="email" name="email" maxlength="200" value="${usersEscape(user ? user.email : '')}"></label>
             <label>${user ? 'Nouveau mot de passe <small>(vide : inchangé)</small>' : 'Mot de passe <small>(8 caractères min.)</small>'}
-                <input type="password" name="password" ${user ? '' : 'required'} minlength="8" autocomplete="new-password"></label>` : ''}
+                <input type="password" name="password" ${user ? '' : 'required'} minlength="8" autocomplete="new-password"></label>`
+            : '<p class="ua-form-note">Le nom et l’e-mail d’un compte OIDC viennent de Pocket ID.</p>'}
         <label>Rôle<select name="role">${roleOptions(user)}</select></label>
-        <div class="users-form-actions">
-            <button type="button" class="btn users-form-cancel">Annuler</button>
-            <button type="submit" class="btn btn-primary">${user ? 'Enregistrer' : 'Créer le compte'}</button>
+        </div>
+        <div class="ua-form-actions">
+            <button type="button" class="btn ua-btn-ghost users-form-cancel">Annuler</button>
+            <button type="submit" class="btn btn-primary ua-btn">${uaIcon('check')}${user ? 'Enregistrer' : 'Créer le compte'}</button>
         </div>
     </form>`;
 }
@@ -175,15 +212,21 @@ function openCreateAccount() {
     bindAccountForm(panel, null, () => { panel.hidden = true; });
 }
 
+function closeDrawers(except) {
+    document.querySelectorAll('#usersRolesCard .ua-drawer').forEach(drawer => {
+        if (drawer !== except) drawer.hidden = true;
+    });
+}
+
 function openEditAccount(key) {
-    const row = document.getElementById(`users-edit-${key}`);
+    const drawer = document.getElementById(`users-edit-${key}`);
     const user = usersByKey[key];
-    if (!row || !user) return;
-    if (!row.hidden) { row.hidden = true; return; }
-    const cell = row.querySelector('td');
-    cell.innerHTML = accountForm(user);
-    row.hidden = false;
-    bindAccountForm(cell, user, () => { row.hidden = true; });
+    if (!drawer || !user) return;
+    if (!drawer.hidden) { drawer.hidden = true; return; }
+    closeDrawers(drawer);
+    drawer.innerHTML = accountForm(user);
+    drawer.hidden = false;
+    bindAccountForm(drawer, user, () => { drawer.hidden = true; });
 }
 
 async function deleteAccount(key) {
@@ -200,6 +243,66 @@ async function deleteAccount(key) {
     if (result.ok) loadUsersRoles();
 }
 
+async function approveRequest(key, role) {
+    const result = await usersRequest('POST', {key, role}, '/api/auth/users/approve');
+    showUsersMessage(result.ok ? 'Compte validé : la personne peut maintenant se connecter' : (result.data.error || 'Erreur'), result.ok);
+    if (result.ok) loadUsersRoles();
+}
+
+async function rejectRequest(key) {
+    const user = usersByKey[key];
+    if (!user || !confirm(`Refuser la demande de « ${user.name || user.username} » ? Elle sera supprimée.`)) return;
+    const result = await usersRequest('DELETE', {key});
+    showUsersMessage(result.ok ? 'Demande refusée' : (result.data.error || 'Erreur'), result.ok);
+    if (result.ok) loadUsersRoles();
+}
+
+function pendingRow(user) {
+    const key = usersEscape(user.key);
+    return `<div class="ua-row ua-row-pending">
+        <div class="ua-main">
+            ${uaIdentity(user)}
+            <div class="ua-tags"><span class="ua-tag ua-tag-wait">${uaIcon('clock')}Demandé le ${usersEscape(uaDate(user.first_seen))}</span></div>
+            <div class="ua-actions">
+                <select class="ua-approve-role" data-key="${key}" aria-label="Rôle à donner">
+                    <option value="reader" selected>Lecteur</option><option value="admin">Admin</option>
+                </select>
+                <button type="button" class="btn ua-btn ua-btn-ok ua-approve" data-key="${key}">${uaIcon('check')}Valider</button>
+                <button type="button" class="btn ua-btn ua-btn-no ua-reject" data-key="${key}">${uaIcon('x')}Refuser</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function userRow(user) {
+    const key = usersEscape(user.key);
+    const typeTag = user.type === 'oidc'
+        ? `<span class="ua-tag ua-tag-oidc" data-tooltip="Connexion via Pocket ID">${uaIcon('shield-check')}OIDC</span>`
+        : `<span class="ua-tag ua-tag-local" data-tooltip="Identifiant et mot de passe Bullarr">${uaIcon('key-round')}Local</span>`;
+    const roleTag = user.role === 'admin'
+        ? `<span class="ua-tag ua-tag-admin">${uaIcon('crown')}Admin</span>`
+        : `<span class="ua-tag ua-tag-reader">${uaIcon('book-open')}Lecteur</span>`;
+    const forced = user.type === 'oidc' && user.role_override ? '<span class="ua-tag ua-tag-muted" data-tooltip="Rôle forcé, le groupe Pocket ID est ignoré">forcé</span>' : '';
+    const groups = user.groups.map(g => `<span class="ua-tag ua-tag-muted">${usersEscape(g)}</span>`).join('');
+    const seen = user.last_seen ? `<span class="ua-seen" data-tooltip="Dernière connexion">${uaIcon('clock')}${usersEscape(uaDate(user.last_seen))}</span>` : '';
+    const access = user.role === 'reader'
+        ? `<button type="button" class="ua-access users-access-btn" data-key="${key}" data-tooltip="Bibliothèques et contrôle parental">${uaIcon('sliders-horizontal')}<span>${usersEscape(accessSummary(user))}</span></button>`
+        : `<span class="ua-access ua-access-all">${uaIcon('library')}Accès complet</span>`;
+    return `<div class="ua-row">
+        <div class="ua-main">
+            ${uaIdentity(user)}
+            <div class="ua-tags">${roleTag}${typeTag}${forced}${groups}</div>
+            <div class="ua-side">${access}${seen}</div>
+            <div class="ua-actions">
+                <button type="button" class="ua-icon-btn users-edit-btn" data-key="${key}" aria-label="Modifier" data-tooltip="Modifier">${uaIcon('pencil')}</button>
+                ${user.is_me ? '' : `<button type="button" class="ua-icon-btn ua-icon-danger users-delete-btn" data-key="${key}" aria-label="Supprimer" data-tooltip="Supprimer">${uaIcon('trash-2')}</button>`}
+            </div>
+        </div>
+        <div class="ua-drawer" id="users-edit-${key}" hidden></div>
+        <div class="ua-drawer users-access-row" id="users-access-${key}" hidden></div>
+    </div>`;
+}
+
 async function loadUsersRoles() {
     const body = document.getElementById('usersRolesBody');
     if (!body) return;
@@ -212,45 +315,51 @@ async function loadUsersRoles() {
         document.getElementById('adminGroupInput').value = data.admin_group || '';
         const groupBlock = document.getElementById('adminGroupBlock');
         if (groupBlock) groupBlock.hidden = !data.oidc_enabled;
-        if (!data.users.length) {
-            body.innerHTML = `<tr><td colspan="${USERS_COLS}" class="users-empty">Aucun compte pour le moment. Créez-en un avec « Créer un compte ».</td></tr>`;
-            return;
-        }
-        body.innerHTML = data.users.map(user => {
-            const key = usersEscape(user.key);
-            const title = user.name || user.username || user.email || user.key;
-            const sub = [user.type === 'local' && user.username && user.username !== title ? user.username : '',
-                         user.email && user.email !== title ? user.email : ''].filter(Boolean).join(' · ');
-            return `<tr>
-                <td><strong>${usersEscape(title)}</strong>${user.is_me ? ' <span class="users-me">vous</span>' : ''}
-                    ${sub ? `<div class="users-sub">${usersEscape(sub)}</div>` : ''}</td>
-                <td><span class="users-type users-type-${user.type}">${user.type === 'oidc' ? 'OIDC' : 'Local'}</span></td>
-                <td>${user.groups.length ? user.groups.map(g => `<span class="users-group">${usersEscape(g)}</span>`).join(' ') : '<span class="users-sub">—</span>'}</td>
-                <td><span class="users-role users-role-${user.role}">${ROLE_LABELS[user.role]}</span>${user.role_override && user.type === 'oidc' ? ' <span class="users-sub">(forcé)</span>' : ''}</td>
-                <td>${user.role === 'reader'
-                    ? `<button type="button" class="btn users-access-btn" data-key="${key}">${usersEscape(accessSummary(user))}</button>`
-                    : '<span class="users-sub">Tout</span>'}</td>
-                <td class="users-actions">
-                    <button type="button" class="btn users-edit-btn" data-key="${key}">Modifier</button>
-                    ${user.is_me ? '' : `<button type="button" class="btn btn-danger users-delete-btn" data-key="${key}">Supprimer</button>`}
-                </td>
-            </tr>
-            <tr class="users-access-row" id="users-edit-${key}" hidden><td colspan="${USERS_COLS}"></td></tr>
-            <tr class="users-access-row" id="users-access-${key}" hidden><td colspan="${USERS_COLS}"></td></tr>`;
-        }).join('');
+        const signup = document.getElementById('allowSignup');
+        if (signup) signup.checked = !!data.allow_signup;
         usersByKey = Object.fromEntries(data.users.map(user => [user.key, user]));
-        body.querySelectorAll('.users-access-btn').forEach(button => {
-            button.addEventListener('click', () => toggleAccessEditor(button.dataset.key));
+
+        const pending = data.users.filter(user => user.status === 'pending');
+        const active = data.users.filter(user => user.status !== 'pending');
+        const pendingSection = document.getElementById('usersPendingSection');
+        pendingSection.hidden = !pending.length;
+        document.getElementById('usersPendingCount').textContent = pending.length || '';
+        document.getElementById('usersPendingList').innerHTML = pending.map(pendingRow).join('');
+        document.getElementById('usersCount').textContent = active.length || '';
+        body.innerHTML = active.length ? active.map(userRow).join('')
+            : '<div class="ua-empty">Aucun compte pour le moment. Créez-en un avec « Créer un compte ».</div>';
+
+        const card = document.getElementById('usersRolesCard');
+        card.querySelectorAll('.users-access-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                closeDrawers(document.getElementById(`users-access-${button.dataset.key}`));
+                toggleAccessEditor(button.dataset.key);
+            });
         });
-        body.querySelectorAll('.users-edit-btn').forEach(button => {
+        card.querySelectorAll('.users-edit-btn').forEach(button => {
             button.addEventListener('click', () => openEditAccount(button.dataset.key));
         });
-        body.querySelectorAll('.users-delete-btn').forEach(button => {
+        card.querySelectorAll('.users-delete-btn').forEach(button => {
             button.addEventListener('click', () => deleteAccount(button.dataset.key));
         });
+        card.querySelectorAll('.ua-approve').forEach(button => {
+            const select = card.querySelector(`.ua-approve-role[data-key="${CSS.escape(button.dataset.key)}"]`);
+            button.addEventListener('click', () => approveRequest(button.dataset.key, select ? select.value : 'reader'));
+        });
+        card.querySelectorAll('.ua-reject').forEach(button => {
+            button.addEventListener('click', () => rejectRequest(button.dataset.key));
+        });
     } catch (error) {
-        body.innerHTML = `<tr><td colspan="${USERS_COLS}" class="users-empty">${usersEscape(error.message)}</td></tr>`;
+        body.innerHTML = `<div class="ua-empty">${usersEscape(error.message)}</div>`;
     }
+}
+
+async function saveAllowSignup() {
+    const box = document.getElementById('allowSignup');
+    const result = await usersRequest('PUT', {enabled: box.checked}, '/api/auth/signup');
+    if (!result.ok) box.checked = !box.checked;
+    showUsersMessage(result.ok ? (box.checked ? 'Inscription ouverte : le lien « Créer un compte » est sur la page de connexion'
+                                              : 'Inscription fermée') : (result.data.error || 'Erreur'), result.ok);
 }
 
 async function saveAdminGroup() {
@@ -264,4 +373,9 @@ async function saveAdminGroup() {
     loadUsersRoles();
 }
 
-document.addEventListener('DOMContentLoaded', loadUsersRoles);
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('#usersRolesCard [data-ua-icon]').forEach(el => {
+        el.innerHTML = uaIcon(el.dataset.uaIcon);
+    });
+    loadUsersRoles();
+});

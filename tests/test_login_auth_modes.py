@@ -307,5 +307,81 @@ class LoginPageBehaviourTest(unittest.TestCase):
                                     json={'key': 'password:third', 'role': 'admin'}).status_code, 200)
 
 
+    # --- Inscription validée par un administrateur ---
+
+    def signup(self, client, username='lea', password='lecture-123', confirm=None, **extra):
+        data = {'username': username, 'password': password, 'password_confirm': confirm or password}
+        data.update(extra)
+        return client.post('/signup', data=data)
+
+    def test_signup_is_closed_by_default(self):
+        self.write_config()
+        self.assertEqual(self.client.get('/signup').status_code, 302)
+        self.assertNotIn('/signup', self.page()[1])
+        self.assertEqual(self.signup(self.client).status_code, 302)
+        conn = sqlite3.connect(self.db_path)
+        self.assertEqual(conn.execute('SELECT COUNT(*) FROM users').fetchone()[0], 0)
+        conn.close()
+
+    def test_signup_creates_a_pending_account_that_the_admin_approves(self):
+        self.write_config(allow_signup=True)
+        self.assertIn('href="/signup"', self.page()[1])
+        self.assertIn('Envoyer la demande', self.client.get('/signup').get_data(as_text=True))
+        mismatch = self.signup(self.client, confirm='autre-chose')
+        self.assertEqual(mismatch.status_code, 400)
+        sent = self.signup(self.client, name='Léa', email='lea@example.test')
+        self.assertEqual(sent.status_code, 200)
+        self.assertIn('Demande envoyée', sent.get_data(as_text=True))
+        # En attente : bon mot de passe, mais pas de connexion.
+        waiting = self.login(self.app.test_client(), 'lea', 'lecture-123')
+        self.assertEqual(waiting.status_code, 403)
+        self.assertIn('validation', waiting.get_data(as_text=True))
+
+        admin = self._admin_client()
+        headers = {'X-CSRF-Token': 'token'}
+        listing = admin.get('/api/auth/users').get_json()
+        self.assertEqual(listing['pending_count'], 1)
+        pending = [u for u in listing['users'] if u['key'] == 'password:lea'][0]
+        self.assertEqual((pending['status'], pending['role'], pending['name']), ('pending', 'reader', 'Léa'))
+        approved = admin.post('/api/auth/users/approve', headers=headers, json={'key': 'password:lea'})
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(self.login(self.app.test_client(), 'lea', 'lecture-123').status_code, 302)
+        again = admin.post('/api/auth/users/approve', headers=headers, json={'key': 'password:lea'})
+        self.assertEqual(again.status_code, 404)
+
+    def test_rejected_request_is_deleted_and_pending_never_counts_as_admin(self):
+        self.write_config(allow_signup=True)
+        self.signup(self.client, username='intrus')
+        admin = self._admin_client()
+        headers = {'X-CSRF-Token': 'token'}
+        with self.app.app_context():
+            from blueprints.auth import accounts
+            self.assertEqual(accounts.local_admin_count(exclude_key='password:admin'), 0)
+        rejected = admin.delete('/api/auth/users', headers=headers, json={'key': 'password:intrus'})
+        self.assertEqual(rejected.status_code, 200)
+        self.assertEqual(self.login(self.app.test_client(), 'intrus', 'lecture-123').status_code, 401)
+
+    def test_admin_toggles_signup(self):
+        self.write_config()
+        admin = self._admin_client()
+        headers = {'X-CSRF-Token': 'token'}
+        self.assertEqual(admin.put('/api/auth/signup', headers=headers, json={'enabled': True}).status_code, 200)
+        self.assertTrue(admin.get('/api/auth/users').get_json()['allow_signup'])
+        self.assertEqual(self.app.test_client().get('/signup').status_code, 200)
+        reader_free = self.app.test_client()
+        with reader_free.session_transaction() as session:
+            session['csrf_token'] = 'token'
+        self.assertNotEqual(reader_free.put('/api/auth/signup', headers=headers, json={'enabled': False}).status_code, 200)
+        self.assertTrue(admin.get('/api/auth/users').get_json()['allow_signup'])
+
+    def test_background_api_calls_do_not_become_the_post_login_page(self):
+        self.write_config()
+        self.add_account()
+        client = self.app.test_client()
+        client.get('/series/12')
+        client.get('/api/import/pending-count')
+        response = self.login(client)
+        self.assertEqual(response.headers['Location'], '/series/12')
+
 if __name__ == '__main__':
     unittest.main()

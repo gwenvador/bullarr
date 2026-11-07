@@ -24,6 +24,7 @@ from .roles import (ROLES, ROLE_READER, PARENTAL_PRESET, all_genres, computed_ro
 # l'utilisateur ne pourrait jamais atteindre le flux de connexion ou les assets statiques)
 _PUBLIC_ENDPOINTS = {
     'auth.login', 'auth.login_password', 'auth.login_redirect', 'auth.callback', 'auth.app_login',
+    'auth.signup',
     'auth.logout', 'auth.logout_provider',
     'static', 'serve_cover',
     # Serveur MCP : authentifié par son propre jeton (BULLARR_MCP_TOKEN), pas par la session
@@ -149,13 +150,18 @@ def _api_key_status(config):
     return bool(expected) and hmac.compare_digest(expected, supplied)
 
 
-def _render_login(config, error=None, status=200):
-    """Page de connexion: formulaire et/ou bouton SSO selon le mode configuré."""
+def _signup_enabled(config):
+    return _auth_mode(config) == 'auth' and bool(config.get('allow_signup'))
+
+
+def _render_login(config, error=None, status=200, view='login', notice=None, form=None):
+    """Page de connexion (formulaire et/ou bouton SSO) ou d'inscription (view='signup')."""
     oidc_ready = _oidc_ready(config)
-    if _oidc_enabled(config) and not oidc_ready and not error:
+    if view == 'login' and _oidc_enabled(config) and not oidc_ready and not error:
         error = "Configuration OIDC incomplète : vérifiez l'issuer et le client ID dans les paramètres."
     return render_template(
-        'login.html', password_enabled=_password_enabled(config), oidc_enabled=oidc_ready, error=error
+        'login.html', password_enabled=_password_enabled(config), oidc_enabled=oidc_ready, error=error,
+        signup_enabled=_signup_enabled(config), view=view, notice=notice, form=form or {},
     ), status
 
 
@@ -244,7 +250,11 @@ def enforce_login():
     if (request.path.startswith('/api/') and request.accept_mimetypes.accept_json
             and not request.accept_mimetypes.accept_html):
         return jsonify({'success': False, 'error': 'Authentification requise : envoyez la clé API dans l\'en-tête X-Api-Key'}), 401
-    session['next_url'] = request.full_path if request.query_string else request.path
+    # Seule une page ouverte par l'utilisateur sert de retour après connexion : un appel
+    # d'arrière-plan (badges de la barre, /api/import/pending-count…) arrivé après
+    # l'expiration de la session renvoyait sinon sur du JSON une fois connecté.
+    if request.method == 'GET' and not request.path.startswith('/api/'):
+        session['next_url'] = request.full_path if request.query_string else request.path
     return redirect(url_for('auth.login'))
 
 
@@ -263,6 +273,32 @@ def login():
     return _render_login(config)
 
 
+@auth_bp.route('/signup', methods=['GET', 'POST'])
+def signup():
+    """Demande de compte : créé en attente, un administrateur le valide ou le refuse."""
+    config = load_oidc_config()
+    if not _signup_enabled(config):
+        return redirect(url_for('auth.login'))
+    if request.method == 'GET':
+        return _render_login(config, view='signup')
+    address = request.remote_addr or ''
+    form = {key: (request.form.get(key) or '').strip() for key in ('username', 'name', 'email')}
+    if _password_login_blocked(address):
+        return _render_login(config, view='signup', form=form, status=429,
+                             error='Trop de tentatives. Réessayez dans une minute.')
+    _record_password_login_failure(address)  # chaque demande compte dans la limite par adresse
+    password = request.form.get('password') or ''
+    if password != (request.form.get('password_confirm') or ''):
+        return _render_login(config, view='signup', form=form, status=400,
+                             error='Les deux mots de passe ne correspondent pas.')
+    try:
+        accounts.request_account(form['username'], password, name=form['name'], email=form['email'])
+    except accounts.AccountError as error:
+        return _render_login(config, view='signup', form=form, status=400, error=str(error))
+    return _render_login(config, notice=(
+        'Demande envoyée. Vous pourrez vous connecter dès qu’un administrateur aura validé votre compte.'))
+
+
 @auth_bp.route('/login/password', methods=['POST'])
 def login_password():
     config = load_oidc_config()
@@ -271,9 +307,12 @@ def login_password():
         return _render_login(config, error='Trop de tentatives de connexion. Réessayez dans une minute.', status=429)
     username = (request.form.get('username') or '').strip()
     password = request.form.get('password') or ''
-    if not _password_enabled(config) or accounts.authenticate(username, password) is None:
+    row = accounts.authenticate(username, password) if _password_enabled(config) else None
+    if row is None:
         _record_password_login_failure(address)
         return _render_login(config, error='Identifiant ou mot de passe incorrect.', status=401)
+    if row['status'] == accounts.STATUS_PENDING:
+        return _render_login(config, error='Votre demande de compte attend la validation d’un administrateur.', status=403)
     with _app_login_lock:
         _password_login_failures.pop(address, None)
     next_url = session.get('next_url') or '/'
@@ -508,12 +547,38 @@ def list_users():
             'type': 'local' if local else 'oidc', 'auth_method': row['auth_method'], 'groups': groups,
             'computed_role': computed, 'role_override': row['role_override'],
             'role': row['role_override'] if row['role_override'] in ROLES else computed,
-            'is_me': row['user_key'] == me, 'last_seen': row['last_seen'],
+            'is_me': row['user_key'] == me, 'last_seen': row['last_seen'], 'first_seen': row['first_seen'],
+            'status': row['status'] or 'active',
             'allowed_libraries': _json.loads(row['allowed_libraries_json']) if row['allowed_libraries_json'] else None,
             'blocked_genres': _json.loads(row['blocked_genres_json']) if row['blocked_genres_json'] else [],
         })
     return jsonify({'success': True, 'admin_group': admin_group, 'users': users,
-                    'oidc_enabled': _oidc_enabled(config)})
+                    'oidc_enabled': _oidc_enabled(config), 'allow_signup': bool(config.get('allow_signup')),
+                    'pending_count': sum(1 for user in users if user['status'] == 'pending')})
+
+
+@auth_bp.route('/api/auth/users/approve', methods=['POST'])
+def approve_user():
+    """Valide une demande d'inscription (rôle Lecteur par défaut). Refuser = DELETE."""
+    data = request.get_json(silent=True) or {}
+    try:
+        approved = accounts.approve_account(data.get('key') or '', data.get('role') or 'reader')
+    except accounts.AccountError as error:
+        return jsonify({'success': False, 'error': str(error)}), 400
+    if not approved:
+        return jsonify({'success': False, 'error': 'Demande introuvable'}), 404
+    return jsonify({'success': True})
+
+
+@auth_bp.route('/api/auth/signup', methods=['PUT'])
+def set_signup():
+    """Active ou non le lien « Créer un compte » de la page de connexion."""
+    data = request.get_json(silent=True) or {}
+    config = load_oidc_config()
+    config['allow_signup'] = bool(data.get('enabled'))
+    if save_oidc_config(config):
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
 
 def _last_local_admin(key):

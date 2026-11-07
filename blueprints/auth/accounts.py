@@ -18,6 +18,8 @@ from .roles import ROLE_ADMIN, ROLES, _connect
 
 USERNAME_RE = re.compile(r'^[A-Za-z0-9._@-]{2,64}$')
 MIN_PASSWORD_LENGTH = 8
+STATUS_PENDING = 'pending'
+MAX_PENDING_REQUESTS = 50
 
 
 class AccountError(ValueError):
@@ -82,13 +84,13 @@ def local_admin_count(exclude_key=None):
     try:
         return conn.execute(
             "SELECT COUNT(*) FROM users WHERE auth_method = 'password' AND password_hash IS NOT NULL "
-            "AND COALESCE(role_override, 'admin') = 'admin' AND user_key != ?",
+            "AND COALESCE(role_override, 'admin') = 'admin' AND status IS NULL AND user_key != ?",
             (exclude_key or '',)).fetchone()[0]
     finally:
         conn.close()
 
 
-def create_local_account(username, password, name=None, email=None, role=ROLE_ADMIN):
+def create_local_account(username, password, name=None, email=None, role=ROLE_ADMIN, status=None):
     username = (username or '').strip()
     if not USERNAME_RE.match(username):
         raise AccountError('Identifiant invalide : 2 à 64 caractères, lettres, chiffres, . _ @ -')
@@ -100,14 +102,43 @@ def create_local_account(username, password, name=None, email=None, role=ROLE_AD
         if conn.execute('SELECT 1 FROM users WHERE user_key = ?', (local_key(username),)).fetchone():
             raise AccountError('Ce compte existe déjà')
         conn.execute('''
-            INSERT INTO users (user_key, name, email, auth_method, password_hash, role_override)
-            VALUES (?, ?, ?, 'password', ?, ?)''',
+            INSERT INTO users (user_key, name, email, auth_method, password_hash, role_override, status)
+            VALUES (?, ?, ?, 'password', ?, ?, ?)''',
             (local_key(username), (name or '').strip() or username, (email or '').strip() or None,
-             generate_password_hash(password), role))
+             generate_password_hash(password), role, status))
         conn.commit()
     finally:
         conn.close()
     return local_key(username)
+
+
+def pending_count():
+    conn = _connect()
+    try:
+        return conn.execute('SELECT COUNT(*) FROM users WHERE status = ?', (STATUS_PENDING,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def request_account(username, password, name=None, email=None):
+    """Demande d'inscription depuis la page de connexion : compte lecteur en attente,
+    qui ne peut pas se connecter tant qu'un administrateur ne l'a pas validé."""
+    if pending_count() >= MAX_PENDING_REQUESTS:
+        raise AccountError('Trop de demandes en attente : réessayez plus tard')
+    return create_local_account(username, password, name=name, email=email, role='reader', status=STATUS_PENDING)
+
+
+def approve_account(key, role='reader'):
+    if role not in ROLES:
+        raise AccountError('Rôle invalide')
+    conn = _connect()
+    try:
+        changed = conn.execute('UPDATE users SET status = NULL, role_override = ? WHERE user_key = ? AND status = ?',
+                               (role, key, STATUS_PENDING)).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return bool(changed)
 
 
 def get_user(key):
