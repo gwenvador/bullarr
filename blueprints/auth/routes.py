@@ -14,7 +14,9 @@ import requests
 
 from . import auth_bp
 from encryption import decrypt
-from .config_store import AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url, generate_api_key
+from .config_store import (AUTH_MODES, LEGACY_AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url,
+                           generate_api_key)
+from . import accounts
 from .roles import (ROLES, ROLE_READER, PARENTAL_PRESET, all_genres, computed_role, current_role, normalize_groups,
                     reader_allowed, reader_scope_allowed, record_login, user_key)
 
@@ -106,15 +108,18 @@ def _consume_app_login_code(code, address):
 
 
 def _auth_mode(config):
-    return config.get('mode') or ('oidc' if config.get('enabled', False) else 'none')
+    # Un ancien mode non normalisé (password / oidc / both) reste une authentification.
+    mode = config.get('mode')
+    return 'auth' if mode == 'auth' or mode in LEGACY_AUTH_MODES else 'none'
 
 
 def _password_enabled(config):
-    return _auth_mode(config) in {'password', 'both'}
+    """Avec l'authentification, le formulaire des comptes locaux est toujours proposé."""
+    return _auth_mode(config) == 'auth'
 
 
 def _oidc_enabled(config):
-    return _auth_mode(config) in {'oidc', 'both'}
+    return _auth_mode(config) == 'auth' and bool(config.get('oidc_enabled'))
 
 
 def _oidc_ready(config):
@@ -149,8 +154,6 @@ def _render_login(config, error=None, status=200):
     oidc_ready = _oidc_ready(config)
     if _oidc_enabled(config) and not oidc_ready and not error:
         error = "Configuration OIDC incomplète : vérifiez l'issuer et le client ID dans les paramètres."
-        if not _password_enabled(config):
-            status = 500
     return render_template(
         'login.html', password_enabled=_password_enabled(config), oidc_enabled=oidc_ready, error=error
     ), status
@@ -209,6 +212,12 @@ def enforce_login():
     if mode == 'none':
         return None
 
+    if session.get('user') and accounts.session_revoked(user_key(session['user']), session.get('login_at')):
+        session.clear()
+        if request.path.startswith('/api/'):
+            return jsonify({'success': False, 'error': 'Session expirée, reconnectez-vous'}), 401
+        return redirect(url_for('auth.login'))
+
     if session.get('user'):
         if request.method not in {'GET', 'HEAD', 'OPTIONS'}:
             expected = session.get('csrf_token')
@@ -262,8 +271,7 @@ def login_password():
         return _render_login(config, error='Trop de tentatives de connexion. Réessayez dans une minute.', status=429)
     username = (request.form.get('username') or '').strip()
     password = request.form.get('password') or ''
-    if (not _password_enabled(config) or not username or username != config.get('username')
-            or not config.get('password_hash') or not check_password_hash(config['password_hash'], password)):
+    if not _password_enabled(config) or accounts.authenticate(username, password) is None:
         _record_password_login_failure(address)
         return _render_login(config, error='Identifiant ou mot de passe incorrect.', status=401)
     with _app_login_lock:
@@ -271,6 +279,7 @@ def login_password():
     next_url = session.get('next_url') or '/'
     session.clear()
     session['user'] = {'name': username, 'auth_method': 'password'}
+    session['login_at'] = time.time()
     try:
         record_login(session['user'])
     except Exception:
@@ -331,6 +340,7 @@ def callback():
             return redirect(f'{APP_LOGIN_REDIRECT}?code={_issue_app_login_code(user)}')
 
         session['user'] = user
+        session['login_at'] = time.time()
         next_url = session.pop('next_url', None) or '/'
         return redirect(next_url)
     except Exception as e:
@@ -354,6 +364,7 @@ def app_login():
         return jsonify({'success': False, 'error': 'Code invalide ou expiré'}), 400
     session.clear()
     session['user'] = {**user, 'auth_method': 'oidc-app'}
+    session['login_at'] = time.time()
     session['csrf_token'] = secrets.token_urlsafe(32)
     return jsonify({'success': True, 'user': session['user']})
 
@@ -419,8 +430,8 @@ def oidc_config():
 
         return jsonify({
             'mode': _auth_mode(config),
-            'username': config.get('username', ''),
-            'enabled': config.get('enabled', False),
+            'oidc_enabled': bool(config.get('oidc_enabled')),
+            'enabled': _auth_mode(config) != 'none',
             'auto_redirect': bool(config.get('auto_redirect', False)),
             'issuer': config.get('issuer', ''),
             'client_id': config.get('client_id', ''),
@@ -435,21 +446,28 @@ def oidc_config():
             config = load_oidc_config()
 
             mode = new_config.get('mode', 'none')
-            if mode not in AUTH_MODES:
+            if mode in LEGACY_AUTH_MODES:  # anciens clients (application, scripts)
+                oidc_enabled = LEGACY_AUTH_MODES[mode][0]
+                mode = 'auth'
+            elif mode in AUTH_MODES:
+                oidc_enabled = bool(new_config.get('oidc_enabled'))
+            else:
                 return jsonify({'success': False, 'error': 'Mode d’authentification invalide'}), 400
             config['mode'] = mode
             config['enabled'] = mode != 'none'
-            config['username'] = (new_config.get('username') or '').strip()
-            new_password = new_config.get('password') or ''
-            if new_password:
-                config['password_hash'] = generate_password_hash(new_password)
-            if mode in {'password', 'both'} and (not config.get('username') or not config.get('password_hash')):
-                return jsonify({'success': False, 'error': 'Un identifiant et un mot de passe sont requis'}), 400
+            config['oidc_enabled'] = oidc_enabled
+            config.pop('username', None)
+            config.pop('password_hash', None)
             config['issuer'] = normalize_issuer_url(new_config.get('issuer', ''))
             config['client_id'] = new_config.get('client_id', '').strip()
             config['scopes'] = (new_config.get('scopes') or 'openid profile email').strip()
-            if mode in {'oidc', 'both'} and (not config['issuer'] or not config['client_id']):
+            if oidc_enabled and (not config['issuer'] or not config['client_id']):
                 return jsonify({'success': False, 'error': "L'URL de l'issuer et le Client ID sont requis"}), 400
+            # Ne pas se fermer la porte : sans OIDC, il faut un compte administrateur local.
+            if mode == 'auth' and not oidc_enabled and accounts.local_admin_count() == 0:
+                return jsonify({'success': False, 'error': (
+                    "Créez d'abord un compte administrateur (Utilisateurs et rôles, ci-dessous) "
+                    "ou activez la connexion OIDC")}), 400
             config['auto_redirect'] = bool(new_config.get('auto_redirect', False))
 
             # Ne change le secret client que s'il n'est pas masqué
@@ -468,55 +486,121 @@ def oidc_config():
 
 @auth_bp.route('/api/auth/users', methods=['GET'])
 def list_users():
-    """Comptes déjà connectés, avec leur rôle (calculé et éventuellement forcé)."""
+    """Comptes locaux et comptes OIDC déjà connectés, avec leur rôle et leurs accès."""
     import json as _json
     from .roles import _connect
     config = load_oidc_config()
     admin_group = (config.get('admin_group') or '').strip()
     conn = _connect()
     try:
-        rows = conn.execute('SELECT * FROM users ORDER BY last_seen DESC').fetchall()
+        rows = conn.execute("SELECT * FROM users ORDER BY auth_method != 'password', name COLLATE NOCASE").fetchall()
     finally:
         conn.close()
     me = user_key(session.get('user'))
     users = []
     for row in rows:
         groups = _json.loads(row['groups_json'] or '[]')
-        password = row['auth_method'] == 'password'
-        computed = 'admin' if password else computed_role(groups, admin_group)
+        local = row['auth_method'] == 'password'
+        computed = 'admin' if local else computed_role(groups, admin_group)
         users.append({
             'key': row['user_key'], 'name': row['name'], 'email': row['email'],
-            'auth_method': row['auth_method'], 'groups': groups,
+            'username': row['user_key'].split(':', 1)[1] if local else None,
+            'type': 'local' if local else 'oidc', 'auth_method': row['auth_method'], 'groups': groups,
             'computed_role': computed, 'role_override': row['role_override'],
-            'role': row['role_override'] if (row['role_override'] in ROLES and not password) else computed,
-            'is_me': row['user_key'] == me, 'locked': password,
-            'last_seen': row['last_seen'],
+            'role': row['role_override'] if row['role_override'] in ROLES else computed,
+            'is_me': row['user_key'] == me, 'last_seen': row['last_seen'],
             'allowed_libraries': _json.loads(row['allowed_libraries_json']) if row['allowed_libraries_json'] else None,
             'blocked_genres': _json.loads(row['blocked_genres_json']) if row['blocked_genres_json'] else [],
         })
-    return jsonify({'success': True, 'admin_group': admin_group, 'users': users})
+    return jsonify({'success': True, 'admin_group': admin_group, 'users': users,
+                    'oidc_enabled': _oidc_enabled(config)})
+
+
+def _last_local_admin(key):
+    """Vrai si retirer ce compte administrateur local fermerait la porte : authentification
+    active sans OIDC et aucun autre administrateur local."""
+    config = load_oidc_config()
+    if _auth_mode(config) != 'auth' or _oidc_enabled(config):
+        return False
+    row = accounts.get_user(key)
+    if not row or row['auth_method'] != 'password' or (row['role_override'] or 'admin') != 'admin':
+        return False
+    return accounts.local_admin_count(exclude_key=key) == 0
+
+
+def _set_role(key, role):
+    """Rôle forcé (admin / reader) ou rôle calculé (None ; un compte local redevient admin)."""
+    from .roles import _connect
+    if role not in (*ROLES, None):
+        return jsonify({'success': False, 'error': 'Rôle invalide'}), 400
+    if key == user_key(session.get('user')) and role == ROLE_READER:
+        return jsonify({'success': False, 'error': 'Vous ne pouvez pas retirer vos propres droits d\'administrateur'}), 400
+    if role == ROLE_READER and _last_local_admin(key):
+        return jsonify({'success': False, 'error': 'C\'est le dernier administrateur local : créez-en un autre ou activez OIDC'}), 400
+    conn = _connect()
+    try:
+        changed = conn.execute('UPDATE users SET role_override = ? WHERE user_key = ?', (role, key)).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    if not changed:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    return None
 
 
 @auth_bp.route('/api/auth/users/role', methods=['PUT'])
 def set_user_role():
     """Force le rôle d'un compte (admin / reader), ou revient au rôle calculé (null)."""
-    from .roles import _connect
+    data = request.get_json(silent=True) or {}
+    return _set_role(data.get('key') or '', data.get('role')) or jsonify({'success': True})
+
+
+@auth_bp.route('/api/auth/users', methods=['POST'])
+def create_user():
+    """Crée un compte local : identifiant, mot de passe, nom, e-mail, rôle."""
+    data = request.get_json(silent=True) or {}
+    try:
+        key = accounts.create_local_account(data.get('username'), data.get('password') or '',
+                                            name=data.get('name'), email=data.get('email'),
+                                            role=data.get('role') or 'reader')
+    except accounts.AccountError as error:
+        return jsonify({'success': False, 'error': str(error)}), 400
+    return jsonify({'success': True, 'key': key})
+
+
+@auth_bp.route('/api/auth/users', methods=['PUT'])
+def edit_user():
+    """Modifie un compte : nom, e-mail et mot de passe (comptes locaux), rôle (tous)."""
     data = request.get_json(silent=True) or {}
     key = data.get('key') or ''
-    role = data.get('role')
-    if role not in (*ROLES, None):
-        return jsonify({'success': False, 'error': 'Rôle invalide'}), 400
-    if key == user_key(session.get('user')) and role == ROLE_READER:
-        return jsonify({'success': False, 'error': 'Vous ne pouvez pas retirer vos propres droits d\'administrateur'}), 400
-    conn = _connect()
-    try:
-        cursor = conn.execute('UPDATE users SET role_override = ? WHERE user_key = ? AND auth_method != ?',
-                              (role, key, 'password'))
-        conn.commit()
-        changed = cursor.rowcount
-    finally:
-        conn.close()
-    if not changed:
+    row = accounts.get_user(key)
+    if not row:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    if 'role' in data:
+        failure = _set_role(key, data.get('role'))
+        if failure:
+            return failure
+    if row['auth_method'] == 'password':
+        try:
+            accounts.update_account(key, name=data.get('name'), email=data.get('email'),
+                                    password=data.get('password') or None)
+        except accounts.AccountError as error:
+            return jsonify({'success': False, 'error': str(error)}), 400
+        if data.get('password') and key == user_key(session.get('user')):
+            session['login_at'] = time.time()  # garder sa propre session après le changement
+    return jsonify({'success': True})
+
+
+@auth_bp.route('/api/auth/users', methods=['DELETE'])
+def delete_user():
+    """Supprime un compte et coupe ses sessions ouvertes."""
+    data = request.get_json(silent=True) or {}
+    key = data.get('key') or ''
+    if key == user_key(session.get('user')):
+        return jsonify({'success': False, 'error': 'Vous ne pouvez pas supprimer votre propre compte'}), 400
+    if _last_local_admin(key):
+        return jsonify({'success': False, 'error': 'C\'est le dernier administrateur local : créez-en un autre ou activez OIDC'}), 400
+    if not accounts.delete_account(key):
         return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
     return jsonify({'success': True})
 

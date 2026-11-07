@@ -8,9 +8,11 @@ import tempfile
 from flask import current_app
 from encryption import encrypt, decrypt
 
-# none: pas d'authentification; password: formulaire seul; oidc: bouton SSO seul;
-# both: formulaire identifiant/mot de passe ET bouton SSO sur la même page.
-AUTH_MODES = {'none', 'password', 'oidc', 'both'}
+# none : pas d'authentification ; auth : connexion obligatoire avec un compte local
+# (identifiant + mot de passe, voir accounts.py), plus le bouton SSO si oidc_enabled.
+AUTH_MODES = {'none', 'auth'}
+# Anciens modes, convertis au chargement : (oidc activé, ancien compte local actif).
+LEGACY_AUTH_MODES = {'password': (False, True), 'oidc': (True, False), 'both': (True, True)}
 
 
 def load_oidc_config():
@@ -23,10 +25,28 @@ def load_oidc_config():
     else:
         cfg = current_app.config['OIDC_CONFIG'].copy()
 
-    # Backward compatibility: the old boolean enabled meant OIDC.
+    # Anciens modes (password / oidc / both, ou le booléen enabled qui voulait dire OIDC).
     mode = cfg.get('mode')
-    if mode not in AUTH_MODES:
-        cfg['mode'] = 'oidc' if cfg.get('enabled', False) else 'none'
+    if mode in LEGACY_AUTH_MODES:
+        oidc_on, password_on = LEGACY_AUTH_MODES[mode]
+        cfg['mode'] = 'auth'
+        cfg.setdefault('oidc_enabled', oidc_on)
+        if not password_on:  # identifiant/mot de passe saisis mais jamais activés
+            cfg.pop('username', None)
+            cfg.pop('password_hash', None)
+    elif mode not in AUTH_MODES:
+        cfg['mode'] = 'auth' if cfg.get('enabled', False) else 'none'
+        cfg.setdefault('oidc_enabled', cfg['mode'] == 'auth')
+    cfg['oidc_enabled'] = bool(cfg.get('oidc_enabled', False))
+
+    # L'ancien compte unique devient un compte administrateur de « Utilisateurs et rôles ».
+    if cfg.get('username') and cfg.get('password_hash'):
+        try:
+            from .accounts import migrate_legacy_account
+            if migrate_legacy_account(cfg):
+                save_oidc_config(dict(cfg))  # chiffre à partir des valeurs déchiffrées, comme un POST
+        except Exception as error:
+            print(f'Migration du compte local impossible : {error}')
 
     # Pas de redirection automatique vers le SSO tant qu'elle n'est pas demandée.
     cfg['auto_redirect'] = bool(cfg.get('auto_redirect', False))

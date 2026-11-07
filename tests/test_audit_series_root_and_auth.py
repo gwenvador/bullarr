@@ -150,6 +150,17 @@ class PasswordLoginRateLimitTest(unittest.TestCase):
             json.dump({'mode': 'password', 'username': 'admin',
                        'password_hash': generate_password_hash('secret-pass')}, handle)
         self.app.config['OIDC_CONFIG_FILE'] = path
+        # Base à part : l'ancien compte unique y est migré en compte local.
+        import sqlite3
+        from blueprints.auth.roles import init_tables
+        db_path = os.path.join(self.config_dir.name, 'bullarr.db')
+        conn = sqlite3.connect(db_path)
+        init_tables(conn.cursor())
+        conn.commit()
+        conn.close()
+        previous_db = self.app.config.get('DATABASE')
+        self.addCleanup(self.app.config.__setitem__, 'DATABASE', previous_db)
+        self.app.config['DATABASE'] = db_path
         self.client = self.app.test_client()
 
     def login(self, password):

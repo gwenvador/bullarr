@@ -59,7 +59,7 @@ class BypassSwitchBehaviourTest(unittest.TestCase):
         self.app.config['AUTH_BYPASS_LOGIN'] = True
         response = self.client.get('/api/auth/config')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['mode'], 'oidc')
+        self.assertEqual((response.get_json()['mode'], response.get_json()['oidc_enabled']), ('auth', True))
         fixed = self.client.post('/api/auth/config', json={'mode': 'none'})
         self.assertEqual(fixed.get_json(), {'success': True})
 

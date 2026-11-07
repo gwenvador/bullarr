@@ -86,9 +86,15 @@ def init_tables(cursor):
     # Restrictions d'un lecteur : bibliothèques permises (NULL = toutes) et genres
     # Bédéthèque masqués (contrôle parental).
     columns = {row[1] for row in cursor.execute('PRAGMA table_info(users)').fetchall()}
-    for column in ('allowed_libraries_json', 'blocked_genres_json'):
+    for column in ('allowed_libraries_json', 'blocked_genres_json', 'password_hash'):
         if column not in columns:
             cursor.execute(f'ALTER TABLE users ADD COLUMN {column} TEXT')
+    # Sessions ouvertes avant revoked_at refusées (compte supprimé, mot de passe changé).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS revoked_users (
+            user_key TEXT PRIMARY KEY,
+            revoked_at REAL NOT NULL
+        )''')
 
 
 def _connect():
@@ -121,6 +127,11 @@ def record_login(user):
         return
     conn = _connect()
     try:
+        if user.get('auth_method') == 'password':
+            # Compte local : nom, e-mail et rôle se règlent dans les paramètres.
+            conn.execute('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE user_key = ?', (key,))
+            conn.commit()
+            return
         conn.execute('''
             INSERT INTO users (user_key, name, email, auth_method, groups_json, last_seen)
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -142,9 +153,9 @@ def computed_role(groups, admin_group):
 
 
 def role_for_user(user, config):
-    # Mot de passe local et appels internes du planificateur (session signée côté
-    # serveur, voir missing_monitor/downloader.py) : toujours administrateur.
-    if not user or user.get('auth_method') in ('password', 'internal'):
+    # Appels internes du planificateur (session signée côté serveur, voir
+    # missing_monitor/downloader.py) : toujours administrateur.
+    if not user or user.get('auth_method') == 'internal':
         return ROLE_ADMIN
     row = None
     if current_app.config.get('DATABASE'):  # absente de certaines apps de test minimales
@@ -156,6 +167,8 @@ def role_for_user(user, config):
             conn.close()
     if row and row['role_override'] in ROLES:
         return row['role_override']
+    if user.get('auth_method') == 'password':
+        return ROLE_ADMIN  # compte local sans rôle explicite (ancien compte unique)
     groups = user.get('groups')
     if groups is None and row:
         groups = json.loads(row['groups_json'] or '[]')

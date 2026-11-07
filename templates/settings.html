@@ -1643,8 +1643,8 @@
                             <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
                             <h2>🔐 Configuration Login</h2>
                             <p class="section-description">
-                                Protégez l'accès à l'application avec votre fournisseur d'identité (OIDC).
-                                Une fois activée, une connexion sera exigée pour accéder à toutes les pages.
+                                Exigez une connexion pour accéder à Bullarr : comptes créés ci-dessous (identifiant et mot de passe),
+                                et en option votre fournisseur d'identité (OIDC).
                             </p>
                         </div>
 
@@ -1660,32 +1660,20 @@
                                         <span class="auth-mode-icon">◌</span>
                                         <span class="auth-mode-copy"><strong>Sans authentification</strong><small>Accès direct à Bullarr</small></span>
                                     </button>
-                                    <button type="button" class="auth-mode-option" data-auth-mode="password" role="radio" aria-checked="false" onclick="selectAuthMode('password')">
+                                    <button type="button" class="auth-mode-option" data-auth-mode="auth" role="radio" aria-checked="false" onclick="selectAuthMode('auth')">
                                         <span class="auth-mode-icon">🔑</span>
-                                        <span class="auth-mode-copy"><strong>Login / mot de passe</strong><small>Compte local sécurisé</small></span>
-                                    </button>
-                                    <button type="button" class="auth-mode-option" data-auth-mode="oidc" role="radio" aria-checked="false" onclick="selectAuthMode('oidc')">
-                                        <span class="auth-mode-icon">◎</span>
-                                        <span class="auth-mode-copy"><strong>OIDC</strong><small>Connexion via un fournisseur</small></span>
-                                    </button>
-                                    <button type="button" class="auth-mode-option" data-auth-mode="both" role="radio" aria-checked="false" onclick="selectAuthMode('both')">
-                                        <span class="auth-mode-icon">⇄</span>
-                                        <span class="auth-mode-copy"><strong>Mot de passe + OIDC</strong><small>Formulaire ou bouton SSO sur la page de connexion</small></span>
+                                        <span class="auth-mode-copy"><strong>Authentification</strong><small>Connexion obligatoire : comptes Bullarr, et OIDC si activé</small></span>
                                     </button>
                                 </div>
                             </div>
 
-                            <div id="passwordAuthFields">
-                                <div class="form-group">
-                                    <label for="loginUsername">Identifiant</label>
-                                    <input type="text" id="loginUsername" autocomplete="username">
-                                </div>
-                                <div class="form-group">
-                                    <label for="loginPassword">Mot de passe</label>
-                                    <input type="password" id="loginPassword" autocomplete="new-password" placeholder="Laisser vide pour conserver l’actuel">
-                                </div>
+                            <div class="form-group checkbox-group" id="oidcEnabledGroup">
+                                <input type="checkbox" id="oidcEnabled" onchange="updateAuthModeFields()">
+                                <label for="oidcEnabled">
+                                    <strong>Activer la connexion OIDC (Pocket ID…)</strong>
+                                    <span class="help-text">Ajoute le bouton « Se connecter avec le SSO » sur la page de connexion, à côté du formulaire des comptes Bullarr.</span>
+                                </label>
                             </div>
-
 
                             <div class="form-group">
                                 <label for="oidcIssuer">URL de l'issuer</label>
@@ -1740,9 +1728,9 @@
                         <div class="settings-card" id="usersRolesCard">
                             <h3>Utilisateurs et rôles</h3>
                             <p class="settings-help">Les <strong>administrateurs</strong> ont accès à tout. Les <strong>lecteurs</strong> peuvent seulement parcourir, lire, télécharger les fichiers, tenir leurs propres listes (À lire / Favoris) et demander des BD.
-                                Le rôle vient du groupe Pocket ID ci-dessous (laissé vide : tout le monde est administrateur) et peut être forcé compte par compte. La connexion par mot de passe est toujours administrateur.<br>
+                                Les <strong>comptes locaux</strong> se créent ici (identifiant et mot de passe) ; les <strong>comptes OIDC</strong> apparaissent après leur première connexion, avec le rôle donné par le groupe Pocket ID ci-dessous (vide : tout le monde est administrateur), que « Modifier » permet de forcer.<br>
                                 <strong>Accès</strong> : pour chaque lecteur, les bibliothèques visibles et le contrôle parental (genres Bédéthèque masqués, avec un préréglage « Enfant »).</p>
-                            <div class="form-group">
+                            <div class="form-group" id="adminGroupBlock">
                                 <label for="adminGroupInput">Groupe Pocket ID des administrateurs</label>
                                 <div class="users-group-row">
                                     <input type="text" id="adminGroupInput" placeholder="ex. bullarr-admins">
@@ -1750,10 +1738,14 @@
                                 </div>
                                 <small>Le client OIDC de Bullarr demande alors aussi le scope <code>groups</code>. Chaque compte doit se reconnecter pour que son groupe soit relu.</small>
                             </div>
+                            <div class="users-toolbar">
+                                <button type="button" class="btn btn-primary" onclick="openCreateAccount()">＋ Créer un compte</button>
+                            </div>
+                            <div id="usersCreatePanel" class="users-create-panel" hidden></div>
                             <div class="users-table-wrap">
                                 <table class="users-table">
-                                    <thead><tr><th>Compte</th><th>Groupes</th><th>Rôle</th><th>Forcer</th><th>Accès</th></tr></thead>
-                                    <tbody id="usersRolesBody"><tr><td colspan="5" class="users-empty">Chargement…</td></tr></tbody>
+                                    <thead><tr><th>Compte</th><th>Type</th><th>Groupes</th><th>Rôle</th><th>Accès</th><th></th></tr></thead>
+                                    <tbody id="usersRolesBody"><tr><td colspan="6" class="users-empty">Chargement…</td></tr></tbody>
                                 </table>
                             </div>
                             <div id="usersRolesMessage" class="message" style="display:none"></div>

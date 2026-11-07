@@ -1370,9 +1370,8 @@ async function loadOidcSettings() {
         const response = await fetch('/api/auth/config');
         const config = await response.json();
 
-        selectAuthMode(config.mode || (config.enabled ? 'oidc' : 'none'));
-        document.getElementById('loginUsername').value = config.username || '';
-        updateAuthModeFields();
+        document.getElementById('oidcEnabled').checked = !!config.oidc_enabled;
+        selectAuthMode(config.mode === 'auth' ? 'auth' : 'none');
         document.getElementById('oidcIssuer').value = config.issuer || '';
         document.getElementById('oidcClientId').value = config.client_id || '';
         document.getElementById('oidcScopes').value = config.scopes || 'openid profile email';
@@ -1448,8 +1447,7 @@ async function copyApiKey() {
 async function saveOidcSettings() {
     const config = {
         mode: document.getElementById('authMode').value,
-        username: document.getElementById('loginUsername').value.trim(),
-        password: document.getElementById('loginPassword').value,
+        oidc_enabled: document.getElementById('authMode').value === 'auth' && document.getElementById('oidcEnabled').checked,
         enabled: document.getElementById('authMode').value !== 'none',
         issuer: document.getElementById('oidcIssuer').value.trim(),
         client_id: document.getElementById('oidcClientId').value.trim(),
@@ -1457,7 +1455,7 @@ async function saveOidcSettings() {
         scopes: document.getElementById('oidcScopes').value.trim() || 'openid profile email',
         auto_redirect: document.getElementById('oidcAutoRedirect').checked
     };
-    const usesOidc = config.mode === 'oidc' || config.mode === 'both';
+    const usesOidc = config.oidc_enabled;
 
     if (usesOidc && !config.issuer) {
         showMessage('oidcMessage', "⚠️ Veuillez entrer l'URL de l'issuer OIDC", 'warning');
@@ -1478,7 +1476,8 @@ async function saveOidcSettings() {
         const data = await response.json();
 
         if (data.success) {
-            showMessage('oidcMessage', '✅ Configuration SSO enregistrée avec succès !', 'success');
+            showMessage('oidcMessage', '✅ Configuration de connexion enregistrée', 'success');
+            if (typeof loadUsersRoles === 'function') loadUsersRoles();
         } else {
             showMessage('oidcMessage', '❌ Erreur: ' + data.error, 'error');
         }
@@ -1510,9 +1509,8 @@ async function testOidcConnection() {
 
 function resetOidcSettings() {
     if (!confirm('Voulez-vous réinitialiser la configuration SSO ?')) return;
+    document.getElementById('oidcEnabled').checked = false;
     selectAuthMode('none');
-    document.getElementById('loginUsername').value = '';
-    document.getElementById('loginPassword').value = '';
     document.getElementById('oidcIssuer').value = '';
     document.getElementById('oidcClientId').value = '';
     document.getElementById('oidcClientSecret').value = '';
@@ -1541,9 +1539,9 @@ function selectAuthMode(mode) {
 
 function updateAuthModeFields() {
     const mode = document.getElementById('authMode').value;
-    const usesPassword = mode === 'password' || mode === 'both';
-    const usesOidc = mode === 'oidc' || mode === 'both';
-    document.getElementById('passwordAuthFields').style.display = usesPassword ? '' : 'none';
+    const usesAuth = mode === 'auth';
+    document.getElementById('oidcEnabledGroup').style.display = usesAuth ? '' : 'none';
+    const usesOidc = usesAuth && document.getElementById('oidcEnabled').checked;
     ['oidcIssuer', 'oidcClientId', 'oidcClientSecret', 'oidcScopes', 'oidcAutoRedirect'].forEach(id => {
         const input = document.getElementById(id);
         if (input) input.closest('.form-group').style.display = usesOidc ? '' : 'none';
