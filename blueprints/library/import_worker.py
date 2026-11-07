@@ -173,10 +173,39 @@ def _convert_if_requested(path, fmt, enabled, lock_path):
     return new_path, f"Converti {fmt.upper()} → CBZ", "cbz"
 
 
+class IncompleteFileError(ValueError):
+    pass
+
+
+def ensure_not_preallocated(path, fmt):
+    """Refuse tout de suite un fichier encore en cours de téléchargement : qBittorrent
+    (seedbox) préalloue le fichier à sa taille finale et le remplit dans le désordre, et
+    Syncthing en recopie l'état partiel. Le début est alors vide (octets nuls) : un PDF
+    sans « %PDF » en tête, dont la réparation par PyMuPDF dépassait les 300 s du worker."""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(1024)
+    except OSError:
+        return
+    if not head:
+        raise IncompleteFileError("Fichier vide : téléchargement pas terminé, réessayez plus tard")
+    if fmt == "pdf" and b"%PDF" not in head:
+        if head.count(0) == len(head):
+            raise IncompleteFileError(
+                "Fichier incomplet (début du PDF vide) : téléchargement ou synchronisation "
+                "pas terminé, réessayez plus tard")
+        raise IncompleteFileError("Ce n'est pas un PDF valide (en-tête %PDF absent)")
+    if fmt in {"cbz", "zip", "cbr", "rar", "tar"} and head.count(0) == len(head):
+        raise IncompleteFileError(
+            "Fichier incomplet (début vide) : téléchargement ou synchronisation pas terminé, "
+            "réessayez plus tard")
+
+
 def _prepare_child(payload):
     source = Path(payload["source_path"])
     if not source.is_file():
         raise FileNotFoundError(str(source))
+    ensure_not_preallocated(source, (payload.get("format") or source.suffix.lstrip(".")).lower())
     root = Path(payload["staging_dir"])
     token = uuid.uuid4().hex
     partial_dir = root / f"{token}.partial"
