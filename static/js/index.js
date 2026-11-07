@@ -13,6 +13,7 @@ async function loadLibraries() {
                     <div class="no-data-icon">📚</div>
                     <h3>Aucune bibliothèque</h3>
                     <p>Créez votre première bibliothèque pour commencer</p>
+                    <button type="button" class="lib-btn lib-btn-primary" onclick="openCreateModal()">${svgIcon('plus')} Nouvelle bibliothèque</button>
                 </div>
             `;
             return;
@@ -35,60 +36,69 @@ async function loadLibraries() {
     }
 }
 
+function _libraryScanText(lib) {
+    if (!lib.last_scanned) return { text: 'Jamais analysée', cls: 'lib-card-scan-never' };
+    const date = parseDbUtcDate(lib.last_scanned);
+    if (!date) return { text: 'Analysée', cls: '' };
+    return { text: 'Analysée le ' + date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: BULLARR_DISPLAY_TZ }), cls: '' };
+}
+
 function displayLibraries(libs) {
     const container = document.getElementById('libraries-container');
+    const number = value => Number(value || 0).toLocaleString('fr-FR');
 
     const cardsHtml = libs.map(lib => {
+        const scan = _libraryScanText(lib);
         return `
-            <div class="library-card" onclick="window.location.href='/library/${lib.id}'" style="cursor: pointer;">
-                <div class="library-header">
-                    <div style="flex: 1;">
-                        <div class="library-name">${escapeHtml(lib.name)}</div>
-                        ${lib.description ? `<div class="library-description">${escapeHtml(lib.description)}</div>` : ''}
+            <a class="lib-card" href="/library/${lib.id}">
+                <div class="lib-card-head">
+                    <span class="lib-card-icon">${svgIcon('library')}</span>
+                    <div class="lib-card-title">
+                        <div class="lib-card-name">${escapeHtml(lib.name)}</div>
+                        <div class="lib-card-path" title="${escapeHtml(lib.path)}">${svgIcon('folder')}<span>${escapeHtml(lib.path)}</span></div>
                     </div>
                 </div>
-
-                <div class="library-path">${escapeHtml(lib.path)}</div>
-
-                <div class="library-stats">
-                    <div class="stat-item">
-                        <div class="stat-value">${lib.series_count}</div>
-                        <div class="stat-label">Séries</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value">${lib.volumes_count}</div>
-                        <div class="stat-label">Volumes</div>
-                    </div>
+                ${lib.description ? `<div class="lib-card-description">${escapeHtml(lib.description)}</div>` : ''}
+                <div class="lib-card-stats">
+                    <span><strong>${number(lib.series_count)}</strong> séries</span>
+                    <span><strong>${number(lib.volumes_count)}</strong> volumes</span>
                 </div>
-
-                <div class="library-actions" onclick="event.stopPropagation()">
-                    <button class="btn" onclick="window.location.href='/library/${lib.id}'">
-                        ${svgIcon('book-open')} Ouvrir
-                    </button>
-                    <button class="btn" onclick="scanLibrary(${lib.id})">
-                        ${svgIcon('refresh-cw')} Scanner
-                    </button>
-                    <button class="btn btn-danger" onclick="deleteLibraryConfirm(${lib.id})">
-                        ${svgIcon('trash-2')} Supprimer
-                    </button>
+                <div class="lib-card-foot">
+                    <span class="lib-card-scan ${scan.cls}">${escapeHtml(scan.text)}</span>
+                    <span class="lib-card-actions">
+                        <button type="button" class="lib-icon-btn" data-tooltip="Scanner" aria-label="Scanner ${escapeHtml(lib.name)}"
+                                onclick="event.preventDefault(); event.stopPropagation(); scanLibrary(${lib.id})">${svgIcon('refresh-cw')}</button>
+                        <button type="button" class="lib-icon-btn lib-icon-btn-danger" data-tooltip="Supprimer" aria-label="Supprimer ${escapeHtml(lib.name)}"
+                                onclick="event.preventDefault(); event.stopPropagation(); deleteLibraryConfirm(${lib.id})">${svgIcon('trash-2')}</button>
+                    </span>
                 </div>
-
-                <div class="library-footer">
-                    ${lib.last_scanned ?
-                        `<span class="badge badge-success">Dernière analyse: ${parseDbUtcDate(lib.last_scanned)?.toLocaleString('fr-FR', { timeZone: BULLARR_DISPLAY_TZ }) ?? '—'}</span>` :
-                        `<span class="badge badge-warning">Jamais analysée</span>`
-                    }
-                </div>
-            </div>
+            </a>
         `;
     }).join('');
 
-    container.innerHTML = `<div class="libraries-grid">${cardsHtml}</div>`;
+    const addCard = `
+        <button type="button" class="lib-card lib-card-add" onclick="openCreateModal()">
+            <span class="lib-card-add-icon">${svgIcon('plus')}</span>
+            <span>Nouvelle bibliothèque</span>
+        </button>`;
+
+    container.innerHTML = `<div class="libraries-grid lib-grid">${cardsHtml}${addCard}</div>`;
 }
 
 function openCreateModal() {
     document.getElementById('create-modal').classList.add('active');
+    setTimeout(() => document.getElementById('library-name')?.focus(), 50);
 }
+
+// /?all=1&new=1 (bouton + de la page d'une bibliothèque) : ouvre directement la création.
+if (new URLSearchParams(window.location.search).has('new')) {
+    document.addEventListener('DOMContentLoaded', openCreateModal);
+}
+
+document.addEventListener('keydown', event => {
+    const modal = document.getElementById('create-modal');
+    if (event.key === 'Escape' && modal && modal.classList.contains('active')) closeCreateModal();
+});
 
 function closeCreateModal() {
     document.getElementById('create-modal').classList.remove('active');

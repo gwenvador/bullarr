@@ -4323,3 +4323,81 @@ table thead th.column-drag-over { box-shadow: inset 3px 0 var(--color-accent); }
 :root[data-theme="dark"] .origin-pill-bd { color: #e8b98a; background: rgba(201,138,75,0.18); border-color: rgba(201,138,75,0.35); }
 :root[data-theme="dark"] .origin-pill-comics { color: #9cc3f5; background: rgba(90,150,230,0.16); border-color: rgba(90,150,230,0.35); }
 :root[data-theme="dark"] .origin-pill-manga { color: #f2a39c; background: rgba(220,80,70,0.16); border-color: rgba(220,80,70,0.35); }
+
+/* ===== Page « Mes bibliothèques » (index.js, displayLibraries) ===== */
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+.lib-card { display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 14px; text-decoration: none;
+            color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border);
+            box-shadow: 0 1px 2px rgba(0,0,0,.05); transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.lib-card:hover { border-color: var(--color-accent); box-shadow: 0 8px 22px -10px rgba(0,0,0,.25); transform: translateY(-1px); }
+.lib-card:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.lib-card-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lib-card-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+                 border-radius: 10px; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.lib-card-icon .icon { width: 20px; height: 20px; }
+.lib-card-title { min-width: 0; }
+.lib-card-name { font-size: 1.1em; font-weight: 700; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-card-path { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: .8em; color: var(--color-text-muted);
+                 font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 0; }
+.lib-card-path .icon { width: 13px; height: 13px; flex: none; }
+.lib-card-path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-card-description { font-size: .88em; color: var(--color-text-muted); margin-top: -4px; }
+.lib-card-stats { display: flex; gap: 18px; font-size: .9em; color: var(--color-text-muted); }
+.lib-card-stats strong { font-size: 1.45em; color: var(--color-accent); font-weight: 700; margin-right: 3px; }
+.lib-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto;
+                 padding-top: 12px; border-top: 1px solid var(--color-border); }
+.lib-card-scan { font-size: .8em; color: var(--color-text-muted); }
+.lib-card-scan-never { color: #b7791f; font-weight: 600; }
+.lib-card-actions { display: inline-flex; gap: 4px; }
+.lib-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+                border: none; border-radius: 8px; background: transparent; color: var(--color-text-muted); cursor: pointer;
+                transition: background .15s ease, color .15s ease; }
+.lib-icon-btn .icon { width: 17px; height: 17px; }
+.lib-icon-btn:hover { background: var(--color-surface-alt); color: var(--color-accent); }
+.lib-icon-btn-danger:hover { color: #c0392b; background: color-mix(in srgb, #c0392b 10%, transparent); }
+.lib-card-add { align-items: center; justify-content: center; gap: 10px; min-height: 170px; cursor: pointer; font: inherit;
+                font-weight: 600; color: var(--color-text-muted); background: transparent; border: 2px dashed var(--color-border);
+                box-shadow: none; }
+.lib-card-add:hover { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 5%, transparent); }
+.lib-card-add-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%;
+                     background: var(--color-surface-alt); }
+
+/* Boutons et fenêtre de création */
+.lib-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; border: 1px solid transparent;
+           font: inherit; font-weight: 600; font-size: .95em; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+.lib-btn .icon { width: 16px; height: 16px; }
+.lib-btn-primary { background: var(--color-accent); color: #fff; }
+.lib-btn-primary:hover { background: var(--color-accent-hover); }
+.lib-btn-ghost { background: transparent; color: var(--color-text); border-color: var(--color-border); }
+.lib-btn-ghost:hover { background: var(--color-surface-alt); }
+.no-data .lib-btn { margin-top: 14px; }
+
+.modal-content.lib-create-modal { max-width: 520px; padding: 28px 28px 24px; border-radius: 16px; }
+.lib-create-close { position: absolute; top: 16px; right: 16px; display: inline-flex; padding: 6px; border: none; border-radius: 8px;
+                    background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.lib-create-close:hover { background: var(--color-surface-alt); color: var(--color-text); }
+.lib-create-title { margin: 0 32px 4px 0; font-size: 1.35em; }
+.lib-create-intro { margin: 0 0 22px; color: var(--color-text-muted); font-size: .92em; }
+.lib-field { margin-bottom: 16px; }
+.lib-field label { display: block; margin-bottom: 6px; font-weight: 600; font-size: .9em; }
+.lib-optional { font-weight: 400; color: var(--color-text-muted); font-size: .9em; margin-left: 4px; }
+.lib-field input[type="text"], .lib-field textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px;
+            border: 1px solid var(--color-border); background: var(--color-bg, var(--color-surface)); color: var(--color-text); font: inherit; }
+.lib-field textarea { resize: vertical; min-height: 64px; }
+.lib-field input[type="text"]:focus, .lib-field textarea:focus { outline: none; border-color: var(--color-accent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.lib-input-icon { position: relative; }
+.lib-input-icon .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--color-text-muted); pointer-events: none; }
+.lib-input-icon input[type="text"] { padding-left: 36px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; }
+.lib-hint { display: block; margin-top: 6px; font-size: .8em; color: var(--color-text-muted); line-height: 1.4; }
+.lib-check { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; margin: 4px 0 0; border-radius: 10px; cursor: pointer;
+             border: 1px solid var(--color-border); background: var(--color-surface-alt); }
+.lib-check input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--color-accent); cursor: pointer; }
+.lib-check span { display: flex; flex-direction: column; gap: 2px; font-size: .92em; }
+.lib-check small { color: var(--color-text-muted); font-size: .92em; line-height: 1.4; }
+.lib-create-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+@media (max-width: 600px) {
+    .modal-content.lib-create-modal { padding: 22px 18px 18px; }
+    .lib-create-actions { flex-direction: column-reverse; }
+    .lib-create-actions .lib-btn { justify-content: center; }
+}
