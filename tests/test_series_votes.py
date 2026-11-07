@@ -45,7 +45,7 @@ class LibraryGenreFilterTest(unittest.TestCase):
         self.assertNotIn("'Genre'", labels)
         for label in ("'Titre'", "'Auteur'", "'Éditeur'"):
             self.assertIn(label, labels)
-        self.assertIn("genre: { label: 'Genre', type: 'select', getValue: s => s.local_genre || '—', multi: true }", script)
+        self.assertIn("genre: { label: 'Genre', type: 'select', getValue: s => seriesGenre(s) || '—', multi: true }", script)
 
 
 if __name__ == '__main__':

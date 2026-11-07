@@ -910,6 +910,9 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.sidebar-nav > a.nav-link').forEach(link => {
             if (!['/', '/demandes'].includes(link.getAttribute('href'))) link.remove();
         });
+    } else {
+        // Administrateur : les demandes se traitent dans Validation, pas de page à part.
+        document.querySelectorAll('.sidebar-nav > a.nav-link[href="/demandes"]').forEach(link => link.remove());
     }
     wrapSidebarNavLinks();
     _resolveActiveNavGroupStorage();
@@ -1020,17 +1023,19 @@ function initManualReviewBadge() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'header-search-btn header-review-btn';
-    btn.setAttribute('data-tooltip', 'Recherches automatiques à valider');
-    btn.setAttribute('aria-label', 'Recherches automatiques à valider');
+    btn.setAttribute('data-tooltip', 'À valider : recherches automatiques et demandes');
+    btn.setAttribute('aria-label', 'À valider : recherches automatiques et demandes');
     btn.innerHTML = `${svgIcon('bell')}<span class="header-review-count" aria-label="0"></span>`;
     btn.addEventListener('click', () => { window.location.href = '/validation'; });
     headerContent.appendChild(btn);
 
     async function refresh() {
         try {
-            const response = await fetch('/api/auto-acquire/reviews/count');
-            const data = await response.json();
-            const count = Number(data.count || 0);
+            const [reviews, requests] = await Promise.all([
+                fetch('/api/auto-acquire/reviews/count').then(r => r.json()).catch(() => ({})),
+                fetch('/api/requests/pending-count').then(r => r.json()).catch(() => ({})),
+            ]);
+            const count = Number(reviews.count || 0) + Number(requests.total || 0);
             const badge = btn.querySelector('.header-review-count');
             badge.textContent = count > 99 ? '99+' : (count ? String(count) : '');
             badge.classList.toggle('is-visible', count > 0);
@@ -1038,6 +1043,7 @@ function initManualReviewBadge() {
         } catch (e) { /* badge non bloquant */ }
     }
     refresh();
+    window.refreshReviewBadge = refresh;
     setInterval(refresh, 30000);
 }
 
@@ -1049,6 +1055,15 @@ async function initUserBadge() {
         const data = await response.json();
         const user = data.user;
         if (!user) return;
+        const profile = data.profile || {};
+        const displayName = profile.name || user.name || user.email || '';
+        const words = String(displayName || '?').split(/[\s._@-]+/).filter(Boolean);
+        const initials = ((words[0] || '?')[0] + (words[1] ? words[1][0] : '')).toUpperCase();
+        let hue = 0;
+        for (const ch of String(displayName)) hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+        const avatarHtml = profile.avatar_url
+            ? `<img src="${navEscapeHtml(profile.avatar_url)}" alt="">`
+            : navEscapeHtml(initials);
 
         const headerContent = document.querySelector('.header-content');
         if (!headerContent || document.querySelector('.header-user')) return;
@@ -1056,7 +1071,10 @@ async function initUserBadge() {
         const badge = document.createElement('div');
         badge.className = 'header-user';
         badge.innerHTML = `
-            <span class="header-user-name">👤 ${navEscapeHtml(user.name || user.email || '')}</span>
+            <a href="/profil" class="header-user-profile" data-tooltip="Mon profil">
+                <span class="header-user-avatar" style="--ua-hue:${hue}">${avatarHtml}</span>
+                <span class="header-user-name header-user-name-text">${navEscapeHtml(displayName)}</span>
+            </a>
             <a href="/logout" class="header-user-logout">Déconnexion</a>
         `;
         headerContent.appendChild(badge);
@@ -1065,9 +1083,11 @@ async function initUserBadge() {
         // proposée en bas du tiroir de navigation.
         const sidebar = document.querySelector('.sidebar-nav');
         if (sidebar && !sidebar.querySelector('.sidebar-logout')) {
-            const who = document.createElement('div');
+            const who = document.createElement('a');
+            who.href = '/profil';
             who.className = 'sidebar-user';
-            who.textContent = `👤 ${user.name || user.email || ''}`;
+            who.innerHTML = `<span class="sidebar-user-avatar" style="--ua-hue:${hue}">${avatarHtml}</span>`
+                + `<span class="sidebar-user-name">${navEscapeHtml(displayName)}</span>`;
             sidebar.appendChild(who);
             const logout = document.createElement('a');
             logout.href = '/logout';

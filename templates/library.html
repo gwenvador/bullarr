@@ -118,6 +118,13 @@
                     </button>
                     <div class="toolbar-dropdown-menu toolbar-dropdown-menu-right" id="origin-filter-menu" style="display: none;"></div>
                 </div>
+                <div class="toolbar-dropdown" id="genre-filter-section">
+                    <button class="toolbar-btn" id="genre-filter-btn" onclick="toggleToolbarDropdown('genre-filter-menu', this)" title="Filtrer par genre (Bédéthèque, sinon ComicInfo)">
+                        <span class="toolbar-btn-icon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r=".5" fill="currentColor" /></svg></span>
+                        <span class="toolbar-btn-label">Genre</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu toolbar-dropdown-menu-right genre-filter-menu" id="genre-filter-menu" style="display: none;"></div>
+                </div>
                 <div class="toolbar-dropdown" id="lists-filter-section">
                     <button class="toolbar-btn" id="lists-filter-btn" onclick="toggleToolbarDropdown('lists-filter-menu', this)" title="Listes personnelles : à lire plus tard et favoris">
                         <span class="toolbar-btn-icon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" /></svg></span>

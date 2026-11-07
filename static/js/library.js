@@ -1100,7 +1100,7 @@ function buildTableRowHtml(s) {
         ${_isTableColumnVisible('volumes') ? `<td class="series-table-pill">${volumeLabel}</td>` : ''}
         ${_isTableColumnVisible('status') ? `<td class="series-table-pill">${escapeHtml(statusLabel)}</td>` : ''}
         ${_isTableColumnVisible('year') ? `<td class="series-table-pill">${escapeHtml(s.year || '—')}</td>` : ''}
-        ${_isTableColumnVisible('genre') ? `<td class="series-table-pill">${escapeHtml(s.local_genre || '—')}</td>` : ''}
+        ${_isTableColumnVisible('genre') ? `<td class="series-table-pill">${escapeHtml(seriesGenre(s) || '—')}</td>` : ''}
         ${_isTableColumnVisible('type') ? `<td class="series-table-pill">${bedethequeOriginHtml(s.bedetheque_origin) || escapeHtml(bedethequeOriginLabel(s.bedetheque_origin))}</td>` : ''}
         ${optionalCellsHtml}
         <td class="series-table-actions" onclick="event.stopPropagation()"><div class="series-table-actions-inner">${buildQuickActionsHtml(s, 'poster-action-btn poster-action-btn-light')}</div></td>
@@ -1147,7 +1147,7 @@ function _tableFilterColumns(series) {
         volumes: { label: 'Tomes', type: 'text' },
         status: { label: 'Statut', type: 'select', getValue: _seriesStatusLabel },
         year: { label: 'Année', type: 'select', getValue: s => s.year || '—' },
-        genre: { label: 'Genre', type: 'select', getValue: s => s.local_genre || '—', multi: true },
+        genre: { label: 'Genre', type: 'select', getValue: s => seriesGenre(s) || '—', multi: true },
         type: { label: 'Type', type: 'select', getValue: s => bedethequeOriginLabel(s.bedetheque_origin) },
     };
     const cols = [
@@ -1225,7 +1225,7 @@ function _seriesTableSortValue(s, column) {
         case 'volumes': return s.is_oneshot ? -1 : (s.total_volumes || 0);
         case 'status': return _seriesStatusLabel(s);
         case 'year': return s.year || null;
-        case 'genre': return (s.local_genre || '').toLowerCase() || null;
+        case 'genre': return seriesGenre(s).toLowerCase() || null;
         case 'type': return bedethequeOriginLabel(s.bedetheque_origin);
         case 'votes': return s.total_votes || null;
         // Part de tomes lus (puis en cours), pas le texte « 3/12 lus » affiché.
@@ -1813,7 +1813,7 @@ function normalizeForSearch(text) {
 // la barre de recherche n'ait plus qu'une comparaison de sous-chaîne à faire par série,
 // au lieu de re-normaliser plusieurs champs à chaque frappe pour chaque série
 function buildSearchHaystack(s) {
-    const parts = [s.title, s.local_author, s.local_genre, ...(s.tags || [])].filter(Boolean);
+    const parts = [s.title, s.local_author, seriesGenre(s), ...(s.tags || [])].filter(Boolean);
     return normalizeForSearch(parts.join(' '));
 }
 
@@ -1833,7 +1833,11 @@ function seriesMatchesFilterKey(s, key) {
     if (key === 'missing-metadata') return s.volumes_without_metadata > 0;
     if (key === 'to-read') return !!s.to_read_later;
     if (key === 'favorite') return !!s.is_favorite;
-    if (key.startsWith('genre:')) return splitMultiValue(s.local_genre).includes(key.slice('genre:'.length));
+    if (key.startsWith('genre:')) {
+        const wanted = key.slice('genre:'.length).toLowerCase();
+        const genres = seriesGenreList(s);
+        return wanted === GENRE_NONE ? genres.length === 0 : genres.some(g => g.toLowerCase() === wanted);
+    }
     if (key.startsWith('author:')) return splitMultiValue(s.local_author).includes(key.slice('author:'.length));
     if (key.startsWith('year:')) return (s.year || '') === key.slice('year:'.length);
     if (key.startsWith('status:')) return _seriesStatusLabel(s) === key.slice('status:'.length);
@@ -2032,6 +2036,19 @@ function setVolumeActionsGearBusy(volumeId, busy) {
 
 // Découpe une valeur multi-valuée d'une série (ex: genre "Histoire, Guerre" ou auteur
 // "Alcante, Bollée" issus du ComicInfo.xml) en une liste de valeurs individuelles
+// Genre effectif d'une série (manuel, sinon Bédéthèque, sinon ComicInfo - voir l'API).
+function seriesGenre(s) {
+    return s.genre || s.local_genre || '';
+}
+
+// Genres d'une série, découpés (« Aventure, Histoire ») ; « Non défini » compte comme
+// sans genre. Comparaison insensible à la casse (« Roman Graphique » = « Roman graphique »).
+function seriesGenreList(s) {
+    return splitMultiValue(seriesGenre(s)).filter(g => g.toLowerCase() !== 'non défini');
+}
+
+const GENRE_NONE = '—';
+
 function splitMultiValue(value) {
     if (!value) return [];
     return value.split(',').map(v => v.trim()).filter(Boolean);
@@ -2084,10 +2101,58 @@ function _fillCountFilterMenu(menuId, prefix, getValue, order, iconFor) {
 function populateStatusLanguageFilters() {
     _fillCountFilterMenu('status-filter-menu', 'status:', _seriesStatusLabel, _STATUS_FILTER_ORDER, _statusFilterIcon);
     _fillCountFilterMenu('origin-filter-menu', 'origin:', _seriesOriginLabel, _ORIGIN_FILTER_ORDER, _originFilterIcon);
+    _fillGenreFilterMenu();
+}
+
+// Menu « Genre » : tous les genres de la bibliothèque avec leur nombre de séries, une
+// série à plusieurs genres compte dans chacun. Champ de recherche (plus de 100 genres).
+function _fillGenreFilterMenu() {
+    const menu = document.getElementById('genre-filter-menu');
+    if (!menu) return;
+    const counts = new Map();   // clé en minuscules -> nombre
+    const labels = new Map();   // clé -> {libellé: occurrences} pour garder la graphie la plus courante
+    let none = 0;
+    seriesData.filter(seriesHasAlbums).forEach(s => {
+        const genres = [...new Set(seriesGenreList(s).map(g => g.toLowerCase()))];
+        if (!genres.length) { none += 1; return; }
+        seriesGenreList(s).forEach(g => {
+            const variants = labels.get(g.toLowerCase()) || {};
+            variants[g] = (variants[g] || 0) + 1;
+            labels.set(g.toLowerCase(), variants);
+        });
+        genres.forEach(key => counts.set(key, (counts.get(key) || 0) + 1));
+    });
+    const label = key => Object.entries(labels.get(key)).sort((a, b) => b[1] - a[1])[0][0];
+    const keys = [...counts.keys()].sort((a, b) => (counts.get(b) - counts.get(a)) || label(a).localeCompare(label(b), 'fr'));
+    const item = (value, text, count, icon) =>
+        `<button class="toolbar-dropdown-item" data-filter="${escapeHtml('genre:' + value)}" data-genre-search="${escapeHtml(normalizeForSearch(text))}" onclick="toggleSeriesFilter(this.dataset.filter)">${icon}<span>${escapeHtml(text)}</span><span class="filter-count">${count}</span></button>`;
+    const items = keys.map(key => item(label(key), label(key), counts.get(key), '<span class="filter-item-icon genre-filter-dot"></span>'));
+    if (none) items.push(item(GENRE_NONE, 'Sans genre', none, `<span class="filter-item-icon">${svgIcon('info')}</span>`));
+    const previous = menu.querySelector('.genre-filter-search input')?.value || '';
+    menu.innerHTML = items.length
+        ? `<div class="genre-filter-search">${svgIcon('search')}<input type="search" placeholder="Chercher un genre (${keys.length})…" aria-label="Chercher un genre" oninput="filterGenreMenu(this.value)" value="${escapeHtml(previous)}"></div>
+           <div class="genre-filter-items">${items.join('')}</div>
+           <div class="toolbar-dropdown-empty genre-filter-nomatch" hidden>Aucun genre</div>`
+        : '<div class="toolbar-dropdown-empty">Aucun genre</div>';
+    if (previous) filterGenreMenu(previous);
+    if (typeof refreshFilterDropdownUI === 'function') { try { refreshFilterDropdownUI(); } catch (e) { /* état visuel seulement */ } }
+}
+
+function filterGenreMenu(value) {
+    const needle = normalizeForSearch(value || '').trim();
+    const menu = document.getElementById('genre-filter-menu');
+    let shown = 0;
+    menu.querySelectorAll('.genre-filter-items .toolbar-dropdown-item').forEach(btn => {
+        const visible = !needle || btn.dataset.genreSearch.includes(needle);
+        btn.hidden = !visible;
+        if (visible) shown += 1;
+    });
+    const nomatch = menu.querySelector('.genre-filter-nomatch');
+    if (nomatch) nomatch.hidden = shown > 0;
 }
 
 const DYNAMIC_FILTER_SECTIONS = [
-    { containerId: 'genre-filter-list', field: 'local_genre', prefix: 'genre:', icon: '🏷️', multi: true },
+    { containerId: 'genre-filter-list', field: 'genre', prefix: 'genre:', icon: '🏷️', multi: true },
     { containerId: 'author-filter-list', field: 'local_author', prefix: 'author:', icon: '✍️', multi: true },
     { containerId: 'year-filter-list', field: 'year', prefix: 'year:', icon: '📅', multi: false }
 ];

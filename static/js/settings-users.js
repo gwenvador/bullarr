@@ -37,7 +37,8 @@ function uaIdentity(user) {
     const meta = [];
     if (user.type === 'local' && user.username) meta.push(`${uaIcon('at-sign')}${usersEscape(user.username)}`);
     if (user.email) meta.push(`${uaIcon('mail')}${usersEscape(user.email)}`);
-    return `<span class="ua-avatar" style="--ua-hue:${uaHue(user.key)}" aria-hidden="true">${usersEscape(uaInitials(title))}</span>
+    const face = user.avatar_url ? `<img src="${usersEscape(user.avatar_url)}" alt="" loading="lazy">` : usersEscape(uaInitials(title));
+    return `<span class="ua-avatar" style="--ua-hue:${uaHue(user.key)}" aria-hidden="true">${face}</span>
         <div class="ua-ident">
             <div class="ua-name">${usersEscape(title)}${user.is_me ? '<span class="ua-me">vous</span>' : ''}</div>
             ${meta.length ? `<div class="ua-meta">${meta.map(m => `<span>${m}</span>`).join('')}</div>` : ''}
@@ -317,6 +318,8 @@ async function loadUsersRoles() {
         if (groupBlock) groupBlock.hidden = !data.oidc_enabled;
         const signup = document.getElementById('allowSignup');
         if (signup) signup.checked = !!data.allow_signup;
+        const autoApprove = document.getElementById('autoApproveRequests');
+        if (autoApprove) autoApprove.checked = !!data.auto_approve_requests;
         usersByKey = Object.fromEntries(data.users.map(user => [user.key, user]));
 
         const pending = data.users.filter(user => user.status === 'pending');
@@ -360,6 +363,14 @@ async function saveAllowSignup() {
     if (!result.ok) box.checked = !box.checked;
     showUsersMessage(result.ok ? (box.checked ? 'Inscription ouverte : le lien « Créer un compte » est sur la page de connexion'
                                               : 'Inscription fermée') : (result.data.error || 'Erreur'), result.ok);
+}
+
+async function saveAutoApproveRequests() {
+    const box = document.getElementById('autoApproveRequests');
+    const result = await usersRequest('PUT', {auto_approve: box.checked}, '/api/requests/settings');
+    if (!result.ok) box.checked = !box.checked;
+    showUsersMessage(result.ok ? (box.checked ? 'Les demandes de BD sont ajoutées tout de suite'
+                                              : 'Les demandes de BD attendent votre validation (page Validation)') : (result.data.error || 'Erreur'), result.ok);
 }
 
 async function saveAdminGroup() {

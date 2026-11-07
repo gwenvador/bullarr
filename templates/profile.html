@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Mon profil</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    </head>
+<body data-role="{{ user_role }}">
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Activités</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/demandes" class="nav-link">📮 Demandes</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon"><span data-pf-icon="circle-user"></span></span> <span class="header-title-full">Mon profil</span><span class="header-title-short">Profil</span></h1>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content pf-page">
+                    <div id="pf-loading" class="rq-loading"><div class="spinner"></div><span>Chargement…</span></div>
+                    <div id="pf-root" hidden>
+                        <section class="pf-hero">
+                            <div class="pf-avatar-wrap">
+                                <button type="button" id="pf-avatar" class="pf-avatar" aria-label="Changer la photo de profil" data-tooltip="Changer la photo (ou déposez une image)"></button>
+                                <span class="pf-avatar-cam" data-pf-icon="camera" aria-hidden="true"></span>
+                            </div>
+                            <div class="pf-hero-text">
+                                <h2 id="pf-name"></h2>
+                                <div id="pf-sub" class="pf-sub"></div>
+                                <div class="pf-avatar-actions">
+                                    <button type="button" id="pf-avatar-pick" class="rq-btn rq-btn-ghost"><span data-pf-icon="upload"></span><span>Changer la photo</span></button>
+                                    <button type="button" id="pf-avatar-remove" class="rq-btn rq-btn-ghost pf-danger" hidden><span data-pf-icon="trash-2"></span><span>Retirer</span></button>
+                                    <input type="file" id="pf-avatar-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                                </div>
+                                <div id="pf-avatar-message" class="pf-message"></div>
+                            </div>
+                            <div id="pf-facts" class="pf-facts"></div>
+                        </section>
+
+                        <div class="pf-grid">
+                            <section id="pf-identity-card" class="pf-card" hidden>
+                                <h3><span data-pf-icon="user-pen"></span>Informations</h3>
+                                <form id="pf-identity-form">
+                                    <label class="pf-field"><span>Nom affiché</span><input type="text" id="pf-input-name" maxlength="120" autocomplete="name"></label>
+                                    <label class="pf-field"><span>E-mail</span><input type="email" id="pf-input-email" maxlength="200" autocomplete="email" placeholder="facultatif"></label>
+                                    <div class="pf-form-foot"><div id="pf-identity-message" class="pf-message"></div><button type="submit" class="rq-btn rq-btn-primary"><span data-pf-icon="save"></span><span>Enregistrer</span></button></div>
+                                </form>
+                            </section>
+
+                            <section id="pf-password-card" class="pf-card" hidden>
+                                <h3><span data-pf-icon="key-round"></span>Mot de passe</h3>
+                                <form id="pf-password-form">
+                                    <label class="pf-field"><span>Mot de passe actuel</span>
+                                        <span class="pf-pass"><input type="password" name="current_password" id="pf-pass-current" required autocomplete="current-password"><button type="button" class="pf-eye" data-pf-toggle="pf-pass-current" aria-label="Afficher" data-pf-icon="eye"></button></span></label>
+                                    <label class="pf-field"><span>Nouveau mot de passe</span>
+                                        <span class="pf-pass"><input type="password" name="new_password" id="pf-pass-new" required minlength="8" autocomplete="new-password"><button type="button" class="pf-eye" data-pf-toggle="pf-pass-new" aria-label="Afficher" data-pf-icon="eye"></button></span></label>
+                                    <label class="pf-field"><span>Confirmer</span>
+                                        <span class="pf-pass"><input type="password" name="new_password_confirm" id="pf-pass-confirm" required minlength="8" autocomplete="new-password"><button type="button" class="pf-eye" data-pf-toggle="pf-pass-confirm" aria-label="Afficher" data-pf-icon="eye"></button></span></label>
+                                    <p class="pf-hint">8 caractères minimum. Vos autres appareils seront déconnectés.</p>
+                                    <div class="pf-form-foot"><div id="pf-password-message" class="pf-message"></div><button type="submit" class="rq-btn rq-btn-primary"><span data-pf-icon="lock"></span><span>Changer le mot de passe</span></button></div>
+                                </form>
+                            </section>
+
+                            <section id="pf-sso-card" class="pf-card" hidden>
+                                <h3><span data-pf-icon="shield-check"></span>Compte SSO</h3>
+                                <p class="pf-hint">Votre nom, votre e-mail et votre mot de passe viennent de votre fournisseur d’identité (Pocket ID) : modifiez-les là-bas, ils seront repris à la prochaine connexion. La photo de profil, elle, se règle ici.</p>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/profile.js') }}?v={{ asset_version('js/profile.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

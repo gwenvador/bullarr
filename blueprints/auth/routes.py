@@ -17,6 +17,7 @@ from encryption import decrypt
 from .config_store import (AUTH_MODES, LEGACY_AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url,
                            generate_api_key)
 from . import accounts
+from .activity import log_activity, list_activity
 from .roles import (ROLES, ROLE_READER, PARENTAL_PRESET, all_genres, computed_role, current_role, normalize_groups,
                     reader_allowed, reader_scope_allowed, record_login, user_key)
 
@@ -292,9 +293,19 @@ def signup():
         return _render_login(config, view='signup', form=form, status=400,
                              error='Les deux mots de passe ne correspondent pas.')
     try:
-        accounts.request_account(form['username'], password, name=form['name'], email=form['email'])
+        key = accounts.request_account(form['username'], password, name=form['name'], email=form['email'])
     except accounts.AccountError as error:
         return _render_login(config, view='signup', form=form, status=400, error=str(error))
+    who = form['name'] or form['username']
+    log_activity('signup_request', actor_key=key, actor_name=who, target_key=key, target_name=who,
+                 detail=' · '.join(filter(None, [form['username'], form['email'], address])))
+    try:
+        from notifications import send_notification
+        send_notification(f"{who} ({form['username']}) demande un compte.\n"
+                          "À valider dans la page Validation.",
+                          kind='account_request', title='Demande de compte', icon='👤', tags=['bust_in_silhouette'])
+    except Exception:
+        current_app.logger.exception('Notification de demande de compte')
     return _render_login(config, notice=(
         'Demande envoyée. Vous pourrez vous connecter dès qu’un administrateur aura validé votre compte.'))
 
@@ -310,8 +321,13 @@ def login_password():
     row = accounts.authenticate(username, password) if _password_enabled(config) else None
     if row is None:
         _record_password_login_failure(address)
+        log_activity('login_failed', actor_key=None, actor_name=username[:80] or '?',
+                     target_name=username[:80] or None, success=False,
+                     detail=f'Mot de passe · {address}')
         return _render_login(config, error='Identifiant ou mot de passe incorrect.', status=401)
     if row['status'] == accounts.STATUS_PENDING:
+        log_activity('login_failed', actor_key=row['user_key'], actor_name=row['name'] or username,
+                     success=False, detail=f'Compte en attente de validation · {address}')
         return _render_login(config, error='Votre demande de compte attend la validation d’un administrateur.', status=403)
     with _app_login_lock:
         _password_login_failures.pop(address, None)
@@ -323,6 +339,7 @@ def login_password():
         record_login(session['user'])
     except Exception:
         current_app.logger.exception('Compte non enregistré')
+    log_activity('login', detail=f'Mot de passe · {address}')
     return redirect(next_url)
 
 
@@ -373,6 +390,9 @@ def callback():
         except Exception:
             current_app.logger.exception('Compte non enregistré')
 
+        log_activity('login', actor_key=user_key(user), actor_name=user.get('name') or user.get('email'),
+                     detail=('SSO · application Android' if session.get('app_login') else 'SSO')
+                     + f" · {request.remote_addr or '-'}")
         if session.pop('app_login', False):
             # Application Android : pas de session dans le navigateur, un code à usage unique
             # vers l'adresse fixe de l'app (jamais une adresse venant de la requête).
@@ -383,6 +403,7 @@ def callback():
         next_url = session.pop('next_url', None) or '/'
         return redirect(next_url)
     except Exception as e:
+        log_activity('login_failed', actor_name='SSO', success=False, detail=f'SSO · {e}'[:300])
         return _render_login(config, error=f"Erreur lors de l'authentification SSO : {e}", status=500)
 
 
@@ -417,6 +438,8 @@ def logout():
     pour que /logout reste instantané plutôt que de laisser le navigateur en attente
     d'une requête réseau sans rien afficher."""
     config = load_oidc_config()
+    if session.get('user'):
+        log_activity('logout')
     session.pop('user', None)
     session.pop('next_url', None)
 
@@ -449,7 +472,16 @@ def logout_provider():
 @auth_bp.route('/api/auth/me')
 def current_user():
     """Retourne l'utilisateur de la session courante (ou null si non connecté)"""
-    return jsonify({'user': session.get('user'), 'role': current_role()})
+    user = session.get('user')
+    profile = None
+    if user:
+        try:
+            row = accounts.get_user(user_key(user))
+            profile = {'name': (row['name'] if row else None) or user.get('name') or user.get('email'),
+                       'avatar_url': avatar_url(row) if row else None}
+        except Exception:
+            profile = None
+    return jsonify({'user': user, 'role': current_role(), 'profile': profile})
 
 
 @auth_bp.route('/api/auth/csrf')
@@ -548,12 +580,13 @@ def list_users():
             'computed_role': computed, 'role_override': row['role_override'],
             'role': row['role_override'] if row['role_override'] in ROLES else computed,
             'is_me': row['user_key'] == me, 'last_seen': row['last_seen'], 'first_seen': row['first_seen'],
-            'status': row['status'] or 'active',
+            'status': row['status'] or 'active', 'avatar_url': avatar_url(row),
             'allowed_libraries': _json.loads(row['allowed_libraries_json']) if row['allowed_libraries_json'] else None,
             'blocked_genres': _json.loads(row['blocked_genres_json']) if row['blocked_genres_json'] else [],
         })
     return jsonify({'success': True, 'admin_group': admin_group, 'users': users,
                     'oidc_enabled': _oidc_enabled(config), 'allow_signup': bool(config.get('allow_signup')),
+                    'auto_approve_requests': bool(config.get('auto_approve_requests')),
                     'pending_count': sum(1 for user in users if user['status'] == 'pending')})
 
 
@@ -567,6 +600,9 @@ def approve_user():
         return jsonify({'success': False, 'error': str(error)}), 400
     if not approved:
         return jsonify({'success': False, 'error': 'Demande introuvable'}), 404
+    row = accounts.get_user(data.get('key') or '')
+    log_activity('account_approved', target_key=data.get('key'), target_name=row['name'] if row else None,
+                 detail='Rôle : ' + ('Admin' if (data.get('role') or 'reader') == 'admin' else 'Lecteur'))
     return jsonify({'success': True})
 
 
@@ -577,6 +613,7 @@ def set_signup():
     config = load_oidc_config()
     config['allow_signup'] = bool(data.get('enabled'))
     if save_oidc_config(config):
+        log_activity('settings_changed', detail='Inscription ouverte : ' + ('activée' if config['allow_signup'] else 'désactivée'))
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
@@ -617,7 +654,21 @@ def _set_role(key, role):
 def set_user_role():
     """Force le rôle d'un compte (admin / reader), ou revient au rôle calculé (null)."""
     data = request.get_json(silent=True) or {}
-    return _set_role(data.get('key') or '', data.get('role')) or jsonify({'success': True})
+    failure = _set_role(data.get('key') or '', data.get('role'))
+    if failure:
+        return failure
+    _log_role(data.get('key') or '', data.get('role'))
+    return jsonify({'success': True})
+
+
+def _role_label(role):
+    return {'admin': 'Admin', 'reader': 'Lecteur'}.get(role, 'automatique')
+
+
+def _log_role(key, role):
+    row = accounts.get_user(key)
+    log_activity('role_changed', target_key=key, target_name=row['name'] if row else key,
+                 detail=f'Rôle : {_role_label(role)}')
 
 
 @auth_bp.route('/api/auth/users', methods=['POST'])
@@ -630,6 +681,8 @@ def create_user():
                                             role=data.get('role') or 'reader')
     except accounts.AccountError as error:
         return jsonify({'success': False, 'error': str(error)}), 400
+    log_activity('account_created', target_key=key, target_name=data.get('name') or data.get('username'),
+                 detail=f"Compte local {data.get('username')} · {_role_label(data.get('role') or 'reader')}")
     return jsonify({'success': True, 'key': key})
 
 
@@ -653,6 +706,19 @@ def edit_user():
             return jsonify({'success': False, 'error': str(error)}), 400
         if data.get('password') and key == user_key(session.get('user')):
             session['login_at'] = time.time()  # garder sa propre session après le changement
+    changes = []
+    if row['auth_method'] == 'password':
+        if data.get('name') is not None and (data.get('name') or '').strip() != (row['name'] or ''):
+            changes.append('nom')
+        if data.get('email') is not None and (data.get('email') or '').strip() != (row['email'] or ''):
+            changes.append('e-mail')
+        if data.get('password'):
+            changes.append('mot de passe')
+    if 'role' in data and data.get('role') != row['role_override']:
+        changes.append(f"rôle : {_role_label(data.get('role'))}")
+    if changes:
+        log_activity('account_edited', target_key=key, target_name=data.get('name') or row['name'],
+                     detail='Modifié : ' + ', '.join(changes))
     return jsonify({'success': True})
 
 
@@ -665,8 +731,15 @@ def delete_user():
         return jsonify({'success': False, 'error': 'Vous ne pouvez pas supprimer votre propre compte'}), 400
     if _last_local_admin(key):
         return jsonify({'success': False, 'error': 'C\'est le dernier administrateur local : créez-en un autre ou activez OIDC'}), 400
+    row = accounts.get_user(key)
     if not accounts.delete_account(key):
         return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    _remove_avatar_file(row['avatar'] if row else None)
+    pending = bool(row and row['status'] == accounts.STATUS_PENDING)
+    log_activity('account_rejected' if pending else 'account_deleted', target_key=key,
+                 target_name=(row['name'] if row else None) or key,
+                 detail='Demande d’inscription refusée' if pending else
+                 ('Compte local' if row and row['auth_method'] == 'password' else 'Compte OIDC'))
     return jsonify({'success': True})
 
 
@@ -698,7 +771,183 @@ def set_user_access():
         conn.close()
     if not changed:
         return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    row = accounts.get_user(key)
+    log_activity('access_changed', target_key=key, target_name=row['name'] if row else key,
+                 detail=('Bibliothèques : ' + ('toutes' if allowed is None else str(len(allowed))))
+                 + (f" · {len(genres)} genre(s) masqué(s)" if genres else ''))
     return jsonify({'success': True})
+
+
+@auth_bp.route('/api/auth/activity', methods=['GET'])
+def user_activity():
+    """Journal des comptes et des demandes (page Historique, administrateurs)."""
+    try:
+        limit = max(1, min(int(request.args.get('limit', 500)), 2000))
+    except ValueError:
+        limit = 500
+    return jsonify({'success': True, 'entries': list_activity(limit)})
+
+
+# ===== Profil : chaque compte modifie son nom, son e-mail, son mot de passe (comptes
+# locaux) et sa photo (tous). =====
+AVATAR_SIZE = 256
+AVATAR_MAX_BYTES = 8 * 1024 * 1024
+
+
+def _avatar_dir():
+    import os
+    path = os.path.join(current_app.config['DATA_DIR'], 'avatars')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def avatar_url(row):
+    try:
+        name = row['avatar']
+    except (KeyError, IndexError, TypeError):
+        return None
+    return f'/avatars/{name}' if name else None
+
+
+def _remove_avatar_file(name):
+    import os
+    if not name or '/' in name or '..' in name:
+        return
+    try:
+        os.remove(os.path.join(_avatar_dir(), name))
+    except OSError:
+        pass
+
+
+def _my_row():
+    key = user_key(session.get('user'))
+    return key, (accounts.get_user(key) if key else None)
+
+
+def _profile_payload(key, row):
+    user = session.get('user') or {}
+    local = bool(row) and row['auth_method'] == 'password'
+    return {
+        'key': key, 'type': 'local' if local else 'oidc',
+        'username': key.split(':', 1)[1] if local and key else None,
+        'name': (row['name'] if row else None) or user.get('name'),
+        'email': (row['email'] if row else None) or user.get('email'),
+        'role': current_role(), 'avatar_url': avatar_url(row) if row else None,
+        'first_seen': row['first_seen'] if row else None, 'last_seen': row['last_seen'] if row else None,
+        'can_edit_identity': local,
+    }
+
+
+@auth_bp.route('/profil')
+def profile_page():
+    if not session.get('user'):
+        return redirect('/')
+    return render_template('profile.html')
+
+
+@auth_bp.route('/api/auth/profile', methods=['GET'])
+def get_profile():
+    key, row = _my_row()
+    if not key:
+        return jsonify({'success': False, 'error': 'Aucun compte connecté'}), 400
+    return jsonify({'success': True, 'profile': _profile_payload(key, row)})
+
+
+@auth_bp.route('/api/auth/profile', methods=['PUT'])
+def update_profile():
+    """Nom, e-mail et mot de passe de son propre compte local (mot de passe actuel requis
+    pour en choisir un nouveau). Un compte OIDC se modifie dans Pocket ID."""
+    key, row = _my_row()
+    if not row:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    if row['auth_method'] != 'password':
+        return jsonify({'success': False, 'error': 'Votre nom, e-mail et mot de passe se changent chez votre fournisseur SSO'}), 400
+    data = request.get_json(silent=True) or {}
+    new_password = data.get('new_password') or ''
+    if new_password:
+        if new_password != (data.get('new_password_confirm') or ''):
+            return jsonify({'success': False, 'error': 'Les deux nouveaux mots de passe ne correspondent pas'}), 400
+        if not accounts.authenticate(key.split(':', 1)[1], data.get('current_password') or ''):
+            log_activity('password_change_failed', target_key=key, target_name=row['name'], success=False,
+                         detail='Mot de passe actuel incorrect')
+            return jsonify({'success': False, 'error': 'Mot de passe actuel incorrect'}), 403
+    try:
+        accounts.update_account(key, name=data.get('name'), email=data.get('email'), password=new_password or None)
+    except accounts.AccountError as error:
+        return jsonify({'success': False, 'error': str(error)}), 400
+    changes = []
+    if data.get('name') is not None and (data.get('name') or '').strip() != (row['name'] or ''):
+        changes.append('nom')
+    if data.get('email') is not None and (data.get('email') or '').strip() != (row['email'] or ''):
+        changes.append('e-mail')
+    if new_password:
+        changes.append('mot de passe')
+        session['login_at'] = time.time()  # garder cette session, couper les autres
+    if changes:
+        log_activity('profile_edited', target_key=key, target_name=data.get('name') or row['name'],
+                     detail='Modifié : ' + ', '.join(changes))
+    return jsonify({'success': True, 'profile': _profile_payload(key, accounts.get_user(key))})
+
+
+def _set_avatar(key, name):
+    from .roles import _connect
+    conn = _connect()
+    try:
+        conn.execute('UPDATE users SET avatar = ? WHERE user_key = ?', (name, key))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@auth_bp.route('/api/auth/profile/avatar', methods=['POST'])
+def upload_avatar():
+    """Photo de profil : recadrée au carré, 256 px, enregistrée en WebP (jamais le fichier envoyé)."""
+    import hashlib
+    import io
+    import os
+    from PIL import Image, ImageOps
+    key, row = _my_row()
+    if not row:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    file = request.files.get('avatar')
+    if not file:
+        return jsonify({'success': False, 'error': 'Aucune image'}), 400
+    raw = file.read(AVATAR_MAX_BYTES + 1)
+    if len(raw) > AVATAR_MAX_BYTES:
+        return jsonify({'success': False, 'error': 'Image trop lourde (8 Mo maximum)'}), 400
+    try:
+        Image.MAX_IMAGE_PIXELS = 40_000_000
+        image = Image.open(io.BytesIO(raw))
+        image = ImageOps.exif_transpose(image).convert('RGB')
+        image = ImageOps.fit(image, (AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)
+    except Exception:
+        return jsonify({'success': False, 'error': 'Image illisible (JPEG, PNG, WebP ou GIF)'}), 400
+    digest = hashlib.sha1(key.encode()).hexdigest()[:16]
+    name = f'{digest}-{int(time.time())}.webp'
+    image.save(os.path.join(_avatar_dir(), name), 'WEBP', quality=86)
+    _remove_avatar_file(row['avatar'])
+    _set_avatar(key, name)
+    log_activity('avatar_changed', target_key=key, target_name=row['name'], detail='Nouvelle photo de profil')
+    return jsonify({'success': True, 'avatar_url': f'/avatars/{name}'})
+
+
+@auth_bp.route('/api/auth/profile/avatar', methods=['DELETE'])
+def delete_avatar():
+    key, row = _my_row()
+    if not row:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    _remove_avatar_file(row['avatar'])
+    _set_avatar(key, None)
+    log_activity('avatar_changed', target_key=key, target_name=row['name'], detail='Photo de profil retirée')
+    return jsonify({'success': True})
+
+
+@auth_bp.route('/avatars/<name>')
+def serve_avatar(name):
+    from flask import abort, send_from_directory
+    if not name.endswith('.webp') or '/' in name or '..' in name:
+        abort(404)
+    return send_from_directory(_avatar_dir(), name, max_age=86400 * 30)
 
 
 @auth_bp.route('/api/auth/genres', methods=['GET'])

@@ -41,6 +41,17 @@
 
             <div class="content-wrapper">
                 <div class="content">
+                    <section id="requests-validation" class="vr-section" hidden>
+                        <div id="vr-accounts-group" class="vr-group" hidden>
+                            <h2 class="vr-heading"><span data-vr-icon="user-plus"></span>Demandes de compte <span class="vr-count" id="vr-accounts-count">0</span></h2>
+                            <div id="vr-accounts-list" class="vr-list"></div>
+                        </div>
+                        <div id="vr-books-group" class="vr-group" hidden>
+                            <h2 class="vr-heading"><span data-vr-icon="book-plus"></span>Demandes de BD <span class="vr-count" id="vr-books-count">0</span></h2>
+                            <p id="vr-auto-note" class="vr-note" hidden>La validation automatique est activée : seules les demandes faites avant son activation attendent ici.</p>
+                            <div id="vr-books-list" class="vr-list"></div>
+                        </div>
+                    </section>
                     <div id="review-list" class="review-list"><div class="loading">Chargement...</div></div>
                 </div>
             </div>
@@ -51,6 +62,7 @@
     <script src="{{ url_for('static', filename='js/match-modal.js') }}?v={{ asset_version('js/match-modal.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
     <script src="{{ url_for('static', filename='js/validation.js') }}?v={{ asset_version('js/validation.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/validation-requests.js') }}?v={{ asset_version('js/validation-requests.js') }}"></script>
     <div class="modal" id="review-bedetheque-modal"><div class="modal-content" style="max-width:700px"><span class="close-modal" onclick="closeReviewBedethequeModal()">×</span><div id="review-bedetheque-modal-body"></div></div></div>
 </body>
 </html>

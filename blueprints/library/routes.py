@@ -2503,6 +2503,8 @@ def get_library_series(library_id):
                                           ELSE 0 END), 0)
                    FROM volumes v WHERE v.series_id = s.id) AS total_votes,
                    s.local_cover_path, s.local_summary, s.local_genre, s.local_author, s.is_oneshot,
+                   COALESCE(NULLIF(TRIM(s.manual_genre), ''), NULLIF(TRIM(s.bedetheque_genre), ''),
+                            NULLIF(TRIM(s.local_genre), '')) AS genre,
                    CAST(COALESCE(s.manual_year_start, s.bedetheque_year_start, s.local_year) AS TEXT) AS year,
                    s.volumes_without_metadata, s.oneshot_is_integral,
                    s.tags, s.to_read_later, s.is_favorite,
@@ -2585,6 +2587,8 @@ def get_library_series(library_id):
                 'local_cover_path': row['local_cover_path'],
                 'local_summary': row['local_summary'],
                 'local_genre': row['local_genre'],
+                # Genre affiché : saisi à la main, sinon Bédéthèque, sinon ComicInfo.
+                'genre': row['genre'],
                 'local_author': row['local_author'],
                 'year': row['year'],
                 'is_oneshot': bool(row['is_oneshot']),

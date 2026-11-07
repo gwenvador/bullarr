@@ -48,6 +48,10 @@ function filterHistoryBySearchText(value) {
     renderHistoryEvents();
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-history-icon]').forEach(el => { el.outerHTML = svgIcon(el.dataset.historyIcon); });
+});
+
 async function loadHistoryEvents() {
     const restoredFromCache = _restoreHistoryCache();
     document.getElementById('history-events-loading').style.display = restoredFromCache ? 'none' : 'block';
@@ -55,11 +59,12 @@ async function loadHistoryEvents() {
     if (!restoredFromCache) document.getElementById('history-events-body').innerHTML = '';
 
     try {
-        const [importResp, downloadResp, actionResp, aiResp] = await Promise.all([
+        const [importResp, downloadResp, actionResp, aiResp, activityResp] = await Promise.all([
             fetch('/api/import/history?limit=500').then(r => r.json()).catch(() => ({history: []})),
             fetch('/api/missing-monitor/history?limit=500').then(r => r.json()).catch(() => ({history: []})),
             fetch('/api/actions/history?limit=500').then(r => r.json()).catch(() => ({history: []})),
-            fetch('/api/ai/history').then(r => r.json()).catch(() => ({entries: []}))
+            fetch('/api/ai/history').then(r => r.json()).catch(() => ({entries: []})),
+            fetch('/api/auth/activity?limit=1000').then(r => r.ok ? r.json() : {entries: []}).catch(() => ({entries: []}))
         ]);
 
         // "widget history and /history should have the same UI [...] no need to do
@@ -68,7 +73,9 @@ async function loadHistoryEvents() {
         // maintenant dans history-shared.js (mapHistoryResponsesToEvents), partagé avec le
         // widget "Historique récent" de /import (import.js) ET la fiche historique d'une
         // série (openSeriesHistoryModal, library.js) plutôt que dupliqué ici.
-        allHistoryEvents = mapHistoryResponsesToEvents(importResp, downloadResp, actionResp, aiResp);
+        allHistoryEvents = mapHistoryResponsesToEvents(importResp, downloadResp, actionResp, aiResp)
+            .concat(mapUserActivityToEvents(activityResp.entries))
+            .sort((a, b) => (parseDbUtcDate(b.date)?.getTime() ?? 0) - (parseDbUtcDate(a.date)?.getTime() ?? 0));
         _saveHistoryCache();
 
         document.getElementById('history-events-loading').style.display = 'none';
@@ -81,7 +88,7 @@ async function loadHistoryEvents() {
 
 function filterHistoryEvents(type) {
     currentHistoryFilter = type;
-    document.querySelectorAll('#history-filter-all, #history-filter-import, #history-filter-download, #history-filter-search, #history-filter-rename, #history-filter-convert, #history-filter-delete, #history-filter-ai')
+    document.querySelectorAll('#history-filter-all, #history-filter-import, #history-filter-download, #history-filter-search, #history-filter-rename, #history-filter-convert, #history-filter-delete, #history-filter-ai, #history-filter-request, #history-filter-user')
         .forEach(btn => btn.classList.remove('history-filter-active'));
     document.getElementById('history-filter-' + type).classList.add('history-filter-active');
     // Reste synchronisé avec le select de la colonne Type (voir templates/history.html) -

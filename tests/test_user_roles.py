@@ -156,24 +156,174 @@ class UserRolesTest(unittest.TestCase):
         rows = self.client.get('/api/requests').get_json()['requests']
         self.assertEqual([r['user_name'] for r in rows], ['Bob'])
 
-    def test_request_new_series_goes_to_first_allowed_library_with_forced_search(self):
+    def _fake_add(self, seen, series_id=99):
+        def fake_add():
+            from flask import jsonify, request
+            seen.update(request.get_json())
+            return jsonify({'success': True, 'series_id': series_id, 'title': 'X'})
+        return fake_add
+
+    def test_reader_request_waits_for_validation_in_his_library(self):
         self.login('bob')
         conn = sqlite3.connect(self.db_path)
         conn.execute("UPDATE users SET allowed_libraries_json = '[2]' WHERE user_key = 'oidc:bob'")
         conn.commit()
         conn.close()
         seen = {}
-
-        def fake_add():
-            from flask import jsonify, request
-            seen.update(request.get_json())
-            return jsonify({'success': True, 'series_id': 99})
-
-        with mock.patch('blueprints.bedetheque.routes.add_series_from_bedetheque', side_effect=fake_add):
+        with mock.patch('blueprints.bedetheque.routes.add_series_from_bedetheque', side_effect=self._fake_add(seen)), \
+                mock.patch('notifications.send_notification') as notify:
             response = self.send('POST', '/api/requests', json={'url': 'https://www.bedetheque.com/serie-1-BD-X.html', 'title': 'X'})
+            again = self.send('POST', '/api/requests', json={'url': 'https://www.bedetheque.com/serie-1-BD-X.html', 'title': 'X'})
         self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(response.get_json()['status'], 'pending')
+        self.assertTrue(again.get_json()['duplicate'])
+        self.assertEqual(seen, {})  # rien ajouté avant la validation
+        self.assertEqual(notify.call_count, 1)
+        self.assertEqual(notify.call_args.kwargs['kind'], 'book_request')
+        self.assertEqual(self.db("SELECT status, library_id FROM book_requests"), [('pending', 2)])
+
+        self.login('alice', ['bullarr-admins'])
+        self.assertEqual(self.client.get('/api/requests/pending-count').get_json()['books'], 1)
+        request_id = self.client.get('/api/requests?status=pending').get_json()['requests'][0]['id']
+        with mock.patch('blueprints.bedetheque.routes.add_series_from_bedetheque', side_effect=self._fake_add(seen)):
+            approved = self.send('POST', f'/api/requests/{request_id}/approve', json={})
+        self.assertEqual(approved.status_code, 200, approved.get_json())
         self.assertEqual(seen['library_id'], 2)
         self.assertTrue(seen['force_auto_acquire'])
+        self.assertEqual(self.db("SELECT status, series_id, decided_by FROM book_requests"), [('added', 99, 'Alice')])
+        self.assertEqual(self.send('POST', f'/api/requests/{request_id}/approve', json={}).status_code, 409)
+        actions = [e['action'] for e in self.client.get('/api/auth/activity').get_json()['entries']]
+        self.assertIn('request_created', actions)
+        self.assertIn('request_approved', actions)
+
+    def test_failed_approval_keeps_the_request_pending(self):
+        self.login('bob')
+        with mock.patch('notifications.send_notification'):
+            self.send('POST', '/api/requests', json={'url': 'https://www.bedetheque.com/serie-1-BD-X.html', 'title': 'X'})
+        self.login('alice', ['bullarr-admins'])
+        request_id = self.db('SELECT id FROM book_requests')[0][0]
+
+        def failing_add():
+            from flask import jsonify
+            return jsonify({'success': False, 'error': 'Bédéthèque injoignable'}), 502
+
+        with mock.patch('blueprints.bedetheque.routes.add_series_from_bedetheque', side_effect=failing_add):
+            response = self.send('POST', f'/api/requests/{request_id}/approve', json={})
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(self.db('SELECT status FROM book_requests'), [('pending',)])
+
+    def test_admin_rejects_with_a_reason_and_reader_sees_it(self):
+        self.login('bob')
+        with mock.patch('notifications.send_notification'):
+            self.send('POST', '/api/requests', json={'url': 'https://www.bedetheque.com/serie-1-BD-X.html', 'title': 'X'})
+        request_id = self.db('SELECT id FROM book_requests')[0][0]
+        self.assertEqual(self.send('POST', f'/api/requests/{request_id}/reject', json={}).status_code, 403)
+        self.login('alice', ['bullarr-admins'])
+        self.assertEqual(self.send('POST', f'/api/requests/{request_id}/reject', json={'reason': 'Pas pour les enfants'}).status_code, 200)
+        self.login('bob')
+        row = self.client.get('/api/requests').get_json()['requests'][0]
+        self.assertEqual((row['status'], row['error']), ('rejected', 'Pas pour les enfants'))
+        lookup = self.send('POST', '/api/requests/lookup', json={'urls': ['https://www.bedetheque.com/serie-1-BD-X.html',
+                                                                         'https://www.bedetheque.com/serie-59-BD-Asterix.html']}).get_json()
+        self.assertEqual(lookup['items']['https://www.bedetheque.com/serie-1-BD-X.html']['state'], 'rejected')
+        self.assertEqual(lookup['items']['https://www.bedetheque.com/serie-59-BD-Asterix.html']['state'], 'library')
+
+    def test_reader_cancels_only_his_own_pending_request(self):
+        self.login('bob')
+        with mock.patch('notifications.send_notification'):
+            self.send('POST', '/api/requests', json={'url': 'https://www.bedetheque.com/serie-1-BD-X.html', 'title': 'X'})
+        request_id = self.db('SELECT id FROM book_requests')[0][0]
+        self.login('carol')
+        self.assertEqual(self.send('DELETE', f'/api/requests/{request_id}').status_code, 404)
+        self.login('bob')
+        self.assertEqual(self.send('DELETE', f'/api/requests/{request_id}').status_code, 200)
+        self.assertEqual(self.db('SELECT status FROM book_requests'), [('cancelled',)])
+
+    def test_auto_approve_setting_adds_reader_requests_at_once(self):
+        self.login('alice', ['bullarr-admins'])
+        self.assertEqual(self.send('PUT', '/api/requests/settings', json={'auto_approve': True}).status_code, 200)
+        self.assertTrue(self.client.get('/api/auth/users').get_json()['auto_approve_requests'])
+        self.login('bob')
+        self.assertEqual(self.send('PUT', '/api/requests/settings', json={'auto_approve': False}).status_code, 403)
+        seen = {}
+        with mock.patch('blueprints.bedetheque.routes.add_series_from_bedetheque', side_effect=self._fake_add(seen)), \
+                mock.patch('notifications.send_notification') as notify:
+            response = self.send('POST', '/api/requests', json={'url': 'https://www.bedetheque.com/serie-1-BD-X.html', 'title': 'X'})
+        self.assertEqual(response.get_json()['status'], 'added')
+        self.assertEqual(seen['library_id'], 1)
+        notify.assert_not_called()
+
+    def test_admins_have_no_requests_page_and_readers_no_activity_log(self):
+        self.login('alice', ['bullarr-admins'])
+        response = self.client.get('/demandes')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/validation', response.headers['Location'])
+        self.login('bob')
+        self.assertEqual(self.client.get('/demandes').status_code, 200)
+        self.assertEqual(self.client.get('/api/auth/activity').status_code, 403)
+        self.assertEqual(self.client.get('/api/requests/pending-count').status_code, 403)
+
+    # ----- Profil -----
+    def test_profile_avatar_for_sso_reader_and_no_identity_edit(self):
+        import io
+        from PIL import Image
+        self.login('bob')
+        self.assertEqual(self.client.get('/profil').status_code, 200)
+        profile = self.client.get('/api/auth/profile').get_json()['profile']
+        self.assertEqual((profile['type'], profile['role'], profile['can_edit_identity']), ('oidc', 'reader', False))
+        self.assertEqual(self.send('PUT', '/api/auth/profile', json={'name': 'Hack'}).status_code, 400)
+        buffer = io.BytesIO()
+        Image.new('RGB', (600, 300), (200, 30, 30)).save(buffer, 'PNG')
+        buffer.seek(0)
+        avatars = tempfile.TemporaryDirectory()
+        self.app.config['DATA_DIR'] = avatars.name
+        try:
+            upload = self.client.post('/api/auth/profile/avatar', headers={'X-CSRF-Token': 'tok'},
+                                      data={'avatar': (buffer, 'me.png')}, content_type='multipart/form-data')
+            self.assertEqual(upload.status_code, 200, upload.get_json())
+            url = upload.get_json()['avatar_url']
+            served = self.client.get(url)
+            self.assertEqual(served.status_code, 200)
+            self.assertEqual(Image.open(io.BytesIO(served.data)).size, (256, 256))
+            self.assertEqual(self.client.get('/api/auth/me').get_json()['profile']['avatar_url'], url)
+            bad = self.client.post('/api/auth/profile/avatar', headers={'X-CSRF-Token': 'tok'},
+                                   data={'avatar': (io.BytesIO(b'not an image'), 'x.png')}, content_type='multipart/form-data')
+            self.assertEqual(bad.status_code, 400)
+            self.assertEqual(self.send('DELETE', '/api/auth/profile/avatar').status_code, 200)
+            self.assertEqual(os.listdir(os.path.join(avatars.name, 'avatars')), [])
+            self.assertEqual(self.client.get('/avatars/../oidc_config.json').status_code, 404)
+        finally:
+            avatars.cleanup()
+
+    def test_local_reader_edits_profile_and_password_with_current_password(self):
+        with self.app.app_context():
+            from blueprints.auth import accounts
+            accounts.create_local_account('lea', 'lecture-123', name='Léa', role='reader')
+        user = {'name': 'lea', 'auth_method': 'password'}
+        with self.client.session_transaction() as sess:
+            sess['user'] = user
+            sess['csrf_token'] = 'tok'
+        profile = self.client.get('/api/auth/profile').get_json()['profile']
+        self.assertEqual((profile['username'], profile['role'], profile['can_edit_identity']), ('lea', 'reader', True))
+        self.assertEqual(self.send('PUT', '/api/auth/profile', json={'name': 'Léa M.', 'email': 'lea@example.test'}).status_code, 200)
+        wrong = self.send('PUT', '/api/auth/profile', json={'current_password': 'nope', 'new_password': 'nouveau-456',
+                                                             'new_password_confirm': 'nouveau-456'})
+        self.assertEqual(wrong.status_code, 403)
+        mismatch = self.send('PUT', '/api/auth/profile', json={'current_password': 'lecture-123', 'new_password': 'nouveau-456',
+                                                                'new_password_confirm': 'autre'})
+        self.assertEqual(mismatch.status_code, 400)
+        changed = self.send('PUT', '/api/auth/profile', json={'current_password': 'lecture-123', 'new_password': 'nouveau-456',
+                                                               'new_password_confirm': 'nouveau-456'})
+        self.assertEqual(changed.status_code, 200, changed.get_json())
+        self.assertEqual(self.client.get('/api/auth/profile').status_code, 200)  # session gardée
+        with self.app.app_context():
+            from blueprints.auth import accounts
+            self.assertIsNotNone(accounts.authenticate('lea', 'nouveau-456'))
+            row = accounts.get_user('password:lea')
+        self.assertEqual((row['name'], row['email']), ('Léa M.', 'lea@example.test'))
+        actions = [r[0] for r in self.db('SELECT action FROM user_activity ORDER BY id')]
+        self.assertEqual(actions.count('profile_edited'), 2)
+        self.assertIn('password_change_failed', actions)
 
     def test_rejects_non_bedetheque_url(self):
         self.login('bob')

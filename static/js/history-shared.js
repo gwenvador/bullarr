@@ -17,14 +17,15 @@ const HISTORY_TYPE_ICONS = {
     import: 'package', download: 'download', rename: 'pencil', delete: 'trash-2', delete_volume: 'trash-2',
     renumber_volume: 'tag', convert: 'refresh-cw', merge: 'git-merge', move_volume: 'git-merge',
     add_series: 'plus', auto_acquire: 'radar', search: 'search', quality_upgrade: 'sparkles',
-    missing_volume_match: 'eye', ai: 'bot'
+    missing_volume_match: 'eye', ai: 'bot', request: 'book-plus', user: 'users'
 };
 const HISTORY_TYPE_LABELS = {
     import: 'Import', download: 'Téléchargement', rename: 'Renommage', delete: 'Suppression',
     delete_volume: 'Suppression de tome', renumber_volume: 'Changement de numéro',
     convert: 'Conversion', merge: 'Fusion', move_volume: 'Déplacement de tome',
     add_series: 'Ajout de série', auto_acquire: 'Recherche automatique', search: 'Recherche manuelle',
-    quality_upgrade: 'Upgrade qualité', missing_volume_match: 'Tome manquant détecté', ai: 'IA'
+    quality_upgrade: 'Upgrade qualité', missing_volume_match: 'Tome manquant détecté', ai: 'IA',
+    request: 'Demande', user: 'Utilisateur'
 };
 
 const HISTORY_SOURCE_LABELS = { ebdz: 'EBDZ', prowlarr: 'Prowlarr', telegram: 'Telegram', fourtoutici: 'fourtoutici', vk: 'VK' };
@@ -255,6 +256,50 @@ function toggleAiDetail(rowId, aiId, fullDate) {
         + more;
 }
 
+// Journal des comptes (GET /api/auth/activity, voir blueprints/auth/activity.py) :
+// connexions, déconnexions, créations/modifications/suppressions de compte, demandes de
+// compte et de BD. Onglets « Utilisateurs » et « Demandes » de /history.
+const USER_ACTIVITY = {
+    login: ['user', 'log-in', 'Connexion'],
+    login_failed: ['user', 'lock', 'Connexion refusée'],
+    logout: ['user', 'log-out', 'Déconnexion'],
+    signup_request: ['request', 'user-plus', 'Demande de compte'],
+    account_approved: ['user', 'user-check', 'Compte validé'],
+    account_rejected: ['user', 'user-x', 'Demande de compte refusée'],
+    account_created: ['user', 'user-plus', 'Compte créé'],
+    account_edited: ['user', 'user-pen', 'Compte modifié'],
+    account_deleted: ['user', 'user-x', 'Compte supprimé'],
+    role_changed: ['user', 'shield-check', 'Rôle changé'],
+    access_changed: ['user', 'eye', 'Accès modifiés'],
+    profile_edited: ['user', 'user-pen', 'Profil modifié'],
+    password_change_failed: ['user', 'key-round', 'Changement de mot de passe refusé'],
+    avatar_changed: ['user', 'camera', 'Photo de profil'],
+    settings_changed: ['user', 'settings', 'Réglage des comptes'],
+    request_created: ['request', 'book-plus', 'Demande de BD'],
+    request_approved: ['request', 'check', 'Demande de BD validée'],
+    request_rejected: ['request', 'circle-x', 'Demande de BD refusée'],
+    request_cancelled: ['request', 'undo', 'Demande de BD annulée'],
+};
+
+function mapUserActivityToEvents(entries) {
+    return (entries || []).map(h => {
+        const [type, icon, label] = USER_ACTIVITY[h.action] || ['user', 'users', h.action];
+        const self = h.target_name && h.target_name === h.actor_name && h.target_key === h.actor_key;
+        const target = h.series_title || h.target_name;
+        const actor = h.actor_name ? `Par ${h.actor_name}` : '';
+        return {
+            type, icon, typeLabel: label,
+            date: h.created_at,
+            seriesId: h.series_id || null,
+            seriesTitle: h.series_title || '',
+            label: target && !self ? `${label} · ${target}` : (h.actor_name && h.action.startsWith('log') ? `${label} · ${h.actor_name}` : label),
+            detail: [h.action.startsWith('log') ? '' : actor, h.detail].filter(Boolean).join(' · '),
+            searchExtra: [h.actor_name, h.target_name, h.detail].filter(Boolean).join(' '),
+            success: h.success,
+        };
+    });
+}
+
 function mapHistoryResponsesToEvents(importResp, downloadResp, actionResp, aiResp = null, seriesId = null) {
     const imports = mapImportHistoryToEvents(importResp.history);
 
@@ -311,7 +356,7 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
     const dateShort = !dateObj ? '-' : (isToday
         ? dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: BULLARR_DISPLAY_TZ })
         : dateObj.toLocaleDateString('fr-FR', { timeZone: BULLARR_DISPLAY_TZ }));
-    const typeLabel = HISTORY_TYPE_LABELS[e.type] || e.type;
+    const typeLabel = e.typeLabel || HISTORY_TYPE_LABELS[e.type] || e.type;
     // 3 états (pas juste succès/échec) - un import encore status='started' affichait à
     // tort "✗ Échec" côté /history avant cette unification (e.success n'était jamais vrai
     // pour une opération en cours). "once the download is initiated it should be in the
@@ -364,7 +409,7 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
     return `
         <tr class="history-shared-row" style="border-bottom:1px solid var(--color-border); font-size:0.85em;${(expandable || clickableSeries) ? ' cursor:pointer;' : ''}" ${rowOnclick}>
             <td style="padding:6px 8px; white-space:nowrap;" data-tooltip="${escapeHtmlHistory(date)}">${escapeHtmlHistory(dateShort)}</td>
-            <td style="padding:6px 8px; white-space:nowrap; text-align:center;" data-tooltip="${escapeHtmlHistory(typeLabel)}">${svgIcon(HISTORY_TYPE_ICONS[e.type] || 'tag')}</td>
+            <td style="padding:6px 8px; white-space:nowrap; text-align:center;" data-tooltip="${escapeHtmlHistory(typeLabel)}">${svgIcon(e.icon || HISTORY_TYPE_ICONS[e.type] || 'tag')}</td>
             <td style="padding:6px 8px; overflow-wrap:break-word; word-break:break-word;">
                 <div style="font-weight:600; display:flex; align-items:center; gap:4px;">${expandable ? '▸ ' : ''}${labelHtml}</div>
                 <div style="color:var(--color-text-muted); font-size:0.9em; white-space:pre-line;">${e.sourceHtml ? e.sourceHtml + ' ' : ''}${escapeHtmlHistory(e.detail)}</div>

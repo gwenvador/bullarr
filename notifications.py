@@ -22,6 +22,10 @@ EVENTS = (
      "La surveillance repère un album manquant et elle est réglée sur « Notifier »", True),
     ('review', 'Validation en attente',
      "Un résultat douteux attend votre décision dans la page Validation", False),
+    ('account_request', 'Demande de compte',
+     "Quelqu'un demande un compte depuis la page de connexion", True),
+    ('book_request', 'Demande de BD',
+     "Un lecteur demande une série ; elle attend votre décision dans la page Validation", True),
     ('update_available', 'Mise à jour disponible',
      "Une nouvelle version de Bullarr ou de l'application Android est publiée", True),
 )
@@ -32,7 +36,8 @@ CHAT_CHANNELS = ('telegram', 'ntfy')
 # ajouté y passe pour un évènement d'import (alertes « Imports »), une mise à jour pour une
 # nouveauté (alertes « Nouveautés ») : l'app ignore les types qu'elle ne connaît pas.
 _PUSH_KINDS = {'monitor': 'monitor_found', 'download_added': 'import_available',
-               'update_available': 'monitor_found'}
+               'update_available': 'monitor_found', 'account_request': 'monitor_found',
+               'book_request': 'monitor_found'}
 
 
 def channel_config(channel):

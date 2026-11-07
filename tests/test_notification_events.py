@@ -40,7 +40,8 @@ class EventsRouteTest(EventsTestCase):
     def test_one_row_per_event_with_defaults(self):
         data = self.client.get('/api/notifications/events').get_json()
         ids = [event['id'] for event in data['events']]
-        self.assertEqual(ids, ['download_added', 'import_completed', 'import_available', 'monitor', 'review', 'update_available'])
+        self.assertEqual(ids, ['download_added', 'import_completed', 'import_available', 'monitor', 'review',
+                               'account_request', 'book_request', 'update_available'])
         self.assertTrue(data['channels']['telegram']['events']['download_added'])
         self.assertFalse(data['channels']['ntfy']['events']['review'])
         self.assertEqual(data['push_devices'], 0)

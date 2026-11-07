@@ -40,20 +40,27 @@
             </header>
 
             <div class="content-wrapper">
-                <div class="content">
-                    <div class="settings-card">
-                        <h2>Demander une série</h2>
-                        <p class="request-intro">Cherchez une série sur Bédéthèque (titre, ou adresse de la fiche). Une fois demandée, elle est ajoutée à la bibliothèque et la recherche des tomes démarre toute seule.</p>
-                        <form id="request-search-form" class="request-search">
-                            <input type="search" id="request-search-input" placeholder="Titre de la série…" autocomplete="off" required>
-                            <button type="submit" class="btn btn-primary">Chercher</button>
+                <div class="content rq-page">
+                    <section class="rq-hero">
+                        <div class="rq-hero-text">
+                            <h2>Quelle série aimeriez-vous lire ?</h2>
+                            <p>Cherchez sur Bédéthèque par titre, ou collez l’adresse d’une fiche série.</p>
+                        </div>
+                        <form id="request-search-form" class="rq-search" role="search">
+                            <span class="rq-search-icon" data-rq-icon="search"></span>
+                            <input type="search" id="request-search-input" placeholder="Blacksad, Astérix, Lucky Luke…" autocomplete="off" required aria-label="Titre de la série">
+                            <button type="submit" class="rq-btn rq-btn-primary">Chercher</button>
                         </form>
-                        <div id="request-search-results"></div>
-                    </div>
-                    <div class="settings-card">
-                        <h2 id="request-list-title">Mes demandes</h2>
-                        <div id="request-list"><div class="loading"><div class="spinner"></div><p>Chargement...</p></div></div>
-                    </div>
+                        <div id="request-mode" class="rq-mode"></div>
+                    </section>
+                    <div id="request-search-results" class="rq-results"></div>
+                    <section class="rq-section">
+                        <div class="rq-section-head">
+                            <h2><span data-rq-icon="inbox"></span>Mes demandes</h2>
+                            <div id="request-filters" class="rq-filters" role="toolbar" aria-label="Filtrer les demandes"></div>
+                        </div>
+                        <div id="request-list" class="rq-list"><div class="rq-loading"><div class="spinner"></div><span>Chargement…</span></div></div>
+                    </section>
                 </div>
             </div>
         </div>

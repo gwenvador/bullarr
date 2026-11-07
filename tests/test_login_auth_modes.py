@@ -374,6 +374,30 @@ class LoginPageBehaviourTest(unittest.TestCase):
         self.assertNotEqual(reader_free.put('/api/auth/signup', headers=headers, json={'enabled': False}).status_code, 200)
         self.assertTrue(admin.get('/api/auth/users').get_json()['allow_signup'])
 
+    def test_logins_and_account_actions_are_logged_for_the_history(self):
+        self.write_config()
+        admin = self._admin_client()
+        headers = {'X-CSRF-Token': 'token'}
+        self.login(self.app.test_client(), 'admin', 'mauvais')
+        admin.post('/api/auth/users', headers=headers, json={'username': 'zoe', 'password': 'lecture-123', 'role': 'reader'})
+        admin.put('/api/auth/users', headers=headers, json={'key': 'password:zoe', 'name': 'Zoé'})
+        admin.delete('/api/auth/users', headers=headers, json={'key': 'password:zoe'})
+        entries = admin.get('/api/auth/activity').get_json()['entries']
+        actions = [e['action'] for e in reversed(entries)]
+        self.assertEqual(actions[:2], ['login', 'login_failed'])
+        self.assertEqual(actions[2:], ['account_created', 'account_edited', 'account_deleted'])
+        self.assertTrue(all('mauvais' not in json.dumps(e) for e in entries))
+        failed = [e for e in entries if e['action'] == 'login_failed'][0]
+        self.assertFalse(failed['success'])
+
+    def test_signup_notifies_the_admins(self):
+        from unittest import mock
+        self.write_config(allow_signup=True)
+        with mock.patch('notifications.send_notification') as notify:
+            self.signup(self.client, name='Léa', email='lea@example.test')
+        self.assertEqual(notify.call_args.kwargs['kind'], 'account_request')
+        self.assertIn('Léa', notify.call_args.args[0])
+
     def test_background_api_calls_do_not_become_the_post_login_page(self):
         self.write_config()
         self.add_account()

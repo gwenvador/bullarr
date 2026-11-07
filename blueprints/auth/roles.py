@@ -25,10 +25,12 @@ READER_ENDPOINTS = {
     # Pages
     'static': _GET, 'serve_cover': _GET,
     'library.index': _GET, 'library.library_detail': _GET, 'library.series_detail_page': _GET,
-    'library.requests_page': _GET,
+    'library.requests_page': _GET, 'auth.profile_page': _GET, 'auth.serve_avatar': _GET,
     'auth.logout': _GET, 'auth.logout_provider': _GET,
     # Compte
     'auth.current_user': _GET, 'auth.csrf_token': _GET,
+    'auth.get_profile': _GET, 'auth.update_profile': frozenset({'PUT'}),
+    'auth.upload_avatar': frozenset({'POST'}), 'auth.delete_avatar': frozenset({'DELETE'}),
     # Bibliothèques et séries (lecture)
     'library.libraries': _GET, 'library.library_operations': _GET, 'library.get_library_info': _GET,
     'library.get_library_last_updated': _GET, 'library.get_library_series': _GET,
@@ -48,6 +50,7 @@ READER_ENDPOINTS = {
     # Demandes
     'bedetheque.search_bedetheque': _GET,
     'library.list_requests': _GET, 'library.create_request': frozenset({'POST'}),
+    'library.lookup_requests': frozenset({'POST'}), 'library.cancel_request': frozenset({'DELETE'}),
 }
 
 
@@ -87,9 +90,17 @@ def init_tables(cursor):
     # Bédéthèque masqués (contrôle parental).
     columns = {row[1] for row in cursor.execute('PRAGMA table_info(users)').fetchall()}
     # status : NULL = actif, 'pending' = demande d'inscription à valider par un admin.
-    for column in ('allowed_libraries_json', 'blocked_genres_json', 'password_hash', 'status'):
+    # avatar : nom du fichier dans data/avatars (photo de profil choisie par le compte).
+    for column in ('allowed_libraries_json', 'blocked_genres_json', 'password_hash', 'status', 'avatar'):
         if column not in columns:
             cursor.execute(f'ALTER TABLE users ADD COLUMN {column} TEXT')
+    # Demande à valider : bibliothèque visée au moment de la demande, décision (qui, quand).
+    request_columns = {row[1] for row in cursor.execute('PRAGMA table_info(book_requests)').fetchall()}
+    for column, kind in (('library_id', 'INTEGER'), ('decided_at', 'TIMESTAMP'), ('decided_by', 'TEXT')):
+        if column not in request_columns:
+            cursor.execute(f'ALTER TABLE book_requests ADD COLUMN {column} {kind}')
+    from .activity import init_table as init_activity_table
+    init_activity_table(cursor)
     # Sessions ouvertes avant revoked_at refusées (compte supprimé, mot de passe changé).
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS revoked_users (
