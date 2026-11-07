@@ -4181,3 +4181,25 @@ body:has(.library-content .poster-grid) { overflow-x: clip; overflow-y: visible;
 /* Densité du tableau des séries (panneau Affichage) ; « confortable » = réglage d'origine. */
 body[data-table-density="compact"] #series-grid .series-table-row td { padding: 3px 8px; }
 body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11px 12px; font-size: 0.9em; }
+
+/* Barre de la bibliothèque : icônes seules, le texte s ouvre au survol (ou au clavier)
+   pour que tout tienne sur une ligne. */
+.library-content .search-row .toolbar-btn { gap: 0; }
+.library-content .search-row .toolbar-btn-label {
+    display: inline-block; max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
+    transition: max-width .2s ease, margin-left .2s ease, opacity .15s ease;
+}
+.library-content .search-row .toolbar-btn:focus-visible .toolbar-btn-label,
+.library-content .search-row .toolbar-btn[aria-expanded="true"] .toolbar-btn-label { max-width: 180px; margin-left: 4px; opacity: 1; }
+@media (hover: hover) {
+    .library-content .search-row .toolbar-btn:hover .toolbar-btn-label { max-width: 180px; margin-left: 4px; opacity: 1; }
+}
+.library-content .search-row-view-switcher { gap: 4px; }
+.library-content .search-row .poster-size-control { margin: 0 6px; }
+.library-content .search-row .poster-size-control input[type="range"] { width: 90px; }
+@media (min-width: 769px) and (hover: hover) {
+    /* Le texte ouvert au survol prend l espace libre (au pire réduit les compteurs)
+       sans renvoyer la barre sur deux lignes. */
+    .library-content > .search-row { flex-wrap: nowrap; }
+    .library-content > .search-row .library-stats-row-compact { min-width: 0; overflow: hidden; }
+}
