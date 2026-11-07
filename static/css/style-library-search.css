@@ -3672,9 +3672,12 @@ body.comic-reader-open { overflow: hidden; }
    actions au survol, cases à cocher seulement en mode « Sélectionner », barre d'actions
    flottante. Remplace les règles « poster wall » plus haut. ===== */
 .series-grid.poster-grid {
-    grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(calc(138px * var(--poster-scale, 1)), 1fr));
     gap: 26px 20px;
 }
+/* Curseur « Taille des miniatures » (vue affiches, voir applyPosterScale côté library.js). */
+.poster-size-control { display: inline-flex; align-items: center; gap: 6px; color: var(--color-text-muted); cursor: pointer; margin: 0; }
+.poster-size-control input[type="range"] { width: 110px; accent-color: var(--color-accent); cursor: pointer; margin: 0; }
 .poster-card {
     border-radius: 6px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 6px 14px -4px rgba(0,0,0,0.28);
@@ -3844,9 +3847,10 @@ body.comic-reader-open { overflow: hidden; }
 
 @media screen and (max-width: 768px) {
     .series-grid.poster-grid {
-        grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(104px * var(--poster-scale, 1))), 1fr));
         gap: 16px 12px;
     }
+    .poster-size-control input[type="range"] { width: 80px; }
     .poster-badge { font-size: 0.6em; padding: 1px 6px; }
     .series-bulk-bar { bottom: 14px; }
     .series-bulk-btn { width: 40px; height: 40px; }

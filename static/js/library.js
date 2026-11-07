@@ -1360,12 +1360,39 @@ function setSeriesViewMode(mode) {
     filterSeries();
 }
 
+// Taille des miniatures (vue affiches) : facteur appliqué à la largeur minimale des
+// colonnes (--poster-scale, voir .series-grid.poster-grid), gardé dans ce navigateur.
+const POSTER_SCALE_MIN = 0.7;
+const POSTER_SCALE_MAX = 1.8;
+
+function _posterScale() {
+    let value = 1;
+    try { value = parseFloat(localStorage.getItem('posterScale')); } catch (e) { /* stockage indisponible */ }
+    return Number.isFinite(value) ? Math.min(POSTER_SCALE_MAX, Math.max(POSTER_SCALE_MIN, value)) : 1;
+}
+
+function applyPosterScale() {
+    const scale = _posterScale();
+    document.getElementById('series-grid')?.style.setProperty('--poster-scale', String(scale));
+    const range = document.getElementById('poster-size-range');
+    if (range && parseFloat(range.value) !== scale) range.value = String(scale);
+}
+
+function setPosterScale(value) {
+    const scale = Math.min(POSTER_SCALE_MAX, Math.max(POSTER_SCALE_MIN, parseFloat(value) || 1));
+    try { localStorage.setItem('posterScale', String(scale)); } catch (e) { /* stockage indisponible */ }
+    applyPosterScale();
+}
+
 function updateViewSwitcherButtons() {
     document.querySelectorAll('.view-switch-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === seriesViewMode);
     });
     const columnsSection = document.getElementById('table-columns-section');
     if (columnsSection) columnsSection.style.display = seriesViewMode === 'table' ? '' : 'none';
+    const posterSize = document.getElementById('poster-size-control');
+    if (posterSize) posterSize.style.display = seriesViewMode === 'poster' ? '' : 'none';
+    applyPosterScale();
     // Le tableau se trie par ses en-têtes de colonnes ; affiches et aperçu ont le menu « Trier ».
     const sortSection = document.getElementById('series-sort-section');
     if (sortSection) sortSection.style.display = seriesViewMode === 'table' ? 'none' : '';
