@@ -299,6 +299,50 @@ class UserRolesTest(unittest.TestCase):
         finally:
             avatars.cleanup()
 
+    def test_preset_avatars_default_choice_and_admin_change(self):
+        import io
+        from PIL import Image
+        self.login('bob')
+        profile = self.client.get('/api/auth/profile').get_json()['profile']
+        # Sans photo : un avatar proposé attribué d'office, toujours le même.
+        self.assertEqual(profile['avatar_kind'], 'default')
+        self.assertRegex(profile['avatar_url'], r'^/static/img/avatars/[a-z]+\.svg$')
+        self.assertEqual(self.client.get('/api/auth/profile').get_json()['profile']['avatar_url'], profile['avatar_url'])
+        presets = self.client.get('/api/auth/avatar-presets').get_json()['presets']
+        self.assertEqual(len(presets), 16)
+        for preset in presets:
+            self.assertTrue(os.path.exists(os.path.join(os.path.dirname(os.path.dirname(__file__)), preset['url'].lstrip('/'))))
+        chosen = self.send('PUT', '/api/auth/profile/avatar', json={'preset': 'renard'})
+        self.assertEqual(chosen.get_json()['avatar_url'], '/static/img/avatars/renard.svg')
+        self.assertEqual(self.client.get('/api/auth/me').get_json()['profile']['avatar_url'], '/static/img/avatars/renard.svg')
+        self.assertEqual(self.send('PUT', '/api/auth/profile/avatar', json={'preset': '../x'}).status_code, 400)
+        # Un lecteur ne change pas l'avatar des autres.
+        self.assertEqual(self.send('PUT', '/api/auth/users/avatar', json={'key': 'oidc:alice', 'preset': 'chat'}).status_code, 403)
+
+        self.login('alice', ['bullarr-admins'])
+        users = {u['key']: u for u in self.client.get('/api/auth/users').get_json()['users']}
+        self.assertEqual((users['oidc:bob']['avatar_url'], users['oidc:bob']['avatar_kind']), ('/static/img/avatars/renard.svg', 'preset'))
+        self.assertEqual(self.send('PUT', '/api/auth/users/avatar', json={'key': 'oidc:bob', 'preset': 'hibou'}).get_json()['avatar_url'],
+                         '/static/img/avatars/hibou.svg')
+        buffer = io.BytesIO()
+        Image.new('RGB', (300, 300), (20, 90, 200)).save(buffer, 'PNG')
+        buffer.seek(0)
+        avatars = tempfile.TemporaryDirectory()
+        self.app.config['DATA_DIR'] = avatars.name
+        try:
+            upload = self.client.post('/api/auth/users/avatar', headers={'X-CSRF-Token': 'tok'},
+                                      data={'key': 'oidc:bob', 'avatar': (buffer, 'bob.png')}, content_type='multipart/form-data')
+            self.assertEqual(upload.get_json()['avatar_kind'], 'photo', upload.get_json())
+            self.assertEqual(len(os.listdir(os.path.join(avatars.name, 'avatars'))), 1)
+            reset = self.send('DELETE', '/api/auth/users/avatar', json={'key': 'oidc:bob'}).get_json()
+            self.assertEqual((reset['avatar_kind'], reset['avatar_url']), ('default', profile['avatar_url']))
+            self.assertEqual(os.listdir(os.path.join(avatars.name, 'avatars')), [])
+        finally:
+            avatars.cleanup()
+        self.assertEqual(self.send('PUT', '/api/auth/users/avatar', json={'key': 'oidc:nobody', 'preset': 'chat'}).status_code, 404)
+        details = [e['detail'] for e in self.client.get('/api/auth/activity').get_json()['entries'] if e['action'] == 'avatar_changed']
+        self.assertIn('Avatar « hibou » (par un administrateur)', details)
+
     def test_local_reader_edits_profile_and_password_with_current_password(self):
         with self.app.app_context():
             from blueprints.auth import accounts

@@ -5056,6 +5056,7 @@ async function renderSeriesDetail(seriesId) {
                     <div id="series-universe-section-${seriesId}"></div>
                     ${detailSummary ? `<p class="series-detail-summary">${escapeHtml(detailSummary)}</p>` : ''}
                 </div>
+                <!--series-toolbar-->
             </div>
         `;
 
@@ -5179,9 +5180,9 @@ async function renderSeriesDetail(seriesId) {
 
         cleanupDetachedDropdownMenus();
         // lgtm [js/bad-code-sanitization] values are escaped for the exact HTML/JavaScript context before this fixed template is inserted.
+        // Le bandeau d'actions est dans le cadre de la série, sous la couverture et les infos.
         modalBody.innerHTML = `
-            ${headerHtml}
-            ${toolbarHtml}
+            ${headerHtml.replace('<!--series-toolbar-->', toolbarHtml)}
             <div id="series-volumes-section">
                 ${buildVolumesSectionHtml(data)}
             </div>

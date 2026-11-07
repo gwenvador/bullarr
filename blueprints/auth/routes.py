@@ -580,7 +580,7 @@ def list_users():
             'computed_role': computed, 'role_override': row['role_override'],
             'role': row['role_override'] if row['role_override'] in ROLES else computed,
             'is_me': row['user_key'] == me, 'last_seen': row['last_seen'], 'first_seen': row['first_seen'],
-            'status': row['status'] or 'active', 'avatar_url': avatar_url(row),
+            'status': row['status'] or 'active', 'avatar_url': avatar_url(row), 'avatar_kind': avatar_kind(row),
             'allowed_libraries': _json.loads(row['allowed_libraries_json']) if row['allowed_libraries_json'] else None,
             'blocked_genres': _json.loads(row['blocked_genres_json']) if row['blocked_genres_json'] else [],
         })
@@ -801,17 +801,52 @@ def _avatar_dir():
     return path
 
 
+# Avatars proposés (dessins SVG de static/img/avatars). Un compte sans photo ni avatar choisi
+# en reçoit un d'office, toujours le même pour un compte donné (tiré de sa clé).
+AVATAR_PRESETS = ('chat', 'renard', 'hibou', 'ours', 'panda', 'manchot', 'grenouille', 'lapin',
+                  'lion', 'koala', 'pieuvre', 'robot', 'astronaute', 'fantome', 'alien', 'bulle')
+PRESET_PREFIX = 'preset:'
+
+
+def _preset_url(name):
+    return f'/static/img/avatars/{name}.svg'
+
+
+def _default_preset(key):
+    import hashlib
+    return AVATAR_PRESETS[int(hashlib.sha1((key or '?').encode()).hexdigest(), 16) % len(AVATAR_PRESETS)]
+
+
 def avatar_url(row):
     try:
         name = row['avatar']
     except (KeyError, IndexError, TypeError):
         return None
-    return f'/avatars/{name}' if name else None
+    if name and name.startswith(PRESET_PREFIX):
+        preset = name[len(PRESET_PREFIX):]
+        return _preset_url(preset if preset in AVATAR_PRESETS else _default_preset(row['user_key']))
+    if name:
+        return f'/avatars/{name}'
+    try:
+        return _preset_url(_default_preset(row['user_key']))
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def avatar_kind(row):
+    """'photo' (image envoyée), 'preset' (avatar choisi) ou 'default' (attribué d'office)."""
+    try:
+        name = row['avatar']
+    except (KeyError, IndexError, TypeError):
+        name = None
+    if not name:
+        return 'default'
+    return 'preset' if name.startswith(PRESET_PREFIX) else 'photo'
 
 
 def _remove_avatar_file(name):
     import os
-    if not name or '/' in name or '..' in name:
+    if not name or '/' in name or '..' in name or name.startswith(PRESET_PREFIX):
         return
     try:
         os.remove(os.path.join(_avatar_dir(), name))
@@ -833,6 +868,7 @@ def _profile_payload(key, row):
         'name': (row['name'] if row else None) or user.get('name'),
         'email': (row['email'] if row else None) or user.get('email'),
         'role': current_role(), 'avatar_url': avatar_url(row) if row else None,
+        'avatar_kind': avatar_kind(row) if row else 'default',
         'first_seen': row['first_seen'] if row else None, 'last_seen': row['last_seen'] if row else None,
         'can_edit_identity': local,
     }
@@ -899,16 +935,12 @@ def _set_avatar(key, name):
         conn.close()
 
 
-@auth_bp.route('/api/auth/profile/avatar', methods=['POST'])
-def upload_avatar():
+def _avatar_upload(key, row, by_admin=False):
     """Photo de profil : recadrée au carré, 256 px, enregistrée en WebP (jamais le fichier envoyé)."""
     import hashlib
     import io
     import os
     from PIL import Image, ImageOps
-    key, row = _my_row()
-    if not row:
-        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
     file = request.files.get('avatar')
     if not file:
         return jsonify({'success': False, 'error': 'Aucune image'}), 400
@@ -927,8 +959,48 @@ def upload_avatar():
     image.save(os.path.join(_avatar_dir(), name), 'WEBP', quality=86)
     _remove_avatar_file(row['avatar'])
     _set_avatar(key, name)
-    log_activity('avatar_changed', target_key=key, target_name=row['name'], detail='Nouvelle photo de profil')
-    return jsonify({'success': True, 'avatar_url': f'/avatars/{name}'})
+    log_activity('avatar_changed', target_key=key, target_name=row['name'],
+                 detail='Nouvelle photo de profil' + (' (par un administrateur)' if by_admin else ''))
+    return jsonify({'success': True, 'avatar_url': f'/avatars/{name}', 'avatar_kind': 'photo'})
+
+
+def _avatar_preset(key, row, preset, by_admin=False):
+    if preset not in AVATAR_PRESETS:
+        return jsonify({'success': False, 'error': 'Avatar inconnu'}), 400
+    _remove_avatar_file(row['avatar'])
+    _set_avatar(key, PRESET_PREFIX + preset)
+    log_activity('avatar_changed', target_key=key, target_name=row['name'],
+                 detail=f'Avatar « {preset} »' + (' (par un administrateur)' if by_admin else ''))
+    return jsonify({'success': True, 'avatar_url': _preset_url(preset), 'avatar_kind': 'preset'})
+
+
+def _avatar_reset(key, row, by_admin=False):
+    _remove_avatar_file(row['avatar'])
+    _set_avatar(key, None)
+    log_activity('avatar_changed', target_key=key, target_name=row['name'],
+                 detail='Avatar par défaut' + (' (par un administrateur)' if by_admin else ''))
+    return jsonify({'success': True, 'avatar_url': _preset_url(_default_preset(key)), 'avatar_kind': 'default'})
+
+
+@auth_bp.route('/api/auth/avatar-presets', methods=['GET'])
+def avatar_presets():
+    return jsonify({'success': True, 'presets': [{'name': n, 'url': _preset_url(n)} for n in AVATAR_PRESETS]})
+
+
+@auth_bp.route('/api/auth/profile/avatar', methods=['POST'])
+def upload_avatar():
+    key, row = _my_row()
+    if not row:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    return _avatar_upload(key, row)
+
+
+@auth_bp.route('/api/auth/profile/avatar', methods=['PUT'])
+def choose_avatar():
+    key, row = _my_row()
+    if not row:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    return _avatar_preset(key, row, (request.get_json(silent=True) or {}).get('preset'))
 
 
 @auth_bp.route('/api/auth/profile/avatar', methods=['DELETE'])
@@ -936,10 +1008,26 @@ def delete_avatar():
     key, row = _my_row()
     if not row:
         return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
-    _remove_avatar_file(row['avatar'])
-    _set_avatar(key, None)
-    log_activity('avatar_changed', target_key=key, target_name=row['name'], detail='Photo de profil retirée')
-    return jsonify({'success': True})
+    return _avatar_reset(key, row)
+
+
+# Administrateur : l'avatar de n'importe quel compte (clé dans le formulaire ou le JSON).
+def _target_account():
+    key = request.form.get('key') or (request.get_json(silent=True) or {}).get('key') or ''
+    row = accounts.get_user(key) if key else None
+    return key, row
+
+
+@auth_bp.route('/api/auth/users/avatar', methods=['POST', 'PUT', 'DELETE'])
+def admin_user_avatar():
+    key, row = _target_account()
+    if not row:
+        return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+    if request.method == 'POST':
+        return _avatar_upload(key, row, by_admin=True)
+    if request.method == 'PUT':
+        return _avatar_preset(key, row, (request.get_json(silent=True) or {}).get('preset'), by_admin=True)
+    return _avatar_reset(key, row, by_admin=True)
 
 
 @auth_bp.route('/avatars/<name>')

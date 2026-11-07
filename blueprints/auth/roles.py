@@ -31,6 +31,7 @@ READER_ENDPOINTS = {
     'auth.current_user': _GET, 'auth.csrf_token': _GET,
     'auth.get_profile': _GET, 'auth.update_profile': frozenset({'PUT'}),
     'auth.upload_avatar': frozenset({'POST'}), 'auth.delete_avatar': frozenset({'DELETE'}),
+    'auth.choose_avatar': frozenset({'PUT'}), 'auth.avatar_presets': _GET,
     # Bibliothèques et séries (lecture)
     'library.libraries': _GET, 'library.library_operations': _GET, 'library.get_library_info': _GET,
     'library.get_library_last_updated': _GET, 'library.get_library_series': _GET,

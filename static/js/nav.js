@@ -2192,7 +2192,8 @@ function buildVolumeOptionLabel(v, { preferBedethequeTitle = false, showOwned = 
         const syncWidth = () => {
             const current = wrapper.querySelector('table');
             const active = !!current && selectors.some(selector => wrapper.matches(selector));
-            top.style.display = active ? '' : 'none';
+            // Rien à faire défiler : pas de bande vide au-dessus du tableau.
+            top.style.display = active && current.scrollWidth > wrapper.clientWidth + 1 ? '' : 'none';
             if (!active) return;
             spacer.style.width = `${current.scrollWidth}px`;
             top.scrollLeft = wrapper.scrollLeft;

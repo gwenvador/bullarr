@@ -38,7 +38,10 @@ function uaIdentity(user) {
     if (user.type === 'local' && user.username) meta.push(`${uaIcon('at-sign')}${usersEscape(user.username)}`);
     if (user.email) meta.push(`${uaIcon('mail')}${usersEscape(user.email)}`);
     const face = user.avatar_url ? `<img src="${usersEscape(user.avatar_url)}" alt="" loading="lazy">` : usersEscape(uaInitials(title));
-    return `<span class="ua-avatar" style="--ua-hue:${uaHue(user.key)}" aria-hidden="true">${face}</span>
+    const avatar = user.status === 'pending'
+        ? `<span class="ua-avatar" style="--ua-hue:${uaHue(user.key)}" aria-hidden="true">${face}</span>`
+        : `<button type="button" class="ua-avatar users-avatar-btn" data-key="${usersEscape(user.key)}" style="--ua-hue:${uaHue(user.key)}" aria-label="Changer l’avatar de ${usersEscape(title)}" data-tooltip="Changer l’avatar">${face}</button>`;
+    return `${avatar}
         <div class="ua-ident">
             <div class="ua-name">${usersEscape(title)}${user.is_me ? '<span class="ua-me">vous</span>' : ''}</div>
             ${meta.length ? `<div class="ua-meta">${meta.map(m => `<span>${m}</span>`).join('')}</div>` : ''}
@@ -337,6 +340,23 @@ async function loadUsersRoles() {
             button.addEventListener('click', () => {
                 closeDrawers(document.getElementById(`users-access-${button.dataset.key}`));
                 toggleAccessEditor(button.dataset.key);
+            });
+        });
+        card.querySelectorAll('.users-avatar-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const user = usersByKey[button.dataset.key];
+                openAvatarPicker({
+                    title: 'Changer l’avatar', admin: true,
+                    user: {...user, name: user.name || user.username || user.email},
+                    onChange: data => {
+                        if (user.is_me) {
+                            document.querySelectorAll('.header-user-avatar, .sidebar-user-avatar').forEach(el => {
+                                el.innerHTML = `<img src="${usersEscape(data.avatar_url)}" alt="">`;
+                            });
+                        }
+                        loadUsersRoles();
+                    },
+                });
             });
         });
         card.querySelectorAll('.users-edit-btn').forEach(button => {

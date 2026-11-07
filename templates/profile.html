@@ -45,15 +45,15 @@
                     <div id="pf-root" hidden>
                         <section class="pf-hero">
                             <div class="pf-avatar-wrap">
-                                <button type="button" id="pf-avatar" class="pf-avatar" aria-label="Changer la photo de profil" data-tooltip="Changer la photo (ou déposez une image)"></button>
+                                <button type="button" id="pf-avatar" class="pf-avatar" aria-label="Changer d’avatar" data-tooltip="Changer d’avatar (ou déposez une image)"></button>
                                 <span class="pf-avatar-cam" data-pf-icon="camera" aria-hidden="true"></span>
                             </div>
                             <div class="pf-hero-text">
                                 <h2 id="pf-name"></h2>
                                 <div id="pf-sub" class="pf-sub"></div>
                                 <div class="pf-avatar-actions">
-                                    <button type="button" id="pf-avatar-pick" class="rq-btn rq-btn-ghost"><span data-pf-icon="upload"></span><span>Changer la photo</span></button>
-                                    <button type="button" id="pf-avatar-remove" class="rq-btn rq-btn-ghost pf-danger" hidden><span data-pf-icon="trash-2"></span><span>Retirer</span></button>
+                                    <button type="button" id="pf-avatar-pick" class="rq-btn rq-btn-ghost"><span data-pf-icon="circle-user"></span><span>Changer d’avatar</span></button>
+                                    <button type="button" id="pf-avatar-remove" class="rq-btn rq-btn-ghost pf-danger" hidden><span data-pf-icon="undo"></span><span>Avatar par défaut</span></button>
                                     <input type="file" id="pf-avatar-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
                                 </div>
                                 <div id="pf-avatar-message" class="pf-message"></div>
@@ -87,7 +87,7 @@
 
                             <section id="pf-sso-card" class="pf-card" hidden>
                                 <h3><span data-pf-icon="shield-check"></span>Compte SSO</h3>
-                                <p class="pf-hint">Votre nom, votre e-mail et votre mot de passe viennent de votre fournisseur d’identité (Pocket ID) : modifiez-les là-bas, ils seront repris à la prochaine connexion. La photo de profil, elle, se règle ici.</p>
+                                <p class="pf-hint">Votre nom, votre e-mail et votre mot de passe viennent de votre fournisseur d’identité (Pocket ID) : modifiez-les là-bas, ils seront repris à la prochaine connexion. L’avatar, lui, se règle ici.</p>
                             </section>
                         </div>
                     </div>
@@ -97,6 +97,7 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/avatar-picker.js') }}?v={{ asset_version('js/avatar-picker.js') }}"></script>
     <script src="{{ url_for('static', filename='js/profile.js') }}?v={{ asset_version('js/profile.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
 </body>

@@ -4910,3 +4910,39 @@ button.ua-access:hover { border-color: var(--color-accent); color: var(--color-a
 .search-header { color: var(--color-text); border-bottom: 1px solid var(--color-border);
     background: radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, var(--color-accent) 16%, transparent) 0%, transparent 60%), var(--color-surface); }
 .search-header h2 { color: var(--color-text); font-size: 1.35em; }
+
+/* Fenêtre « Choisir un avatar » (static/js/avatar-picker.js) */
+.ap-backdrop { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 16px;
+    background: rgba(20, 16, 10, .45); backdrop-filter: blur(3px); }
+.ap-dialog { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; border-radius: 18px;
+    border: 1px solid var(--color-border); box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .55);
+    background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--color-accent) 14%, transparent) 0%, transparent 55%), var(--color-surface); }
+.ap-head { display: flex; align-items: center; gap: 14px; padding: 18px 18px 10px; }
+.ap-current { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; flex: none; background: var(--color-surface-alt);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent); }
+.ap-current img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ap-head-text { min-width: 0; flex: 1; }
+.ap-head-text h2 { margin: 0; font-size: 1.15rem; }
+.ap-head-text p { margin: 2px 0 0; color: var(--color-text-muted); font-size: .88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-close { border: none; background: transparent; color: var(--color-text-muted); border-radius: 8px; padding: 6px; cursor: pointer; display: grid; }
+.ap-close:hover { background: var(--color-surface-alt); color: var(--color-text); }
+.ap-close .icon { width: 18px; height: 18px; }
+.ap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 10px; padding: 8px 18px 14px; }
+.ap-preset { aspect-ratio: 1; padding: 0; border: none; border-radius: 50%; overflow: hidden; cursor: pointer; background: none;
+    box-shadow: 0 0 0 1px var(--color-border); transition: transform .12s, box-shadow .12s; }
+.ap-preset img { width: 100%; height: 100%; display: block; }
+.ap-preset:hover, .ap-preset:focus-visible { transform: scale(1.06); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 55%, transparent); outline: none; }
+.ap-preset.is-current { box-shadow: 0 0 0 3px var(--color-accent); }
+.ap-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 18px 18px; border-top: 1px solid var(--color-border); }
+.ap-message { color: #b91c1c; font-size: .85em; }
+.ap-backdrop.is-busy .ap-dialog { opacity: .6; pointer-events: none; }
+/* Avatar cliquable dans la liste des comptes (administrateur) */
+button.ua-avatar { border: none; padding: 0; cursor: pointer; font: inherit; font-weight: 700; transition: box-shadow .12s; }
+button.ua-avatar:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 55%, transparent); }
+
+/* Fiche série : bandeau d'actions dans le cadre de la série, sur toute la largeur. */
+.series-detail-header > .detail-toolbar { grid-column: 1 / -1; margin: 2px 0 0; padding: 6px 8px;
+    background: color-mix(in srgb, var(--color-surface-alt) 75%, transparent); border: 1px solid var(--color-border); border-radius: 10px; }
+
+/* Fiche série : la liste/le tableau des tomes commence juste sous Aperçu / Tableau. */
+#series-volumes-section > .view-switcher { margin-bottom: 6px !important; }

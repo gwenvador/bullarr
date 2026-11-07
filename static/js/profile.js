@@ -37,7 +37,7 @@ function pfRenderAvatar() {
     box.innerHTML = pfProfile.avatar_url
         ? `<img src="${pfEscape(pfProfile.avatar_url)}" alt="Photo de profil">`
         : `<span>${pfEscape(pfInitials(name))}</span>`;
-    document.getElementById('pf-avatar-remove').hidden = !pfProfile.avatar_url;
+    document.getElementById('pf-avatar-remove').hidden = !pfProfile.avatar_kind || pfProfile.avatar_kind === 'default';
     document.querySelectorAll('.header-user-avatar, .sidebar-user-avatar').forEach(el => {
         el.innerHTML = pfProfile.avatar_url ? `<img src="${pfEscape(pfProfile.avatar_url)}" alt="">` : pfEscape(pfInitials(name));
     });
@@ -113,6 +113,7 @@ async function pfUpload(file) {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Envoi impossible');
         pfProfile.avatar_url = data.avatar_url;
+        pfProfile.avatar_kind = data.avatar_kind;
         pfRenderAvatar();
         pfMessage('pf-avatar-message', 'Photo mise à jour.');
     } catch (error) {
@@ -126,17 +127,31 @@ async function pfUpload(file) {
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-pf-icon]').forEach(el => { el.innerHTML = svgIcon(el.dataset.pfIcon); });
     const input = document.getElementById('pf-avatar-input');
-    document.getElementById('pf-avatar-pick').addEventListener('click', () => input.click());
-    document.getElementById('pf-avatar').addEventListener('click', () => input.click());
+    const pick = () => openAvatarPicker({
+        title: 'Choisir mon avatar', user: pfProfile,
+        onChange: data => {
+            pfProfile.avatar_url = data.avatar_url;
+            pfProfile.avatar_kind = data.avatar_kind;
+            pfRenderAvatar();
+            pfMessage('pf-avatar-message', 'Avatar mis à jour.');
+        },
+    });
+    document.getElementById('pf-avatar-pick').addEventListener('click', pick);
+    document.getElementById('pf-avatar').addEventListener('click', pick);
     input.addEventListener('change', () => pfUpload(input.files[0]));
     const drop = document.getElementById('pf-avatar');
     ['dragenter', 'dragover'].forEach(type => drop.addEventListener(type, e => { e.preventDefault(); drop.classList.add('is-drop'); }));
     ['dragleave', 'drop'].forEach(type => drop.addEventListener(type, e => { e.preventDefault(); drop.classList.remove('is-drop'); }));
     drop.addEventListener('drop', e => pfUpload(e.dataTransfer.files[0]));
     document.getElementById('pf-avatar-remove').addEventListener('click', async () => {
-        if (!confirm('Retirer votre photo de profil ?')) return;
         const response = await fetch('/api/auth/profile/avatar', {method: 'DELETE'});
-        if (response.ok) { pfProfile.avatar_url = null; pfRenderAvatar(); pfMessage('pf-avatar-message', 'Photo retirée.'); }
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.success) {
+            pfProfile.avatar_url = data.avatar_url;
+            pfProfile.avatar_kind = data.avatar_kind;
+            pfRenderAvatar();
+            pfMessage('pf-avatar-message', 'Avatar par défaut rétabli.');
+        }
     });
     document.getElementById('pf-identity-form').addEventListener('submit', event => {
         event.preventDefault();
