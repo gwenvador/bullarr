@@ -744,9 +744,9 @@
 .history-filter-tabs {
     flex: 1;
     min-width: 0;
-    flex-wrap: nowrap !important;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    /* Tous les types visibles sans défiler : les boutons passent à la ligne. */
+    flex-wrap: wrap !important;
+    gap: 6px !important;
     padding-bottom: 2px;
 }
 
@@ -781,9 +781,10 @@
     /* Filtres de la page Historique: boutons resserrés en plus du défilement horizontal
        déjà en place à toute largeur (voir .history-filter-tabs plus haut) - le padding
        généreux de .tab-button reste too much sur mobile spécifiquement. */
-    .history-filter-tabs .tab-button {
-        padding: 8px 14px;
-        font-size: 0.85em;
+    .history-filter-tabs .tab-button,
+    .history-filter-tabs .tab-button:not(#history-filter-all) {
+        padding: 6px 10px;
+        font-size: 0.82em;
     }
 
     .import-volume-select {
@@ -1452,3 +1453,18 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
 /* Historique : tags ajoutés par un traitement IA (history-shared.js, toggleAiDetail). */
 .ai-history-tag { display: inline-block; padding: 1px 8px; margin: 1px 0; border-radius: 999px; font-size: .9em;
                   background: var(--color-surface-alt); border: 1px solid var(--color-border); }
+
+/* Bouton Actualiser au bout de la ligne des types (templates/history.html) : les types
+   prennent toute la largeur et passent à la ligne sans défilement. */
+.history-filter-tabs .history-refresh { margin-left: auto; flex-shrink: 0; }
+/* Types en icônes seules, le nom en infobulle : tout tient sur une ligne. */
+.history-filter-tabs { align-items: center; }
+.history-filter-tabs .tab-button:not(#history-filter-all) { padding: 8px 10px; line-height: 0; }
+.history-filter-tabs .tab-button:not(#history-filter-all) svg { width: 18px; height: 18px; }
+@media (max-width: 768px) {
+    .history-filter-tabs { gap: 2px !important; }
+    .history-filter-tabs .tab-button,
+    .history-filter-tabs .tab-button:not(#history-filter-all) { padding: 6px 5px; }
+    .history-filter-tabs .history-refresh { padding: 5px 9px !important; }
+    .history-filter-tabs .history-refresh svg { width: 16px; height: 16px; }
+}
