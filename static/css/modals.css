@@ -161,3 +161,20 @@
 
 [data-theme="dark"] .modal { background: rgba(0, 0, 0, .62); }
 [data-theme="dark"] .modal-content { box-shadow: 0 24px 60px rgba(0, 0, 0, .55); }
+
+/* Recherche sans résultat (_renderNoSearchResults, library.js) : fenêtre resserrée,
+   même langage que la fenêtre Éditer */
+#search-ed2k-modal .modal-content:has(.search-empty) { max-width: 520px !important; }
+.search-empty-head { display: flex; align-items: center; gap: 14px; margin: 0 32px 20px 0; }
+.search-empty-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 48px; height: 48px;
+                     border-radius: 12px; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.search-empty-icon .icon { width: 22px; height: 22px; }
+.search-empty-head .lib-create-title { margin: 0 0 4px; }
+.search-empty-sub { margin: 0; color: var(--color-text-muted); font-size: .9em; line-height: 1.45; }
+.search-empty-sub strong { color: var(--color-text); font-weight: 600; }
+.search-empty .series-edit-group + .series-edit-group { margin-top: 18px; }
+.search-empty-form { display: flex; gap: 8px; }
+.search-empty-input { flex: 1; min-width: 0; }
+.modal-content .search-empty-input input[type="text"] { width: 100%; box-sizing: border-box; padding: 10px 12px 10px 36px;
+                     font-family: inherit; font-size: .95em; }
+@media (max-width: 600px) { .search-empty-form { flex-direction: column; } .search-empty-form .lib-btn { justify-content: center; } }

@@ -5696,22 +5696,37 @@ async function confirmBedethequeMatch(seriesId, url) {
 
 function _renderNoSearchResults(seriesTitle, displayLabel, hasNumber, options, volumeNumber) {
     const searchModalBody = document.getElementById('search-modal-body');
+    // Même langage que la fenêtre Éditer (openSeriesEditModal) : en-tête icône + titre,
+    // actions en rangées, champ arrondi, bouton Fermer en contour. La fenêtre se resserre
+    // (voir .search-empty dans modals.css) au lieu de garder la largeur du tableau.
     searchModalBody.innerHTML = `
-        <div class="search-header">
-            <h2>🔍 Recherche: ${escapeHtml(seriesTitle)} - ${escapeHtml(displayLabel)}</h2>
-        </div>
-        <div class="no-data">
-            <h3>😕 Aucun résultat</h3>
-            <p>Aucun lien trouvé pour ce tome sur EBDZ, Prowlarr ou Telegram</p>
-            ${hasNumber ? `
-                <p style="margin-top: 10px; color: #666;">Essayer une recherche plus large, sur la série entière ?</p>
-                <button class="btn" id="search-retry-whole-series-btn" style="margin-top: 10px;">${svgIcon('search')} Rechercher la série entière</button>
-            ` : ''}
-            <div style="margin-top: 16px; display: flex; gap: 8px; align-items: center; justify-content: center;">
-                <input type="text" id="search-retry-custom-title" value="${escapeHtml(seriesTitle)}" placeholder="Autre terme de recherche" style="max-width: 320px;">
-                <button class="btn-neutral-sm" id="search-retry-custom-btn">${svgIcon('search')} Rechercher</button>
+        <div class="search-empty">
+            <div class="search-empty-head">
+                <span class="search-empty-icon">${svgIcon('search')}</span>
+                <div>
+                    <h2 class="lib-create-title">Aucun résultat</h2>
+                    <p class="search-empty-sub"><strong>${escapeHtml(seriesTitle)}</strong> · ${escapeHtml(displayLabel)}<br>Rien trouvé sur EBDZ, Prowlarr ou Telegram.</p>
+                </div>
             </div>
-            <button class="btn" onclick="closeSearchModal()" style="margin-top: 20px;">Fermer</button>
+            ${hasNumber ? `
+            <div class="series-edit-group">
+                <h3 class="series-edit-group-title">Essayer plus large</h3>
+                <button type="button" class="series-edit-action" id="search-retry-whole-series-btn">
+                    <span class="series-edit-action-icon">${svgIcon('library')}</span>
+                    <span class="series-edit-action-text"><strong>Rechercher la série entière</strong><small>Tous les tomes de « ${escapeHtml(seriesTitle)} », sans numéro</small></span>
+                    <span class="series-edit-action-chevron">${svgIcon('chevron-right')}</span>
+                </button>
+            </div>` : ''}
+            <div class="series-edit-group">
+                <h3 class="series-edit-group-title">Autre recherche</h3>
+                <div class="search-empty-form">
+                    <div class="lib-input-icon search-empty-input">${svgIcon('search')}<input type="text" id="search-retry-custom-title" value="${escapeHtml(seriesTitle)}" placeholder="Titre, auteur, autre orthographe…" aria-label="Autre terme de recherche"></div>
+                    <button type="button" class="lib-btn lib-btn-primary" id="search-retry-custom-btn">Rechercher</button>
+                </div>
+            </div>
+            <div class="lib-create-actions">
+                <button type="button" class="lib-btn lib-btn-ghost" onclick="closeSearchModal()">Fermer</button>
+            </div>
         </div>
     `;
     if (hasNumber) {
