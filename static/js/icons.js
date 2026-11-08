@@ -97,7 +97,6 @@ const ICON_PATHS = {
     // Spinner "en cours"/"en attente" (voir .icon-spin, style.css) - remplace ⏳: un
     // simple arc de cercle tourné en continu par CSS, animation la plus reconnaissable
     // comme "chargement" dans les interfaces modernes plutôt qu'un pictogramme statique.
-    'search-x': '<path d="m13.5 8.5-5 5" /><path d="m8.5 8.5 5 5" /><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
     'loader-circle': '<path d="M21 12a9 9 0 1 1-6.219-8.56" />',
     'users': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />',
     'user-plus': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" x2="19" y1="8" y2="14" /><line x1="22" x2="16" y1="11" y2="11" />',

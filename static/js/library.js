@@ -5694,21 +5694,6 @@ async function confirmBedethequeMatch(seriesId, url) {
 // unique, pas une fonction propre à cette page, pour que la fiche série et Découvrir
 // cherchent exactement de la même façon.
 
-// En-tête commun aux étapes de la fenêtre de recherche (chargement, résultats, aucun
-// résultat) : bandeau au dégradé de la fiche série (.search-stage-head, modals.css),
-// icône, titre, puis la série et le tome cherchés.
-function _searchStageHead(title, seriesTitle, displayLabel, detail = '', icon = 'search', extraHtml = '') {
-    return `
-        <div class="search-stage-head">
-            <span class="search-stage-icon">${svgIcon(icon)}</span>
-            <div class="search-stage-text">
-                <h2 class="lib-create-title">${title}</h2>
-                <p class="search-stage-sub"><strong>${escapeHtml(seriesTitle)}</strong> · ${escapeHtml(displayLabel)}${detail ? `<br>${detail}` : ''}</p>
-            </div>
-            ${extraHtml}
-        </div>`;
-}
-
 function _renderNoSearchResults(seriesTitle, displayLabel, hasNumber, options, volumeNumber) {
     const searchModalBody = document.getElementById('search-modal-body');
     // Même langage que la fenêtre Éditer (openSeriesEditModal) : en-tête icône + titre,
@@ -5716,7 +5701,13 @@ function _renderNoSearchResults(seriesTitle, displayLabel, hasNumber, options, v
     // (voir .search-empty dans modals.css) au lieu de garder la largeur du tableau.
     searchModalBody.innerHTML = `
         <div class="search-empty">
-            ${_searchStageHead('Aucun résultat', seriesTitle, displayLabel, 'Rien trouvé sur EBDZ, Prowlarr ou Telegram.', 'search-x')}
+            <div class="search-empty-head">
+                <span class="search-empty-icon">${svgIcon('search')}</span>
+                <div>
+                    <h2 class="lib-create-title">Aucun résultat</h2>
+                    <p class="search-empty-sub"><strong>${escapeHtml(seriesTitle)}</strong> · ${escapeHtml(displayLabel)}<br>Rien trouvé sur EBDZ, Prowlarr ou Telegram.</p>
+                </div>
+            </div>
             ${hasNumber ? `
             <div class="series-edit-group">
                 <h3 class="series-edit-group-title">Essayer plus large</h3>
@@ -5783,7 +5774,7 @@ async function searchMissingVolume(seriesTitle, volumeNumber, options = {}) {
     const searchModalBody = document.getElementById('search-modal-body');
 
     searchModal.classList.add('active');
-    searchModalBody.innerHTML = `<div class="search-loading-stage">${_searchStageHead('Recherche en cours…', seriesTitle, displayLabel, 'EBDZ, Prowlarr, Telegram et sources web interrogés.', 'loader-circle')}<div class="loading"><div class="spinner"></div></div></div>`;
+    searchModalBody.innerHTML = '<div class="loading"><div class="spinner"></div><p>Recherche en cours...</p></div>';
 
     // EBDZ (base locale, quasi instantané) affiché dès qu'il répond ; Prowlarr (recherche
     // web) et Telegram (recherche plein texte via Telethon, "je ne vois pas telegram dans
@@ -7930,12 +7921,18 @@ function displaySearchResults(seriesTitle, volumeNumber, results, displayLabel, 
     // préférence (voir search-results-table.js) - le compte affiché est donc le compte
     // brut, identique au nombre de lignes réellement affichées dans le tableau.
     const visibleCount = results.length;
-    const countText = `${visibleCount} ${pluralize(visibleCount, 'résultat')}${visibleCount > 0 ? ', triés par pertinence' : ''}${prowlarrPending ? ' · recherche en cours sur les autres sources…' : ''}`;
-    let html = _searchStageHead('Résultats', seriesTitle, displayLabel || `Volume ${volumeNumber}`, countText, 'search', `
-            <div class="search-stage-form">
-                <div class="lib-input-icon">${svgIcon('search')}<input type="text" id="search-modal-manual-title" value="${escapeHtml(seriesTitle)}" placeholder="Autre terme de recherche" aria-label="Autre terme de recherche" onkeydown="if(event.key==='Enter') _searchModalManualRetry();"></div>
-                <button type="button" class="lib-btn lib-btn-primary" onclick="_searchModalManualRetry()">Rechercher</button>
-            </div>`);
+    let html = `
+        <div style="margin-bottom:12px; display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+            <div>
+                <h3 style="margin:0;">🔍 ${escapeHtml(seriesTitle)} - ${escapeHtml(displayLabel || `Volume ${volumeNumber}`)}</h3>
+                <p style="color:#666; margin-top:4px; font-size:0.85em;">${visibleCount} ${pluralize(visibleCount, 'résultat')}${visibleCount > 0 ? ' - triés par pertinence' : ''}${prowlarrPending ? ' · 🔄 Recherche en cours...' : ''}</p>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center; margin-right:64px;">
+                <input type="text" id="search-modal-manual-title" value="${escapeHtml(seriesTitle)}" placeholder="Autre terme de recherche" style="max-width:220px;" onkeydown="if(event.key==='Enter') _searchModalManualRetry();">
+                <button class="btn-neutral-sm" onclick="_searchModalManualRetry()">${svgIcon('search')} Rechercher</button>
+            </div>
+        </div>
+    `;
 
     // Tome actuellement possédé (recherche de remplacement uniquement, voir
     // searchMissingVolume) - même ligne que le tableau de résultats juste en dessous
