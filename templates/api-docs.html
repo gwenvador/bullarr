@@ -2,11 +2,12 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}var p=localStorage.getItem('palette');if(p&&p!=='atelier'){document.documentElement.setAttribute('data-palette',p);}}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
     <title>API Bullarr</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/palettes.css') }}?v={{ asset_version('css/palettes.css') }}">
     <style>
         .api-docs { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
         .api-docs h1 { margin-bottom: 4px; }

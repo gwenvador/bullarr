@@ -9,18 +9,18 @@
        qu'ailleurs dans l'app) - seul l'accent PRIMAIRE change de teinte. --border-color/
        --text-primary/--text-secondary/--bg-light/--bg-lighter étaient aussi des gris
        froids, jamais réchauffés. */
-    --primary-color: #a8672a;
-    --primary-darker: #8a5220;
+    --primary-color: var(--pal-a8672a, #a8672a);
+    --primary-darker: var(--pal-8a5220, #8a5220);
     --secondary-color: #10b981;
     --danger-color: #ef4444;
     --warning-color: #f59e0b;
     --info-color: #3b82f6;
     --success-color: #10b981;
-    --border-color: #e0d2b8;
-    --text-primary: #2b2318;
-    --text-secondary: #6b6355;
-    --bg-light: #f7f2e9;
-    --bg-lighter: #f2ece1;
+    --border-color: var(--pal-e0d2b8, #e0d2b8);
+    --text-primary: var(--pal-2b2318, #2b2318);
+    --text-secondary: var(--pal-6b6355, #6b6355);
+    --bg-light: var(--pal-f7f2e9, #f7f2e9);
+    --bg-lighter: var(--pal-f2ece1, #f2ece1);
     /* Fond des cartes (.step/.result-item/.library-card/.series-card...) - séparé de
        --bg-light/--bg-lighter (fond de PAGE) car c'était un blanc pur codé en dur, une
        surface plus claire que le fond pour se détacher visuellement */
@@ -28,14 +28,14 @@
 }
 
 [data-theme="dark"] {
-    --primary-color: #c98a4b;
-    --primary-darker: #dba066;
-    --border-color: #453c2f;
-    --text-primary: #ece3d3;
-    --text-secondary: #a89a80;
-    --bg-light: #2b241c;
+    --primary-color: var(--pal-c98a4b, #c98a4b);
+    --primary-darker: var(--pal-dba066, #dba066);
+    --border-color: var(--pal-453c2f, #453c2f);
+    --text-primary: var(--pal-ece3d3, #ece3d3);
+    --text-secondary: var(--pal-a89a80, #a89a80);
+    --bg-light: var(--pal-2b241c, #2b241c);
     --bg-lighter: #1a1611;
-    --card-bg: #241f18;
+    --card-bg: var(--pal-241f18, #241f18);
 }
 
 .discover-container {
@@ -110,7 +110,7 @@
 .search-input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(168, 103, 42, 0.1);
+    box-shadow: 0 0 0 3px var(--pal-a168-103-42-10, rgba(168, 103, 42, 0.1));
 }
 
 .volume-input {
@@ -147,7 +147,7 @@
 .btn-primary:hover {
     background: var(--primary-darker);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(168, 103, 42, 0.4);
+    box-shadow: 0 4px 12px var(--pal-a168-103-42-40, rgba(168, 103, 42, 0.4));
 }
 
 .btn-secondary {
@@ -261,9 +261,9 @@
 }
 
 .result-item.selected {
-    background: rgba(168, 103, 42, 0.05);
+    background: var(--pal-a168-103-42-5, rgba(168, 103, 42, 0.05));
     border-color: var(--primary-color);
-    box-shadow: 0 4px 12px rgba(168, 103, 42, 0.2);
+    box-shadow: 0 4px 12px var(--pal-a168-103-42-20, rgba(168, 103, 42, 0.2));
 }
 
 /* Série déjà en bibliothèque ("il ne me l'indique pas donc je vais de nouveau
@@ -499,9 +499,9 @@
 }
 
 .library-item.selected {
-    background: rgba(168, 103, 42, 0.05);
+    background: var(--pal-a168-103-42-5, rgba(168, 103, 42, 0.05));
     border-color: var(--primary-color);
-    box-shadow: 0 4px 12px rgba(168, 103, 42, 0.2);
+    box-shadow: 0 4px 12px var(--pal-a168-103-42-20, rgba(168, 103, 42, 0.2));
 }
 
 .library-name {
@@ -649,7 +649,7 @@
 
 .source-toggle:has(input:checked) {
     border-color: var(--primary-color);
-    background: rgba(168, 103, 42, 0.1);
+    background: var(--pal-a168-103-42-10, rgba(168, 103, 42, 0.1));
     color: var(--primary-color);
 }
 
@@ -802,7 +802,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f2ece1;
+    background: var(--pal-f2ece1, #f2ece1);
     font-size: 1.8em;
 }
 

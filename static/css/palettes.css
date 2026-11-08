@@ -1,0 +1,178 @@
+/* Palettes de couleurs (Configuration → Thème), générées par palettes.py.
+   Sans data-palette (palette « Atelier »), aucune variable --pal-* n'est définie :
+   chaque var(--pal-xxx, #teinte) retombe sur la teinte d'origine. */
+
+[data-palette="ardoise"] {
+    --p-bg: #f4f6fb;
+    --p-surface: #ffffff;
+    --p-surface-alt: #f8fafd;
+    --p-border: #e3e8f1;
+    --p-ink: #182033;
+    --p-muted: #68738a;
+    --p-accent: #6366f1;
+    --p-accent-hover: #4f46e5;
+    --p-shadow: #1f2947;
+    --p-dbg: #131826;
+    --p-dsurface: #1b2132;
+    --p-dsurface-alt: #232a3e;
+    --p-dborder: #343d55;
+    --p-dink: #e6e9f2;
+    --p-dmuted: #97a0b5;
+    --p-daccent: #818cf8;
+    --p-daccent-hover: #a5b4fc;
+}
+[data-palette="sauge"] {
+    --p-bg: #eef2ec;
+    --p-surface: #fbfdf9;
+    --p-surface-alt: #f3f7f0;
+    --p-border: #d3dfcd;
+    --p-ink: #1d2a20;
+    --p-muted: #5f6f62;
+    --p-accent: #3f7d58;
+    --p-accent-hover: #2f6346;
+    --p-shadow: #1e3a26;
+    --p-dbg: #161d18;
+    --p-dsurface: #1d261f;
+    --p-dsurface-alt: #243028;
+    --p-dborder: #36473a;
+    --p-dink: #e3ece4;
+    --p-dmuted: #95a898;
+    --p-daccent: #6fbf8e;
+    --p-daccent-hover: #8fd4a8;
+}
+[data-palette="ocean"] {
+    --p-bg: #edf3f7;
+    --p-surface: #fbfdff;
+    --p-surface-alt: #f2f7fa;
+    --p-border: #d2e0ea;
+    --p-ink: #132433;
+    --p-muted: #5b7084;
+    --p-accent: #0e7490;
+    --p-accent-hover: #0b5d73;
+    --p-shadow: #0c2a3d;
+    --p-dbg: #0f1a22;
+    --p-dsurface: #15232d;
+    --p-dsurface-alt: #1b2c38;
+    --p-dborder: #2c4352;
+    --p-dink: #e1edf4;
+    --p-dmuted: #8ea7b8;
+    --p-daccent: #22b8cf;
+    --p-daccent-hover: #5fd0e0;
+}
+[data-palette="prune"] {
+    --p-bg: #f5f0f4;
+    --p-surface: #fffcfe;
+    --p-surface-alt: #f9f3f8;
+    --p-border: #e6d6e3;
+    --p-ink: #2a1a28;
+    --p-muted: #6f5d6c;
+    --p-accent: #9d3f86;
+    --p-accent-hover: #7f2f6c;
+    --p-shadow: #3a1636;
+    --p-dbg: #1d151c;
+    --p-dsurface: #251b24;
+    --p-dsurface-alt: #2e222c;
+    --p-dborder: #473645;
+    --p-dink: #f0e4ee;
+    --p-dmuted: #ab98a8;
+    --p-daccent: #d47fbf;
+    --p-daccent-hover: #e3a0d2;
+}
+[data-palette="ardoise"], [data-palette="sauge"], [data-palette="ocean"], [data-palette="prune"] {
+    --pal-241f18: var(--p-dbg);
+    --pal-2b2318: var(--p-ink);
+    --pal-2b241c: var(--p-dsurface);
+    --pal-3a2f1e: var(--p-dsurface-alt);
+    --pal-3a3324: var(--p-dsurface-alt);
+    --pal-3f3223: color-mix(in srgb, var(--p-daccent) 15%, var(--p-dsurface));
+    --pal-453c2f: var(--p-dborder);
+    --pal-58503f: color-mix(in srgb, var(--p-dborder) 60%, var(--p-dmuted));
+    --pal-6b5334: color-mix(in srgb, var(--p-accent) 45%, var(--p-ink));
+    --pal-6b6355: color-mix(in srgb, var(--p-dborder) 40%, var(--p-dmuted));
+    --pal-7a4716: color-mix(in srgb, var(--p-accent-hover) 80%, var(--p-ink));
+    --pal-8a4e28: var(--p-accent-hover);
+    --pal-8a5220: var(--p-accent-hover);
+    --pal-8f571f: var(--p-accent-hover);
+    --pal-a168-103-42-10: color-mix(in srgb, var(--p-accent) 10%, transparent);
+    --pal-a168-103-42-12: color-mix(in srgb, var(--p-accent) 12%, transparent);
+    --pal-a168-103-42-15: color-mix(in srgb, var(--p-accent) 15%, transparent);
+    --pal-a168-103-42-20: color-mix(in srgb, var(--p-accent) 20%, transparent);
+    --pal-a168-103-42-40: color-mix(in srgb, var(--p-accent) 40%, transparent);
+    --pal-a168-103-42-5: color-mix(in srgb, var(--p-accent) 5%, transparent);
+    --pal-a168-103-42-6: color-mix(in srgb, var(--p-accent) 6%, transparent);
+    --pal-a168-103-42-8: color-mix(in srgb, var(--p-accent) 8%, transparent);
+    --pal-a201-138-75-18: color-mix(in srgb, var(--p-daccent) 18%, transparent);
+    --pal-a201-138-75-35: color-mix(in srgb, var(--p-daccent) 35%, transparent);
+    --pal-a251-217-168-70: color-mix(in srgb, color-mix(in srgb, var(--p-accent) 30%, white) 70%, transparent);
+    --pal-a80-55-10-10: color-mix(in srgb, var(--p-shadow) 10%, transparent);
+    --pal-a80-55-10-25: color-mix(in srgb, var(--p-shadow) 25%, transparent);
+    --pal-a80-55-10-30: color-mix(in srgb, var(--p-shadow) 30%, transparent);
+    --pal-a80-55-10-8: color-mix(in srgb, var(--p-shadow) 8%, transparent);
+    --pal-a8672a: var(--p-accent);
+    --pal-a89a80: var(--p-dmuted);
+    --pal-b5a284: color-mix(in srgb, var(--p-border) 50%, var(--p-muted));
+    --pal-c9794a: color-mix(in srgb, var(--p-accent) 80%, white);
+    --pal-c98a4b: var(--p-daccent);
+    --pal-dba066: var(--p-daccent-hover);
+    --pal-ddd7c9: var(--p-border);
+    --pal-e0c79f: color-mix(in srgb, var(--p-accent) 30%, var(--p-surface));
+    --pal-e0d2b8: var(--p-border);
+    --pal-e6cdae: color-mix(in srgb, var(--p-accent) 22%, var(--p-surface));
+    --pal-e8b98a: color-mix(in srgb, var(--p-accent) 40%, var(--p-surface));
+    --pal-ecc796: color-mix(in srgb, var(--p-accent) 35%, white);
+    --pal-ece3d3: var(--p-dink);
+    --pal-f2e3cc: color-mix(in srgb, var(--p-accent) 14%, var(--p-surface));
+    --pal-f2ece1: var(--p-bg);
+    --pal-f6e8d3: color-mix(in srgb, var(--p-accent) 12%, var(--p-surface));
+    --pal-f6e8d8: color-mix(in srgb, var(--p-accent) 12%, var(--p-surface));
+    --pal-f7f2e9: var(--p-surface-alt);
+    --pal-fbd9a8: color-mix(in srgb, var(--p-accent) 30%, white);
+}
+[data-palette="ardoise"]:not([data-theme="dark"]), [data-palette="sauge"]:not([data-theme="dark"]), [data-palette="ocean"]:not([data-theme="dark"]), [data-palette="prune"]:not([data-theme="dark"]) {
+    --color-bg: var(--p-bg); --color-surface: var(--p-surface);
+    --color-surface-alt: var(--p-surface-alt); --color-border: var(--p-border);
+    --color-text: var(--p-ink); --color-text-muted: var(--p-muted);
+    --color-accent: var(--p-accent); --color-accent-hover: var(--p-accent-hover);
+}
+[data-palette="ardoise"][data-theme="dark"], [data-palette="sauge"][data-theme="dark"], [data-palette="ocean"][data-theme="dark"], [data-palette="prune"][data-theme="dark"] {
+    --color-bg: var(--p-dbg); --color-surface: var(--p-dsurface);
+    --color-surface-alt: var(--p-dsurface-alt); --color-border: var(--p-dborder);
+    --color-text: var(--p-dink); --color-text-muted: var(--p-dmuted);
+    --color-accent: var(--p-daccent); --color-accent-hover: var(--p-daccent-hover);
+}
+
+/* Ardoise : l'allure de la page de connexion (halo indigo, boutons verts, coins arrondis). */
+[data-palette="ardoise"] body { background: radial-gradient(circle at 20% 10%, rgba(99,102,241,.12), transparent 38%), var(--color-bg) fixed; }
+[data-palette="ardoise"][data-theme="dark"] body { background: radial-gradient(circle at 20% 10%, rgba(129,140,248,.10), transparent 38%), var(--color-bg) fixed; }
+[data-palette="ardoise"] .btn:not(.btn-danger):not(.btn-neutral) {
+    background: color-mix(in srgb, #10b981 12%, var(--color-surface)); color: #047857;
+    border-color: color-mix(in srgb, #10b981 32%, transparent); border-radius: 12px; }
+[data-palette="ardoise"] .btn:not(.btn-danger):not(.btn-neutral):hover { background: color-mix(in srgb, #10b981 20%, var(--color-surface)); }
+[data-palette="ardoise"][data-theme="dark"] .btn:not(.btn-danger):not(.btn-neutral) { color: #34d399; }
+[data-palette="ardoise"] .series-card, [data-palette="ardoise"] .settings-section, [data-palette="ardoise"] .overview-card,
+[data-palette="ardoise"] .integration-card, [data-palette="ardoise"] .modal-content { border-radius: 18px; }
+[data-palette="ardoise"] .page-title, [data-palette="ardoise"] .page-title *, [data-palette="ardoise"] h1,
+[data-palette="ardoise"] h2, [data-palette="ardoise"] .series-detail-title {
+    font-family: "Inter", system-ui, sans-serif !important; font-weight: 750; letter-spacing: -.03em; }
+[data-palette="ardoise"] input:focus, [data-palette="ardoise"] select:focus, [data-palette="ardoise"] textarea:focus {
+    outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+
+/* Sélecteur de thème (Configuration → Thème) */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.theme-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 2px solid var(--color-border);
+    border-radius: 14px; background: var(--color-surface); color: var(--color-text); cursor: pointer; text-align: left; font: inherit; }
+.theme-card:hover { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); }
+.theme-card.active { border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.theme-preview { display: grid; grid-template-columns: 26% 1fr; height: 92px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(0,0,0,.08); }
+.theme-preview-side { padding: 8px 6px; display: flex; flex-direction: column; gap: 6px; }
+.theme-preview-side span { height: 6px; border-radius: 3px; opacity: .55; }
+.theme-preview-side span:first-child { opacity: 1; }
+.theme-preview-main { padding: 9px; display: flex; flex-direction: column; gap: 7px; }
+.theme-preview-card { flex: 1; border-radius: 7px; padding: 7px; display: flex; flex-direction: column; gap: 5px; }
+.theme-preview-line { height: 6px; border-radius: 3px; width: 70%; }
+.theme-preview-btn { align-self: flex-start; height: 12px; width: 44px; border-radius: 6px; }
+.theme-card-name { font-weight: 700; }
+.theme-card-desc { font-size: .82em; color: var(--color-text-muted); line-height: 1.35; }
+.theme-mode { display: inline-flex; gap: 6px; margin: 4px 0 18px; }
+.theme-mode .btn.active { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+

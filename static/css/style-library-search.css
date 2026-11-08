@@ -218,7 +218,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px 16px;
     padding-top: 10px;
-    border-top: 1px dashed #ddd7c9;
+    border-top: 1px dashed var(--pal-ddd7c9, #ddd7c9);
 }
 
 /* Une 3e colonne quand la fenêtre a la place: la colonne info elle-même dépasse alors
@@ -340,7 +340,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--color-accent) 0%, #8a4e28 100%);
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--pal-8a4e28, #8a4e28) 100%);
     color: white;
     font-size: 3em;
 }
@@ -1394,7 +1394,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--color-accent) 0%, #8a4e28 100%);
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--pal-8a4e28, #8a4e28) 100%);
     font-size: 2em;
     color: white;
 }
@@ -1480,7 +1480,7 @@
     cursor: pointer;
     /* Toujours sombre (pas var(--color-text), qui devient clair en thème sombre) - fond
        de secours/chargement derrière la couverture, indépendant du thème */
-    background: #2b2318;
+    background: var(--pal-2b2318, #2b2318);
     box-shadow: 0 4px 10px rgba(0,0,0,0.15);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -1885,12 +1885,12 @@
 }
 
 .poster-action-btn-light {
-    background: rgba(168, 103, 42, 0.1);
+    background: var(--pal-a168-103-42-10, rgba(168, 103, 42, 0.1));
     color: var(--color-accent);
 }
 
 .poster-action-btn-light:hover {
-    background: rgba(168, 103, 42, 0.2);
+    background: var(--pal-a168-103-42-20, rgba(168, 103, 42, 0.2));
     color: var(--color-accent-hover);
 }
 
@@ -2286,7 +2286,7 @@ body.col-reordering {
    claires, quel que soit le thème - la vue Tableau des tomes tranchait alors en un bloc
    quasi-blanc au milieu d'une page par ailleurs sombre. */
 [data-theme="dark"] .volume-table-row-placeholder {
-    background: #2b241c;
+    background: var(--pal-2b241c, #2b241c);
 }
 
 [data-theme="dark"] .volume-table-row-placeholder:hover {
@@ -2397,7 +2397,7 @@ body.col-reordering {
 
 /* Styles pour l'en-tête de recherche dans la modal */
 .search-header {
-    background: linear-gradient(135deg, var(--color-accent) 0%, #8a4e28 100%);
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--pal-8a4e28, #8a4e28) 100%);
     color: white;
     padding: 25px;
     border-radius: 12px 12px 0 0;
@@ -2529,7 +2529,7 @@ a.result-title:hover {
 }
 
 .thread-status-dot-existing {
-    background: #b5a284;
+    background: var(--pal-b5a284, #b5a284);
 }
 
 /* Séparateur visuel entre deux sujets consécutifs dans le tableau ("met des seperateures
@@ -2665,7 +2665,7 @@ a.result-title:hover {
 
 .copy-button:hover {
     /* Toujours sombre (pas var(--color-text), qui devient clair en thème sombre) */
-    background: #2b2318;
+    background: var(--pal-2b2318, #2b2318);
     transform: translateY(-1px);
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
 }
@@ -3647,7 +3647,7 @@ body.comic-reader-open { overflow: hidden; }
 .keep-reading-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .keep-reading-cover-placeholder { display: grid; place-items: center; height: 100%; font-size: 2em; }
 /* Avancement comme Komga : barre orange en bas de la couverture, sur fond orange pâle */
-.keep-reading-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #fbd9a8; }
+.keep-reading-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--pal-fbd9a8, #fbd9a8); }
 .keep-reading-progress span { display: block; height: 100%; background: #f28c13; }
 /* Textes comme Komga : une ligne chacun, coupée par « … » (le titre complet est dans l'infobulle) */
 .keep-reading-title, .keep-reading-meta {
@@ -3739,7 +3739,7 @@ body.comic-reader-open { overflow: hidden; }
 .poster-badge-empty { background: #6b7280; }
 
 /* Barre de lecture Komga : orange, comme « Continuer la lecture ». */
-.poster-read-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(251,217,168,0.7); z-index: 1; }
+.poster-read-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--pal-a251-217-168-70, rgba(251,217,168,0.7)); z-index: 1; }
 .poster-read-progress span { background: #f28c13; }
 
 /* Case à cocher : cachée hors mode sélection (sauf si déjà cochée). */

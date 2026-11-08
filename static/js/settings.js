@@ -1771,6 +1771,8 @@ function switchTab(tabName) {
         loadClientCardStatuses();
     } else if (tabName === 'integrations') {
         loadIntegrationsCardStatuses();
+    } else if (tabName === 'theme') {
+        renderThemePicker();
     } else if (tabName === 'telegram') {
         loadTelegramSettings();
         loadNtfySettings();
@@ -1910,6 +1912,37 @@ function loadIndexeurCardStatuses() {
                 badge.className = 'integration-card-status ' + (active ? 'integration-card-status-on' : 'integration-card-status-off');
             }
         }).catch(() => {});
+}
+
+// Onglet Thème : une carte par palette (aperçu miniature dans le mode courant) et le choix
+// clair / sombre (même réglage que le bouton lune/soleil de l'en-tête).
+function renderThemePicker() {
+    const grid = document.getElementById('themeGrid');
+    const modes = document.getElementById('themeModeSwitch');
+    if (!grid || !modes) return;
+    const mode = getTheme();
+    const current = getPalette();
+    modes.innerHTML = [['light', 'sun', 'Clair'], ['dark', 'moon', 'Sombre']].map(([m, icon, label]) =>
+        `<button type="button" class="btn${m === mode ? ' active' : ''}" onclick="setTheme('${m}'); renderThemePicker()">${svgIcon(icon)} ${label}</button>`).join('');
+    grid.innerHTML = PALETTES.map(p => {
+        const [bg, surface, accent, button] = p[mode];
+        const side = `<span style="background:${accent}"></span><span style="background:${accent}"></span><span style="background:${accent}"></span>`;
+        return `
+            <button type="button" class="theme-card${p.id === current ? ' active' : ''}" onclick="setPalette('${p.id}'); renderThemePicker()" aria-pressed="${p.id === current}">
+                <span class="theme-preview" style="background:${bg}">
+                    <span class="theme-preview-side" style="background:${surface}">${side}</span>
+                    <span class="theme-preview-main">
+                        <span class="theme-preview-card" style="background:${surface}">
+                            <span class="theme-preview-line" style="background:${accent}"></span>
+                            <span class="theme-preview-line" style="background:${accent}; opacity:.3; width:90%"></span>
+                            <span class="theme-preview-btn" style="background:${button}; opacity:.85"></span>
+                        </span>
+                    </span>
+                </span>
+                <span class="theme-card-name">${escapeHtml(p.name)}${p.id === current ? ' ✓' : ''}</span>
+                <span class="theme-card-desc">${escapeHtml(p.desc)}</span>
+            </button>`;
+    }).join('');
 }
 
 function loadIntegrationsCardStatuses() {

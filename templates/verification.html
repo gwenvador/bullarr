@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}var p=localStorage.getItem('palette');if(p&&p!=='atelier'){document.documentElement.setAttribute('data-palette',p);}}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
@@ -13,6 +13,7 @@
          cette page ne le chargeait pas du tout, filtres sans style depuis leur ajout. -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/palettes.css') }}?v={{ asset_version('css/palettes.css') }}">
     <style>
         /* Repères d'effet des actions de correction : le texte porte le sens, la couleur le renforce. */
         .verif-legend { margin: 8px 0 0; font-size: 0.85em; color: var(--color-text-muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
@@ -20,9 +21,9 @@
         .verif-run-btn { min-width: 8em; justify-content: center; }
         .verif-effect { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.72em; font-weight: 600; line-height: 1.6; white-space: nowrap; border: 1px solid transparent; vertical-align: middle; }
         .verif-legend .verif-effect { font-size: 1em; }
-        .verif-effect--write { color: #7a4716; background: #f6e8d3; border-color: #e0c79f; }
+        .verif-effect--write { color: var(--pal-7a4716, #7a4716); background: var(--pal-f6e8d3, #f6e8d3); border-color: var(--pal-e0c79f, #e0c79f); }
         .verif-effect--danger { color: #8a1f1f; background: #f8e1de; border-color: #e3aaa4; }
-        [data-theme="dark"] .verif-effect--write { color: #ecc796; background: #3f3223; border-color: #6b5334; }
+        [data-theme="dark"] .verif-effect--write { color: var(--pal-ecc796, #ecc796); background: var(--pal-3f3223, #3f3223); border-color: var(--pal-6b5334, #6b5334); }
         [data-theme="dark"] .verif-effect--danger { color: #f3b5ae; background: #4a2522; border-color: #7d403b; }
         .settings-card h3 { flex-wrap: wrap; }
         /* Pas de cadre vide avant que le résumé ne soit chargé. */

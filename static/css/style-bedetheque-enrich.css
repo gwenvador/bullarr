@@ -120,7 +120,7 @@
 .btn-enrichment:hover {
     background: var(--color-accent-hover);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(80, 55, 10, 0.3);
+    box-shadow: 0 4px 12px var(--pal-a80-55-10-30, rgba(80, 55, 10, 0.3));
 }
 
 .btn-enrichment:active {
@@ -186,7 +186,7 @@
 
 .series-select-item:hover {
     border-color: var(--color-accent);
-    box-shadow: 0 4px 12px rgba(168, 103, 42, 0.2);
+    box-shadow: 0 4px 12px var(--pal-a168-103-42-20, rgba(168, 103, 42, 0.2));
 }
 
 .series-select-item.selected {

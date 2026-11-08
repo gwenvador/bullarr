@@ -2,13 +2,14 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}var p=localStorage.getItem('palette');if(p&&p!=='atelier'){document.documentElement.setAttribute('data-palette',p);}}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
     <title>Configuration</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/palettes.css') }}?v={{ asset_version('css/palettes.css') }}">
 </head>
 <body data-role="{{ user_role }}">
     <div class="container">
@@ -45,6 +46,7 @@
                 <a href="#libraries" class="nav-sublink" data-tab="libraries" onclick="switchTab('libraries'); return false;">✏️ Format</a>
                 <a href="#backup" class="nav-sublink" data-tab="backup" onclick="switchTab('backup'); return false;">💾 Backup</a>
                 <a href="#ai" class="nav-sublink" data-tab="ai" onclick="switchTab('ai'); return false;">🤖 IA</a>
+                <a href="#theme" class="nav-sublink" data-tab="theme" onclick="switchTab('theme'); return false;">🎨 Thème</a>
             </div>
         </div>
 
@@ -88,6 +90,13 @@
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">Clients</span>
                                     <span class="overview-card-desc">qBittorrent, rTorrent, Deluge, aMule, Shelfmark</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('theme')">
+                                <span class="overview-card-icon" data-icon="palette"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Thème</span>
+                                    <span class="overview-card-desc">Palette de couleurs, clair ou sombre</span>
                                 </span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('integrations')">
@@ -332,6 +341,22 @@
                                 <span class="integration-card-status" id="card-status-web">…</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Thème : palette de couleurs et mode clair/sombre (enregistrés dans le
+                     navigateur, comme le bouton lune/soleil de l'en-tête). -->
+                <div class="tab-content" id="tab-theme">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>🎨 Thème</h2>
+                            <p class="section-description">
+                                Palette de couleurs du site, appliquée tout de suite et retenue par ce navigateur.
+                            </p>
+                        </div>
+                        <div class="theme-mode" id="themeModeSwitch"></div>
+                        <div class="theme-grid" id="themeGrid"></div>
                     </div>
                 </div>
 

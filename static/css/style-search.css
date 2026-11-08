@@ -311,8 +311,8 @@ a.result-title:hover {
 /* Signale un sujet qui correspond à une série sous surveillance active (voir
    already_monitored côté API, missing_volume_monitor.enabled = 1) */
 .badge-monitored {
-    background: #f2e3cc;
-    color: #8a5220;
+    background: var(--pal-f2e3cc, #f2e3cc);
+    color: var(--pal-8a5220, #8a5220);
     font-weight: 600;
     padding: 2px 10px;
     border-radius: 20px;

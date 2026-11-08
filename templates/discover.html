@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <script>(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}var p=localStorage.getItem('palette');if(p&&p!=='atelier'){document.documentElement.setAttribute('data-palette',p);}}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
@@ -12,6 +12,7 @@
          style que la page Recherche et la modale de remplacement d'un tome -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/palettes.css') }}?v={{ asset_version('css/palettes.css') }}">
 </head>
 <body data-role="{{ user_role }}">
     <div class="container">

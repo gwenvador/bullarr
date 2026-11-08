@@ -7,29 +7,29 @@
        accent ambre plutôt qu'un dégradé deux tons, cohérent avec "Duo de tons" (pas de
        dégradé vif, un seul accent sur l'action principale). --light-bg/--border-color/
        --text-dark/--text-light étaient aussi des gris froids, jamais réchauffés. */
-    --primary-color: #a8672a;
-    --secondary-color: #8a5220;
+    --primary-color: var(--pal-a8672a, #a8672a);
+    --secondary-color: var(--pal-8a5220, #8a5220);
     --success-color: #10b981;
     --warning-color: #f59e0b;
     --danger-color: #ef4444;
     --info-color: #3b82f6;
-    --light-bg: #f7f2e9;
-    --border-color: #e0d2b8;
-    --text-dark: #2b2318;
-    --text-light: #6b6355;
+    --light-bg: var(--pal-f7f2e9, #f7f2e9);
+    --border-color: var(--pal-e0d2b8, #e0d2b8);
+    --text-dark: var(--pal-2b2318, #2b2318);
+    --text-light: var(--pal-6b6355, #6b6355);
     /* Fond des cartes, séparé de
        --light-bg (fond de page) - c'était un blanc pur codé en dur */
     --card-bg: #ffffff;
 }
 
 [data-theme="dark"] {
-    --primary-color: #c98a4b;
-    --secondary-color: #dba066;
-    --light-bg: #2b241c;
-    --border-color: #453c2f;
-    --text-dark: #ece3d3;
-    --text-light: #a89a80;
-    --card-bg: #241f18;
+    --primary-color: var(--pal-c98a4b, #c98a4b);
+    --secondary-color: var(--pal-dba066, #dba066);
+    --light-bg: var(--pal-2b241c, #2b241c);
+    --border-color: var(--pal-453c2f, #453c2f);
+    --text-dark: var(--pal-ece3d3, #ece3d3);
+    --text-light: var(--pal-a89a80, #a89a80);
+    --card-bg: var(--pal-241f18, #241f18);
 }
 
 /* Tabs */
@@ -109,7 +109,7 @@
 }
 
 .stat-card:hover {
-    box-shadow: 0 5px 20px rgba(168, 103, 42, 0.15);
+    box-shadow: 0 5px 20px var(--pal-a168-103-42-15, rgba(168, 103, 42, 0.15));
     transform: translateY(-2px);
 }
 
@@ -164,7 +164,7 @@
 
 .btn-primary:hover {
     background: var(--secondary-color);
-    box-shadow: 0 5px 15px rgba(80, 55, 10, 0.3);
+    box-shadow: 0 5px 15px var(--pal-a80-55-10-30, rgba(80, 55, 10, 0.3));
     transform: translateY(-2px);
 }
 
@@ -179,13 +179,13 @@
 }
 
 .btn.monitor-toggle-follow {
-    background: #a8672a;
+    background: var(--pal-a8672a, #a8672a);
     color: #fff;
-    border: 1px solid #8f571f;
+    border: 1px solid var(--pal-8f571f, #8f571f);
 }
 
 .btn.monitor-toggle-follow:hover {
-    background: #8f571f;
+    background: var(--pal-8f571f, #8f571f);
 }
 
 .btn.monitor-toggle-unfollow {
@@ -409,7 +409,7 @@
 }
 
 .badge-monitored {
-    background: #a8672a;
+    background: var(--pal-a8672a, #a8672a);
     color: #fff;
 }
 
@@ -450,7 +450,7 @@
 .form-control:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(168, 103, 42, 0.1);
+    box-shadow: 0 0 0 3px var(--pal-a168-103-42-10, rgba(168, 103, 42, 0.1));
 }
 
 textarea.form-control {
@@ -645,7 +645,7 @@ textarea.form-control {
 }
 
 #download-modal .btn-primary:hover {
-    box-shadow: 0 5px 15px rgba(80, 55, 10, 0.3);
+    box-shadow: 0 5px 15px var(--pal-a80-55-10-30, rgba(80, 55, 10, 0.3));
 }
 
 .close {

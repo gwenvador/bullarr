@@ -54,6 +54,36 @@ function setTheme(mode) {
     if (typeof _updateThemeSwitchUI === 'function') _updateThemeSwitchUI(mode);
 }
 
+// Palette de couleurs (Configuration → Thème) : data-palette sur <html>, posé aussi par le
+// petit script du <head> de chaque page. « atelier » = palette d'origine, sans attribut.
+const PALETTES = [
+    { id: 'atelier', name: 'Atelier', desc: 'Papier crème et ambre : la palette d\'origine.',
+      light: ['#f2ece1', '#fffdf8', '#a8672a', '#a8672a'], dark: ['#241f18', '#2c261e', '#c98a4b', '#c98a4b'] },
+    { id: 'ardoise', name: 'Ardoise', desc: 'Comme la page de connexion : gris bleuté, indigo, boutons verts.',
+      light: ['#f4f6fb', '#ffffff', '#6366f1', '#10b981'], dark: ['#131826', '#1b2132', '#818cf8', '#34d399'] },
+    { id: 'sauge', name: 'Sauge', desc: 'Vert doux et calme, façon carnet de croquis.',
+      light: ['#eef2ec', '#fbfdf9', '#3f7d58', '#3f7d58'], dark: ['#161d18', '#1d261f', '#6fbf8e', '#6fbf8e'] },
+    { id: 'ocean', name: 'Océan', desc: 'Bleu pétrole et blanc frais.',
+      light: ['#edf3f7', '#fbfdff', '#0e7490', '#0e7490'], dark: ['#0f1a22', '#15232d', '#22b8cf', '#22b8cf'] },
+    { id: 'prune', name: 'Prune', desc: 'Mauve profond et rose poudré.',
+      light: ['#f5f0f4', '#fffcfe', '#9d3f86', '#9d3f86'], dark: ['#1d151c', '#251b24', '#d47fbf', '#d47fbf'] },
+];
+
+function getPalette() {
+    try {
+        const id = localStorage.getItem('palette');
+        return PALETTES.some(p => p.id === id) ? id : 'atelier';
+    } catch (e) {
+        return 'atelier';
+    }
+}
+
+function setPalette(id) {
+    if (!id || id === 'atelier') document.documentElement.removeAttribute('data-palette');
+    else document.documentElement.setAttribute('data-palette', id);
+    try { localStorage.setItem('palette', id || 'atelier'); } catch (e) { /* non retenu */ }
+}
+
 function getTheme() {
     try {
         return localStorage.getItem('theme') === 'dark' ? 'dark' : 'light';
