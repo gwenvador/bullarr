@@ -8059,6 +8059,18 @@ async function confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber
     }
 }
 
+// État d'un bouton « Ajouter » après l'envoi. Un bouton avec texte (« + Ajouter »,
+// fenêtre EBDZ) affiche seulement « ✓ Ajouté » au lieu de « + Ajouter Ajouté ». Un
+// bouton icône seule (tableau des sources) garde son icône suivie du mot.
+function _addButtonStateHtml(originalHtml, word) {
+    const probe = document.createElement('span');
+    probe.innerHTML = originalHtml;
+    if (probe.textContent.trim()) {
+        return `${svgIcon(word === 'Ajouté' ? 'check' : 'x')} ${word}`;
+    }
+    return `${originalHtml} <span style="font-size:0.85em;">${word}</span>`;
+}
+
 async function addToEmule(link, button, title, seriesId = null, volumeId = null, volumeNumber = null, source = 'ebdz', sourceLink = null, forceReplace = false) {
     forceReplace = await confirmReplacementBeforeDownload(seriesId, volumeId, volumeNumber, title, forceReplace);
     if (forceReplace === null) return;
@@ -8087,13 +8099,13 @@ async function addToEmule(link, button, title, seriesId = null, volumeId = null,
             // reconstruit tout le tableau depuis les résultats, cet état purement DOM ne
             // survivrait pas sinon.
             if (typeof _markSearchResultAdded === 'function') _markSearchResultAdded(link, 'amule');
-            button.innerHTML = `${originalHtml} <span style="font-size:0.85em;">Ajouté</span>`;
+            button.innerHTML = _addButtonStateHtml(originalHtml, 'Ajouté');
             button.classList.add('add-button-added');
         } else {
             throw new Error(data.error || 'Erreur inconnue');
         }
     } catch (error) {
-        button.innerHTML = `${originalHtml} <span style="font-size:0.85em;">Erreur</span>`;
+        button.innerHTML = _addButtonStateHtml(originalHtml, 'Erreur');
         button.classList.add('add-button-error');
         alert('Erreur: ' + error.message);
         setTimeout(() => {
@@ -8220,13 +8232,13 @@ async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = nul
             // retrouver au scroll ce qui a déjà été ajouté dans une longue liste. Persisté
             // aussi sur le résultat (voir _markSearchResultAdded), même raison que addToEmule.
             if (typeof _markSearchResultAdded === 'function') _markSearchResultAdded(torrentUrl, 'qbittorrent');
-            button.innerHTML = `${originalHtml} <span style="font-size:0.85em;">Ajouté</span>`;
+            button.innerHTML = _addButtonStateHtml(originalHtml, 'Ajouté');
             button.classList.add('add-button-added');
         } else {
             throw new Error(data.error || 'Erreur inconnue');
         }
     } catch (error) {
-        button.innerHTML = `${originalHtml} <span style="font-size:0.85em;">Erreur</span>`;
+        button.innerHTML = _addButtonStateHtml(originalHtml, 'Erreur');
         button.classList.add('add-button-error');
         alert('Erreur: ' + error.message);
         setTimeout(() => {
@@ -8264,13 +8276,13 @@ async function addTorrentToClient(clientName, clientLabel, torrentUrl, button, t
             // ('rtorrent'/'deluge') correspond exactement à la clé attendue par
             // buildSearchResultRowHtml (added.rtorrent/added.deluge).
             if (typeof _markSearchResultAdded === 'function') _markSearchResultAdded(torrentUrl, clientName);
-            button.innerHTML = `${originalHtml} <span style="font-size:0.85em;">Ajouté</span>`;
+            button.innerHTML = _addButtonStateHtml(originalHtml, 'Ajouté');
             button.classList.add('add-button-added');
         } else {
             throw new Error(data.error || 'Erreur inconnue');
         }
     } catch (error) {
-        button.innerHTML = `${originalHtml} <span style="font-size:0.85em;">Erreur</span>`;
+        button.innerHTML = _addButtonStateHtml(originalHtml, 'Erreur');
         button.classList.add('add-button-error');
         alert('Erreur: ' + error.message);
         setTimeout(() => {
