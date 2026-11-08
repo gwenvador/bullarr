@@ -220,7 +220,7 @@
 
 <div class="wrap hero">
   <img class="logo" src="logo-transparent.png" alt="Bullarr — gestionnaire de bibliothèque BD" width="715" height="312">
-  <a class="pill" href="https://github.com/gwenvador/bullarr/releases/tag/v11.0"><b>v11.0</b> Tags par IA, vue Affiches, lecture Komga →</a>
+  <a class="pill" href="https://github.com/gwenvador/bullarr/releases/tag/v12.0"><b>v12.0</b> Comptes lecteurs, demandes de BD, thèmes →</a>
   <h1>Votre bibliothèque de BD, <em>à jour et complète.</em></h1>
   <p class="tagline">Chercher les tomes, les télécharger, les ranger, compléter leurs métadonnées : avant, c'était l'enfer. Maintenant, Bullarr s'en occupe.</p>
   <div class="cta">
@@ -234,6 +234,7 @@
     <li>Métadonnées Bédéthèque</li>
     <li>CBZ, CBR, PDF</li>
     <li>Tags par IA</li>
+    <li>Comptes et contrôle parental</li>
     <li>API et serveur MCP</li>
   </ul>
 </div>
@@ -305,12 +306,12 @@
       <div class="card">
         <div class="icon">🔒</div>
         <h3>Auto-hébergé</h3>
-        <p>Docker et SQLite, sans base externe. Secrets chiffrés sur disque, authentification facultative par mot de passe ou SSO OIDC.</p>
+        <p>Docker et SQLite, sans base externe. Secrets chiffrés sur disque, authentification facultative par comptes locaux, SSO OIDC ou les deux.</p>
       </div>
       <div class="card">
         <div class="icon">✨</div>
         <h3>Tags par IA</h3>
-        <p>Claude, Gemini ou ChatGPT, avec votre propre clé, proposent les tags de vos séries à partir du résumé et des auteurs, regroupent les doublons et taguent les nouvelles séries.</p>
+        <p>aiautotagging.com (gratuit, sans clé), Claude, Gemini, ChatGPT, OpenRouter, Groq ou un LLM local proposent les tags de vos séries, regroupent les doublons et taguent les nouvelles séries, avec des IA de secours.</p>
       </div>
       <div class="card">
         <div class="icon">🖼️</div>
@@ -320,12 +321,27 @@
       <div class="card">
         <div class="icon">🔖</div>
         <h3>Lecture synchronisée</h3>
-        <p>« Continuer la lecture » et l'avancement de chaque album lus dans Komga : vous reprenez à la bonne page, sur le site comme sur le téléphone.</p>
+        <p>« Continuer la lecture » et l'avancement de chaque album, synchronisés avec le compte Komga de chacun, ou gardés par Bullarr sans Komga : vous reprenez à la bonne page, sur le site comme sur le téléphone.</p>
       </div>
       <div class="card">
         <div class="icon">🔔</div>
         <h3>Notifications</h3>
         <p>ntfy et notifications instantanées sur Android (UnifiedPush), réglables événement par événement : imports, téléchargements, nouvelles versions.</p>
+      </div>
+      <div class="card">
+        <div class="icon">👥</div>
+        <h3>Comptes et demandes</h3>
+        <p>Comptes administrateur et lecteur, inscription validée par un admin. Les lecteurs lisent, gardent leurs listes et demandent une BD ; vous validez la demande et Bullarr la cherche.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🧸</div>
+        <h3>Contrôle parental</h3>
+        <p>Pour chaque lecteur, les bibliothèques visibles et les genres masqués, avec un préréglage « Enfant ». Un journal garde la trace des connexions et des changements de compte.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🎨</div>
+        <h3>Thèmes</h3>
+        <p>Cinq palettes, Atelier, Ardoise, Sauge, Océan et Prune, chacune en clair et en sombre, sur le site comme dans l'application Android.</p>
       </div>
     </div>
   </div>
@@ -372,7 +388,7 @@ docker compose up -d</code></pre>
   <div class="wrap">
     <span class="eyebrow">Bullarr et IA</span>
     <h2>Des tags créés par l'IA, une bibliothèque qui répond</h2>
-    <p class="lead">Branchez Claude, Gemini ou ChatGPT avec votre propre clé API pour taguer vos séries, et interrogez votre bibliothèque en langage naturel grâce au serveur MCP.</p>
+    <p class="lead">Utilisez aiautotagging.com sans clé, ou branchez Claude, Gemini, ChatGPT, OpenRouter, Groq ou un LLM local pour taguer vos séries, et interrogez votre bibliothèque en langage naturel grâce au serveur MCP.</p>
     <h3 class="ai-sub">Tags automatiques</h3>
     <div class="grid grid-3">
       <div class="card">

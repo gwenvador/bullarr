@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Documentation — Bullarr</title>
-<meta name="description" content="Installer, configurer et utiliser Bullarr : bibliothèque, tags, listes, import, tags par IA (Claude, Gemini, ChatGPT), API, serveur MCP pour Claude et ChatGPT, application Android.">
+<meta name="description" content="Installer, configurer et utiliser Bullarr : bibliothèque, tags, listes, import, tags par IA (aiautotagging.com, Claude, Gemini, ChatGPT, OpenRouter, Groq, LLM local), comptes et thèmes, API, serveur MCP pour Claude et ChatGPT, application Android.">
 <link rel="icon" href="icon-128.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-128.png">
 <style>
@@ -202,7 +202,7 @@
       <li><a href="#ai">Bullarr et IA (tags, MCP)</a></li>
       <li><a href="#api">API</a></li>
       <li><a href="#android">Application Android</a></li>
-      <li><a href="#securite">Sécurité</a></li>
+      <li><a href="#securite">Sécurité, comptes et thèmes</a></li>
     </ol>
   </nav>
 
@@ -284,7 +284,7 @@
     <section id="ai">
       <h2><span class="guide-num">6</span> Bullarr et IA</h2>
       <h3>Tags par IA</h3>
-      <p>Dans <strong>Configuration → IA</strong>, choisissez un fournisseur — Claude (Anthropic), Gemini (Google) ou ChatGPT (OpenAI) — collez votre clé API, puis « Tester ». La clé est chiffrée sur le disque de votre serveur ; ↻ lit la liste des modèles disponibles avec votre clé.</p>
+      <p>Dans <strong>Configuration → IA</strong>, choisissez un fournisseur. aiautotagging.com, proposé par défaut, est gratuit et ne demande ni clé ni compte. Vous pouvez aussi utiliser Claude (Anthropic), Gemini (Google), ChatGPT (OpenAI), OpenRouter (modèles gratuits compris), Groq ou un LLM local (Ollama, LM Studio, llama.cpp, vLLM) : collez votre clé API ou l'adresse du serveur local, puis « Tester ». La clé est chiffrée sur le disque de votre serveur ; ↻ lit la liste des modèles disponibles. Cochez des IA de secours : quand un fournisseur échoue (quota, panne, clé refusée), le suivant prend le relais. Les consignes envoyées à l'IA sont modifiables.</p>
       <ul>
         <li><strong>Créer les tags</strong> : pour les séries sans tags (leur nombre est affiché) ou pour toutes. L'IA lit le titre, les auteurs, le genre et le résumé et réutilise le vocabulaire existant. Les tags proposés s'ajoutent, rien n'est retiré.</li>
         <li><strong>Normaliser les tags</strong> : l'IA regroupe les tags qui veulent dire la même chose et propose un tag commun. Rien ne change avant votre validation.</li>
@@ -335,9 +335,21 @@
       <h2><span class="guide-num">9</span> Sécurité et authentification</h2>
       <ul>
         <li>Les secrets (mots de passe, clés API) sont chiffrés sur disque.</li>
-        <li>L'authentification est facultative et désactivée par défaut. Vous pouvez activer un identifiant et un mot de passe, un SSO OIDC, ou les deux, dans <strong>Configuration</strong> → <em>Login</em>.</li>
+        <li>L'authentification est facultative et désactivée par défaut. Activez-la dans <strong>Configuration</strong> → <em>Login</em> : comptes locaux (identifiant et mot de passe), avec en option un bouton SSO OIDC.</li>
         <li>Le serveur MCP et l'API utilisent chacun leur propre jeton ou clé, distincts de la session du navigateur.</li>
       </ul>
+      <h3>Comptes, demandes et contrôle parental</h3>
+      <ul>
+        <li><strong>Utilisateurs et rôles</strong> (Configuration → Login) : comptes locaux à créer, modifier ou supprimer ; comptes OIDC avec un rôle par groupe (<code>admin_group</code>) ou forcé par compte.</li>
+        <li><strong>Lecteurs</strong> : ils parcourent, lisent et téléchargent, ont leurs propres listes « À lire plus tard » et Favoris, et demandent des BD depuis la page <em>Demandes</em>. Les menus d'administration leur sont masqués.</li>
+        <li><strong>Demandes de BD</strong> : elles attendent votre validation dans la page <em>Validation</em> (bibliothèque au choix, refus avec motif), ou sont validées automatiquement si vous cochez l'option. Une fois validée, la série est ajoutée et sa recherche lancée.</li>
+        <li><strong>Inscription ouverte</strong> (option) : un lien « Créer un compte » sur la page de connexion ; le compte reste en attente jusqu'à ce qu'un admin le valide.</li>
+        <li><strong>Contrôle parental</strong> : bibliothèques visibles et genres masqués par lecteur, avec un préréglage « Enfant ».</li>
+        <li><strong>Mon profil</strong> : nom, e-mail, mot de passe, avatar (photo ou avatar proposé) et compte Komga personnel. Bullarr crée une clé API Komga à votre nom et ne garde jamais le mot de passe ; sans compte Komga, votre avancement de lecture est gardé par Bullarr.</li>
+        <li><strong>Historique</strong> : onglets Utilisateurs (connexions, comptes, rôles, accès) et Demandes.</li>
+      </ul>
+      <h3>Thèmes</h3>
+      <p><strong>Configuration → Thème</strong> propose cinq palettes, Atelier, Ardoise, Sauge, Océan et Prune, chacune en clair et en sombre. Le choix est gardé dans le navigateur. L'application Android a les mêmes palettes dans ses réglages.</p>
     </section>
   </article>
 </div>
