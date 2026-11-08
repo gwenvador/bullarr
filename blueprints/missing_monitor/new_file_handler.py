@@ -322,6 +322,34 @@ def _placeholder_missing_volumes(cursor, series_ids):
     return missing
 
 
+def _drop_volumes_covered_by_completion(cursor, series_ids, missing_by_series):
+    """Retire des tomes manquants ceux qu'une série complète couvre déjà.
+
+    « Trent » : les 3 intégrales possédées couvrent les 8 tomes parus, mais les fiches
+    des albums 1 à 8 restaient sans fichier et passaient pour manquantes. Les albums
+    simples T01-T08 sortis sur RSS ont alors tous été téléchargés en double.
+    - Complète cochée à la main : plus aucun tome manquant.
+    - Complète par ses intégrales : les tomes jusqu'au nombre de tomes parus
+      (bedetheque_total_volumes) sont couverts. Un tome paru depuis reste manquant.
+    """
+    if not series_ids:
+        return
+    placeholders = ','.join('?' for _ in series_ids)
+    cursor.execute(f'''
+        SELECT id, COALESCE(manual_complete_override, 0), COALESCE(bedetheque_complete, 0),
+               COALESCE(bedetheque_complete_reason, ''), COALESCE(bedetheque_total_volumes, 0)
+        FROM series WHERE id IN ({placeholders})
+    ''', list(series_ids))
+    for series_id, manual_complete, complete, reason, total in cursor.fetchall():
+        missing = missing_by_series.get(series_id)
+        if not missing:
+            continue
+        if manual_complete:
+            missing.clear()
+        elif complete and 'intégrale' in reason and total:
+            missing.difference_update({n for n in missing if n <= total})
+
+
 def process_new_monitor_files(source, items):
     """Télécharge les nouveaux fichiers qui correspondent à un tome manquant surveillé -
     ou, si l'option "upgrade qualité" est activée, à un tome DÉJÀ possédé d'une série
@@ -388,6 +416,7 @@ def process_new_monitor_files(source, items):
         # fichier comptent donc aussi comme tomes manquants.
         for missing_series_id, numbers in _placeholder_missing_volumes(cursor, series_ids).items():
             missing_by_series.setdefault(missing_series_id, set()).update(numbers)
+        _drop_volumes_covered_by_completion(cursor, series_ids, missing_by_series)
         cursor.execute(f'SELECT id, bedetheque_url FROM series WHERE id IN ({placeholders})', series_ids)
         bedetheque_url_by_series = {row[0]: row[1] for row in cursor.fetchall()}
         cursor.execute(f'SELECT id, ebdz_thread_id, ebdz_thread_url FROM series WHERE id IN ({placeholders})', series_ids)
