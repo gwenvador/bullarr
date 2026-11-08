@@ -1,0 +1,163 @@
+/* Fenêtres (modales) : un seul style pour tout le site, celui de la fenêtre ⚙️ Éditer
+   de la bibliothèque (lib-create-modal) : cadre arrondi et bordé, fond voilé, croix
+   discrète en haut à droite, titre sobre, champs et boutons arrondis avec halo d'accent.
+   Chargé après style.css et palettes.css : surcharge les anciens réglages (padding 40px,
+   titres 2em, croix ronde de 40px) sans toucher au contenu de chaque fenêtre. */
+
+.modal {
+    background: rgba(20, 16, 12, .55);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    box-sizing: border-box;
+    padding: 16px;
+}
+
+.modal-content {
+    box-sizing: border-box;
+    border-radius: 16px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .28), 0 2px 6px rgba(0, 0, 0, .08);
+    padding: 28px 28px 24px;
+    max-height: calc(100vh - 32px);
+    animation: modal-pop .16s ease-out;
+}
+@keyframes modal-pop { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .modal-content { animation: none; } }
+
+/* Croix : petit carré arrondi, comme .lib-create-close */
+.modal .close-modal,
+.modal .modal-content .close-modal,
+.modal-content > .close,
+.modal-content > button.close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 2;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.modal .close-modal:hover,
+.modal .modal-content .close-modal:hover,
+.modal-content > .close:hover,
+.modal-content > button.close:hover {
+    background: var(--color-surface-alt);
+    color: var(--color-text);
+}
+
+/* Titres */
+.modal-content .modal-title,
+.modal-content > h2,
+.modal-content > div > h2:first-child,
+.modal-content > form > h2:first-child {
+    font-size: 1.35em;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--color-text);
+    margin: 0 40px 6px 0;
+}
+.modal-content .modal-title-logo { width: .85em; height: .85em; }
+.modal-subtitle,
+.modal-help-text {
+    color: var(--color-text-muted);
+    font-size: .92em;
+    line-height: 1.45;
+}
+.modal-header {
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 16px;
+    margin-bottom: 18px;
+}
+
+/* Champs */
+.modal-content input[type="text"],
+.modal-content input[type="search"],
+.modal-content input[type="number"],
+.modal-content input[type="password"],
+.modal-content input[type="email"],
+.modal-content input[type="url"],
+.modal-content input[type="date"],
+.modal-content input:not([type]),
+.modal-content select,
+.modal-content textarea {
+    border-radius: 10px;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg, var(--color-surface));
+    color: var(--color-text);
+    font: inherit;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.modal-content input[type="text"]:focus,
+.modal-content input[type="search"]:focus,
+.modal-content input[type="number"]:focus,
+.modal-content input[type="password"]:focus,
+.modal-content input[type="email"]:focus,
+.modal-content input[type="url"]:focus,
+.modal-content input[type="date"]:focus,
+.modal-content input:not([type]):focus,
+.modal-content select:focus,
+.modal-content textarea:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+.modal-content input[type="checkbox"],
+.modal-content input[type="radio"] { accent-color: var(--color-accent); }
+
+/* Boutons : coins de .lib-btn */
+.modal-content .btn,
+.modal-content .btn-sm,
+.modal-content .btn-neutral,
+.modal-content .btn-neutral-sm,
+.modal-content .btn-danger-sm,
+.modal-content .btn-success,
+.modal-content .btn-danger {
+    border-radius: 10px;
+}
+
+/* Bouton secondaire (Annuler, Fermer…) : contour seul, comme .lib-btn-ghost */
+.modal-content .btn-neutral {
+    background: transparent;
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    box-shadow: none;
+}
+.modal-content .btn-neutral:hover { background: var(--color-surface-alt); }
+
+/* Blocs internes déjà « carte » : même rayon */
+.modal-content .settings-section,
+.modal-content .checkbox-group,
+.modal-content .info-box,
+.modal-content .error-box,
+.modal-content .warning-box {
+    border-radius: 12px;
+}
+
+@media (max-width: 600px) {
+    .modal { padding: 10px; }
+    .modal-content {
+        width: 100%;
+        padding: 22px 18px 18px;
+        max-height: calc(100vh - 20px);
+    }
+    .modal .close-modal,
+    .modal .modal-content .close-modal,
+    .modal-content > .close,
+    .modal-content > button.close { position: absolute; top: 12px; right: 12px; }
+}
+
+[data-theme="dark"] .modal { background: rgba(0, 0, 0, .62); }
+[data-theme="dark"] .modal-content { box-shadow: 0 24px 60px rgba(0, 0, 0, .55); }
