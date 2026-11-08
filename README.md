@@ -35,7 +35,8 @@ tomes manquants.
   pour Telegram, qBittorrent et aMule
 - 🗄️ **Intégration Komga** : rescan automatique déclenché à chaque import/renommage/
   écriture de métadonnées ; la page lue dans le lecteur de Bullarr est envoyée à Komga
-  (réglable dans la configuration Komga)
+  (réglable dans Configuration → Intégrations). Chaque utilisateur peut relier son propre
+  compte Komga depuis son profil ; sans Komga, l'avancement de lecture est gardé par Bullarr
 - 📖 **Lecteur de BD intégré** : lecture des CBZ, CBR et PDF directement dans Bullarr, une ou
   deux pages côte à côte, zoom, ajustement (page, largeur, hauteur), bande de miniatures, plein
   écran ; la touche `?` affiche les raccourcis
@@ -46,12 +47,21 @@ tomes manquants.
   correction en masse
 - 🕓 **Historique** : imports et actions (renommage/suppression/déplacement) journalisés
 - 🔐 **Sécurité** : secrets (mots de passe/clés API) chiffrés sur disque (Fernet),
-  authentification optionnelle (désactivée par défaut) : identifiant/mot de passe, SSO/OIDC,
-  ou les deux sur la même page de connexion
+  authentification optionnelle (désactivée par défaut) : comptes locaux, avec en option un
+  bouton SSO/OIDC sur la même page de connexion
+- 👥 **Comptes et demandes** : comptes administrateur et lecteur (rôle par groupe OIDC ou
+  forcé par compte), inscription ouverte validée par un admin, demandes de BD des lecteurs à
+  valider (ou validées automatiquement), listes personnelles, page Mon profil avec avatar,
+  journal des comptes dans l'Historique
+- 🧸 **Contrôle parental** : bibliothèques visibles et genres masqués par lecteur,
+  préréglage « Enfant »
+- 🎨 **Thèmes** : 5 palettes (Atelier, Ardoise, Sauge, Océan, Prune), en clair et en sombre
+  (Configuration → Thème), aussi dans l'application Android
 - 🏷️ **Tags et listes** : tags par série (modifiables depuis la fiche, colonne Tags du tableau),
   recherche par tags dans la barre du haut, listes « à lire plus tard » et « favoris »
 - ✨ **Tags par IA** : aiautotagging.com (gratuit, sans clé), Claude, Gemini, ChatGPT,
-  OpenRouter, Groq ou un LLM local (Ollama, LM Studio…) créent les tags des séries et normalisent les tags existants, avec historique des traitements ; option pour
+  OpenRouter, Groq ou un LLM local (Ollama, LM Studio…) créent les tags des séries et normalisent
+  les tags existants, avec IA de secours et historique des traitements ; option pour
   taguer automatiquement chaque nouvelle série (Configuration → IA)
 - 🖼️ **Vue Affiches** : grille de couvertures avec statut, sélection multiple, filtres Statut,
   Origine (BD, Comics, Manga) et Listes, et « Continuer la lecture » synchronisé avec Komga
@@ -177,15 +187,18 @@ est optionnelle et désactivée tant qu'elle n'est pas explicitement activée.
 
 | Onglet | Rôle |
 |---|---|
-| 🔌 Indexeurs | Sources de recherche et de Nouveautés : Prowlarr, EBDZ.net, Telegram (canaux), Komga, Flux RSS, Web Archive (fourtoutici.cc, Anna's Archive, forum VK) |
+| 🔌 Indexeurs | Sources de recherche et de Nouveautés : Prowlarr, EBDZ.net, Telegram (canaux), Flux RSS, Web Archive (fourtoutici.cc, Anna's Archive, forum VK) |
 | 💻 Clients | Clients de téléchargement : aMule/eMule, qBittorrent, rTorrent, Deluge, Shelfmark |
+| 🧩 Intégrations | Komga : rescan après import, envoi de la page lue |
 | 📱 Notifications | Notifications Telegram (bot) |
-| 🔐 Login | Authentification : mot de passe, OIDC ou les deux (désactivée par défaut). La page de connexion affiche le formulaire et/ou un bouton SSO ; la redirection automatique vers le SSO est une option, désactivée par défaut. Carte **Accès API** : clé pour les applications externes |
+| 🔐 Login | Authentification : comptes locaux, avec SSO OIDC en option (désactivée par défaut). Carte **Utilisateurs et rôles** : comptes, rôles, inscription, demandes de BD, contrôle parental. La page de connexion affiche le formulaire et/ou un bouton SSO ; la redirection automatique vers le SSO est une option, désactivée par défaut. Carte **Accès API** : clé pour les applications externes |
 | 📊 Surveillance | Détection et acquisition automatique des tomes manquants |
 | 📥 Imports | Activation et règles de l'import automatique de fichiers |
 | 🗂️ Recherche | Priorité des formats dans les résultats de recherche et ordre des sources |
 | ✏️ Format | Templates de renommage fichiers/dossiers |
 | 💾 Backup | Export/import d'une sauvegarde (bases + configs + clé de chiffrement) |
+| 🤖 IA | Fournisseurs de tags par IA, IA de secours, consignes, création et normalisation des tags |
+| 🎨 Thème | Clair ou sombre, et 5 palettes de couleurs |
 
 ### Configuration aMule/eMule
 
@@ -257,7 +270,7 @@ français, surtout en PDF. Bullarr le lit sans compte VK :
   fichier partiel, puis import automatique. Certains anciens fichiers ne sont plus servis par
   VK (erreur « Fichier indisponible sur VK »).
 
-### Configuration Prowlarr, Komga, Web (Indexeurs) / qBittorrent, rTorrent, Deluge (Clients)
+### Configuration Prowlarr, Web (Indexeurs) / qBittorrent, rTorrent, Deluge (Clients) / Komga (Intégrations)
 
 Chaque source a sa propre carte cliquable dans `Indexeurs` (recherche) ou `Clients`
 (téléchargement) : URL, identifiants/clé API, puis "Tester la connexion". qBittorrent/

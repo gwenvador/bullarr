@@ -62,7 +62,7 @@ class SendNtfyTest(NtfyTestCase):
 
     def test_cover_is_attached_and_falls_back_without_it(self):
         from blueprints.ntfy.routes import send_ntfy_notification
-        self.save(auth='basic', username='gwen', password_decrypted='pw')
+        self.save(auth='basic', username='lecteur', password_decrypted='pw')
         cover = os.path.join(self.tmp.name, 'cover.jpg')
         with open(cover, 'wb') as handle:
             handle.write(b'\xff\xd8\xff')
