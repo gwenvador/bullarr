@@ -629,7 +629,7 @@ async function syncKomgaReading(button) {
             + `${plural(data.linked_volumes, 'tome')} rattaché${data.linked_volumes > 1 ? 's' : ''} à Komga`
             + (data.relinked ? ` (dont ${data.relinked} à l'instant)` : '')
             + `, ${data.volumes_with_progress} avec un avancement.`;
-        if (!data.linked_volumes) message += ' Aucun tome rattaché : matchez vos séries sur Komga (Éditer → Komga).';
+        if (!data.linked_volumes) message += ' Aucun tome rattaché : matchez vos séries sur Komga (fiche série → Éditer manuellement → Komga).';
         status().textContent = message;
     } catch (error) {
         status().textContent = '❌ ' + error.message;
@@ -1564,12 +1564,13 @@ async function _runBulkSeriesAction(seriesList, toastId, verbFn, actionFn) {
 
 // « Déplacer vers… » : choix de la bibliothèque cible, puis déplacement côté serveur en
 // arrière-plan (dossiers copiés entre montages : peut prendre du temps), suivi ici.
-async function openMoveSeriesDialog() {
-    const series = _selectedSeriesData();
+async function openMoveSeriesDialog(seriesList = null) {
+    const series = Array.isArray(seriesList) ? seriesList : _selectedSeriesData();
     if (series.length === 0) return;
     let libs = [];
     try { libs = await (await fetch('/api/libraries')).json(); } catch (error) { /* liste vide ci-dessous */ }
-    const targets = (Array.isArray(libs) ? libs : []).filter(lib => lib.id !== Number(libraryId));
+    const currentLibraryId = Number(series[0]?.library_id || libraryId);
+    const targets = (Array.isArray(libs) ? libs : []).filter(lib => lib.id !== currentLibraryId);
     document.getElementById('move-series-modal')?.remove();
     const modal = document.createElement('div');
     modal.id = 'move-series-modal';
@@ -5970,61 +5971,75 @@ async function openSeriesEditModal(seriesId) {
         } catch (e) { /* best-effort - repli sur "Supprimer la série" seule */ }
     }
 
-    let modal = document.getElementById('series-edit-modal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'series-edit-modal';
-        modal.className = 'modal';
-        document.body.appendChild(modal);
-    }
+    document.getElementById('series-edit-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'series-edit-modal';
+    modal.className = 'modal active';
 
-    const deleteFileHtml = oneshotFile ? `
-                <button class="series-edit-action series-edit-action-danger" onclick="closeSeriesEditModal(); deleteVolume(${oneshotFile.id}, ${seriesId}, '${escapeForAttribute(title)}')" title="Supprime uniquement le fichier - la fiche de cette série reste, pour supprimer aussi la série elle-même utilisez 'Supprimer la série' ci-dessous">
-                    <span class="series-edit-action-icon">${svgIcon('trash-2')}</span><span class="series-edit-action-label">Supprimer le fichier</span>
-                </button>
-    ` : '';
-
+    // Une rangée = icône, libellé, explication courte. data-action est lu par le
+    // gestionnaire de clic plus bas (pas de onclick en ligne avec le titre de la série).
+    const row = (action, icon, label, hint, extra = '') => `
+        <button type="button" class="series-edit-action${extra}" data-action="${action}">
+            <span class="series-edit-action-icon">${svgIcon(icon)}</span>
+            <span class="series-edit-action-text"><strong>${label}</strong><small>${hint}</small></span>
+            <span class="series-edit-action-chevron">${svgIcon('chevron-right')}</span>
+        </button>`;
     const coverHtml = s ? buildCoverHtml(s, 'series-edit-modal-cover', 'series-edit-modal-cover-placeholder') : '';
 
     modal.innerHTML = `
-        <div class="modal-content series-edit-modal-content">
-            <span class="close-modal" onclick="closeSeriesEditModal()">×</span>
+        <div class="modal-content lib-create-modal series-edit-modal-content" role="dialog" aria-modal="true" aria-labelledby="series-edit-title">
+            <button type="button" class="lib-create-close" aria-label="Fermer" data-close>${svgIcon('x')}</button>
             <div class="series-edit-modal-header">
                 ${coverHtml}
                 <div class="series-edit-modal-header-text">
-                    <h2 class="modal-title series-edit-modal-title">${svgIcon('settings')} Éditer</h2>
+                    <h2 class="lib-create-title" id="series-edit-title">Éditer</h2>
                     <p class="series-edit-modal-subtitle">${escapeHtml(title)}</p>
                 </div>
             </div>
-            <div class="series-edit-actions">
-                <button class="series-edit-action" onclick="closeSeriesEditModal(); openRenameModal(${seriesId}, '${escapeForAttribute(title)}')">
-                    <span class="series-edit-action-icon">${svgIcon('pencil')}</span><span class="series-edit-action-label">Renommer</span>
-                </button>
-                <button class="series-edit-action" onclick="closeSeriesEditModal(); openMergeSeriesModal(${seriesId})">
-                    <span class="series-edit-action-icon">${svgIcon('git-merge')}</span><span class="series-edit-action-label">Fusionner</span>
-                </button>
-                <button class="series-edit-action" onclick="closeSeriesEditModal(); openEbdzMatchModal(${seriesId}, 'card')">
-                    <img src="/static/img/ebdz-logo.png" alt="" class="series-edit-action-icon-img"><span class="series-edit-action-label">Matcher EBDZ</span>
-                </button>
-                <button class="series-edit-action" onclick="closeSeriesEditModal(); openBedethequeMatchModal(${seriesId}, () => refreshSeriesView(${seriesId}))">
-                    <img src="/static/img/bedetheque-logo.png" alt="" class="series-edit-action-icon-img"><span class="series-edit-action-label">Matcher Bédéthèque</span>
-                </button>
-                <button class="series-edit-action" onclick="closeSeriesEditModal(); openKomgaMatchModal(${seriesId}, 'card')">
-                    <img src="/static/img/komga-logo.svg" alt="" class="series-edit-action-icon-img"><span class="series-edit-action-label">Matcher Komga</span>
-                </button>
-                ${deleteFileHtml}
-                <button class="series-edit-action series-edit-action-danger" onclick="closeSeriesEditModal(); deleteSeries(${seriesId})">
-                    <span class="series-edit-action-icon">${svgIcon('trash-2')}</span><span class="series-edit-action-label">Supprimer la série</span>
-                </button>
+            <div class="series-edit-group">
+                <h3 class="series-edit-group-title">Rechercher</h3>
+                ${row('auto-search', 'radar', 'Recherche automatique', 'Cherche et télécharge les tomes manquants trouvés avec confiance')}
+                ${row('search', 'search', 'Rechercher', 'Ouvre la recherche manuelle sur toutes les sources')}
             </div>
-        </div>
-    `;
-    modal.classList.add('active');
+            <div class="series-edit-group">
+                <h3 class="series-edit-group-title">Organiser</h3>
+                ${row('rename', 'pencil', 'Renommer', 'Renomme le dossier et les fichiers de la série')}
+                ${row('merge', 'git-merge', 'Fusionner', 'Réunit cette série avec une autre')}
+                ${row('move', 'folder-input', 'Déplacer vers une autre bibliothèque', 'Déplace le dossier sur le disque')}
+            </div>
+            <div class="series-edit-group">
+                <h3 class="series-edit-group-title">Supprimer</h3>
+                ${oneshotFile ? row('delete-file', 'file-x', 'Supprimer le fichier', 'La fiche reste, comme tome manquant', ' series-edit-action-danger') : ''}
+                ${row('delete', 'trash-2', 'Supprimer la série', 'Supprime la fiche et tous ses fichiers du disque', ' series-edit-action-danger')}
+            </div>
+            <div class="lib-create-actions">
+                <button type="button" class="lib-btn lib-btn-ghost" data-close>Fermer</button>
+            </div>
+        </div>`;
+
+    const actions = {
+        'auto-search': button => runSeriesAutoAcquire(seriesId, { seriesTitle: title, buttonEl: button }),
+        'search': () => searchSeriesInSearchTab(seriesId),
+        'rename': () => openRenameModal(seriesId, title),
+        'merge': () => openMergeSeriesModal(seriesId),
+        'move': () => openMoveSeriesDialog(s ? [s] : [{ id: seriesId, title }]),
+        'delete-file': () => deleteVolume(oneshotFile.id, seriesId, title),
+        'delete': () => deleteSeries(seriesId),
+    };
+    modal.addEventListener('click', event => {
+        if (event.target === modal || event.target.closest('[data-close]')) { closeSeriesEditModal(); return; }
+        const button = event.target.closest('[data-action]');
+        if (!button) return;
+        closeSeriesEditModal();
+        actions[button.dataset.action]?.(button);
+    });
+    modal.addEventListener('keydown', event => { if (event.key === 'Escape') closeSeriesEditModal(); });
+    document.body.appendChild(modal);
+    modal.querySelector('[data-action]')?.focus();
 }
 
 function closeSeriesEditModal() {
-    const modal = document.getElementById('series-edit-modal');
-    if (modal) modal.classList.remove('active');
+    document.getElementById('series-edit-modal')?.remove();
 }
 
 // Builds the series history section from cached server URLs and the current series ID.

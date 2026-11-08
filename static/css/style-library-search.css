@@ -695,104 +695,43 @@
     overflow: visible;
 }
 
-/* Modale "hub" ⚙️ Éditer (voir openSeriesEditModal): actions présentées comme des
-   rangées plates icône+libellé (même langage visuel que .toolbar-btn) plutôt que des
-   gros boutons pleins colorés façon ancienne UI (.btn) */
-.series-edit-modal-content {
-    max-width: 380px;
-}
-
-.series-edit-modal-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 18px;
-}
-
+/* Fenêtre ⚙️ Éditer (openSeriesEditModal) : même cadre que les autres fenêtres
+   (lib-create-modal), actions en rangées icône + libellé + explication, par groupe. */
+.modal-content.series-edit-modal-content { max-width: 460px; }
+.series-edit-modal-header { display: flex; align-items: center; gap: 14px; margin: 0 32px 20px 0; }
 .series-edit-modal-cover,
-.series-edit-modal-cover-placeholder {
-    width: 52px;
-    height: 78px;
-    border-radius: 6px;
-    flex-shrink: 0;
-}
-
-.series-edit-modal-cover {
-    object-fit: cover;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-}
-
-.series-edit-modal-cover-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5em;
-    color: white;
-}
-
-.series-edit-modal-header-text {
-    min-width: 0;
-}
-
-.series-edit-modal-title {
-    margin-bottom: 4px;
-}
-
-.series-edit-modal-subtitle {
-    color: var(--color-text-muted);
-    font-size: 0.9em;
-    margin-bottom: 0;
-}
-
-.series-edit-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.series-edit-action {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: transparent;
-    color: var(--color-text);
-    font-size: 0.95em;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.series-edit-action:hover {
-    background: var(--color-surface-alt);
-    border-color: var(--color-border);
-}
-
-/* Supprimer: action destructive, distinguée du reste (rouge, même palette que
-   .btn-danger-sm dans style.css) plutôt que mêlée aux tuiles de matching neutres */
-.series-edit-action-danger {
-    color: #b91c1c;
-    border-color: #fecaca;
-}
-
-.series-edit-action-danger:hover {
-    background: #fee2e2;
-    border-color: #fca5a5;
-}
-
-.series-edit-action-icon {
-    font-size: 1.15em;
-}
-
-.series-edit-action-icon-img {
-    width: 17px;
-    height: 17px;
-    object-fit: contain;
-}
-
+.series-edit-modal-cover-placeholder { width: 52px; height: 78px; border-radius: 8px; flex-shrink: 0; }
+.series-edit-modal-cover { object-fit: cover; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); }
+.series-edit-modal-cover-placeholder { display: flex; align-items: center; justify-content: center; font-size: 1.5em; color: white; }
+.series-edit-modal-header-text { min-width: 0; }
+.series-edit-modal-header .lib-create-title { margin: 0 0 4px; }
+.series-edit-modal-subtitle { margin: 0; color: var(--color-text-muted); font-size: .92em;
+                              overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.series-edit-group { display: flex; flex-direction: column; gap: 6px; }
+.series-edit-group + .series-edit-group { margin-top: 18px; }
+.series-edit-group-title { margin: 0 0 2px; font-size: .74em; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+                           color: var(--color-text-muted); }
+.series-edit-action { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; text-align: left;
+                      border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface-alt);
+                      color: var(--color-text); font: inherit; cursor: pointer;
+                      transition: background .15s ease, border-color .15s ease; }
+.series-edit-action:hover, .series-edit-action:focus-visible { outline: none; border-color: var(--color-accent);
+                      background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface-alt)); }
+.series-edit-action-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 34px; height: 34px;
+                           border-radius: 9px; color: var(--color-accent);
+                           background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.series-edit-action-icon .icon { width: 17px; height: 17px; }
+.series-edit-action-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.series-edit-action-text strong { font-size: .94em; font-weight: 600; }
+.series-edit-action-text small { color: var(--color-text-muted); font-size: .8em; line-height: 1.35; }
+.series-edit-action-chevron { display: inline-flex; color: var(--color-text-muted); }
+.series-edit-action-chevron .icon { width: 16px; height: 16px; }
+.series-edit-action-danger { --danger: #dc2626; }
+.series-edit-action-danger .series-edit-action-icon { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.series-edit-action-danger strong { color: var(--danger); }
+.series-edit-action-danger:hover, .series-edit-action-danger:focus-visible { border-color: var(--danger);
+                      background: color-mix(in srgb, var(--danger) 7%, var(--color-surface-alt)); }
+[data-theme="dark"] .series-edit-action-danger { --danger: #f87171; }
 .toolbar-btn {
     display: flex;
     align-items: center;
@@ -3266,25 +3205,8 @@ a.result-title:hover {
 
 [data-theme="dark"] .toolbar-btn-danger,
 [data-theme="dark"] .toolbar-dropdown-item-danger,
-[data-theme="dark"] .series-edit-action-danger {
-    color: #e08a8a;
-}
-
 [data-theme="dark"] .toolbar-btn-danger:hover,
 [data-theme="dark"] .toolbar-dropdown-item-danger:hover,
-[data-theme="dark"] .series-edit-action-danger:hover {
-    background: #3d1f1f;
-    color: #f0a8a8;
-}
-
-[data-theme="dark"] .series-edit-action-danger {
-    border-color: #5c2b2b;
-}
-
-[data-theme="dark"] .series-edit-action-danger:hover {
-    border-color: #7a3838;
-}
-
 /* Modale "Fichiers EBDZ" d'un tome (openEbdzMatchModal, library.js) - en-tête violet
    (identité EBDZ) et ligne surlignée jaune (tome absent de la collection) étaient codés
    en dur, restant clairs quel que soit le thème. */
