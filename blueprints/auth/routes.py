@@ -10,10 +10,12 @@ import hmac
 import secrets
 import threading
 import time
+import zlib
 import requests
 
 from . import auth_bp
 from encryption import decrypt
+from error_utils import error_message
 from .config_store import (AUTH_MODES, LEGACY_AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url,
                            generate_api_key)
 from . import accounts
@@ -597,7 +599,7 @@ def approve_user():
     try:
         approved = accounts.approve_account(data.get('key') or '', data.get('role') or 'reader')
     except accounts.AccountError as error:
-        return jsonify({'success': False, 'error': str(error)}), 400
+        return jsonify({'success': False, 'error': error_message(error)}), 400
     if not approved:
         return jsonify({'success': False, 'error': 'Demande introuvable'}), 404
     row = accounts.get_user(data.get('key') or '')
@@ -680,7 +682,7 @@ def create_user():
                                             name=data.get('name'), email=data.get('email'),
                                             role=data.get('role') or 'reader')
     except accounts.AccountError as error:
-        return jsonify({'success': False, 'error': str(error)}), 400
+        return jsonify({'success': False, 'error': error_message(error)}), 400
     log_activity('account_created', target_key=key, target_name=data.get('name') or data.get('username'),
                  detail=f"Compte local {data.get('username')} · {_role_label(data.get('role') or 'reader')}")
     return jsonify({'success': True, 'key': key})
@@ -703,7 +705,7 @@ def edit_user():
             accounts.update_account(key, name=data.get('name'), email=data.get('email'),
                                     password=data.get('password') or None)
         except accounts.AccountError as error:
-            return jsonify({'success': False, 'error': str(error)}), 400
+            return jsonify({'success': False, 'error': error_message(error)}), 400
         if data.get('password') and key == user_key(session.get('user')):
             session['login_at'] = time.time()  # garder sa propre session après le changement
     changes = []
@@ -813,8 +815,7 @@ def _preset_url(name):
 
 
 def _default_preset(key):
-    import hashlib
-    return AVATAR_PRESETS[int(hashlib.sha1((key or '?').encode()).hexdigest(), 16) % len(AVATAR_PRESETS)]
+    return AVATAR_PRESETS[zlib.crc32((key or '?').encode()) % len(AVATAR_PRESETS)]
 
 
 def avatar_url(row):
@@ -910,7 +911,7 @@ def update_profile():
     try:
         accounts.update_account(key, name=data.get('name'), email=data.get('email'), password=new_password or None)
     except accounts.AccountError as error:
-        return jsonify({'success': False, 'error': str(error)}), 400
+        return jsonify({'success': False, 'error': error_message(error)}), 400
     changes = []
     if data.get('name') is not None and (data.get('name') or '').strip() != (row['name'] or ''):
         changes.append('nom')
@@ -937,7 +938,6 @@ def _set_avatar(key, name):
 
 def _avatar_upload(key, row, by_admin=False):
     """Photo de profil : recadrée au carré, 256 px, enregistrée en WebP (jamais le fichier envoyé)."""
-    import hashlib
     import io
     import os
     from PIL import Image, ImageOps
@@ -954,8 +954,7 @@ def _avatar_upload(key, row, by_admin=False):
         image = ImageOps.fit(image, (AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)
     except Exception:
         return jsonify({'success': False, 'error': 'Image illisible (JPEG, PNG, WebP ou GIF)'}), 400
-    digest = hashlib.sha1(key.encode()).hexdigest()[:16]
-    name = f'{digest}-{int(time.time())}.webp'
+    name = f'{secrets.token_hex(8)}-{int(time.time())}.webp'
     image.save(os.path.join(_avatar_dir(), name), 'WEBP', quality=86)
     _remove_avatar_file(row['avatar'])
     _set_avatar(key, name)
