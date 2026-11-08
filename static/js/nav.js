@@ -1224,6 +1224,7 @@ const SIDEBAR_ICON_MAP = {
     // configurations"
     '🔌': 'plug',
     '💻': 'monitor',
+    '🧩': 'link',
     '📱': 'smartphone',
     '🔐': 'lock',
     '🌓': 'moon',
