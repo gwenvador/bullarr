@@ -165,6 +165,38 @@ class RssFreshnessTests(unittest.TestCase):
         self.assertEqual(cached['entries'][0]['title'], 'Fresh')
         self.assertNotIn('annotated_entries', cached)
 
+    def test_page_display_never_reads_the_feeds(self):
+        # Nouveautés lit seulement la base : les flux ne sont interrogés que par le planificateur
+        # ou par « Actualiser » (refresh=1).
+        with patch.object(routes, 'fetch_feed', side_effect=AssertionError('flux interrogé')):
+            result = self.call_latest([(self.feed, {'entries': [{'title': 'Cached', 'date': '2026-09-30'}], 'fetched_at': 1}, None)])
+        self.assertEqual([e['title'] for e in result['entries']], ['Cached'])
+
+    def test_annotation_survives_a_refresh_that_kept_the_release(self):
+        # Ouvrir Nouveautés lance l'actualisation et le calcul des annotations ensemble ;
+        # l'actualisation finit la première : le calcul ne doit pas être jeté pour autant.
+        self.seed([{'title': 'Kept', 'link': 'https://example.test/kept'}])
+        old = routes._load_rss_persistent_cache(self.path)[self.key]
+        self.seed([{'title': 'New', 'link': 'https://example.test/new'},
+                   {'title': 'Kept', 'link': 'https://example.test/kept'}], 2)
+        late = {'title': 'Kept', 'link': 'https://example.test/kept', 'series_id': 7,
+                '_rss_annotation_version': routes.RSS_ANNOTATION_VERSION, '_library_fingerprint': 'fp'}
+        routes._save_rss_annotations(self.path, self.key, old['fetched_at'], [late])
+        cached = routes._load_rss_persistent_cache(self.path)[self.key]
+        self.assertEqual([e['title'] for e in cached['entries']], ['New', 'Kept'])
+        self.assertEqual([(a['title'], a['series_id']) for a in cached['annotated_entries']], [('Kept', 7)])
+
+    def test_light_read_does_not_wait_for_a_running_refresh(self):
+        self.seed([{'title': 'Cached'}])
+        lock = routes._rss_feed_locks.setdefault((self.path, self.key), routes.threading.Lock())
+        lock.acquire()
+        try:
+            _feed, cached, error = routes._read_rss_feed(self.feed, self.path, allow_stale=True, app=object(), light=True)
+        finally:
+            lock.release()
+        self.assertIsNone(error)
+        self.assertIsInstance(cached.get('entries'), list)
+
     def test_new_releases_are_returned_at_once_and_annotated_in_background(self):
         old = {'title': 'Old', 'link': 'https://example.test/old', 'date': '2026-09-28'}
         annotated_old = {**old, 'series_id': 7,

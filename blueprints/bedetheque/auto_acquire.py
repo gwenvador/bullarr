@@ -533,6 +533,40 @@ def _result_source_link(result):
 ALREADY_ADDED_PREFIX = "Déjà ajouté"
 
 
+def _is_direct_torrent_link(url):
+    """Même règle que _rss_torrent_url : magnet ou lien http vers un .torrent / une route de téléchargement."""
+    probe = str(url or '').lower()
+    return probe.startswith('magnet:') or (probe.startswith('http') and ('.torrent' in probe or '/download' in probe))
+
+
+def _rss_cached_download_url(app, page):
+    """Lien de téléchargement direct d'une release RSS lu dans le cache des flux, par sa page."""
+    if not page:
+        return None
+    try:
+        from blueprints.ebdz.routes import _rss_db_connect, _rss_persistent_cache_path
+        with app.app_context():
+            conn = _rss_db_connect(_rss_persistent_cache_path())
+        try:
+            rows = conn.execute("SELECT entry_json FROM rss_entries WHERE entry_key LIKE ? ORDER BY date DESC",
+                                ('%' + page,)).fetchall()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    for (raw,) in rows:
+        try:
+            entry = json.loads(raw or '{}')
+        except ValueError:
+            continue
+        if page not in (entry.get('link'), entry.get('page_link'), entry.get('comments_link')):
+            continue
+        for item in entry.get('download_links') or []:
+            if _is_direct_torrent_link(item.get('url')):
+                return item['url']
+    return None
+
+
 def _download_result(app, result, series_id, title, vol_num):
     ""
     filename = result.get('filename') or result.get('title')
@@ -589,18 +623,35 @@ def _download_result(app, result, series_id, title, vol_num):
         return True, f"{filename or title} : téléchargement VK démarré"
 
     link = result.get('link') or result.get('download_url')
-    if not link and source == 'prowlarr':
-        # Entrée de flux RSS mise en validation sans lien: la release exacte est retrouvée chez Prowlarr.
+    if source == 'rss' and not _is_direct_torrent_link(link):
+        # Lien direct du flux (validations récentes), sinon celui du cache RSS pour cette page
+        # (validations créées avant que le lien soit enregistré) : c'est le lien Prowlarr que la
+        # page Nouveautés envoie directement. La recherche Prowlarr ne reste qu'en dernier recours.
+        direct = result.get('download_url')
+        if not _is_direct_torrent_link(direct):
+            direct = _rss_cached_download_url(app, result.get('info_url') or link)
+        if direct:
+            link = direct
+    page_only = source == 'rss' and link and not _is_direct_torrent_link(link)
+    if (not link and source == 'prowlarr') or page_only:
+        # Entrée de flux RSS mise en validation sans lien direct (le flux ne donne que la page
+        # de la release, ex. c411.org/torrents/<hash>) : la release exacte est retrouvée chez
+        # Prowlarr, sinon qBittorrent reçoit une page web et répond 400.
         from blueprints.missing_monitor.new_file_handler import _rss_torrent_url
         with app.app_context():
-            link = _rss_torrent_url({'filename': filename or title, 'link': result.get('info_url'),
+            link = _rss_torrent_url({'filename': filename or title, 'link': link if page_only else result.get('info_url'),
                                      'prowlarr_indexer_id': True, 'download_links': []}, title)
+        if not link and page_only:
+            return False, "Release RSS sans lien direct, introuvable chez Prowlarr : à télécharger depuis la page de la release"
     if not link:
         return False, "Aucun lien de téléchargement"
     from blueprints.missing_monitor.downloader import MissingVolumeDownloader
+    # Une release RSS est un lien Prowlarr sans clé API : comme la page Nouveautés, l'envoyer avec
+    # la source « prowlarr » pour que la route du client ajoute la clé configurée.
+    send_source = 'prowlarr' if source == 'rss' else source
     sent, message = MissingVolumeDownloader().send_torrent_download(
         link, title, vol_num, series_id=series_id, filename=filename,
-        source=source, source_link=_result_source_link(result)
+        source=send_source, source_link=_result_source_link(result)
     )
     if not sent and '409' in str(message):
         # qBittorrent répond 409 (conflit) quand le torrent est déjà dans le client.

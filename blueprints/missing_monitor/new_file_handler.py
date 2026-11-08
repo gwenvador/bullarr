@@ -128,6 +128,23 @@ def _missing_typed_volume(cursor, series_id, typed, filename):
     return chosen, chosen is None
 
 
+def _review_candidate(source, item):
+    """Candidat mis en validation. Pour le RSS, le lien direct du flux (download_url, lien
+    Prowlarr) est gardé à côté de la page de la release : le bouton Télécharger l'envoie
+    tel quel, comme la page Nouveautés, sans nouvelle recherche Prowlarr."""
+    candidate = {
+        'source': source, 'filename': item.get('filename'), 'link': item.get('link'),
+        'thread_url': item.get('thread_url'), 'channel': item.get('channel'),
+        'message_id': item.get('message_id'), 'channel_title': item.get('channel_title'),
+    }
+    if source == 'rss':
+        direct = _rss_torrent_url({'download_links': item.get('download_links') or []})
+        if direct:
+            candidate['download_url'] = direct
+        candidate['info_url'] = item.get('page_link') or item.get('link')
+    return candidate
+
+
 def _rss_torrent_url(item, series_title=None):
     """Lien de téléchargement d'une release RSS: lien direct du flux, sinon la release exacte
     retrouvée chez Prowlarr (le flux retire les liens qui contiennent une clé API). Prowlarr ne
@@ -152,8 +169,12 @@ def _rss_torrent_url(item, series_title=None):
             queries.append(query)
     for query in queries:
         results = search_prowlarr_raw(query) or []
-        exact = [r for r in results if str(r.get('title') or '').lower() == title.lower()]
-        release = next((r for r in exact if r.get('info_url') == page), None) if page else (exact[0] if len(exact) == 1 else None)
+        # La page de la release (info_url) l'identifie sans ambiguïté : Prowlarr peut lui donner un
+        # titre un peu différent de celui du flux (auteur ajouté : « …Ages.Cazenove.FR… »).
+        release = next((r for r in results if r.get('info_url') == page), None) if page else None
+        if not release:
+            exact = [r for r in results if str(r.get('title') or '').lower() == title.lower()]
+            release = next((r for r in exact if r.get('info_url') == page), None) if page else (exact[0] if len(exact) == 1 else None)
         if release and release.get('download_url'):
             return release['download_url']
     return None
@@ -234,11 +255,7 @@ def _process_typed_monitor_file(source, item, filename, parsed, typed, match, se
         # inutile de la télécharger ou de la proposer en validation.
         stats['skipped_complete'] = stats.get('skipped_complete', 0) + 1
         return
-    candidate = {
-        'source': source, 'filename': item.get('filename'), 'link': item.get('link'),
-        'thread_url': item.get('thread_url'), 'channel': item.get('channel'),
-        'message_id': item.get('message_id'), 'channel_title': item.get('channel_title'),
-    }
+    candidate = _review_candidate(source, item)
     if ambiguous:
         queue_manual_review(series_id, match[3], None, label, [candidate],
                             f"Plusieurs albums manquants portent le numéro « {label} » - le titre du fichier "
@@ -465,11 +482,7 @@ def process_new_monitor_files(source, items):
             is_thread_confirmed = bool(thread_match) and thread_match[0] == match[0]
             if not is_exact_title_match and not is_hint_confirmed and not is_thread_confirmed:
                 from blueprints.bedetheque.auto_acquire import queue_manual_review
-                candidate = {
-                    'source': source, 'filename': item.get('filename'), 'link': item.get('link'),
-                    'thread_url': item.get('thread_url'), 'channel': item.get('channel'),
-                    'message_id': item.get('message_id'), 'channel_title': item.get('channel_title'),
-                }
+                candidate = _review_candidate(source, item)
                 review_reason = f"Titre détecté « {parsed.get('title')} » proche mais pas identique à « {match[3]} » - correspondance de série non confirmée, à vérifier manuellement."
                 if not is_missing:
                     review_reason += " (candidat upgrade qualité pour un tome déjà possédé)"

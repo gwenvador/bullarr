@@ -1226,7 +1226,15 @@ def _read_rss_feed(feed, path, force_refresh=False, allow_stale=False, app=None,
     requested_at = time.time()
     with _rss_persistent_cache_lock:
         lock = _rss_feed_locks.setdefault((path, key), threading.Lock())
-    with lock:
+    # Lecture légère (page Nouveautés) : si une actualisation tient déjà le verrou du flux
+    # (Prowlarr peut mettre des dizaines de secondes à répondre, voire expirer), on répond
+    # tout de suite avec les données en base au lieu d'attendre la fin de l'actualisation.
+    if not lock.acquire(blocking=not (light and allow_stale and not force_refresh)):
+        cached = _load_rss_feed_state(path, key)
+        if isinstance(cached.get('entries'), list):
+            return feed, cached, None
+        lock.acquire()
+    try:
         # light: seule la date de lecture est nécessaire (rss_latest relit ensuite ses lignes en SQL).
         cached = (_load_rss_feed_state(path, key) if light else _load_rss_persistent_cache(path).get(key)) or {}
         fetched_at = float(cached.get('fetched_at') or 0)
@@ -1246,6 +1254,8 @@ def _read_rss_feed(feed, path, force_refresh=False, allow_stale=False, app=None,
             # the real cause goes to the server log only.
             logging.getLogger(__name__).warning('RSS %s : %s', feed.get('name') or feed.get('provider'), exc)
             return feed, cached if usable else {'entries': []}, 'Actualisation RSS impossible; dernières données disponibles conservées.'
+    finally:
+        lock.release()
 
 
 def _rss_match_overrides_path():
@@ -1384,7 +1394,36 @@ def poll_rss_for_monitoring():
     with open(temp_path, 'w', encoding='utf-8') as handle:
         json.dump({'seen': seen[-RSS_MONITOR_SEEN_MAX:], 'retries': retries}, handle)
     os.replace(temp_path, state_path)
+    try:
+        _annotate_latest_rss(cache_path, _prepared_rss_feeds())
+    except Exception as exc:
+        logging.getLogger(__name__).warning('RSS : préparation des annotations impossible : %s', exc)
     return totals
+
+
+RSS_LATEST_PREPARED = 100
+
+
+def _annotate_latest_rss(cache_path, feeds):
+    """Calcule, juste après l'actualisation programmée, les annotations (série reconnue, tome
+    possédé...) des releases que Nouveautés affiche : la page les lit toutes prêtes au lieu
+    de lancer ce calcul à l'ouverture."""
+    from blueprints.library.routes import load_library_import_config
+
+    blocked = load_library_import_config().get('blocked_search_extensions', [])
+    fingerprint = _rss_library_fingerprint()
+    for feed in feeds:
+        key = feed_cache_key(feed)
+        rows, annotated = _rss_latest_rows(cache_path, key, RSS_LATEST_PREPARED, blocked)
+        todo = [entry for entry in rows
+                if _rss_entry_key(entry) not in annotated
+                or annotated[_rss_entry_key(entry)].get('_library_fingerprint') != fingerprint]
+        if not todo:
+            continue
+        name = feed.get('name') or 'RSS'
+        fetched_at = _load_rss_feed_state(cache_path, key).get('fetched_at')
+        new_annotations = _annotate_rss_entries([{**entry, 'type': 'rss', 'feed_name': name} for entry in todo])
+        _save_rss_annotations(cache_path, key, fetched_at, new_annotations)
 
 
 _rss_reannotating = set()
@@ -1397,8 +1436,11 @@ def _save_rss_annotations(cache_path, key, fetched_at, new_annotations):
     d'affichage immédiat pendant qu'un recalcul tourne."""
     def save(latest):
         current = latest.get(key)
-        # Never restore old entries after another request has refreshed this feed.
-        if isinstance(current, dict) and current.get('fetched_at') == fetched_at:
+        # Le flux a pu être actualisé pendant le calcul (ouvrir Nouveautés lance les deux en même
+        # temps, et l'actualisation finit d'ordinaire la première) : on garde quand même les
+        # annotations des releases toujours présentes, sans jamais réintroduire d'anciennes lignes.
+        # Exiger le même fetched_at jetait tout le calcul, et les séries n'apparaissaient jamais.
+        if isinstance(current, dict):
             combined = {
                 _rss_entry_key(item): item
                 for item in current.get('annotated_entries') or []
@@ -1454,6 +1496,11 @@ def rss_latest():
     app = current_app._get_current_object()
 
     def read(feed):
+        if not force_refresh:
+            # Affichage seul : uniquement les données en base, jamais d'interrogation des flux. Le
+            # planificateur (poll_rss_for_monitoring) les actualise et prépare leurs annotations ;
+            # « Actualiser » (refresh=1) force une lecture immédiate.
+            return feed, _load_rss_feed_state(cache_path, feed_cache_key(feed)) or {'entries': []}, None
         return _read_rss_feed(feed, cache_path, force_refresh, allow_stale=True, app=app, light=True)
     with ThreadPoolExecutor(max_workers=min(5, max(1, len(feeds)))) as executor:
         snapshots = list(executor.map(read, feeds))

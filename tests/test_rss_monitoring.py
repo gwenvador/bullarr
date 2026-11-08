@@ -94,3 +94,16 @@ class PollRssTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RssTorrentUrlPageMatchTest(unittest.TestCase):
+    """Release retrouvée par sa page même quand Prowlarr ajoute l'auteur au titre."""
+
+    def test_page_match_wins_over_title(self):
+        from blueprints.missing_monitor import new_file_handler as handler
+        item = {"filename": "Les.Pompiers.HS.Les.Pompiers.A.Travers.Les.Ages.FR.[PDF]-NOTAG",
+                "link": "https://c411.org/torrents/9f43", "prowlarr_indexer_id": True, "download_links": []}
+        results = [{"title": "Les.Pompiers.HS.Les.Pompiers.A.Travers.Les.Ages.Cazenove.FR.[PDF]-NOTAG",
+                    "info_url": "https://c411.org/torrents/9f43", "download_url": "https://dl/9f43"}]
+        with mock.patch("blueprints.prowlarr.search.search_prowlarr_raw", return_value=results):
+            self.assertEqual(handler._rss_torrent_url(item, "Les pompiers"), "https://dl/9f43")
