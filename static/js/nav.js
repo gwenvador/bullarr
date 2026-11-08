@@ -409,13 +409,10 @@ function initNavGroup({ id, storageKey, label, hrefs, insertAfterHref }) {
     const isOnGroupPage = hrefs.includes(window.location.pathname);
     if (isOnGroupPage) parent.classList.add('active');
 
-    let expanded = isOnGroupPage;
-    try {
-        expanded = isOnGroupPage || localStorage.getItem(storageKey) === 'true';
-    } catch (e) {
-        // stockage indisponible - replié par défaut sauf si on est déjà sur une des
-        // pages regroupées
-    }
+    // « Pourquoi Suivi reste ouvert quand je suis sur Bibliothèque ou Recherche » : le
+    // groupe se rouvrait depuis localStorage sur les pages hors groupe. Cliquer sur le
+    // groupe mène de toute façon à sa première page : il n'est ouvert que sur ses pages.
+    const expanded = isOnGroupPage;
     subgroup.classList.toggle('nav-subgroup-collapsed', !expanded);
     // Un seul sous-menu ouvert à la fois - voir _collapseOtherNavGroups. Ne referme les
     // autres que si CE groupe-ci finit réellement ouvert (sinon un groupe replié fermerait
