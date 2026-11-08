@@ -4999,3 +4999,8 @@ div:has(> .replace-results-table) { container-type: inline-size; }
     .replace-results-table > thead > tr > th:nth-child(8),
     .replace-results-table > tbody > tr > td:nth-child(8) { display: none; }
 }
+
+/* « C est quoi le contour bleu clair, pas utile » : ni barre d accent à gauche des lignes
+   possédées (la colonne Possédé le montre déjà), ni trait d accent sous l en-tête. */
+.replace-results-table .replace-results-row-owned td:first-child { box-shadow: none !important; }
+.replace-results-table thead th { border-bottom: 1px solid var(--color-border) !important; }
