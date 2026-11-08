@@ -1769,6 +1769,8 @@ function switchTab(tabName) {
         loadIndexeurCardStatuses();
     } else if (tabName === 'clients') {
         loadClientCardStatuses();
+    } else if (tabName === 'integrations') {
+        loadIntegrationsCardStatuses();
     } else if (tabName === 'telegram') {
         loadTelegramSettings();
         loadNtfySettings();
@@ -1839,6 +1841,8 @@ function closeIntegrationModal(name) {
     if (modal) modal.classList.remove('active');
     if (name === 'amule' || name === 'qbittorrent' || name === 'rtorrent' || name === 'deluge' || name === 'shelfmark') {
         loadClientCardStatuses();
+    } else if (name === 'komga') {
+        loadIntegrationsCardStatuses();
     } else {
         loadIndexeurCardStatuses();
     }
@@ -1889,10 +1893,6 @@ function loadIndexeurCardStatuses() {
         const configured = (config.forums || []).length > 0;
         return { on: configured, label: configured ? 'Configuré' : 'Non configuré' };
     });
-    updateIntegrationCardStatus('komga', '/api/komga/config', config => ({
-        on: !!config.enabled,
-        label: config.enabled ? 'Activé' : 'Désactivé'
-    }));
     updateIntegrationCardStatus('telegram-channels', '/api/telegram-channels/config', config => ({
         on: !!config.connected,
         label: config.connected ? `Connecté (${config.username ? '@' + config.username : config.first_name})` : 'Non connecté'
@@ -1910,6 +1910,13 @@ function loadIndexeurCardStatuses() {
                 badge.className = 'integration-card-status ' + (active ? 'integration-card-status-on' : 'integration-card-status-off');
             }
         }).catch(() => {});
+}
+
+function loadIntegrationsCardStatuses() {
+    updateIntegrationCardStatus('komga', '/api/komga/config', config => ({
+        on: !!config.enabled,
+        label: config.enabled ? 'Activé' : 'Désactivé'
+    }));
 }
 
 function loadClientCardStatuses() {

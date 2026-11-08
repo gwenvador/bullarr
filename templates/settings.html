@@ -36,6 +36,7 @@
                      recliquant sur Configuration depuis une autre page. -->
                 <a href="#indexeurs" class="nav-sublink" data-tab="indexeurs" onclick="switchTab('indexeurs'); return false;">🔌 Indexeurs</a>
                 <a href="#clients" class="nav-sublink" data-tab="clients" onclick="switchTab('clients'); return false;">💻 Clients</a>
+                <a href="#integrations" class="nav-sublink" data-tab="integrations" onclick="switchTab('integrations'); return false;">🧩 Intégrations</a>
                 <a href="#telegram" class="nav-sublink" data-tab="telegram" onclick="switchTab('telegram'); return false;">📱 Notifications</a>
                 <a href="#oidc" class="nav-sublink" data-tab="oidc" onclick="switchTab('oidc'); return false;">🔐 Login</a>
                 <a href="#monitoring" class="nav-sublink" data-tab="monitoring" onclick="switchTab('monitoring'); return false;">📊 Surveillance</a>
@@ -79,7 +80,7 @@
                                 <span class="overview-card-icon" data-icon="plug"></span>
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">Indexeurs</span>
-                                    <span class="overview-card-desc">Prowlarr, EBDZ, canaux Telegram, RSS, Komga</span>
+                                    <span class="overview-card-desc">Prowlarr, EBDZ, canaux Telegram, RSS, Web Archive</span>
                                 </span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('clients')">
@@ -87,6 +88,13 @@
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">Clients</span>
                                     <span class="overview-card-desc">qBittorrent, rTorrent, Deluge, aMule, Shelfmark</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('integrations')">
+                                <span class="overview-card-icon" data-icon="link"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Intégrations</span>
+                                    <span class="overview-card-desc">Komga : rescan, lecture</span>
                                 </span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('telegram')">
@@ -313,11 +321,6 @@
                                 <div class="integration-card-name">Telegram (canaux)</div>
                                 <span class="integration-card-status" id="card-status-telegram-channels">…</span>
                             </div>
-                            <div class="integration-card" onclick="openIntegrationModal('komga')">
-                                <img src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="" class="integration-card-logo">
-                                <div class="integration-card-name">Komga</div>
-                                <span class="integration-card-status" id="card-status-komga">…</span>
-                            </div>
                             <div class="integration-card" onclick="openIntegrationModal('rss')">
                                 <img src="{{ url_for('static', filename='img/rss-logo.svg') }}" alt="Flux RSS" class="integration-card-logo">
                                 <div class="integration-card-name">Flux RSS</div>
@@ -327,6 +330,26 @@
                                 <img src="{{ url_for('static', filename='img/web-logo.svg') }}" alt="Web Archive" class="integration-card-logo">
                                 <div class="integration-card-name">Web Archive</div>
                                 <span class="integration-card-status" id="card-status-web">…</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Intégrations : applications reliées à Bullarr (Komga). -->
+                <div class="tab-content" id="tab-integrations">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>🧩 Intégrations</h2>
+                            <p class="section-description">
+                                Applications reliées à Bullarr. Cliquez sur une carte pour la configurer.
+                            </p>
+                        </div>
+                        <div class="integration-cards-grid">
+                            <div class="integration-card" onclick="openIntegrationModal('komga')">
+                                <img src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="" class="integration-card-logo">
+                                <div class="integration-card-name">Komga</div>
+                                <span class="integration-card-status" id="card-status-komga">…</span>
                             </div>
                         </div>
                     </div>
@@ -1260,7 +1283,7 @@
                 </div>
 
                 <!-- Onglet Komga -->
-                <!-- Modale de configuration Komga (voir tab-content "indexeurs", cartes cliquables) -->
+                <!-- Modale de configuration Komga (voir tab-content "integrations", cartes cliquables) -->
                 <div class="modal" id="tab-komga">
                     <div class="modal-content settings-modal-content">
                         <span class="close-modal" onclick="closeIntegrationModal('komga')">×</span>
