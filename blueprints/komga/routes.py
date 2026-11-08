@@ -9,6 +9,7 @@ import requests
 from encryption import decrypt
 from .client import KomgaClient, KomgaError
 from .config_store import load_komga_config, save_komga_config, normalize_komga_url
+from .user_link import current_progress_source
 
 
 @komga_bp.route('/config', methods=['GET', 'POST'])
@@ -131,6 +132,17 @@ def sync_komga_read_progress():
     """Relit tout de suite l'avancement de lecture dans Komga (sinon toutes les 15 minutes)."""
     from .client import KomgaError
     from .read_progress import sync_read_progress
+    from .user_link import has_link, sync_user
+    from blueprints.auth.roles import current_user_key, is_reader
+    key = current_user_key()
+    if key and has_link(key):
+        try:
+            return jsonify({'success': True, **(sync_user(key) or {})})
+        except KomgaError as e:
+            return jsonify({'success': False, 'error': error_message(e)}), 502
+    if current_progress_source().kind == 'local':
+        # Sans compte Komga relié : l'avancement est enregistré par Bullarr, rien à relire.
+        return jsonify({'success': True, 'local': True})
     try:
         stats = sync_read_progress()
     except KomgaError as e:
@@ -145,5 +157,29 @@ def get_keep_reading():
     """« Continuer la lecture » : tomes commencés dans Komga (ou le lecteur de Bullarr)."""
     from .read_progress import keep_reading, last_sync
     library_id = request.args.get('library_id', type=int)
-    return jsonify({'success': True, 'enabled': bool(load_komga_config().get('enabled')),
-                    'items': keep_reading(library_id), 'last_sync': last_sync})
+    source = current_progress_source()
+    # « enabled » : la bibliothèque affiche cet avancement (Komga ou local au compte).
+    enabled = source.kind != 'komga' or bool(load_komga_config().get('enabled'))
+    return jsonify({'success': True, 'enabled': enabled, 'mode': source.kind,
+                    'items': keep_reading(library_id, source=source), 'last_sync': last_sync})
+
+
+@komga_bp.route('/me', methods=['GET', 'PUT', 'DELETE'])
+def my_komga_account():
+    """Compte Komga personnel (voir user_link.py). PUT {username, password} ou {api_key}."""
+    from .user_link import link, status, unlink
+    from blueprints.auth.roles import current_user_key, is_reader
+    key = current_user_key()
+    if request.method == 'GET':
+        return jsonify({'success': True, **status(key, is_reader())})
+    if not key:
+        return jsonify({'success': False, 'error': 'Connectez-vous avec un compte Bullarr pour relier Komga'}), 400
+    if request.method == 'DELETE':
+        unlink(key)
+        return jsonify({'success': True, **status(key, is_reader())})
+    data = request.get_json(silent=True) or {}
+    try:
+        link(key, username=data.get('username'), password=data.get('password'), api_key=data.get('api_key'))
+    except KomgaError as e:
+        return jsonify({'success': False, 'error': error_message(e)}), 400
+    return jsonify({'success': True, **status(key, is_reader())})

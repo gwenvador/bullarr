@@ -61,10 +61,10 @@ class ReaderNeighboursTest(unittest.TestCase):
         conn.commit()
         conn.close()
         with self.app.app_context():
-            self.assertEqual(routes._reader_komga_progress('b10'), (17, False))
+            self.assertEqual(routes._reader_komga_progress(10), (17, False))
             # Album terminé : pas de reprise, le lecteur repart du début.
-            self.assertEqual(routes._reader_komga_progress('b11'), (None, True))
-            self.assertEqual(routes._reader_komga_progress('inconnu'), (None, False))
+            self.assertEqual(routes._reader_komga_progress(11), (None, True))
+            self.assertEqual(routes._reader_komga_progress(999), (None, False))
             self.assertEqual(routes._reader_komga_progress(None), (None, False))
 
 

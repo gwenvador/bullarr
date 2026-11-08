@@ -95,9 +95,12 @@ def sync_read_progress():
     return stats
 
 
-def keep_reading(library_id=None, limit=20):
+def keep_reading(library_id=None, limit=20, source=None):
     """« Continuer la lecture » (comme le « Keep reading » de Komga) : tomes commencés et pas
     finis, du plus récemment lu au plus ancien."""
+    if source is None:  # voir user_link.progress_source
+        from .user_link import SERVER_SOURCE
+        source = SERVER_SOURCE
     conn = _connect()
     conn.row_factory = sqlite3.Row
     try:
@@ -106,14 +109,14 @@ def keep_reading(library_id=None, limit=20):
                    v.hs_number, v.filename, v.cover_path, v.page_count, s.title AS series_title,
                    s.local_cover_path, s.bedetheque_cover_path, s.komga_cover_path,
                    p.page, p.pages_count, p.read_at
-            FROM komga_read_progress p
-            JOIN volumes v ON v.komga_book_id = p.komga_book_id AND v.filepath IS NOT NULL
+            FROM {source} p
+            JOIN volumes v ON v.id = p.vol_id AND v.filepath IS NOT NULL
             JOIN series s ON s.id = v.series_id
             WHERE COALESCE(p.completed, 0) = 0 AND COALESCE(p.page, 0) > 0
               AND (? IS NULL OR s.library_id = ?)
             ORDER BY p.read_at DESC, p.synced_at DESC
             LIMIT ?
-        ''', (library_id, library_id, limit)).fetchall()
+        '''.format(source=source.sql), (*source.params, library_id, library_id, limit)).fetchall()
     finally:
         conn.close()
     items = []
@@ -185,6 +188,11 @@ class ReadProgressScheduler:
                 sync_read_progress()
             except Exception as exc:
                 print(f"⚠️ Synchronisation de la lecture Komga en échec: {exc}")
+            try:
+                from .user_link import sync_all_users
+                sync_all_users()
+            except Exception as exc:
+                print(f"⚠️ Synchronisation des comptes Komga reliés en échec: {exc}")
 
 
 read_progress_scheduler = ReadProgressScheduler()

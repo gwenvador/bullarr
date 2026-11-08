@@ -52,6 +52,9 @@ READER_ENDPOINTS = {
     'bedetheque.search_bedetheque': _GET,
     'library.list_requests': _GET, 'library.create_request': frozenset({'POST'}),
     'library.lookup_requests': frozenset({'POST'}), 'library.cancel_request': frozenset({'DELETE'}),
+    # Compte Komga personnel et son avancement de lecture
+    'komga.my_komga_account': frozenset({'GET', 'PUT', 'DELETE'}),
+    'komga.sync_komga_read_progress': frozenset({'POST'}), 'komga.get_keep_reading': _GET,
 }
 
 

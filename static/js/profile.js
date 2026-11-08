@@ -124,6 +124,60 @@ async function pfUpload(file) {
     }
 }
 
+// Compte Komga personnel (/api/komga/me, blueprints/komga/user_link.py) : sans compte relié,
+// l'avancement de lecture est enregistré par Bullarr pour ce compte seulement.
+let pfKomga = null;
+let pfKomgaUseKey = false;
+
+function pfRenderKomga() {
+    const k = pfKomga;
+    const card = document.getElementById('pf-komga-card');
+    const form = document.getElementById('pf-komga-form');
+    const body = document.getElementById('pf-komga-body');
+    card.hidden = !k || (!k.available && k.mode !== 'local');
+    if (card.hidden) return;
+    if (!k.available) {
+        body.innerHTML = '<p class="pf-hint">Komga n’est pas configuré sur ce serveur : votre avancement de lecture est enregistré par Bullarr, pour votre compte uniquement.</p>';
+        form.hidden = true;
+        return;
+    }
+    if (k.linked) {
+        const stats = k.stats ? `<p class="pf-hint">${k.stats.read} lu(s) · ${k.stats.reading} en cours</p>` : '';
+        const error = k.last_error ? `<p class="pf-message is-error">${pfEscape(k.last_error)}</p>` : '';
+        body.innerHTML = `<p>Relié au compte <strong>${pfEscape(k.komga_user || 'Komga')}</strong>. Ce que vous lisez dans Bullarr y est enregistré, et ce que vous lisez dans Komga (ou Mihon, Tachiyomi…) apparaît dans Bullarr.</p>${stats}${error}
+            <div class="pf-form-foot"><div id="pf-komga-message" class="pf-message"></div>
+            <button type="button" id="pf-komga-sync" class="rq-btn rq-btn-ghost">${svgIcon('refresh-cw')}<span>Synchroniser</span></button>
+            <button type="button" id="pf-komga-unlink" class="rq-btn rq-btn-ghost pf-danger">${svgIcon('log-out')}<span>Délier</span></button></div>`;
+        form.hidden = true;
+        document.getElementById('pf-komga-sync').addEventListener('click', async event => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            const response = await fetch('/api/komga/read-progress/sync', {method: 'POST'});
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) { pfMessage('pf-komga-message', data.error || 'Synchronisation impossible', true); button.disabled = false; return; }
+            await pfLoadKomga();
+            pfMessage('pf-komga-message', 'Lecture synchronisée.');
+        });
+        document.getElementById('pf-komga-unlink').addEventListener('click', async () => {
+            if (!confirm('Délier votre compte Komga ? Votre compte Komga n’est pas modifié.')) return;
+            const response = await fetch('/api/komga/me', {method: 'DELETE'});
+            const data = await response.json().catch(() => ({}));
+            if (response.ok && data.success) { pfKomga = data; pfRenderKomga(); }
+        });
+        return;
+    }
+    body.innerHTML = `<p class="pf-hint">Reliez votre compte Komga (${pfEscape(k.komga_url || '')}) pour y retrouver et y enregistrer votre avancement de lecture. Sans compte relié, il est enregistré par Bullarr, pour votre compte uniquement.</p>`;
+    form.hidden = false;
+}
+
+async function pfLoadKomga() {
+    try {
+        const response = await fetch('/api/komga/me');
+        const data = await response.json();
+        if (response.ok && data.success) { pfKomga = data; pfRenderKomga(); }
+    } catch (error) { /* carte masquée */ }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-pf-icon]').forEach(el => { el.innerHTML = svgIcon(el.dataset.pfIcon); });
     const input = document.getElementById('pf-avatar-input');
@@ -175,5 +229,33 @@ document.addEventListener('DOMContentLoaded', () => {
             button.innerHTML = svgIcon(field.type === 'password' ? 'eye' : 'eye-off');
         });
     });
+    document.getElementById('pf-komga-mode').addEventListener('click', event => {
+        pfKomgaUseKey = !pfKomgaUseKey;
+        document.getElementById('pf-komga-login').hidden = pfKomgaUseKey;
+        document.getElementById('pf-komga-keyfield').hidden = !pfKomgaUseKey;
+        event.currentTarget.textContent = pfKomgaUseKey ? 'Utiliser mon e-mail et mon mot de passe' : 'Utiliser une clé API';
+    });
+    document.getElementById('pf-komga-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const button = event.target.querySelector('button[type=submit]');
+        const payload = pfKomgaUseKey
+            ? {api_key: document.getElementById('pf-komga-key').value}
+            : {username: document.getElementById('pf-komga-user').value, password: document.getElementById('pf-komga-pass').value};
+        button.disabled = true;
+        pfMessage('pf-komga-message', 'Connexion à Komga…');
+        try {
+            const response = await fetch('/api/komga/me', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw new Error(data.error || 'Connexion impossible');
+            event.target.reset();
+            pfKomga = data;
+            pfRenderKomga();
+        } catch (error) {
+            pfMessage('pf-komga-message', error.message, true);
+        } finally {
+            button.disabled = false;
+        }
+    });
     pfLoad();
+    pfLoadKomga();
 });

@@ -4791,6 +4791,8 @@ button.ua-access:hover { border-color: var(--color-accent); color: var(--color-a
 .pf-card { padding: 20px; border-radius: 16px; border: 1px solid var(--color-border); background: var(--color-surface); }
 .pf-card h3 { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; font-size: 1.05rem; }
 .pf-card h3 .icon { width: 18px; height: 18px; color: var(--color-accent); }
+.pf-card h3 .pf-komga-logo { width: 20px; height: 20px; }
+#pf-komga-body p { margin: 0 0 10px; }
 .pf-card form { display: grid; gap: 12px; }
 .pf-field { display: grid; gap: 5px; }
 .pf-field > span:first-child { font-size: .84em; font-weight: 600; color: var(--color-text-muted); }

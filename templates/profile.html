@@ -86,6 +86,25 @@
                                 </form>
                             </section>
 
+                            <section id="pf-komga-card" class="pf-card" hidden>
+                                <h3><img src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="" class="pf-komga-logo">Komga</h3>
+                                <div id="pf-komga-body"></div>
+                                <form id="pf-komga-form" hidden>
+                                    <div id="pf-komga-login">
+                                        <label class="pf-field"><span>E-mail Komga</span><input type="email" id="pf-komga-user" autocomplete="off"></label>
+                                        <label class="pf-field"><span>Mot de passe Komga</span>
+                                            <span class="pf-pass"><input type="password" id="pf-komga-pass" autocomplete="off"><button type="button" class="pf-eye" data-pf-toggle="pf-komga-pass" aria-label="Afficher" data-pf-icon="eye"></button></span></label>
+                                        <p class="pf-hint">Le mot de passe n’est pas enregistré : Bullarr crée une clé API à votre nom dans Komga.</p>
+                                    </div>
+                                    <label id="pf-komga-keyfield" class="pf-field" hidden><span>Clé API Komga</span><input type="password" id="pf-komga-key" autocomplete="off"></label>
+                                    <div class="pf-form-foot">
+                                        <button type="button" id="pf-komga-mode" class="rq-btn rq-btn-ghost">Utiliser une clé API</button>
+                                        <div id="pf-komga-message" class="pf-message"></div>
+                                        <button type="submit" class="rq-btn rq-btn-primary"><span data-pf-icon="log-in"></span><span>Se connecter</span></button>
+                                    </div>
+                                </form>
+                            </section>
+
                             <section id="pf-sso-card" class="pf-card" hidden>
                                 <h3><span data-pf-icon="shield-check"></span>Compte SSO</h3>
                                 <p class="pf-hint">Votre nom, votre e-mail et votre mot de passe viennent de votre fournisseur d’identité (Pocket ID) : modifiez-les là-bas, ils seront repris à la prochaine connexion. L’avatar, lui, se règle ici.</p>
