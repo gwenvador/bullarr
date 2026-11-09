@@ -1432,7 +1432,7 @@ function renderNouveautesEvents(resetPage = true) {
     body.innerHTML = visible.map(e => {
         const html = e.type === 'ebdz' ? _nouveautesEbdzRowHtml(e, e._index) : e.type === 'rss' ? _nouveautesRssRowHtml(e) : _nouveautesTelegramRowHtml(e);
         const key = _nouveautesSeriesGroupKey(e);
-        return key ? html.replace(/<tr class="nouveautes-event-row/g, `<tr data-series-group="${escapeHtml(key)}" class="nouveautes-event-row`) : html;
+        return key ? html.replace(/<tr class="nouveautes-event-row/g, `<tr data-series-group="${escapeHtml(key)}" data-series-name="${escapeHtml(_nouveautesSeriesDisplayName(e))}" class="nouveautes-event-row`) : html;
     }).join('');
     _groupNouveautesSeriesRows(body);
     checkEmuleStatus();
@@ -1460,6 +1460,16 @@ function _nouveautesSeriesGroupKey(e) {
     return norm ? `t:${norm}` : null;
 }
 
+function _nouveautesSeriesDisplayName(e) {
+    const name = (e.type === 'ebdz' ? e.matched_series_title : e.series_title)
+        || e.bedetheque_title || e.parsed_title || e.title || e.filename || '';
+    return String(name);
+}
+
+// Groupe de lignes consécutives d'une même série : une ligne d'en-tête « série » (date,
+// type et origine de la plus récente, nom de la série, nombre d'albums) remplace les
+// albums tant qu'il est replié ; déplié, TOUS les albums apparaissent dessous, avec
+// Date / Type / Origine laissés vides quand ils répètent ceux de l'en-tête.
 function _groupNouveautesSeriesRows(body) {
     const rows = [...body.querySelectorAll(':scope > tr.nouveautes-event-row')];
     let i = 0;
@@ -1467,46 +1477,61 @@ function _groupNouveautesSeriesRows(body) {
         const key = rows[i].dataset.seriesGroup;
         let j = i + 1;
         while (key && j < rows.length && rows[j].dataset.seriesGroup === key) j++;
-        const followers = rows.slice(i + 1, j);
-        if (followers.length) {
-            const leader = rows[i];
-            const groupId = `${key}|${i}|${leader.cells[0]?.textContent || ''}`;
+        const members = rows.slice(i, j);
+        if (members.length > 1) {
+            const first = members[0];
+            const groupId = `${key}|${first.cells[0]?.textContent.trim() || ''}`;
             const expanded = _nouveautesExpandedGroups.has(groupId);
-            followers.forEach(r => r.classList.add('nouveautes-row-grouped'));
-            // « retire les 3 premières colonnes quand j'ouvre pour voir que c'est de la même
-            // heure et origine » : Date, Type et Origine laissés vides sur les lignes
-            // dépliées quand ils répètent ceux de la première ligne du groupe.
-            const cellKey = (row, i) => {
-                const c = row.cells[i];
-                if (!c) return '';
-                const img = c.querySelector('img');
-                return `${c.textContent.trim()}|${img ? img.getAttribute('alt') : ''}`;
-            };
-            followers.forEach(r => [0, 1, 2].forEach(i => {
-                if (r.cells[i] && cellKey(r, i) === cellKey(leader, i)) r.cells[i].classList.add('nouveautes-cell-repeat');
-            }));
-            if (!expanded) followers.forEach(r => r.classList.add('nouveautes-row-collapsed'));
-            const cell = leader.querySelector('.nouveautes-details-cell');
-            if (cell) {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'nouveautes-group-toggle';
-                const label = n => `${n} autre${n > 1 ? 's' : ''} de la série`;
-                const paint = open => {
-                    btn.innerHTML = `${svgIcon(open ? 'chevron-up' : 'chevron-down')} ${open ? 'Replier' : '+' + label(followers.length)}`;
-                    btn.setAttribute('aria-expanded', String(open));
-                };
-                paint(expanded);
-                btn.addEventListener('click', ev => {
-                    ev.stopPropagation();
-                    const open = !_nouveautesExpandedGroups.has(groupId);
-                    if (open) _nouveautesExpandedGroups.add(groupId); else _nouveautesExpandedGroups.delete(groupId);
-                    followers.forEach(r => r.classList.toggle('nouveautes-row-collapsed', !open));
-                    paint(open);
-                    syncNouveautesHorizontalScrollbars();
-                });
-                cell.appendChild(btn);
+
+            const header = document.createElement('tr');
+            header.className = 'nouveautes-series-group-row';
+            [0, 1, 2].forEach(c => { if (first.cells[c]) header.appendChild(first.cells[c].cloneNode(true)); });
+            const details = document.createElement('td');
+            details.className = 'nouveautes-details-cell';
+            details.style.padding = '10px';
+            const name = document.createElement('div');
+            name.className = 'nouveautes-series-group-name';
+            name.textContent = first.dataset.seriesName || '';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'nouveautes-group-toggle';
+            details.append(name, btn);
+            header.appendChild(details);
+            const rest = first.cells.length - header.cells.length;
+            if (rest > 0) {
+                const filler = document.createElement('td');
+                filler.colSpan = rest;
+                header.appendChild(filler);
             }
+            first.before(header);
+
+            const cellKey = (row, c) => {
+                const cell = row.cells[c];
+                if (!cell) return '';
+                const img = cell.querySelector('img');
+                return `${cell.textContent.trim()}|${img ? img.getAttribute('alt') : ''}`;
+            };
+            members.forEach(r => {
+                r.classList.add('nouveautes-row-grouped');
+                [0, 1, 2].forEach(c => {
+                    if (r.cells[c] && cellKey(r, c) === cellKey(header, c)) r.cells[c].classList.add('nouveautes-cell-repeat');
+                });
+            });
+
+            const paint = open => {
+                members.forEach(r => r.classList.toggle('nouveautes-row-collapsed', !open));
+                header.classList.toggle('nouveautes-series-group-open', open);
+                btn.innerHTML = `${svgIcon(open ? 'chevron-up' : 'chevron-down')} ${members.length} albums`;
+                btn.setAttribute('aria-expanded', String(open));
+            };
+            paint(expanded);
+            header.addEventListener('click', ev => {
+                if (ev.target.closest('a') && !ev.target.closest('.nouveautes-group-toggle')) return;
+                const open = !_nouveautesExpandedGroups.has(groupId);
+                if (open) _nouveautesExpandedGroups.add(groupId); else _nouveautesExpandedGroups.delete(groupId);
+                paint(open);
+                syncNouveautesHorizontalScrollbars();
+            });
         }
         i = j;
     }
