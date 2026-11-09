@@ -7873,7 +7873,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 })
 
                 from .scheduler import library_import_scheduler, MAX_AUTO_IMPORT_CORRUPTION_RETRIES
-                is_corruption = str(e).startswith('Fichier corrompu')
+                from .scheduler import is_transient_import_error
+                is_corruption = is_transient_import_error(f'{type(e).__name__}: {e}')
                 prior_failures = library_import_scheduler._failure_counts.get(file_data.get('filepath'), 0)
                 just_became_exhausted = is_corruption and prior_failures == MAX_AUTO_IMPORT_CORRUPTION_RETRIES
                 suppress_log = is_corruption and not just_became_exhausted
@@ -9337,7 +9338,8 @@ def _repeated_failure_skip_reason(filepath):
     )
     failure_count = library_import_scheduler._failure_counts.get(filepath, 0)
     last_error = library_import_scheduler._failure_last_error.get(filepath)
-    is_corruption = (last_error or '').startswith('Fichier corrompu')
+    from .scheduler import is_transient_import_error
+    is_corruption = is_transient_import_error(last_error)
     exhausted = (
         failure_count > MAX_AUTO_IMPORT_CORRUPTION_RETRIES
         if is_corruption
@@ -9352,8 +9354,10 @@ def _repeated_failure_skip_reason(filepath):
         # retélécharger le fichier. Le nom du fichier lui-même est déjà affiché juste
         # au-dessus par le frontend (voir import.js, filename dans la ligne du tableau)
         # - pas la peine de le redire non plus dans ce message.
-        if is_corruption:
+        if (last_error or '').startswith('Fichier corrompu'):
             return "Fichier corrompu - à retélécharger"
+        if is_corruption:
+            return "Fichier incomplet - nouvel essai automatique toutes les 30 min"
         # "échec s'arrête a 1 essai" (MAX_AUTO_IMPORT_FAILURES=1) - "Échec répété" sous-
         # entend plusieurs tentatives, trompeur quand une seule a suffi à abandonner.
         detail = f" ({last_error})" if last_error else ""

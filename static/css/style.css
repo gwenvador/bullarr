@@ -5016,3 +5016,5 @@ div:has(> .replace-results-table) { container-type: inline-size; }
 }
 .nouveautes-group-toggle:hover { background: color-mix(in srgb, var(--color-accent) 16%, var(--color-surface)); }
 .nouveautes-group-toggle .icon { width: 13px; height: 13px; }
+#nouveautes-events-body td.nouveautes-cell-repeat { color: transparent !important; }
+#nouveautes-events-body td.nouveautes-cell-repeat > * { visibility: hidden; }

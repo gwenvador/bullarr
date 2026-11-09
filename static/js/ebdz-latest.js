@@ -1473,6 +1473,18 @@ function _groupNouveautesSeriesRows(body) {
             const groupId = `${key}|${i}|${leader.cells[0]?.textContent || ''}`;
             const expanded = _nouveautesExpandedGroups.has(groupId);
             followers.forEach(r => r.classList.add('nouveautes-row-grouped'));
+            // « retire les 3 premières colonnes quand j'ouvre pour voir que c'est de la même
+            // heure et origine » : Date, Type et Origine laissés vides sur les lignes
+            // dépliées quand ils répètent ceux de la première ligne du groupe.
+            const cellKey = (row, i) => {
+                const c = row.cells[i];
+                if (!c) return '';
+                const img = c.querySelector('img');
+                return `${c.textContent.trim()}|${img ? img.getAttribute('alt') : ''}`;
+            };
+            followers.forEach(r => [0, 1, 2].forEach(i => {
+                if (r.cells[i] && cellKey(r, i) === cellKey(leader, i)) r.cells[i].classList.add('nouveautes-cell-repeat');
+            }));
             if (!expanded) followers.forEach(r => r.classList.add('nouveautes-row-collapsed'));
             const cell = leader.querySelector('.nouveautes-details-cell');
             if (cell) {

@@ -2299,7 +2299,7 @@ function _importFileRowHtml(file, index) {
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(file.filename)}">${escapeHtml(file.filename)}</div>
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
                 ${ownedHtml}
-                ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}</div>` : ''}
+                ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}${/^(Échec|Fichier)/.test(file.auto_import_skip_reason) ? `<button type="button" class="btn-neutral-sm" style="margin-left:6px;" ${file._rescanning ? 'disabled' : ''} onclick="retryAutoImportFile(${index})" data-tooltip="Oublie l'échec et relance l'import automatique de ce fichier maintenant (utile si le fichier n'était pas encore complètement arrivé)">${svgIcon('refresh-cw')} ${file._rescanning ? 'Vérification…' : 'Réessayer'}</button>` : ''}</div>` : ''}
                 ${_convertActionHtml(file)}
                 ${hasDatabaseVolume ? `<div class="import-auto-skip-explanation">⚠️ Album déjà enregistré dans Bullarr.<button type="button" class="btn-neutral-sm" style="margin-left:6px;" onclick="openDestinationModal(${index})">Remplacer le fichier existant</button></div>` : ''}
                 ${_archiveContentActionHtml(file)}
@@ -3108,6 +3108,31 @@ async function rescanCorruptedFile(fileIndex) {
     } finally {
         file._rescanning = false;
         displayImportFiles();
+    }
+}
+
+// « comment je fais pour rescanner au cas où c'est parce que le fichier a mis du temps à
+// arriver » : efface l'échec mémorisé côté serveur (même route que Revérifier) puis relance
+// le scan, pour que l'import automatique reprenne le fichier tout de suite.
+async function retryAutoImportFile(fileIndex) {
+    const file = importFiles[fileIndex];
+    if (!file) return;
+    file._rescanning = true;
+    displayImportFiles();
+    try {
+        const response = await fetch('/api/import/rescan-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filepath: file.filepath })
+        });
+        const result = await readJsonResponse(response);
+        if (!result.success) { importNotify(result.error || 'Erreur lors de la nouvelle vérification.'); return; }
+        if (!result.valid) importNotify(`Toujours illisible : ${result.error}. Le fichier n'est peut-être pas encore complet.`);
+    } catch (e) {
+        importNotify(`Erreur lors de la nouvelle vérification : ${e.message || e}`);
+    } finally {
+        file._rescanning = false;
+        scanImportDirectory();
     }
 }
 

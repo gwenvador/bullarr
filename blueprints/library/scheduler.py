@@ -38,6 +38,16 @@ AUTO_IMPORT_CORRUPTION_COOLDOWN_SECONDS = 30 * 60
 STALE_PART_FILE_MINUTES = 10
 
 
+def is_transient_import_error(error):
+    """Échec qui peut disparaître tout seul : archive corrompue OU fichier encore incomplet
+    (IncompleteFileError, « début du PDF vide » d'une copie réseau/Syncthing pas finie).
+    Ces fichiers sont retentés (délais rapprochés puis toutes les 30 min) au lieu d'être
+    abandonnés dès le premier essai."""
+    s = error or ''
+    return (s.startswith('Fichier corrompu') or 'IncompleteFileError' in s
+            or s.startswith('Fichier incomplet') or s.startswith('Fichier vide'))
+
+
 def _should_skip_auto_import_path(filepath, manual_override_filepaths, in_progress_filepaths, finalized_import_filepaths):
     'Return whether a scanner path must not be auto-imported again.'
     return filepath in (
@@ -624,7 +634,7 @@ class LibraryImportScheduler:
 
                                 last_error = self._failure_last_error.get(filepath) or ''
                                 failure_count = self._failure_counts.get(filepath, 0)
-                                is_corruption = last_error.startswith('Fichier corrompu')
+                                is_corruption = is_transient_import_error(last_error)
                                 if is_corruption:
                                     # Le premier échec est immédiat; les suivants sont
                                     # espacés selon AUTO_IMPORT_CORRUPTION_RETRY_DELAYS.
