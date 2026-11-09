@@ -36,22 +36,44 @@
 // pour ça). Ces deux fonctions gèrent le changement à chaud (bouton dans /settings, sans
 // recharger la page) et la lecture de l'état courant pour synchroniser le sélecteur.
 function setTheme(mode) {
-    if (mode === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-        document.documentElement.removeAttribute('data-theme');
-    }
+    if (mode !== 'dark' && mode !== 'system') mode = 'light';
     try {
         localStorage.setItem('theme', mode);
     } catch (e) {
         // stockage indisponible - le thème reste appliqué pour la session en cours,
         // juste pas persisté ni repris sur une autre page/au prochain chargement
+        _themePrefFallback = mode;
     }
+    _applyTheme();
+}
+
+// « system » suit prefers-color-scheme du navigateur/OS, y compris quand il change pendant
+// que la page est ouverte (bascule auto jour/nuit de macOS, par exemple).
+let _themePrefFallback = null;
+const _systemDarkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function getThemePreference() {
+    try {
+        const t = localStorage.getItem('theme');
+        if (t === 'dark' || t === 'system' || t === 'light') return t;
+    } catch (e) { /* stockage indisponible */ }
+    return _themePrefFallback || 'light';
+}
+
+function _applyTheme() {
+    const mode = getTheme();
+    if (mode === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
     _updateHeaderThemeToggle(mode);
-    // /settings a son propre sélecteur clair/sombre (rendu par settings.js, absent des
-    // autres pages) - le tenir synchronisé aussi si présent, pour que basculer depuis le
-    // bouton de l'en-tête ne le laisse pas affichant l'ancien mode.
-    if (typeof _updateThemeSwitchUI === 'function') _updateThemeSwitchUI(mode);
+    // /settings a son propre sélecteur clair/sombre/système (rendu par settings.js, absent
+    // des autres pages) - le tenir synchronisé aussi si présent.
+    if (typeof renderThemePicker === 'function') renderThemePicker();
+}
+
+if (_systemDarkQuery) {
+    const onSystemChange = () => { if (getThemePreference() === 'system') _applyTheme(); };
+    if (_systemDarkQuery.addEventListener) _systemDarkQuery.addEventListener('change', onSystemChange);
+    else if (_systemDarkQuery.addListener) _systemDarkQuery.addListener(onSystemChange);
 }
 
 // Palette de couleurs (Configuration → Thème) : data-palette sur <html>, posé aussi par le
@@ -84,12 +106,11 @@ function setPalette(id) {
     try { localStorage.setItem('palette', id || 'atelier'); } catch (e) { /* non retenu */ }
 }
 
+// Mode effectivement affiché (« clair » ou « sombre »), « système » résolu.
 function getTheme() {
-    try {
-        return localStorage.getItem('theme') === 'dark' ? 'dark' : 'light';
-    } catch (e) {
-        return 'light';
-    }
+    const pref = getThemePreference();
+    if (pref === 'system') return _systemDarkQuery && _systemDarkQuery.matches ? 'dark' : 'light';
+    return pref;
 }
 
 // Bouton clair/sombre injecté à droite de l'en-tête de TOUTES les pages (même mécanisme

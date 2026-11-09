@@ -1429,12 +1429,75 @@ function renderNouveautesEvents(resetPage = true) {
     empty.style.display = 'none';
 
     const visible = filtered.slice(0, nouveautesDisplayedCount);
-    body.innerHTML = visible.map(e => e.type === 'ebdz' ? _nouveautesEbdzRowHtml(e, e._index) : e.type === 'rss' ? _nouveautesRssRowHtml(e) : _nouveautesTelegramRowHtml(e)).join('');
+    body.innerHTML = visible.map(e => {
+        const html = e.type === 'ebdz' ? _nouveautesEbdzRowHtml(e, e._index) : e.type === 'rss' ? _nouveautesRssRowHtml(e) : _nouveautesTelegramRowHtml(e);
+        const key = _nouveautesSeriesGroupKey(e);
+        return key ? html.replace(/<tr class="nouveautes-event-row/g, `<tr data-series-group="${escapeHtml(key)}" class="nouveautes-event-row`) : html;
+    }).join('');
+    _groupNouveautesSeriesRows(body);
     checkEmuleStatus();
     fillNouveautesOriginFlags();
 
     _renderNouveautesLoadMoreButton(loadMoreDiv, filtered.length - nouveautesDisplayedCount);
     syncNouveautesHorizontalScrollbars();
+}
+
+// « concatène ensemble les albums qui sont de la même série et qui apparaissent
+// successivement » : les lignes consécutives d'une même série sont repliées sous la
+// première, qui porte un bouton « +N » pour les déplier. Les lignes restent dans le DOM
+// (actions, statuts et origines inchangés), seulement masquées.
+const _nouveautesExpandedGroups = new Set();
+
+function _nouveautesSeriesGroupKey(e) {
+    const seriesId = e.type === 'ebdz' ? e.matched_series_id : e.series_id;
+    if (seriesId) return `s:${seriesId}`;
+    const bdtUrl = _nouveautesBedethequeUrl(e);
+    if (bdtUrl) return `b:${bdtUrl}`;
+    const title = e.type === 'ebdz'
+        ? (e.matched_series_title || e.bedetheque_title || e.title)
+        : (e.series_title || e.bedetheque_title || e.parsed_title);
+    const norm = title ? navNormalizeSearch(String(title)) : '';
+    return norm ? `t:${norm}` : null;
+}
+
+function _groupNouveautesSeriesRows(body) {
+    const rows = [...body.querySelectorAll(':scope > tr.nouveautes-event-row')];
+    let i = 0;
+    while (i < rows.length) {
+        const key = rows[i].dataset.seriesGroup;
+        let j = i + 1;
+        while (key && j < rows.length && rows[j].dataset.seriesGroup === key) j++;
+        const followers = rows.slice(i + 1, j);
+        if (followers.length) {
+            const leader = rows[i];
+            const groupId = `${key}|${i}|${leader.cells[0]?.textContent || ''}`;
+            const expanded = _nouveautesExpandedGroups.has(groupId);
+            followers.forEach(r => r.classList.add('nouveautes-row-grouped'));
+            if (!expanded) followers.forEach(r => r.classList.add('nouveautes-row-collapsed'));
+            const cell = leader.querySelector('.nouveautes-details-cell');
+            if (cell) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'nouveautes-group-toggle';
+                const label = n => `${n} autre${n > 1 ? 's' : ''} de la série`;
+                const paint = open => {
+                    btn.innerHTML = `${svgIcon(open ? 'chevron-up' : 'chevron-down')} ${open ? 'Replier' : '+' + label(followers.length)}`;
+                    btn.setAttribute('aria-expanded', String(open));
+                };
+                paint(expanded);
+                btn.addEventListener('click', ev => {
+                    ev.stopPropagation();
+                    const open = !_nouveautesExpandedGroups.has(groupId);
+                    if (open) _nouveautesExpandedGroups.add(groupId); else _nouveautesExpandedGroups.delete(groupId);
+                    followers.forEach(r => r.classList.toggle('nouveautes-row-collapsed', !open));
+                    paint(open);
+                    syncNouveautesHorizontalScrollbars();
+                });
+                cell.appendChild(btn);
+            }
+        }
+        i = j;
+    }
 }
 
 function _renderNouveautesLoadMoreButton(loadMoreDiv, remaining) {

@@ -1915,15 +1915,16 @@ function loadIndexeurCardStatuses() {
 }
 
 // Onglet Thème : une carte par palette (aperçu miniature dans le mode courant) et le choix
-// clair / sombre (même réglage que le bouton lune/soleil de l'en-tête).
+// clair / sombre / système (même réglage que le bouton lune/soleil de l'en-tête).
 function renderThemePicker() {
     const grid = document.getElementById('themeGrid');
     const modes = document.getElementById('themeModeSwitch');
     if (!grid || !modes) return;
     const mode = getTheme();
     const current = getPalette();
-    modes.innerHTML = [['light', 'sun', 'Clair'], ['dark', 'moon', 'Sombre']].map(([m, icon, label]) =>
-        `<button type="button" class="btn${m === mode ? ' active' : ''}" onclick="setTheme('${m}'); renderThemePicker()">${svgIcon(icon)} ${label}</button>`).join('');
+    const pref = getThemePreference();
+    modes.innerHTML = [['light', 'sun', 'Clair'], ['dark', 'moon', 'Sombre'], ['system', 'monitor', 'Système']].map(([m, icon, label]) =>
+        `<button type="button" class="btn${m === pref ? ' active' : ''}" onclick="setTheme('${m}')"${m === 'system' ? ' title="Suit le réglage clair/sombre de l\'appareil"' : ''}>${svgIcon(icon)} ${label}</button>`).join('');
     grid.innerHTML = PALETTES.map(p => {
         const [bg, surface, accent, button] = p[mode];
         const side = `<span style="background:${accent}"></span><span style="background:${accent}"></span><span style="background:${accent}"></span>`;

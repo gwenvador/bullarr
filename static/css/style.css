@@ -5004,3 +5004,15 @@ div:has(> .replace-results-table) { container-type: inline-size; }
    possédées (la colonne Possédé le montre déjà), ni trait d accent sous l en-tête. */
 .replace-results-table .replace-results-row-owned td:first-child { box-shadow: none !important; }
 .replace-results-table thead th { border-bottom: 1px solid var(--color-border) !important; }
+
+/* Nouveautés : lignes consécutives d'une même série repliées sous la première. */
+#nouveautes-events-body tr.nouveautes-row-collapsed { display: none; }
+#nouveautes-events-body tr.nouveautes-row-grouped > td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--color-accent) 45%, transparent); }
+.nouveautes-group-toggle {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 6px;
+    padding: 2px 9px; border-radius: 999px; border: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+    color: var(--color-accent); font-size: 0.82em; font-weight: 600; cursor: pointer;
+}
+.nouveautes-group-toggle:hover { background: color-mix(in srgb, var(--color-accent) 16%, var(--color-surface)); }
+.nouveautes-group-toggle .icon { width: 13px; height: 13px; }
