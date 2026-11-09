@@ -2263,7 +2263,14 @@ function _importFileRowHtml(file, index) {
             })
         : `<div class="import-series-cell"><button class="btn-icon-only" onclick="openDestinationModal(${index})" data-tooltip="Assigner une destination (série existante ou nouvelle, avec matching Bédéthèque)">${svgIcon('pin')}</button>${file._bedethequeLinkHtml ?? (file._bedethequeLinkHtml = buildBedethequeLinkHtml(fileGroupTitle(file)))}</div>`;
     const trackedConflictVolume = file.parsed.tracked_volume_conflict;
-    const statusBadge = file.download_incomplete && !file.validation_error
+    // « pourquoi ça met encore En copie, c'est fini depuis longtemps » : un fichier incomplet
+    // qui ne bouge plus depuis 30 min n'est plus en copie, son téléchargement s'est arrêté
+    // avant la fin (torrent retiré du client, par exemple) - il ne se complétera pas seul.
+    const incompleteStale = file.download_incomplete && file.mtime
+        && (Date.now() / 1000 - Number(file.mtime)) > 30 * 60;
+    const statusBadge = incompleteStale && !file.validation_error
+        ? `<div class="import-status-stack"><span class="import-status-pill import-status-warn" data-tooltip="Fichier incomplet (${escapeHtml(file.download_incomplete)}) et plus aucune progression depuis ${escapeHtml(_importDateValue(file.mtime))} : le téléchargement s'est arrêté avant la fin. À retélécharger ou supprimer.">${svgIcon('triangle-alert')} Interrompu</span><div class="import-status-actions"><button type="button" class="btn-icon-only" ${file._rescanning ? 'disabled' : ''} onclick="retryAutoImportFile(${index})" data-tooltip="Revérifier maintenant" aria-label="Revérifier maintenant">${svgIcon(file._rescanning ? 'loader-circle' : 'refresh-cw', file._rescanning ? 'icon-spin' : '')}</button></div></div>`
+        : file.download_incomplete && !file.validation_error
         ? `<span class="import-status-pill import-status-wait" data-tooltip="Téléchargement ou copie pas encore terminé (${escapeHtml(file.download_incomplete)}) : importé automatiquement dès qu'il sera complet">${svgIcon('loader-circle', 'icon-spin')} En copie</span>`
         : file.validation_error
         ? (file.forceImport
