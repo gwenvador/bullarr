@@ -73,10 +73,14 @@
     border-radius: 5px;
     font-size: 0.78em;
     font-weight: 400;
-    /* Une ligne tant que le texte tient dans la fenêtre (max-content), puis retour à la
-       ligne n'importe où - les chemins de fichiers (colonne Emplacement) n'ont pas d'espaces. */
+    /* Une ligne pour un texte court (max-content), retour à la ligne au-delà de 360px
+       pour rester lisible (les longues explications prenaient toute la largeur), et
+       n'importe où pour les chemins de fichiers (colonne Emplacement) sans espaces. */
     width: max-content;
-    max-width: calc(100vw - 12px);
+    max-width: min(360px, calc(100vw - 12px));
+    line-height: 1.4;
+    white-space: normal;
+    text-align: left;
     overflow-wrap: anywhere;
     box-sizing: border-box;
     pointer-events: none;
