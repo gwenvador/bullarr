@@ -335,12 +335,14 @@ const CLIENT_LABELS = {
 // Lien vers la page d'origine de chaque téléchargement suivi (tracking_id -> URL), fourni
 // par /api/import/state : « cliquer sur le type pour accéder à la source du téléchargement ».
 let importSourceLinks = {};
+let importSourceLabels = {};
 // Interface web de chaque client de téléchargement (qBittorrent, aMule...), même réponse.
 let importClientUrls = {};
 
 function clientBadgeHtml(clientKey, trackingId = null) {
     const label = CLIENT_LABELS[clientKey] || clientKey;
     const sourceUrl = trackingId != null ? importSourceLinks[String(trackingId)] : null;
+    const sourceLabel = (trackingId != null && importSourceLabels[String(trackingId)]) || 'Source du téléchargement';
     const logo = CLIENT_LOGOS[clientKey];
     const iconHtml = logo
         ? `<img src="${logo}" alt="" class="torrent-client-logo">`
@@ -354,7 +356,7 @@ function clientBadgeHtml(clientKey, trackingId = null) {
         ? `<a href="${escapeHtml(clientUrl)}" target="_blank" rel="noopener noreferrer" class="client-source-link" data-tooltip="Ouvrir ${escapeHtml(label)}" onclick="event.stopPropagation()">${iconHtml}</a>`
         : `<span data-tooltip="${escapeHtml(label)}">${iconHtml}</span>`;
     const sourceHtml = sourceUrl && /^https?:\/\//i.test(sourceUrl)
-        ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="client-source-link client-source-origin" data-tooltip="Ouvrir la source du téléchargement" aria-label="Ouvrir la source du téléchargement" onclick="event.stopPropagation()">${svgIcon('external-link')}</a>`
+        ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="client-source-link client-source-origin" data-tooltip="${escapeHtml(sourceLabel)}" aria-label="${escapeHtml(sourceLabel)}" onclick="event.stopPropagation()">${svgIcon('external-link')}</a>`
         : '';
     return sourceHtml ? `<span class="client-badge-links">${clientHtml}${sourceHtml}</span>` : clientHtml;
 }
@@ -442,6 +444,7 @@ async function loadActiveDownloads() {
         pendingDownloads = [];
         if (data.success) {
             importSourceLinks = data.source_links || {};
+            importSourceLabels = data.source_labels || {};
             importClientUrls = data.client_urls || {};
             for (const client of data.clients) {
                 for (const item of client.items) {
@@ -1417,6 +1420,7 @@ async function refreshImportFilesQuietly() {
         if (!data.success) return;
 
         importSourceLinks = data.source_links || importSourceLinks;
+        importSourceLabels = data.source_labels || importSourceLabels;
         importClientUrls = data.client_urls || importClientUrls;
         const stillPresentPaths = new Set(data.files.map(f => f.filepath));
         const existingPaths = new Set(importFiles.map(f => f.filepath));

@@ -5875,6 +5875,37 @@ def _download_source_links(tracking_ids):
     return {k: v for k, v in links.items() if str(v).lower().startswith(('https://', 'http://'))}
 
 
+_SOURCE_HOST_LABELS = {
+    't.me': 'Telegram', 'ebdz.net': 'EBDZ', 'vk.com': 'VK', 'yggreborn.org': 'YGG',
+    'yggtorrent': 'YGG', 'tr4ker.net': 'Tr4ker', 'c411.org': 'C411',
+    'theoldschool.cc': 'TheOldSchool', 'torr9.net': 'Torr9', 'v3x.club': 'V3X',
+    'gemini-tracker.org': 'Gemini', 'annas-archive': "Anna's Archive",
+}
+
+
+def download_source_label(url):
+    """« au lieu de mettre ouvrir la source, mets le nom de la source » : nom lisible
+    (YGG, Tr4ker, Telegram @canal...) déduit de l'hôte du lien source."""
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(str(url))
+    except ValueError:
+        return None
+    host = (parts.hostname or '').lower()
+    if host.startswith('www.'):
+        host = host[4:]
+    if not host:
+        return None
+    if host == 't.me':
+        channel = parts.path.strip('/').split('/')[0]
+        return f'Telegram @{channel}' if channel else 'Telegram'
+    for key, label in _SOURCE_HOST_LABELS.items():
+        if host == key or host.startswith(key + '.') or host.endswith('.' + key):
+            return label
+    name = host.split('.')[-2] if '.' in host else host
+    return name[:1].upper() + name[1:]
+
+
 def _download_client_urls():
     """« un lien pour la source et un lien pour le logiciel de download » : interface web
     de chaque client de téléchargement activé (adresse et port uniquement, jamais les
@@ -6010,6 +6041,7 @@ def import_state_snapshot():
             'success': True,
             'snapshot_at': time.time(),
             'source_links': source_links,
+            'source_labels': {k: download_source_label(v) for k, v in source_links.items()},
             'client_urls': _download_client_urls(),
             'clients': activity_data.get('clients', []),
             'pending': pending,
