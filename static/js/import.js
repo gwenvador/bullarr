@@ -321,15 +321,31 @@ const CLIENT_LABELS = {
 // ne dit rien du TYPE de source) pour ce cas précis. EBDZ n'a pas
 // besoin de sa propre entrée ici: un fichier EBDZ passe par eMule/aMule (client='amule',
 // déjà son propre logo) - jamais un client 'ebdz' distinct à ce niveau.
-function clientBadgeHtml(clientKey) {
+// Lien vers la page d'origine de chaque téléchargement suivi (tracking_id -> URL), fourni
+// par /api/import/state : « cliquer sur le type pour accéder à la source du téléchargement ».
+let importSourceLinks = {};
+// Interface web de chaque client de téléchargement (qBittorrent, aMule...), même réponse.
+let importClientUrls = {};
+
+function clientBadgeHtml(clientKey, trackingId = null) {
     const label = CLIENT_LABELS[clientKey] || clientKey;
+    const sourceUrl = trackingId != null ? importSourceLinks[String(trackingId)] : null;
     const logo = CLIENT_LOGOS[clientKey];
     const iconHtml = logo
         ? `<img src="${logo}" alt="" class="torrent-client-logo">`
         : clientKey === 'torrent' ? svgIcon('magnet')
             : clientKey === 'packaged' ? svgIcon('package')
             : svgIcon('download');
-    return `<span data-tooltip="${escapeHtml(label)}">${iconHtml}</span>`;
+    // « un lien pour la source et un lien pour le logiciel de download » : l'icône du
+    // client ouvre son interface web, la petite icône lien à côté ouvre la page d'origine.
+    const clientUrl = importClientUrls[clientKey];
+    const clientHtml = clientUrl && /^https?:\/\//i.test(clientUrl)
+        ? `<a href="${escapeHtml(clientUrl)}" target="_blank" rel="noopener noreferrer" class="client-source-link" data-tooltip="Ouvrir ${escapeHtml(label)}" onclick="event.stopPropagation()">${iconHtml}</a>`
+        : `<span data-tooltip="${escapeHtml(label)}">${iconHtml}</span>`;
+    const sourceHtml = sourceUrl && /^https?:\/\//i.test(sourceUrl)
+        ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="client-source-link client-source-origin" data-tooltip="Ouvrir la source du téléchargement" aria-label="Ouvrir la source du téléchargement" onclick="event.stopPropagation()">${svgIcon('external-link')}</a>`
+        : '';
+    return sourceHtml ? `<span class="client-badge-links">${clientHtml}${sourceHtml}</span>` : clientHtml;
 }
 
 // Vocabulaire de statut par client - qBittorrent/Deluge/aMule renvoient des clés/mots
@@ -414,6 +430,8 @@ async function loadActiveDownloads() {
         activeDownloads = [];
         pendingDownloads = [];
         if (data.success) {
+            importSourceLinks = data.source_links || {};
+            importClientUrls = data.client_urls || {};
             for (const client of data.clients) {
                 for (const item of client.items) {
                     activeDownloads.push({ clientKey: client.client, item });
@@ -600,7 +618,7 @@ function _pendingDownloadRowHtml(pending) {
         <tr${hasProgress ? ` data-pending-key="${pending.id}"` : ''}>
             <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">${escapeHtml(_importDateForPending(pending) || '—')}</td>
-            <td>${clientBadgeHtml(pending.client)}</td>
+            <td>${clientBadgeHtml(pending.client, pending.id)}</td>
             <td>
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(pending.title)}">${escapeHtml(pending.title)}</div>
                 ${pending.already_owned ? `<div style="font-size:0.78em; color:var(--color-text-muted);" data-tooltip="Ce tome est déjà dans la bibliothèque (autre source) : ce téléchargement le remplacera ou sera ignoré comme doublon.">déjà possédé</div>` : ''}
@@ -911,7 +929,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
         <tr${activeKey ? ` data-active-key="${escapeHtml(activeKey)}"` : ''}>
             <td>${selectCheckboxHtml}</td>
             <td class="import-date-cell">${escapeHtml(_importDateForActive(item) || '—')}</td>
-            <td>${clientBadgeHtml(clientKey)}</td>
+            <td>${clientBadgeHtml(clientKey, item.tracking_id)}</td>
             <td>
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
                 <div class="active-download-size-line" style="font-size:0.9em;">${_activeDownloadSizeLineHtml(item)}</div>
@@ -1387,6 +1405,8 @@ async function refreshImportFilesQuietly() {
         const data = await readJsonResponse(response);
         if (!data.success) return;
 
+        importSourceLinks = data.source_links || importSourceLinks;
+        importClientUrls = data.client_urls || importClientUrls;
         const stillPresentPaths = new Set(data.files.map(f => f.filepath));
         const existingPaths = new Set(importFiles.map(f => f.filepath));
         const newFiles = data.files.filter(f => !existingPaths.has(f.filepath));
@@ -2294,7 +2314,7 @@ function _importFileRowHtml(file, index) {
                        data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour assigner plusieurs fichiers à la même série d\'un coup'}">
             `}</td>
             <td class="import-date-cell">${escapeHtml(_importDateForFile(file) || '—')}</td>
-            <td>${clientBadgeHtml(file.client)}</td>
+            <td>${clientBadgeHtml(file.client, file.destination?.tracking_id ?? file.pack_download_id)}</td>
             <td class="import-files-table-filename">
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(file.filename)}">${escapeHtml(file.filename)}</div>
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
@@ -2602,7 +2622,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
         <tr style="border-bottom:1px solid #f0f0f0;">
             <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
             <td class="import-date-cell">${escapeHtml(_importDateForPending(pending) || '—')}</td>
-            <td>${clientBadgeHtml(pending.client)}</td>
+            <td>${clientBadgeHtml(pending.client, pending.id)}</td>
             <td class="import-files-table-filename">
                 <button class="btn-icon-only" onclick="togglePendingPackGroup(${pending.id})" data-tooltip="Afficher/masquer les fichiers de ce pack" style="vertical-align:middle; margin-right:2px;">${svgIcon('chevron-down')}</button>
                 <span style="font-weight:600;" data-tooltip="${escapeHtml(pending.title)}">${svgIcon('package')} ${escapeHtml(pending.series_title || pending.title)}</span>

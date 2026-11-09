@@ -5023,3 +5023,12 @@ div:has(> .replace-results-table) { container-type: inline-size; }
 #nouveautes-events-body tr.nouveautes-series-group-row:hover > td { background: color-mix(in srgb, var(--color-accent) 5%, transparent); }
 #nouveautes-events-body tr.nouveautes-series-group-row > td { padding: 10px; }
 .nouveautes-series-group-name { font-weight: 600; }
+
+/* Activités : icône de type cliquable vers la page d'origine du téléchargement. */
+a.client-source-link { display: inline-flex; border-radius: 6px; padding: 2px; transition: background .15s, box-shadow .15s; }
+a.client-source-link:hover, a.client-source-link:focus-visible { background: color-mix(in srgb, var(--color-accent) 14%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent); }
+
+.client-badge-links { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+a.client-source-origin { color: var(--color-text-muted); }
+a.client-source-origin:hover { color: var(--color-accent); }
+a.client-source-origin .icon { width: 13px; height: 13px; }

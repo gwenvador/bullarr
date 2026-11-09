@@ -5836,6 +5836,90 @@ def import_progress():
     })
 
 
+def _download_source_links(tracking_ids):
+    """« cliquer sur le type pour accéder à la source du téléchargement » : page d'origine
+    (fiche du torrent sur l'indexeur, post Telegram, fil EBDZ...) de chaque téléchargement
+    suivi, enregistrée à l'envoi dans missing_volume_downloads.source_link. Repli Telegram
+    sur active_downloads.channel/message_id. Seuls les liens http(s) sont renvoyés."""
+    ids = sorted({int(t) for t in tracking_ids if isinstance(t, int) or (isinstance(t, str) and t.isdigit())})
+    if not ids:
+        return {}
+    links = {}
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        try:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                marks = ','.join('?' * len(chunk))
+                for tracking_id, link in conn.execute(
+                        f"SELECT tracking_id, source_link FROM missing_volume_downloads "
+                        f"WHERE tracking_id IN ({marks}) AND source_link IS NOT NULL AND source_link != '' "
+                        f"ORDER BY id", chunk):
+                    links[str(tracking_id)] = link
+                for tracking_id, channel, message_id in conn.execute(
+                        f"SELECT id, channel, message_id FROM active_downloads "
+                        f"WHERE id IN ({marks}) AND client = 'telegram' AND channel IS NOT NULL AND message_id IS NOT NULL",
+                        chunk):
+                    if str(tracking_id) not in links:
+                        name = str(channel).lstrip('@')
+                        if name and all(c.isalnum() or c == '_' for c in name):
+                            links[str(tracking_id)] = f"https://t.me/{name}/{int(message_id)}"
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"⚠️ Liens source des téléchargements indisponibles: {exc}")
+    return {k: v for k, v in links.items() if str(v).lower().startswith(('https://', 'http://'))}
+
+
+def _download_client_urls():
+    """« un lien pour la source et un lien pour le logiciel de download » : interface web
+    de chaque client de téléchargement activé (adresse et port uniquement, jamais les
+    identifiants)."""
+    from urllib.parse import urlsplit
+    urls = {}
+
+    def web_url(url, port):
+        url = str(url or '').strip().rstrip('/')
+        if not url.lower().startswith(('http://', 'https://')):
+            return None
+        try:
+            parts = urlsplit(url)
+            port = int(port) if port else None
+        except (ValueError, TypeError):
+            return None
+        if port and not parts.port and not (parts.scheme == 'https' and port == 443) \
+                and not (parts.scheme == 'http' and port == 80):
+            url = f"{parts.scheme}://{parts.hostname}:{port}{parts.path}"
+        return url
+
+    loaders = (
+        ('qbittorrent', 'blueprints.qbittorrent.routes', 'load_qbittorrent_config'),
+        ('deluge', 'blueprints.deluge.routes', 'load_deluge_config'),
+        ('rtorrent', 'blueprints.rtorrent.routes', 'load_rtorrent_config'),
+    )
+    import importlib
+    for client, module, loader in loaders:
+        try:
+            config = getattr(importlib.import_module(module), loader)() or {}
+            if config.get('enabled'):
+                url = web_url(config.get('url'), config.get('port'))
+                if url:
+                    urls[client] = url
+        except Exception as exc:
+            print(f"⚠️ Adresse {client} indisponible: {exc}")
+    try:
+        from blueprints.emule.routes import load_emule_config
+        config = load_emule_config() or {}
+        host = str(config.get('host') or '').strip()
+        if config.get('enabled', True) and host and config.get('port'):
+            url = web_url(host if '://' in host else f"http://{host}", config.get('port'))
+            if url:
+                urls['amule'] = url
+    except Exception as exc:
+        print(f"⚠️ Adresse aMule indisponible: {exc}")
+    return urls
+
+
 @library_bp.route('/api/import/state', methods=['GET'])
 def import_state_snapshot():
     """Retourne un instantané faisant autorité pour la page /import.
@@ -5912,9 +5996,17 @@ def import_state_snapshot():
             if item_id in pending_ids
         ]
 
+        source_ids = [item.get('id') for item in pending]
+        source_ids += [item.get('tracking_id') for client in activity_data.get('clients', [])
+                       for item in client.get('items', [])]
+        source_ids += [(f.get('destination') or {}).get('tracking_id') or f.get('pack_download_id') for f in files]
+        source_links = _download_source_links(source_ids)
+
         return jsonify({
             'success': True,
             'snapshot_at': time.time(),
+            'source_links': source_links,
+            'client_urls': _download_client_urls(),
             'clients': activity_data.get('clients', []),
             'pending': pending,
             'completed_pending_ids': completed_pending_ids,
