@@ -60,6 +60,8 @@ const ICON_PATHS = {
     'chevron-right': '<path d="m9 18 6-6-6-6" />',
     'chevron-up': '<path d="m18 15-6-6-6 6" />',
     'file-x': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="m14.5 12.5-5 5" /><path d="m9.5 12.5 5 5" />',
+    'file-check': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="m9 15 2 2 4-4" />',
+    'file-cog': '<path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M4.67 21H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v6" /><circle cx="6" cy="16" r="2.5" /><path d="M6 12v1.5M6 18.5V20M2 16h1.5M8.5 16H10" />',
     list: '<path d="M3 5h.01" /><path d="M3 12h.01" /><path d="M3 19h.01" /><path d="M8 5h13" /><path d="M8 12h13" /><path d="M8 19h13" />',
     table: '<path d="M12 3v18" /><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" />',
     // Icônes de la sidebar (voir initSidebarIcons, nav.js) - "trouve des icones plus

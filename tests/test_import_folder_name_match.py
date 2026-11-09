@@ -56,7 +56,7 @@ class FolderNameMatchTest(unittest.TestCase):
         path = os.path.join(self.root, folder, name) if folder else os.path.join(self.root, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'wb') as handle:
-            handle.write(b'PK\x03\x04' + b'\x00' * 64)
+            handle.write(b'PK\x03\x04' + b'\x00' * 64 + b'PK\x05\x06' + b'\x00' * 18)
         return path
 
     def scan(self, download):

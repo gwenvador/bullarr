@@ -5032,3 +5032,29 @@ a.client-source-link:hover, a.client-source-link:focus-visible { background: col
 a.client-source-origin { color: var(--color-text-muted); }
 a.client-source-origin:hover { color: var(--color-accent); }
 a.client-source-origin .icon { width: 13px; height: 13px; }
+
+/* Activités : date sur deux lignes propres, statut en pastille, actions en icônes. */
+.import-files-table td.import-date-cell { white-space: nowrap; line-height: 1.25; }
+.import-date-day { display: block; }
+.import-date-time { display: block; color: var(--color-text-muted); font-size: 0.88em; }
+.import-status-stack { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+.import-status-actions { display: inline-flex; gap: 2px; }
+.import-status-actions .btn-icon-only { padding: 3px; }
+.import-status-pill {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px;
+    font-size: 0.82em; font-weight: 600; white-space: nowrap; border: 1px solid transparent;
+}
+.import-status-pill .icon { width: 13px; height: 13px; }
+.import-status-error { color: #c0392b; background: color-mix(in srgb, #c0392b 10%, transparent); border-color: color-mix(in srgb, #c0392b 25%, transparent); }
+.import-status-warn { color: #b9770e; background: color-mix(in srgb, #e67e22 10%, transparent); border-color: color-mix(in srgb, #e67e22 25%, transparent); }
+.import-status-wait { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent); border-color: color-mix(in srgb, var(--color-accent) 25%, transparent); }
+[data-theme="dark"] .import-status-error { color: #f1948a; }
+[data-theme="dark"] .import-status-warn { color: #f5b041; }
+
+/* Album lisible (coupure aux mots, pas lettre par lettre) : un peu de place prise à Nom. */
+.import-files-table > thead > tr > th:nth-child(4),
+.import-files-table > tbody > tr > td:nth-child(4) { width: 34%; }
+.import-files-table > thead > tr > th:nth-child(5),
+.import-files-table > tbody > tr > td:nth-child(5) { width: 19%; overflow-wrap: break-word; word-break: normal; hyphens: auto; }
+.import-files-table > thead > tr > th:nth-child(8),
+.import-files-table > tbody > tr > td:nth-child(8) { width: 14%; }

@@ -279,16 +279,27 @@ function _importDateValue(value) {
     const d = typeof value === 'number' ? new Date(value < 100000000000 ? value * 1000 : value) : parseDbUtcDate(value);
     return !d || Number.isNaN(d.getTime()) ? '' : d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: BULLARR_DISPLAY_TZ });
 }
-function _importDateForFile(file) {
+// Cellule Date : « 09/11/26 » puis l'heure en dessous, sans couper la date au milieu.
+function _importDateCellHtml(value) {
+    if (value == null || value === '') return '—';
+    const d = typeof value === 'number' ? new Date(value < 100000000000 ? value * 1000 : value) : parseDbUtcDate(value);
+    if (!d || Number.isNaN(d.getTime())) return '—';
+    const day = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: BULLARR_DISPLAY_TZ });
+    const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: BULLARR_DISPLAY_TZ });
+    return `<span class="import-date-day" data-tooltip="${escapeHtml(_importDateValue(value))}">${escapeHtml(day)}</span><span class="import-date-time">${escapeHtml(time)}</span>`;
+}
+function _importDateRawForFile(file) {
     const id = file?.destination?.tracking_id;
     const pending = id != null ? pendingDownloads.find(p => Number(p.id) === Number(id)) : null;
-    return _importDateValue(pending?.created_at || file?.mtime);
+    return pending?.created_at || file?.mtime;
 }
-function _importDateForPending(pending) { return _importDateValue(pending?.created_at); }
-function _importDateForActive(item) {
+function _importDateRawForActive(item) {
     const pending = item?.tracking_id != null ? pendingDownloads.find(p => Number(p.id) === Number(item.tracking_id)) : null;
-    return _importDateValue(item?.created_at || pending?.created_at);
+    return item?.created_at || pending?.created_at;
 }
+function _importDateForFile(file) { return _importDateValue(_importDateRawForFile(file)); }
+function _importDateForPending(pending) { return _importDateValue(pending?.created_at); }
+function _importDateForActive(item) { return _importDateValue(_importDateRawForActive(item)); }
 
 const CLIENT_LOGOS = {
     qbittorrent: '/static/img/qbittorrent-logo.svg',
@@ -617,7 +628,7 @@ function _pendingDownloadRowHtml(pending) {
     return `
         <tr${hasProgress ? ` data-pending-key="${pending.id}"` : ''}>
             <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
-            <td class="import-date-cell">${escapeHtml(_importDateForPending(pending) || '—')}</td>
+            <td class="import-date-cell">${_importDateCellHtml(pending?.created_at)}</td>
             <td>${clientBadgeHtml(pending.client, pending.id)}</td>
             <td>
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(pending.title)}">${escapeHtml(pending.title)}</div>
@@ -625,7 +636,7 @@ function _pendingDownloadRowHtml(pending) {
             </td>
             <td>${_seriesCellHtml(pending.series_id, pending.series_title)}</td>
             <td>${_pendingVolumeLabel(pending)}</td>
-            <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension({ filename: pending.title }))}</td>
+            <td class="import-ext-cell" style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em; white-space:nowrap;">${escapeHtml(_importFileExtension({ filename: pending.title }))}</td>
             <td style="text-align:center; min-width:110px;">
                 ${statusHtml}
                 ${pending.exhausted ? `<button class="btn-icon-only" onclick="retryTelegramDownload(${pending.id}, this)" data-tooltip="Relancer manuellement (budget de tentatives automatiques épuisé)">${svgIcon('refresh-cw')}</button>` : ''}
@@ -928,7 +939,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
     return `
         <tr${activeKey ? ` data-active-key="${escapeHtml(activeKey)}"` : ''}>
             <td>${selectCheckboxHtml}</td>
-            <td class="import-date-cell">${escapeHtml(_importDateForActive(item) || '—')}</td>
+            <td class="import-date-cell">${_importDateCellHtml(_importDateRawForActive(item))}</td>
             <td>${clientBadgeHtml(clientKey, item.tracking_id)}</td>
             <td>
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
@@ -936,7 +947,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
             </td>
             <td>${_seriesCellHtml(item.series_id, item.series_title)}</td>
             <td>${_pendingVolumeLabel(item)}</td>
-            <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension({ filename: item.name }))}</td>
+            <td class="import-ext-cell" style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em; white-space:nowrap;">${escapeHtml(_importFileExtension({ filename: item.name }))}</td>
             <td style="text-align:center; min-width:110px;">
                 <div style="height:6px; background:var(--color-surface-alt); border:1px solid var(--color-border); border-radius:3px; overflow:hidden;">
                     <div class="active-download-progress-fill" style="height:100%; width:${progress}%; background:var(--color-accent);"></div>
@@ -1779,7 +1790,7 @@ function _incompatibleFolderRowHtml(folder, index) {
             </td>
             <td>—</td>
             <td>—</td>
-            <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(extensions)}</td>
+            <td class="import-ext-cell" style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em; white-space:nowrap;">${escapeHtml(extensions)}</td>
             <td style="text-align:center;">
                 <div style="color:#dc3545; font-weight:600;">${svgIcon('x')} Incompatible</div>
                 <button class="btn-icon-only incompatible-folder-eye-btn" data-files-row-id="${rowId}-files" onclick="toggleIncompatibleFolderFiles('${rowId}', '${escapeForAttribute(folder.import_root)}', '${escapeForAttribute(folder.relative_path)}')" data-tooltip="Voir les fichiers de ce dossier">${svgIcon('eye')}</button>
@@ -2252,10 +2263,12 @@ function _importFileRowHtml(file, index) {
             })
         : `<div class="import-series-cell"><button class="btn-icon-only" onclick="openDestinationModal(${index})" data-tooltip="Assigner une destination (série existante ou nouvelle, avec matching Bédéthèque)">${svgIcon('pin')}</button>${file._bedethequeLinkHtml ?? (file._bedethequeLinkHtml = buildBedethequeLinkHtml(fileGroupTitle(file)))}</div>`;
     const trackedConflictVolume = file.parsed.tracked_volume_conflict;
-    const statusBadge = file.validation_error
+    const statusBadge = file.download_incomplete && !file.validation_error
+        ? `<span class="import-status-pill import-status-wait" data-tooltip="Téléchargement ou copie pas encore terminé (${escapeHtml(file.download_incomplete)}) : importé automatiquement dès qu'il sera complet">${svgIcon('loader-circle', 'icon-spin')} En copie</span>`
+        : file.validation_error
         ? (file.forceImport
-            ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="${escapeHtml(file.validation_error)} — import forcé malgré la corruption">${svgIcon('triangle-alert')} Corrompu (forcé)</span>`
-            : `<span style="color:#dc3545; font-weight:600;" data-tooltip="${escapeHtml(file.validation_error)}">${svgIcon('circle-x')} Corrompu</span><br><button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" ${file._rescanning ? 'disabled' : ''} onclick="rescanCorruptedFile(${index})" data-tooltip="Refait le test d'intégrité maintenant, sans attendre le prochain essai automatique">${file._rescanning ? 'Vérification…' : 'Revérifier'}</button> ${file.convertible && String(file.convertible).startsWith('mislabeled-') ? `<button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" onclick="convertMislabeledImportFile(${index})">Convertir en CBZ</button>` : ''} <button type="button" class="btn-icon-only" style="font-size:0.75em; padding:2px 6px; margin-top:2px;" onclick="forceImportCorruptedFile(${index})">Importer quand même</button>`)
+            ? `<span class="import-status-pill import-status-warn" data-tooltip="${escapeHtml(file.validation_error)} — import forcé malgré la corruption">${svgIcon('triangle-alert')} Corrompu (forcé)</span>`
+            : `<div class="import-status-stack"><span class="import-status-pill import-status-error" data-tooltip="${escapeHtml(file.validation_error)}">${svgIcon('circle-x')} Corrompu</span><div class="import-status-actions"><button type="button" class="btn-icon-only" ${file._rescanning ? 'disabled' : ''} onclick="rescanCorruptedFile(${index})" data-tooltip="Revérifier maintenant" aria-label="Revérifier maintenant">${svgIcon(file._rescanning ? 'loader-circle' : 'refresh-cw', file._rescanning ? 'icon-spin' : '')}</button>${file.convertible && String(file.convertible).startsWith('mislabeled-') ? `<button type="button" class="btn-icon-only" onclick="convertMislabeledImportFile(${index})" data-tooltip="Convertir en CBZ" aria-label="Convertir en CBZ">${svgIcon('file-cog')}</button>` : ''}<button type="button" class="btn-icon-only" onclick="forceImportCorruptedFile(${index})" data-tooltip="Importer quand même" aria-label="Importer quand même">${svgIcon('file-check')}</button></div></div>`)
         : trackedConflictVolume != null
         ? `<span style="color:#e67e22; font-weight:600;" data-tooltip="Le tome ${escapeHtml(String(trackedConflictVolume))} était attendu (recherché), mais ce fichier est en réalité ${file.parsed.is_integral ? 'une intégrale' : file.parsed.is_hs ? 'un hors-série' : file.parsed.is_episode ? 'un épisode' : 'un one-shot'} - à vérifier avant de valider">${svgIcon('triangle-alert')} Tome inattendu</span>`
         : isImportingNow
@@ -2313,20 +2326,20 @@ function _importFileRowHtml(file, index) {
                        onchange="toggleUnassignedSelection(${index}, this.checked)"
                        data-tooltip="${(file.validation_error && !file.forceImport) ? 'Fichier corrompu - sélectionnable pour réassignation, import bloqué jusqu’au rescan' : 'Sélectionner pour assigner plusieurs fichiers à la même série d\'un coup'}">
             `}</td>
-            <td class="import-date-cell">${escapeHtml(_importDateForFile(file) || '—')}</td>
+            <td class="import-date-cell">${_importDateCellHtml(_importDateRawForFile(file))}</td>
             <td>${clientBadgeHtml(file.client, file.destination?.tracking_id ?? file.pack_download_id)}</td>
             <td class="import-files-table-filename">
                 <div style="font-weight:600;" data-tooltip="${escapeHtml(file.filename)}">${escapeHtml(file.filename)}</div>
                 <div style="font-size:0.9em;">${formatBytes(file.file_size)}</div>
                 ${ownedHtml}
-                ${file.auto_import_skip_reason ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}${/^(Échec|Fichier)/.test(file.auto_import_skip_reason) ? `<button type="button" class="btn-neutral-sm" style="margin-left:6px;" ${file._rescanning ? 'disabled' : ''} onclick="retryAutoImportFile(${index})" data-tooltip="Oublie l'échec et relance l'import automatique de ce fichier maintenant (utile si le fichier n'était pas encore complètement arrivé)">${svgIcon('refresh-cw')} ${file._rescanning ? 'Vérification…' : 'Réessayer'}</button>` : ''}</div>` : ''}
+                ${file.auto_import_skip_reason && !file.download_incomplete ? `<div class="import-auto-skip-explanation">${svgIcon('ban')} Pas repris par l'import automatique : ${escapeHtml(file.auto_import_skip_reason)}${/^(Échec|Fichier)/.test(file.auto_import_skip_reason) ? `<button type="button" class="btn-neutral-sm" style="margin-left:6px;" ${file._rescanning ? 'disabled' : ''} onclick="retryAutoImportFile(${index})" data-tooltip="Oublie l'échec et relance l'import automatique de ce fichier maintenant (utile si le fichier n'était pas encore complètement arrivé)">${svgIcon('refresh-cw')} ${file._rescanning ? 'Vérification…' : 'Réessayer'}</button>` : ''}</div>` : ''}
                 ${_convertActionHtml(file)}
                 ${hasDatabaseVolume ? `<div class="import-auto-skip-explanation">⚠️ Album déjà enregistré dans Bullarr.<button type="button" class="btn-neutral-sm" style="margin-left:6px;" onclick="openDestinationModal(${index})">Remplacer le fichier existant</button></div>` : ''}
                 ${_archiveContentActionHtml(file)}
             </td>
             <td>${albumCellHtml}</td>
             <td>${_volumeCellHtml(file, index, isLocked)}</td>
-            <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml(_importFileExtension(file))}</td>
+            <td class="import-ext-cell" style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em; white-space:nowrap;">${escapeHtml(_importFileExtension(file))}</td>
             <td style="text-align:center;">
                 <div>${statusBadge}</div>
                 ${awaitingAutoImport ? `<button type="button" class="btn-neutral-sm" onclick="takeManualControl(${index})" data-tooltip="Empêche l'import automatique et rend la ligne modifiable">Reprendre la main</button>` : ''}
@@ -2621,7 +2634,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
     return `
         <tr style="border-bottom:1px solid #f0f0f0;">
             <td><input type="checkbox" class="import-file-select" data-pending-id="${pending.id}" ${selectedPendingIds.has(pending.id) ? 'checked' : ''} onchange="togglePendingRowSelection(${pending.id}, this.checked)" data-tooltip="Sélectionner pour supprimer en masse"></td>
-            <td class="import-date-cell">${escapeHtml(_importDateForPending(pending) || '—')}</td>
+            <td class="import-date-cell">${_importDateCellHtml(pending?.created_at)}</td>
             <td>${clientBadgeHtml(pending.client, pending.id)}</td>
             <td class="import-files-table-filename">
                 <button class="btn-icon-only" onclick="togglePendingPackGroup(${pending.id})" data-tooltip="Afficher/masquer les fichiers de ce pack" style="vertical-align:middle; margin-right:2px;">${svgIcon('chevron-down')}</button>
@@ -2632,7 +2645,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
             </td>
             <td>${seriesLabel}</td>
             <td>—</td>
-            <td style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em;">${escapeHtml([...new Set(fileMatches.map(({ file }) => _importFileExtension(file)))].filter(Boolean).join(', '))}</td>
+            <td class="import-ext-cell" style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em; white-space:nowrap;">${escapeHtml([...new Set(fileMatches.map(({ file }) => _importFileExtension(file)))].filter(Boolean).join(', '))}</td>
             <td style="text-align:center; min-width:110px;">
                 <div>${isImportingNow
                     ? `<span style="color:#e67e22; font-weight:600;">${svgIcon('loader-circle', 'icon-spin')} Import en cours</span>`

@@ -512,6 +512,14 @@ class LibraryImportScheduler:
                                     routes.note_pack_transfer_activity(import_path, filepath)
                                     continue
 
+                                # Fichier encore incomplet (copie Syncthing/qBittorrent pas
+                                # finie) : simplement attendre le prochain passage, sans
+                                # tentative d'import, sans échec compté ni historique.
+                                from .import_worker import download_incomplete_reason
+                                if download_incomplete_reason(filepath):
+                                    routes.note_pack_transfer_activity(import_path, filepath)
+                                    continue
+
                                 parsed = scanner.parse_filename(filename)
                                 relative_path = os.path.relpath(filepath, import_path)
                                 parent_dir = os.path.dirname(relative_path)

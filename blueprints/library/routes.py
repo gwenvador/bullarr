@@ -5180,7 +5180,8 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
             if filepath in manual_override_filepaths
             else "archive de plusieurs albums (pack) - à extraire puis importer album par album"
             if is_container
-            else _repeated_failure_skip_reason(filepath)
+            else _download_incomplete_hold_reason(filepath)
+            or _repeated_failure_skip_reason(filepath)
             or ("désactivé dans les paramètres" if not import_config.get('auto_import_enabled', False) else None)
             or _unknown_volume_hold_reason(parsed, file_destination)
             or (None if gate_passed else _no_volume_skip_reason(parsed, file_destination))
@@ -5200,7 +5201,10 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
         # None si le fichier est valide (voir _check_import_file_validity_cached) - un
         # message d'erreur explicite sinon ("Fichier corrompu, import refusé"). import.js
         # exclut un fichier avec cette valeur des fichiers "prêts" et empêche sa sélection.
-        'validation_error': (
+        # Copie/téléchargement pas fini (zones encore vides, fin d'archive absente) : la
+        # ligne s'affiche « En cours de copie », jamais « Corrompu ».
+        'download_incomplete': _download_incomplete_reason_safe(filepath),
+        'validation_error': None if _download_incomplete_reason_safe(filepath) else (
             (f"Extension .cbz, mais contenu réel {classify_archive(filepath).upper()} : conversion en CBZ proposée"
              if validate_file and ext == '.cbz' and classify_archive(filepath) in ('rar', 'tar')
              else _check_import_file_validity_cached(filepath, parsed.get('format')))
@@ -7966,7 +7970,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
 
                 from .scheduler import library_import_scheduler, MAX_AUTO_IMPORT_CORRUPTION_RETRIES
                 from .scheduler import is_transient_import_error
-                is_corruption = is_transient_import_error(f'{type(e).__name__}: {e}')
+                is_corruption = (is_transient_import_error(str(e))
+                                 or is_transient_import_error(f'{type(e).__name__}: {e}'))
                 prior_failures = library_import_scheduler._failure_counts.get(file_data.get('filepath'), 0)
                 just_became_exhausted = is_corruption and prior_failures == MAX_AUTO_IMPORT_CORRUPTION_RETRIES
                 suppress_log = is_corruption and not just_became_exhausted
@@ -9411,6 +9416,22 @@ def _no_volume_skip_reason(parsed, file_destination):
             "ou assignez ce fichier manuellement"
         )
     return None
+
+
+def _download_incomplete_reason_safe(filepath):
+    try:
+        from .import_worker import download_incomplete_reason
+        return download_incomplete_reason(filepath)
+    except Exception:
+        return None
+
+
+def _download_incomplete_hold_reason(filepath):
+    """Fichier dont le téléchargement/la copie n'est pas fini : affiché comme une attente,
+    pas comme une erreur (voir import_worker.download_incomplete_reason)."""
+    from .import_worker import download_incomplete_reason
+    reason = download_incomplete_reason(filepath)
+    return f"téléchargement pas encore terminé ({reason}) - importé dès qu'il sera complet" if reason else None
 
 
 def _repeated_failure_skip_reason(filepath):

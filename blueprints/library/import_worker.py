@@ -201,6 +201,35 @@ def ensure_not_preallocated(path, fmt):
             "réessayez plus tard")
 
 
+def download_incomplete_reason(path):
+    """« pourquoi ça tente d'importer si le fichier n'est pas encore tout téléchargé » :
+    test rapide (2 lectures, < 70 Ko) fait AVANT toute tentative d'import. Un fichier
+    préalloué par qBittorrent puis recopié par Syncthing garde des zones vides (octets
+    nuls) tant qu'il n'est pas complet ; un ZIP/CBZ n'a pas encore son répertoire central
+    en fin de fichier, un PDF pas son %%EOF. Renvoie la raison, ou None si le fichier
+    paraît complet (le test d'intégrité complet reste fait par l'import lui-même)."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as handle:
+            head = handle.read(1024)
+            tail_size = min(size, 65536)
+            handle.seek(size - tail_size)
+            tail = handle.read(tail_size)
+    except OSError:
+        return None
+    if not head:
+        return "fichier vide"
+    if head.count(0) == len(head):
+        return "début du fichier encore vide"
+    if len(tail) >= 4096 and tail[-4096:].count(0) == 4096:
+        return "fin du fichier encore vide"
+    if head.startswith(b"PK") and b"PK\x05\x06" not in tail:
+        return "archive ZIP pas encore complète"
+    if head.startswith(b"%PDF") and b"%%EOF" not in tail:
+        return "PDF pas encore complet"
+    return None
+
+
 def _prepare_child(payload):
     source = Path(payload["source_path"])
     if not source.is_file():
