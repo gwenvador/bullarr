@@ -5751,7 +5751,11 @@ def scan_import_directory():
         # une extraction ou un renommage peut avoir un nom différent du titre suivi.
         try:
             from blueprints.missing_monitor.downloader import clear_pending_downloads_by_tracking_ids
-            tracking_ids = [(f.get('destination') or {}).get('tracking_id') for f in files_found]
+            # Un fichier encore partiel (copie Syncthing en cours) ne termine pas le suivi :
+            # sinon /import affichait le pack « Copie terminée » en plus de la ligne du
+            # torrent qui télécharge encore (« 3 lignes alors qu'il y a 2 torrents »).
+            tracking_ids = [(f.get('destination') or {}).get('tracking_id') for f in files_found
+                            if not f.get('download_incomplete')]
             clear_pending_downloads_by_tracking_ids(tracking_ids)
         except Exception as e:
             print(f"✗ Erreur nettoyage téléchargements en attente: {e}")
@@ -5981,6 +5985,7 @@ def import_state_snapshot():
         tracking_ids = [
             (f.get('destination') or {}).get('tracking_id')
             for f in files
+            if not f.get('download_incomplete')
         ]
         try:
             from blueprints.missing_monitor.downloader import clear_pending_downloads_by_tracking_ids
