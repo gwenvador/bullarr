@@ -4184,3 +4184,10 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
 @media (max-width: 768px) {
     .series-cover-stack { display: flex; flex-direction: column; gap: 8px; }
 }
+
+/* « la couverture principale doit passer devant quand je passe la souris dessus » */
+@media (min-width: 769px) {
+    .series-cover-stack .series-detail-cover { position: relative; z-index: 0; transition: box-shadow .15s ease; }
+    .series-cover-stack .series-detail-cover:hover,
+    .series-cover-stack .series-detail-cover:focus-visible { z-index: 10; box-shadow: 0 10px 28px rgba(0,0,0,.45); }
+}
