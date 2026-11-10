@@ -66,7 +66,7 @@ class Config:
 
     # Version publiée (release GitHub et image ghcr.io/gwenvador/bullarr), affichée dans
     # Configuration → Vue d'ensemble → À propos. À relever à chaque release (v9.1 était restée affichée « 9.0 »).
-    APP_VERSION = '12.1'
+    APP_VERSION = '12.2'
     SOURCE_URL = 'https://github.com/gwenvador/bullarr'
     COVERS_DIR = os.path.join(DATA_DIR, 'covers')
     
