@@ -37,6 +37,7 @@ READER_ENDPOINTS = {
     'library.get_library_last_updated': _GET, 'library.get_library_series': _GET,
     'library.get_library_stats_route': _GET, 'library.get_series_details': _GET,
     'library.get_series_volumes': _GET, 'library.get_series_preview_pages': _GET,
+    'library.get_catalog_series': _GET,
     'library.manage_series_tags': _GET,
     'bedetheque.get_series_bedetheque_info': _GET, 'bedetheque.get_series_universe': _GET,
     'bedetheque.get_series_read_also': _GET, 'bedetheque.get_volume_bedetheque_reviews': _GET,

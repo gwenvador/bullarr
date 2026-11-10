@@ -3471,6 +3471,93 @@ def get_series_details(series_id):
         return jsonify({'error': error_message(e)}), 500
 
 
+def _catalog_fold(text):
+    """Minuscules sans accents : « etoile » trouve « Étoile »."""
+    text = unicodedata.normalize('NFKD', str(text or ''))
+    return ''.join(c for c in text if not unicodedata.combining(c)).casefold()
+
+
+_CATALOG_SORTS = ('title', 'added', 'updated')
+
+
+@library_bp.route('/api/catalog/series', methods=['GET'])
+def get_catalog_series():
+    """Catalogue léger et paginé des séries qui ont au moins un tome sur le disque, pour
+    les clients externes (extension Mihon / Tachiyomi) : /api/library/<id>/series est
+    trop lourd et sans pagination.
+
+    Paramètres : q (titre ou auteur, sans tenir compte des accents), sort (title, added =
+    séries récemment ajoutées, updated = dernier tome ajouté), page (à partir de 1),
+    size (1 à 100), library_id (facultatif)."""
+    from blueprints.auth.roles import SERIES_GENRE_SQL, current_restrictions, genre_blocked
+    query = _catalog_fold(request.args.get('q', '')).strip()
+    sort = request.args.get('sort', 'title')
+    if sort not in _CATALOG_SORTS:
+        sort = 'title'
+    page = max(1, request.args.get('page', 1, type=int) or 1)
+    size = min(100, max(1, request.args.get('size', 30, type=int) or 30))
+    library_id = request.args.get('library_id', type=int)
+    allowed, blocked = current_restrictions()
+    try:
+        conn = get_db_connection()
+        try:
+            rows = conn.execute(f'''
+                SELECT s.id AS id, s.title AS title, s.library_id AS library_id, s.added_at AS added_at,
+                       COALESCE(NULLIF(s.local_cover_path, ''), NULLIF(s.bedetheque_cover_path, ''),
+                                NULLIF(s.komga_cover_path, '')) AS cover,
+                       COALESCE(NULLIF(s.manual_summary, ''), NULLIF(s.bedetheque_description, ''),
+                                NULLIF(s.local_summary, '')) AS summary,
+                       {SERIES_GENRE_SQL} AS genre,
+                       COALESCE(NULLIF(s.manual_author, ''), NULLIF(s.bedetheque_scenaristes, ''),
+                                NULLIF(s.local_author, '')) AS author,
+                       NULLIF(s.bedetheque_dessinateurs, '') AS artist,
+                       COALESCE(NULLIF(s.manual_status, ''), NULLIF(s.bedetheque_status, '')) AS status,
+                       s.is_oneshot AS is_oneshot,
+                       v.owned AS owned, v.last_volume AS last_volume
+                FROM series s
+                JOIN (SELECT series_id, COUNT(*) AS owned, MAX(id) AS last_volume FROM volumes
+                      WHERE filepath IS NOT NULL AND filepath != '' GROUP BY series_id) v
+                  ON v.series_id = s.id
+            ''').fetchall()
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e)}), 500
+
+    items = []
+    for row in rows:
+        if library_id is not None and row['library_id'] != library_id:
+            continue
+        if allowed is not None and row['library_id'] not in allowed:
+            continue
+        if genre_blocked(row['genre'], blocked):
+            continue
+        if query and query not in _catalog_fold(row['title']) and query not in _catalog_fold(row['author']):
+            continue
+        items.append(row)
+
+    if sort == 'added':
+        items.sort(key=lambda r: (r['added_at'] or '', r['id']), reverse=True)
+    elif sort == 'updated':
+        items.sort(key=lambda r: r['last_volume'] or 0, reverse=True)
+    else:
+        items.sort(key=lambda r: (_catalog_fold(r['title']), r['id']))
+
+    total = len(items)
+    chunk = items[(page - 1) * size:page * size]
+    return jsonify({
+        'success': True, 'page': page, 'size': size, 'total': total,
+        'has_more': page * size < total,
+        'series': [{
+            'id': r['id'], 'title': r['title'], 'library_id': r['library_id'],
+            'cover': ('/' + r['cover'].lstrip('/')) if r['cover'] else None,
+            'summary': r['summary'], 'genre': r['genre'] or None, 'author': r['author'],
+            'artist': r['artist'], 'status': r['status'], 'is_oneshot': bool(r['is_oneshot']),
+            'owned_volumes': r['owned'],
+        } for r in chunk],
+    })
+
+
 @library_bp.route('/api/series/<int:series_id>/manual-metadata', methods=['PUT'])
 def update_series_manual_metadata(series_id):
     """Édite manuellement le titre + les métadonnées de référence d'une série
