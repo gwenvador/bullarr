@@ -4839,7 +4839,6 @@ async function loadSeriesPreviewPages(seriesId) {
             button.type = 'button';
             button.className = 'series-preview-page';
             button.setAttribute('aria-label', `${label}, page ${pageNumbers[index]} : agrandir`);
-            button.dataset.tooltip = `${label} - page ${pageNumbers[index]}`;
             // Sur mobile, seule la première vignette est visible, avec le nombre de pages en plus.
             if (index === 0 && data.pages.length > 1) button.dataset.more = `+${data.pages.length - 1}`;
             const img = document.createElement('img');
