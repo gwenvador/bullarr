@@ -5054,8 +5054,6 @@ div:has(> .replace-results-table) { container-type: inline-size; }
 .nouveautes-series-group-head .nouveautes-group-toggle { margin-top: 0; }
 #nouveautes-events-body tr.nouveautes-series-group-open > td { border-bottom: 0; }
 /* Albums dépliés : sous-lignes en retrait, légèrement teintées, titre plus discret. */
-#nouveautes-events-body tr.nouveautes-row-grouped > td { background: color-mix(in srgb, var(--color-text) 3%, transparent); }
-#nouveautes-events-body tr.nouveautes-row-grouped.nouveautes-row-new > td { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
 #nouveautes-events-body tr.nouveautes-row-merged > td.nouveautes-details-cell { padding-left: 56px !important; }
 /* Cartes (écran étroit) : sans ses 3 premières cellules, la ligne fusionnée décale ses
    positions ; on réattribue les zones de la grille. */
