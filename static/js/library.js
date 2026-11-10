@@ -3187,13 +3187,27 @@ function buildVolumeMetaBadgesHtml(v) {
         ${v.is_integral ? `<span class="badge badge-integral" title="Regroupe plusieurs tomes en un seul livre, pas de tome dédié nécessaire">📦 Intégrale${v.integral_number ? ' ' + v.integral_number : ''}</span>` : ''}
         ${v.is_hs ? `<span class="badge badge-hs" title="Hors-série: en dehors de la numérotation normale de la série">✨ Hors-série${v.hs_number ? ' ' + v.hs_number : ''}</span>` : ''}
         ${v.is_episode ? `<span class="badge badge-episode" title="Épisode: publication séparée des tomes qui la compilent ensuite">🎬 Épisode${v.episode_number ? ' ' + v.episode_number : ''}</span>` : ''}
-        ${ci.writer ? `<span class="badge" title="Scénario">${escapeHtml(ci.writer)}</span>` : (v.author ? `<span class="badge" title="Auteur">${escapeHtml(v.author)}</span>` : '')}
-        ${uniqueArtists.length && uniqueArtists.join(', ') !== (ci.writer || '') ? `<span class="badge" title="Dessin">${escapeHtml(uniqueArtists.join(', '))}</span>` : ''}
-        ${ci.publisher ? `<span class="badge" title="Éditeur">${escapeHtml(ci.publisher)}</span>` : ''}
-        ${ci.genre ? `<span class="badge" title="Genre">${escapeHtml(ci.genre)}</span>` : ''}
-        ${v.resolution ? `<span class="badge" title="Qualité/résolution du scan">${escapeHtml(String(v.resolution))}</span>` : ''}
-        ${v.release_group ? `<span class="badge" title="Releaser">${escapeHtml(String(v.release_group))}</span>` : ''}
     `;
+}
+
+// « les noms, genre… c'est pas très clair » : champs nommés (Scénario, Dessin, Éditeur…)
+// au lieu de puces anonymes. Scénario et dessin fusionnés quand c'est la même personne.
+function buildVolumeCreditsHtml(v) {
+    const ci = v.comicinfo || {};
+    const artists = [...new Set([ci.penciller, ci.inker, ci.colorist].filter(Boolean))].join(', ');
+    const writer = ci.writer || v.author || '';
+    const fields = [];
+    if (writer && artists && artists === writer) fields.push(['Auteur', writer]);
+    else {
+        if (writer) fields.push([ci.writer ? 'Scénario' : 'Auteur', writer]);
+        if (artists) fields.push(['Dessin', artists]);
+    }
+    if (ci.publisher) fields.push(['Éditeur', ci.publisher]);
+    if (ci.genre) fields.push(['Genre', ci.genre]);
+    if (v.resolution) fields.push(['Scan', String(v.resolution)]);
+    if (v.release_group) fields.push(['Release', String(v.release_group)]);
+    if (!fields.length) return '';
+    return `<dl class="volume-credits">${fields.map(([k, val]) => `<div><dt>${escapeHtml(k)}</dt><dd title="${escapeHtml(val)}">${escapeHtml(val)}</dd></div>`).join('')}</dl>`;
 }
 
 // Construit la ligne "année • pages • taille • format" d'un volume. Partagée par la
@@ -3656,10 +3670,11 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
                     <div class="volume-filename">${escapeHtml(_displayVolumeTitle(v) || v.filename)}${buildVolumeReadingBadgeHtml(v)}</div>
                     ${buildVolumeActionIconsHtml(v)}
                 </div>
-                ${ci.title ? `<div class="volume-file-detail volume-file-name">${escapeHtml(v.filename)}</div>` : ''}
+                ${ci.title ? `<div class="volume-file-detail volume-file-name" title="${escapeHtml(v.filename)}">${escapeHtml(v.filename)}</div>` : ''}
                 <div class="volume-file-detail volume-file-stats">
                     ${buildVolumeFileDetailHtml(v)}
                 </div>
+                ${buildVolumeCreditsHtml(v)}
                 <div class="volume-meta">
                     ${buildVolumeMetaBadgesHtml(v)}
                 </div>

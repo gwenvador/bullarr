@@ -5134,3 +5134,34 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
 @media (max-width: 768px) {
     .volume-item .volume-cover { width: 70px; height: 105px; }
 }
+
+/* Aperçu : colonne de texte bornée (le nom de fichier et le résumé débordaient à droite),
+   champs nommés en grille, pastilles réservées aux statuts (intégrale, HS, sans métadonnées). */
+.volume-item { grid-template-columns: auto auto minmax(0, 1fr); }
+.volume-item .volume-details { min-width: 0; }
+.volume-file-detail.volume-file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.volume-item .volume-summary { overflow-wrap: anywhere; }
+.volume-credits {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 6px 20px;
+    margin: 10px 0 0;
+}
+.volume-credits > div { min-width: 0; }
+.volume-credits dt {
+    font-size: .68em;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin: 0 0 1px;
+}
+.volume-credits dd {
+    margin: 0;
+    font-size: .9em;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.volume-item .volume-meta:empty, .volume-item .volume-meta:not(:has(*)) { display: none; }
