@@ -4842,6 +4842,8 @@ async function loadSeriesPreviewPages(seriesId) {
             button.dataset.tooltip = `${label} - page ${pageNumbers[index]}`;
             // Sur mobile, seule la première vignette est visible, avec le nombre de pages en plus.
             if (index === 0 && data.pages.length > 1) button.dataset.more = `+${data.pages.length - 1}`;
+            // Éventail sur la couverture (écran large) : 3 pages visibles, « +N » sur la dernière.
+            if (index === 2 && data.pages.length > 3) button.dataset.fanMore = `+${data.pages.length - 3}`;
             const img = document.createElement('img');
             img.src = url;
             img.alt = '';
@@ -5112,10 +5114,12 @@ async function renderSeriesDetail(seriesId) {
             <a href="/" class="settings-back-link series-detail-back-link">← Retour à la bibliothèque</a>
             <div class="series-detail-header">
                 <div class="series-detail-cover-col">
+                    <div class="series-cover-stack">
                     ${detailCoverPath
                         ? `<img class="series-detail-cover clickable-cover" src="${escapeHtml(detailCoverUrl)}" alt="${escapeHtml(data.title)}" tabindex="0" role="button" title="Afficher la couverture">`
                         : `<div class="series-detail-cover series-detail-cover-placeholder">📚</div>`}
                     <div class="series-preview-pages" id="series-preview-pages-${seriesId}" hidden></div>
+                    </div>
                     <span class="series-read-slot" id="series-read-slot-${seriesId}"></span>
                 </div>
                 <div class="series-detail-info">
