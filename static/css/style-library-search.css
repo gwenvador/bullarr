@@ -4155,9 +4155,9 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
 /* « l'album en gros et les pages internes en petit » : sur écran large, les pages de
    l'aperçu forment un petit éventail qui chevauche le bas de la couverture, au lieu
    d'une rangée de vignettes dessous. Clic : visionneuse en galerie, comme avant. */
-.series-cover-stack { position: relative; }
+.series-cover-stack { position: relative; display: flex; flex-direction: column; gap: 8px; }
 @media (min-width: 769px) {
-    .series-cover-stack { margin: 0 0 30px 0; }
+    .series-cover-stack { display: block; margin: 0 0 30px 0; }
     .series-cover-stack .series-preview-pages {
         position: absolute; left: 4%; right: 4%; bottom: -26px;
         display: flex; align-items: flex-end; justify-content: center; gap: 0;
@@ -4180,9 +4180,6 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
     .series-cover-stack .series-preview-page:hover,
     .series-cover-stack .series-preview-page:focus-visible { transform: translateY(-10px) scale(1.06); z-index: 4; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
     [data-theme="dark"] .series-cover-stack .series-preview-page { border-color: #e9e4da; }
-}
-@media (max-width: 768px) {
-    .series-cover-stack { display: flex; flex-direction: column; gap: 8px; }
 }
 
 /* « la couverture principale doit passer devant quand je passe la souris dessus » */
