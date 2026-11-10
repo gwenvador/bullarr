@@ -2013,10 +2013,20 @@ h2 {
 .form-group textarea {
     width: 100%;
     padding: 12px;
-    border: 2px solid #ddd;
+    /* « en dark mode les champs de texte sont trop bright » : bordure #ddd et fond par
+       défaut du navigateur ; on suit les couleurs du thème comme .ua-card/.lib-field. */
+    border: 2px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
     border-radius: 8px;
     font-size: 16px;
     font-family: inherit;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+    color: var(--color-text-muted);
+    opacity: .8;
 }
 
 .form-group input:focus,
