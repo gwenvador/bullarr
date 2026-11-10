@@ -2909,11 +2909,50 @@ async function _postReadStatus(url, read) {
     return data;
 }
 
+function _volumeReadMenuItemHtml(v) {
+    return v.komga_read_completed
+        ? `<button type="button" class="toolbar-dropdown-item" onclick="setVolumeReadStatus(${v.id}, false)">${svgIcon('undo')} Marquer comme non lu</button>`
+        : `<button type="button" class="toolbar-dropdown-item" onclick="setVolumeReadStatus(${v.id}, true)">${svgIcon('check-check')} Marquer comme lu</button>`;
+}
+
+function _seriesReadMenuItemHtml(data) {
+    const owned = (data.volumes || []).filter(v => v.filepath);
+    if (!owned.length) return '';
+    const allRead = owned.every(v => v.komga_read_completed);
+    return `<button class="toolbar-dropdown-item" onclick="setSeriesReadStatus(${data.id}, ${!allRead})">${svgIcon(allRead ? 'undo' : 'check-check')} ${allRead ? 'Marquer la série comme non lue' : 'Marquer la série comme lue'}</button>`;
+}
+
+// « ça recharge la page, pas besoin » : seuls le badge, la pastille de couverture et les
+// libellés des menus des tomes concernés sont mis à jour.
+function _applyReadStateInPlace(volumeIds, read) {
+    if (!currentSeriesDetail) return;
+    const ids = new Set(volumeIds);
+    (currentSeriesDetail.volumes || []).forEach(v => {
+        if (!ids.has(v.id)) return;
+        v.komga_read_completed = read;
+        v.komga_read_page = read ? (v.komga_pages_count || v.page_count || v.komga_read_page) : null;
+        document.querySelectorAll(`.volume-table-row-checkbox[data-volume-id="${v.id}"]`).forEach(cb => {
+            const host = cb.closest('tr, .volume-item');
+            if (!host) return;
+            host.querySelectorAll('.volume-reading-badge').forEach(e => e.remove());
+            const nameEl = host.querySelector('.volume-table-name, .volume-filename');
+            if (nameEl) nameEl.insertAdjacentHTML('beforeend', buildVolumeReadingBadgeHtml(v));
+            const cover = host.querySelector('.volume-cover-wrapper');
+            if (cover) {
+                cover.querySelectorAll('.volume-cover-read, .volume-cover-progress').forEach(e => e.remove());
+                cover.insertAdjacentHTML('beforeend', buildVolumeCoverReadingHtml(v));
+            }
+        });
+        document.querySelectorAll(`[onclick^="setVolumeReadStatus(${v.id},"]`).forEach(b => { b.outerHTML = _volumeReadMenuItemHtml(v); });
+    });
+    document.querySelectorAll(`[onclick^="setSeriesReadStatus(${currentSeriesDetail.id},"]`).forEach(b => { b.outerHTML = _seriesReadMenuItemHtml(currentSeriesDetail); });
+}
+
 async function setVolumeReadStatus(volumeId, read) {
     try {
         await _postReadStatus(`/api/volumes/${volumeId}/read-status`, read);
         showToast('volume-read-status', read ? 'Tome marqué comme lu' : 'Tome marqué comme non lu', { icon: read ? 'check-check' : 'undo', autoHideMs: 3000 });
-        if (currentSeriesDetail) renderSeriesDetail(currentSeriesDetail.id);
+        _applyReadStateInPlace([volumeId], read);
     } catch (error) {
         alert('❌ ' + error.message);
     }
@@ -2925,7 +2964,7 @@ async function setSeriesReadStatus(seriesId, read) {
         const n = data.updated || 0;
         showToast('series-read-status', `${n} ${n > 1 ? 'tomes marqués' : 'tome marqué'} comme ${read ? 'lu' : 'non lu'}${n > 1 ? 's' : ''}`
             + (data.failed ? ` (${data.failed} non rattaché${data.failed > 1 ? 's' : ''} à Komga)` : ''), { icon: read ? 'check-check' : 'undo', autoHideMs: 4000 });
-        renderSeriesDetail(seriesId);
+        _applyReadStateInPlace(data.volume_ids || [], read);
     } catch (error) {
         alert('❌ ' + error.message);
     }
@@ -3334,9 +3373,7 @@ function buildVolumeActionsGearHtml(v) {
     // dans la longue liste de tomes de la modale.
     const editManuallyItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="openManualEditModal(currentSeriesDetail.id, ${v.id})">${svgIcon('pencil')} Éditer ce tome</button>`;
     // « ajoute un bouton lu pour un album » : bascule lu / non lu pour le compte courant.
-    const markReadItemHtml = v.komga_read_completed
-        ? `<button type="button" class="toolbar-dropdown-item" onclick="setVolumeReadStatus(${v.id}, false)">${svgIcon('undo')} Marquer comme non lu</button>`
-        : `<button type="button" class="toolbar-dropdown-item" onclick="setVolumeReadStatus(${v.id}, true)">${svgIcon('check-check')} Marquer comme lu</button>`;
+    const markReadItemHtml = _volumeReadMenuItemHtml(v);
     // Permet de rechercher une meilleure source pour un tome DÉJÀ possédé (pas seulement
     // manquant) et de le remplacer - réutilise exactement le même flux que la recherche
     // d'un tome manquant (searchMissingVolume), le remplacement lui-même n'a besoin
@@ -4955,8 +4992,6 @@ async function renderSeriesDetail(seriesId) {
         const readLaterOn = !!data.to_read_later;
         const favoriteOn = !!data.is_favorite;
         // « bouton lu pour une série » : tous les tomes possédés.
-        const ownedForRead = (data.volumes || []).filter(v => v.filepath);
-        const seriesAllRead = ownedForRead.length > 0 && ownedForRead.every(v => v.komga_read_completed);
 
         // Tags de la série (série.tags): popup à côté du menu Liens, sur le même modèle
         const seriesTagsMenuId = `series-tags-menu-${seriesId}`;
@@ -5128,7 +5163,7 @@ async function renderSeriesDetail(seriesId) {
                             <button class="toolbar-dropdown-item" onclick="openManualEditModal(${seriesId})" title="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque" aria-label="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque">${svgIcon('pencil')} Éditer manuellement</button>
                             <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">📚 ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
                             <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">⭐ ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
-                            ${ownedForRead.length ? `<button class="toolbar-dropdown-item" onclick="setSeriesReadStatus(${seriesId}, ${!seriesAllRead})">${svgIcon(seriesAllRead ? 'undo' : 'check-check')} ${seriesAllRead ? 'Marquer la série comme non lue' : 'Marquer la série comme lue'}</button>` : ''}
+                            ${_seriesReadMenuItemHtml(data)}
                             ${data.is_oneshot ? `
                             <button class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(${seriesId})" title="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé" aria-label="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé">${svgIcon('upload')} Ajouter un fichier</button>
                             ` : ''}

@@ -2228,7 +2228,7 @@ def post_series_read_status(series_id):
             "AND COALESCE(filesystem_present, 1) = 1", (series_id,)).fetchall()]
     finally:
         conn.close()
-    done, failed, reason = 0, 0, None
+    done, failed, reason, done_ids = 0, 0, None, []
     for volume_id in ids:
         row, error = _reader_volume(volume_id)
         if error:
@@ -2236,12 +2236,13 @@ def post_series_read_status(series_id):
         synced, why = _set_volume_read_status(row, read)
         if synced:
             done += 1
+            done_ids.append(volume_id)
         else:
             failed += 1
             reason = reason or why
     if ids and not done:
         return jsonify({'success': False, 'error': _READ_STATUS_REASONS.get(reason, 'État de lecture non enregistré')}), 409
-    return jsonify({'success': True, 'read': read, 'updated': done, 'failed': failed})
+    return jsonify({'success': True, 'read': read, 'updated': done, 'failed': failed, 'volume_ids': done_ids})
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/reader/page/<int:number>', methods=['GET'])
@@ -3286,11 +3287,25 @@ def get_series_details(series_id):
         missing_volumes = json.loads(series_row['missing_volumes']) if series_row['missing_volumes'] else []
         ebdz_missing_volumes = json.loads(series_row['ebdz_missing_volumes']) if series_row['ebdz_missing_volumes'] else []
 
+        # État de lecture de chaque tome pour le compte courant (même source que
+        # /api/series/<id>/volumes) : sans lui, « Marquer comme lu » revenait toujours.
+        read_state = {}
+        try:
+            from blueprints.komga.user_link import current_progress_source
+            progress_sql, progress_params, _, _ = current_progress_source()
+            for p in cursor.execute(
+                    f'SELECT p.vol_id, p.page, p.pages_count, p.completed FROM {progress_sql} p '
+                    'JOIN volumes vv ON vv.id = p.vol_id WHERE vv.series_id = ?',
+                    (*progress_params, series_id)).fetchall():
+                read_state[p['vol_id']] = p
+        except sqlite3.OperationalError:
+            pass
+
         # Récupérer tous les volumes
         cursor.execute('''
             SELECT id, part_number, part_name, volume_number, filename, filepath, filesystem_present, filesystem_checked_at,
                    author, year, resolution, release_group, file_size, page_count, format, comicinfo, cover_path,
-                   komga_book_url, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
+                   komga_book_url, komga_book_id, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
                    is_special, special_label, is_bis, bis_suffix
             FROM volumes
             WHERE series_id = ?
@@ -3327,7 +3342,11 @@ def get_series_details(series_id):
                 'is_special': bool(vol['is_special']),
                 'special_label': vol['special_label'],
                 'is_bis': bool(vol['is_bis']),
-                'bis_suffix': vol['bis_suffix']
+                'bis_suffix': vol['bis_suffix'],
+                'komga_book_id': vol['komga_book_id'],
+                'komga_read_page': read_state[vol['id']]['page'] if vol['id'] in read_state else None,
+                'komga_pages_count': read_state[vol['id']]['pages_count'] if vol['id'] in read_state else None,
+                'komga_read_completed': bool(read_state[vol['id']]['completed']) if vol['id'] in read_state else False,
             })
 
         # ISBN de chaque album, lu dans le catalogue Bédéthèque déjà en cache (aucune requête):
