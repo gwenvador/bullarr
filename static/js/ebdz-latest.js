@@ -1484,7 +1484,9 @@ function _groupNouveautesSeriesRows(body) {
             const expanded = _nouveautesExpandedGroups.has(groupId);
 
             const header = document.createElement('tr');
-            header.className = 'nouveautes-series-group-row';
+            // « pourquoi couleur différente » : l'en-tête garde le repère « nouveau » de ses albums.
+            header.className = 'nouveautes-series-group-row'
+                + (members.some(r => r.classList.contains('nouveautes-row-new')) ? ' nouveautes-row-new' : '');
             [0, 1, 2].forEach(c => { if (first.cells[c]) header.appendChild(first.cells[c].cloneNode(true)); });
             const details = document.createElement('td');
             details.className = 'nouveautes-details-cell';

@@ -3246,7 +3246,9 @@ table thead th {
 .nouveautes-table > thead > tr > th:nth-child(1),
 .nouveautes-table > thead > tr > th:nth-child(2),
 .nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(1),
-.nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(2) {
+.nouveautes-table > tbody > tr.nouveautes-event-row > td:nth-child(2),
+.nouveautes-table > tbody > tr.nouveautes-series-group-row > td:nth-child(1),
+.nouveautes-table > tbody > tr.nouveautes-series-group-row > td:nth-child(2) {
     padding-left: 4px !important;
     padding-right: 4px !important;
 }
@@ -3262,7 +3264,7 @@ table thead th {
 .nouveautes-table > thead > tr > th:nth-child(6),
 .nouveautes-table > tbody > tr > td:nth-child(6) { width: 74px; }
 .nouveautes-table > thead > tr > th:nth-child(7),
-.nouveautes-table > tbody > tr > td:nth-child(7) { width: 150px; }
+.nouveautes-table > tbody > tr > td:nth-child(7) { width: 184px; }
 .nouveautes-origin-cell,
 .nouveautes-details-cell,
 .nouveautes-details-cell > div {
@@ -3295,7 +3297,7 @@ table thead th {
     .nouveautes-table > thead > tr > th:nth-child(6),
     .nouveautes-table > tbody > tr > td:nth-child(6) { width: 180px; }
     .nouveautes-table > thead > tr > th:nth-child(7),
-    .nouveautes-table > tbody > tr > td:nth-child(7) { width: 160px; }
+    .nouveautes-table > tbody > tr > td:nth-child(7) { width: 196px; }
     .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-control { width: min(320px, 100%); }
 }
 .nouveautes-actions-cell,
@@ -3324,6 +3326,14 @@ table thead th {
 /* « les 4 icônes, mets-les sur la même ligne » : boutons resserrés, sans la marge
    droite héritée de .btn-icon-only. */
 .nouveautes-actions-cell .btn-icon-only { margin-right: 0; padding: 4px 6px; }
+/* « pourquoi la scrollbar et c'est décalé » : une ligne RSS a jusqu'à 5 actions ; avec
+   l'écart en ligne de 8px elles dépassaient la colonne (défilement horizontal du tableau)
+   et, rétrécies par le flex, le logo qBittorrent devenait un carré vide. */
+.nouveautes-actions-cell { padding-left: 6px !important; padding-right: 6px !important; }
+.nouveautes-actions-cell > div { gap: 2px !important; }
+.nouveautes-actions-cell > div > * { flex-shrink: 0; }
+.nouveautes-actions-cell .torrent-client-logo { width: 16px; height: 16px; flex-shrink: 0; }
+.nouveautes-actions-cell .badge-monitored { padding: 2px 4px; font-size: 0.9em; }
 
 /* "dans nouveautés actions c'est au dessus de série sur un ecran plus petit" - collée au bord
    droit, la colonne Actions passait par-dessus Série pendant le défilement horizontal d'un
@@ -4090,7 +4100,8 @@ table thead th {
 
 /* Nouveautés apparues depuis la dernière visite : repère léger, compatible avec les
    thèmes clair/sombre, sans transformer la ligne en alerte. */
-#nouveautes-events-body tr.nouveautes-row-new > td {
+#nouveautes-events-body tr.nouveautes-row-new > td,
+#nouveautes-events-body tr.nouveautes-series-group-row.nouveautes-row-new > td {
     background: color-mix(in srgb, var(--color-accent) 9%, transparent);
 }
 
@@ -5044,6 +5055,7 @@ div:has(> .replace-results-table) { container-type: inline-size; }
 #nouveautes-events-body tr.nouveautes-series-group-open > td { border-bottom: 0; }
 /* Albums dépliés : sous-lignes en retrait, légèrement teintées, titre plus discret. */
 #nouveautes-events-body tr.nouveautes-row-grouped > td { background: color-mix(in srgb, var(--color-text) 3%, transparent); }
+#nouveautes-events-body tr.nouveautes-row-grouped.nouveautes-row-new > td { background: color-mix(in srgb, var(--color-accent) 9%, transparent); }
 #nouveautes-events-body tr.nouveautes-row-merged > td.nouveautes-details-cell { padding-left: 56px !important; }
 /* Cartes (écran étroit) : sans ses 3 premières cellules, la ligne fusionnée décale ses
    positions ; on réattribue les zones de la grille. */
