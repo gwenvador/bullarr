@@ -3262,7 +3262,7 @@ table thead th {
 .nouveautes-table > thead > tr > th:nth-child(6),
 .nouveautes-table > tbody > tr > td:nth-child(6) { width: 74px; }
 .nouveautes-table > thead > tr > th:nth-child(7),
-.nouveautes-table > tbody > tr > td:nth-child(7) { width: 112px; }
+.nouveautes-table > tbody > tr > td:nth-child(7) { width: 150px; }
 .nouveautes-origin-cell,
 .nouveautes-details-cell,
 .nouveautes-details-cell > div {
@@ -3295,7 +3295,7 @@ table thead th {
     .nouveautes-table > thead > tr > th:nth-child(6),
     .nouveautes-table > tbody > tr > td:nth-child(6) { width: 180px; }
     .nouveautes-table > thead > tr > th:nth-child(7),
-    .nouveautes-table > tbody > tr > td:nth-child(7) { width: 150px; }
+    .nouveautes-table > tbody > tr > td:nth-child(7) { width: 160px; }
     .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-control { width: min(320px, 100%); }
 }
 .nouveautes-actions-cell,
@@ -3318,9 +3318,12 @@ table thead th {
 .nouveautes-actions-cell > div {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-wrap: nowrap;
+    gap: 4px;
 }
+/* « les 4 icônes, mets-les sur la même ligne » : boutons resserrés, sans la marge
+   droite héritée de .btn-icon-only. */
+.nouveautes-actions-cell .btn-icon-only { margin-right: 0; padding: 4px 6px; }
 
 /* "dans nouveautés actions c'est au dessus de série sur un ecran plus petit" - collée au bord
    droit, la colonne Actions passait par-dessus Série pendant le défilement horizontal d'un
@@ -5041,9 +5044,20 @@ div:has(> .replace-results-table) { container-type: inline-size; }
 #nouveautes-events-body tr.nouveautes-series-group-open > td { border-bottom: 0; }
 /* Albums dépliés : sous-lignes en retrait, légèrement teintées, titre plus discret. */
 #nouveautes-events-body tr.nouveautes-row-grouped > td { background: color-mix(in srgb, var(--color-text) 3%, transparent); }
-#nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell { padding-left: 26px !important; position: relative; }
-#nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell::before {
-    content: ""; position: absolute; left: 12px; top: 0; bottom: 0; width: 1px; background: var(--color-border); }
+#nouveautes-events-body tr.nouveautes-row-merged > td.nouveautes-details-cell { padding-left: 56px !important; }
+/* Cartes (écran étroit) : sans ses 3 premières cellules, la ligne fusionnée décale ses
+   positions ; on réattribue les zones de la grille. */
+@media (max-width: 900px) {
+    .nouveautes-table > tbody > tr.nouveautes-event-row.nouveautes-row-merged > td:nth-child(1) { grid-area: details; padding-left: 10px !important; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row.nouveautes-row-merged > td:nth-child(2) { grid-area: genre; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row.nouveautes-row-merged > td:nth-child(3) { grid-area: matched; text-align: right !important; }
+    .nouveautes-table > tbody > tr.nouveautes-event-row.nouveautes-row-merged > td:nth-child(4) { grid-area: actions; }
+    /* En-tête de groupe en carte : date, type, origine sur une ligne, série en dessous. */
+    #nouveautes-events-body tr.nouveautes-series-group-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px; }
+    #nouveautes-events-body tr.nouveautes-series-group-row > td { display: block; padding: 0 !important; width: auto !important; border: 0; }
+    #nouveautes-events-body tr.nouveautes-series-group-row > td.nouveautes-details-cell { flex: 1 1 100%; }
+    #nouveautes-events-body tr.nouveautes-series-group-row > td:last-child:not(.nouveautes-details-cell) { display: none; }
+}
 #nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell > div:first-child { font-weight: 500 !important; font-size: 0.93em; }
 #nouveautes-events-body tr.nouveautes-row-grouped .nouveautes-details-cell .icon-owned .icon { width: 14px; height: 14px; }
 

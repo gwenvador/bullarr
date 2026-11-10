@@ -1536,6 +1536,16 @@ function _groupNouveautesSeriesRows(body) {
                 [0, 1, 2].forEach(c => {
                     if (r.cells[c] && cellKey(r, c) === cellKey(header, c)) r.cells[c].classList.add('nouveautes-cell-repeat');
                 });
+                // « j'aime pas le grand blanc » : quand Date, Type et Origine répètent tous
+                // l'en-tête, ces trois cellules vides sont fusionnées dans Détails, dont le
+                // contenu part alors un peu en retrait au lieu d'après la colonne Origine.
+                if ([0, 1, 2].every(c => r.cells[c] && r.cells[c].classList.contains('nouveautes-cell-repeat'))
+                        && r.cells[3] && r.cells[3].classList.contains('nouveautes-details-cell')) {
+                    const details = r.cells[3];
+                    r.cells[2].remove(); r.cells[1].remove(); r.cells[0].remove();
+                    details.colSpan = 4;
+                    r.classList.add('nouveautes-row-merged');
+                }
             });
 
             const paint = open => {
