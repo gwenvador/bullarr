@@ -4157,24 +4157,24 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
    d'une rangée de vignettes dessous. Clic : visionneuse en galerie, comme avant. */
 .series-cover-stack { position: relative; }
 @media (min-width: 769px) {
-    .series-cover-stack { margin: 0 22px 26px 0; }
+    .series-cover-stack { margin: 0 0 30px 0; }
     .series-cover-stack .series-preview-pages {
-        position: absolute; right: -22px; bottom: -26px;
-        display: flex; align-items: flex-end; gap: 0; width: 88%;
+        position: absolute; left: 4%; right: 4%; bottom: -26px;
+        display: flex; align-items: flex-end; justify-content: center; gap: 0;
         pointer-events: none;
     }
     .series-cover-stack .series-preview-pages[hidden] { display: none; }
     .series-cover-stack .series-preview-page {
         pointer-events: auto;
-        flex: 0 0 38%; margin-left: -12.7%;
+        flex: 0 0 34%; margin-left: -10%;
         opacity: 1; border: 3px solid #fff; border-radius: 3px;
         box-shadow: 0 6px 16px rgba(0,0,0,.35);
         transform-origin: 50% 100%;
     }
-    .series-cover-stack .series-preview-page:first-child { margin-left: 0; transform: rotate(-10deg); }
+    .series-cover-stack .series-preview-page:first-child { margin-left: 0; transform: rotate(-8deg); }
     .series-cover-stack .series-preview-page:nth-child(2) { transform: rotate(-3deg) translateY(-5px); z-index: 1; }
     .series-cover-stack .series-preview-page:nth-child(3) { transform: rotate(3deg) translateY(-5px); z-index: 2; }
-    .series-cover-stack .series-preview-page:nth-child(4) { transform: rotate(10deg); z-index: 3; }
+    .series-cover-stack .series-preview-page:nth-child(4) { transform: rotate(8deg); z-index: 3; }
     .series-cover-stack .series-preview-page:nth-child(n+5) { display: none; }
     .series-cover-stack .series-preview-page[data-more]::after { content: none; }
     .series-cover-stack .series-preview-page:hover,
