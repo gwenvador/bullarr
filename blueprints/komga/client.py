@@ -122,6 +122,21 @@ class KomgaClient:
         if response.status_code not in (200, 204):
             raise KomgaError(f"Erreur HTTP Komga {response.status_code}: {response.text[:200]}")
 
+    def delete_read_progress(self, book_id):
+        """Remet un livre à « non lu » pour le compte de la clé API
+        (DELETE /api/v1/books/{id}/read-progress)."""
+        try:
+            response = requests.delete(
+                f"{self.base_url}/api/v1/books/{book_id}/read-progress",
+                headers=self.headers,
+                timeout=15
+            )
+        except requests.exceptions.RequestException as e:
+            raise KomgaError(f"Impossible de contacter Komga: {e}")
+
+        if response.status_code not in (200, 204, 404):
+            raise KomgaError(f"Erreur HTTP Komga {response.status_code}: {response.text[:200]}")
+
     def search_series(self, query, size=40):
         """Recherche des séries par titre. Retourne une liste de dicts simplifiés."""
         try:

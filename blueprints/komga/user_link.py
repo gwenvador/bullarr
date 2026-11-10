@@ -325,3 +325,25 @@ def record_user_progress(user_key, komga_book_id, page, completed, pages_count=N
         conn.commit()
     finally:
         conn.close()
+
+
+def clear_local_progress(user_key, series_id, filename):
+    """« Marquer comme non lu » pour un compte sans Komga relié."""
+    conn = _connect()
+    try:
+        conn.execute('DELETE FROM user_local_read_progress WHERE user_key = ? AND series_id = ? AND filename = ?',
+                     (user_key, series_id, filename))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def clear_user_progress(user_key, komga_book_id):
+    """« Marquer comme non lu » reflété tout de suite pour un compte Komga relié."""
+    conn = _connect()
+    try:
+        conn.execute('DELETE FROM user_komga_read_progress WHERE user_key = ? AND komga_book_id = ?',
+                     (user_key, komga_book_id))
+        conn.commit()
+    finally:
+        conn.close()

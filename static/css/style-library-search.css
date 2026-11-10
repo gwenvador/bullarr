@@ -805,9 +805,20 @@
     color: #b91c1c;
 }
 
+/* « très moche » : le survol rose pâle (#fee2e2) rendait le libellé illisible en sombre. */
 .toolbar-dropdown-item-danger:hover {
-    background: #fee2e2;
-    color: #991b1b;
+    background: color-mix(in srgb, #dc2626 12%, transparent);
+    color: #b91c1c;
+}
+[data-theme="dark"] .toolbar-dropdown-item-danger { color: #f87171; }
+[data-theme="dark"] .toolbar-btn-danger { color: #f87171; }
+[data-theme="dark"] .toolbar-btn-danger:hover {
+    background: color-mix(in srgb, #ef4444 18%, transparent);
+    color: #fca5a5;
+}
+[data-theme="dark"] .toolbar-dropdown-item-danger:hover {
+    background: color-mix(in srgb, #ef4444 18%, transparent);
+    color: #fca5a5;
 }
 
 /* Menus déroulants de la toolbar (Filtrer/Ordonner): une seule option active à la fois */
@@ -2212,12 +2223,14 @@ body.col-reordering {
     background: #eee;
 }
 
+/* « les fichiers possédés sur fond vert c'est moche » : fond neutre ; c'est la ligne
+   non possédée qui est atténuée (voir .volume-table-row-placeholder). */
 .volume-table-row-owned {
-    background: #f1f8f3;
+    background: transparent;
 }
 
 .volume-table-row-owned:hover {
-    background: #e6f4e9;
+    background: color-mix(in srgb, var(--color-text) 4%, transparent);
 }
 
 /* Même correctif que .volume-item/.volume-item-placeholder dans style.css: ces couleurs
@@ -2233,11 +2246,11 @@ body.col-reordering {
 }
 
 [data-theme="dark"] .volume-table-row-owned {
-    background: #1e2b21;
+    background: transparent;
 }
 
 [data-theme="dark"] .volume-table-row-owned:hover {
-    background: #253527;
+    background: color-mix(in srgb, var(--color-text) 5%, transparent);
 }
 
 [data-theme="dark"] .volumes-table thead th,
@@ -3203,10 +3216,6 @@ a.result-title:hover {
     color: var(--color-text);
 }
 
-[data-theme="dark"] .toolbar-btn-danger,
-[data-theme="dark"] .toolbar-dropdown-item-danger,
-[data-theme="dark"] .toolbar-btn-danger:hover,
-[data-theme="dark"] .toolbar-dropdown-item-danger:hover,
 /* Modale "Fichiers EBDZ" d'un tome (openEbdzMatchModal, library.js) - en-tête violet
    (identité EBDZ) et ligne surlignée jaune (tome absent de la collection) étaient codés
    en dur, restant clairs quel que soit le thème. */
@@ -4128,3 +4137,8 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
     .library-content > .search-row { flex-wrap: wrap; }
     .library-content > .search-row .library-stats-row-compact { flex: 1 1 0; min-width: 0; overflow: hidden; }
 }
+
+/* Menus d'actions (molette d'un tome, Actions de la série) : pas de puce de sélection,
+   réservée aux menus de filtres où elle indique l'état actif. */
+.toolbar-dropdown-menu-autoclose .toolbar-dropdown-item { padding-left: 10px; }
+.toolbar-dropdown-menu-autoclose .toolbar-dropdown-item::before { content: none; }

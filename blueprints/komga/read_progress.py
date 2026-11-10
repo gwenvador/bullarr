@@ -163,6 +163,18 @@ def record_local_progress(komga_book_id, page, completed, pages_count=None):
         conn.close()
 
 
+def clear_local_progress(komga_book_id):
+    """« Marquer comme non lu » envoyé à Komga avec succès : reflété tout de suite."""
+    if not komga_book_id:
+        return
+    conn = _connect()
+    try:
+        conn.execute('DELETE FROM komga_read_progress WHERE komga_book_id = ?', (komga_book_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 class ReadProgressScheduler:
     def __init__(self):
         self.scheduler = None

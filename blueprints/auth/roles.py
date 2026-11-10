@@ -44,6 +44,8 @@ READER_ENDPOINTS = {
     # Lecture en ligne et téléchargement
     'library.get_volume_reader_info': _GET, 'library.get_volume_reader_page': _GET,
     'library.get_volume_reader_thumbnail': _GET, 'library.post_volume_reader_progress': frozenset({'POST'}),
+    # « Marquer comme lu / non lu » (tome, série) : état de lecture propre au compte.
+    'library.post_volume_read_status': frozenset({'POST'}), 'library.post_series_read_status': frozenset({'POST'}),
     'library.download_series': _GET, 'library.download_volume': _GET,
     'library.download_volumes_zip': frozenset({'POST'}),
     # Listes personnelles

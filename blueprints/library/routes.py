@@ -2140,6 +2140,110 @@ def post_volume_reader_progress(volume_id):
     return jsonify({'success': True, 'synced': True})
 
 
+def _set_volume_read_status(row, read):
+    """« Marquer comme lu / non lu » un tome possédé, pour le compte courant, avec la même
+    règle que le lecteur intégré (voir post_volume_reader_progress) : avancement local sans
+    Komga relié, compte Komga relié sinon, compte Komga du serveur pour l'administrateur.
+    Renvoie (synchronisé, raison)."""
+    from blueprints.komga.client import KomgaClient, KomgaError
+    from blueprints.komga.config_store import load_komga_config
+    from blueprints.auth.roles import current_user_key, is_reader
+    from blueprints.komga import user_link
+    from blueprints.komga import read_progress
+    config = load_komga_config()
+    user_key = current_user_key()
+    conn = get_db_connection()
+    try:
+        pc = conn.execute('SELECT page_count FROM volumes WHERE id = ?', (row['id'],)).fetchone()
+    finally:
+        conn.close()
+    last_page = int(pc['page_count']) if pc and pc['page_count'] else 1
+    if user_key and user_link.progress_source(user_key, is_reader()).kind == 'local':
+        if read:
+            user_link.record_local_progress(user_key, row['series_id'], row['filename'], last_page, True)
+        else:
+            user_link.clear_local_progress(user_key, row['series_id'], row['filename'])
+        return True, 'local'
+    personal = user_link.user_client(user_key) if user_key and config.get('enabled') else None
+    client = personal
+    if client is None:
+        if is_reader():
+            return False, 'reader'
+        if not config.get('enabled') or config.get('sync_read_progress', True) is False:
+            return False, 'disabled'
+        client = KomgaClient()
+    if not row['komga_book_id']:
+        return False, 'no_komga_book'
+    try:
+        if read:
+            client.update_read_progress(row['komga_book_id'], last_page, True)
+        else:
+            client.delete_read_progress(row['komga_book_id'])
+    except KomgaError:
+        return False, 'komga_error'
+    try:
+        if personal is not None:
+            if read:
+                user_link.record_user_progress(user_key, row['komga_book_id'], last_page, True)
+            else:
+                user_link.clear_user_progress(user_key, row['komga_book_id'])
+        elif read:
+            read_progress.record_local_progress(row['komga_book_id'], last_page, True)
+        else:
+            read_progress.clear_local_progress(row['komga_book_id'])
+    except sqlite3.Error as e:
+        print(f"État de lecture local non enregistré: {e}")
+    return True, 'komga'
+
+
+_READ_STATUS_REASONS = {
+    'reader': "Reliez votre compte Komga pour garder l'état de lecture",
+    'disabled': "La synchronisation de lecture Komga est désactivée",
+    'no_komga_book': "Ce tome n'est pas encore rattaché à Komga",
+    'komga_error': "Komga n'a pas pu enregistrer l'état de lecture",
+}
+
+
+@library_bp.route('/api/volumes/<int:volume_id>/read-status', methods=['POST'])
+def post_volume_read_status(volume_id):
+    """« Marquer comme lu / non lu » un tome (JSON {read: true|false})."""
+    row, error = _reader_volume(volume_id)
+    if error:
+        return error
+    read = bool((request.get_json(silent=True) or {}).get('read', True))
+    synced, reason = _set_volume_read_status(row, read)
+    if not synced:
+        return jsonify({'success': False, 'error': _READ_STATUS_REASONS.get(reason, 'État de lecture non enregistré')}), 409
+    return jsonify({'success': True, 'read': read})
+
+
+@library_bp.route('/api/series/<int:series_id>/read-status', methods=['POST'])
+def post_series_read_status(series_id):
+    """« Marquer la série comme lue / non lue » : tous les tomes possédés (fichier présent)."""
+    read = bool((request.get_json(silent=True) or {}).get('read', True))
+    conn = get_db_connection()
+    try:
+        ids = [r['id'] for r in conn.execute(
+            "SELECT id FROM volumes WHERE series_id = ? AND filepath IS NOT NULL AND filepath != '' "
+            "AND COALESCE(filesystem_present, 1) = 1", (series_id,)).fetchall()]
+    finally:
+        conn.close()
+    done, failed, reason = 0, 0, None
+    for volume_id in ids:
+        row, error = _reader_volume(volume_id)
+        if error:
+            continue
+        synced, why = _set_volume_read_status(row, read)
+        if synced:
+            done += 1
+        else:
+            failed += 1
+            reason = reason or why
+    if ids and not done:
+        return jsonify({'success': False, 'error': _READ_STATUS_REASONS.get(reason, 'État de lecture non enregistré')}), 409
+    return jsonify({'success': True, 'read': read, 'updated': done, 'failed': failed})
+
+
 @library_bp.route('/api/volumes/<int:volume_id>/reader/page/<int:number>', methods=['GET'])
 def get_volume_reader_page(volume_id, number):
     """Lecteur intégré : image de la page `number` (à partir de 1) d'un tome."""
