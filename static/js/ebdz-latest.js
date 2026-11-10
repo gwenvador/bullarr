@@ -1491,7 +1491,15 @@ function _groupNouveautesSeriesRows(body) {
             details.style.padding = '10px';
             const name = document.createElement('div');
             name.className = 'nouveautes-series-group-name';
-            name.textContent = first.dataset.seriesName || '';
+            // « bouge le lien bedetheque des sous-albums vers le title header » : le lien
+            // de la série (logo + nom) passe sur l'en-tête du groupe et disparaît des albums,
+            // qui ne gardent que leur crayon de match.
+            const seriesLink = members
+                .map(r => r.querySelector('.nouveautes-matched-series a[href]:not([href="#"])'))
+                .find(Boolean);
+            if (seriesLink) name.appendChild(seriesLink.cloneNode(true));
+            else name.textContent = first.dataset.seriesName || '';
+            members.forEach(r => r.querySelectorAll('.nouveautes-matched-series a[href]:not([href="#"])').forEach(a => a.remove()));
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'nouveautes-group-toggle';
