@@ -4842,8 +4842,6 @@ async function loadSeriesPreviewPages(seriesId) {
             button.dataset.tooltip = `${label} - page ${pageNumbers[index]}`;
             // Sur mobile, seule la première vignette est visible, avec le nombre de pages en plus.
             if (index === 0 && data.pages.length > 1) button.dataset.more = `+${data.pages.length - 1}`;
-            // Éventail sur la couverture (écran large) : 3 pages visibles, « +N » sur la dernière.
-            if (index === 2 && data.pages.length > 3) button.dataset.fanMore = `+${data.pages.length - 3}`;
             const img = document.createElement('img');
             img.src = url;
             img.alt = '';

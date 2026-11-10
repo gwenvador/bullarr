@@ -4160,27 +4160,25 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
     .series-cover-stack { margin: 0 22px 26px 0; }
     .series-cover-stack .series-preview-pages {
         position: absolute; right: -22px; bottom: -26px;
-        display: flex; align-items: flex-end; gap: 0; width: 72%;
+        display: flex; align-items: flex-end; gap: 0; width: 88%;
         pointer-events: none;
     }
     .series-cover-stack .series-preview-pages[hidden] { display: none; }
     .series-cover-stack .series-preview-page {
         pointer-events: auto;
-        flex: 0 0 44%; margin-left: -12%;
+        flex: 0 0 38%; margin-left: -12.7%;
         opacity: 1; border: 3px solid #fff; border-radius: 3px;
         box-shadow: 0 6px 16px rgba(0,0,0,.35);
         transform-origin: 50% 100%;
     }
-    .series-cover-stack .series-preview-page:first-child { margin-left: 0; transform: rotate(-8deg); }
-    .series-cover-stack .series-preview-page:nth-child(2) { transform: rotate(-1deg) translateY(-4px); z-index: 1; }
-    .series-cover-stack .series-preview-page:nth-child(3) { transform: rotate(7deg); z-index: 2; }
-    .series-cover-stack .series-preview-page:nth-child(n+4) { display: none; }
+    .series-cover-stack .series-preview-page:first-child { margin-left: 0; transform: rotate(-10deg); }
+    .series-cover-stack .series-preview-page:nth-child(2) { transform: rotate(-3deg) translateY(-5px); z-index: 1; }
+    .series-cover-stack .series-preview-page:nth-child(3) { transform: rotate(3deg) translateY(-5px); z-index: 2; }
+    .series-cover-stack .series-preview-page:nth-child(4) { transform: rotate(10deg); z-index: 3; }
+    .series-cover-stack .series-preview-page:nth-child(n+5) { display: none; }
+    .series-cover-stack .series-preview-page[data-more]::after { content: none; }
     .series-cover-stack .series-preview-page:hover,
-    .series-cover-stack .series-preview-page:focus-visible { transform: translateY(-10px) scale(1.06); z-index: 3; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
-    .series-cover-stack .series-preview-page[data-fan-more]::after {
-        content: attr(data-fan-more); position: absolute; right: 4px; bottom: 4px; padding: 1px 6px;
-        border-radius: 8px; background: rgba(0,0,0,.7); color: #fff; font-size: 11px; line-height: 1.4;
-    }
+    .series-cover-stack .series-preview-page:focus-visible { transform: translateY(-10px) scale(1.06); z-index: 4; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
     [data-theme="dark"] .series-cover-stack .series-preview-page { border-color: #e9e4da; }
 }
 @media (max-width: 768px) {
