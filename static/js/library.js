@@ -3187,12 +3187,12 @@ function buildVolumeMetaBadgesHtml(v) {
         ${v.is_integral ? `<span class="badge badge-integral" title="Regroupe plusieurs tomes en un seul livre, pas de tome dédié nécessaire">📦 Intégrale${v.integral_number ? ' ' + v.integral_number : ''}</span>` : ''}
         ${v.is_hs ? `<span class="badge badge-hs" title="Hors-série: en dehors de la numérotation normale de la série">✨ Hors-série${v.hs_number ? ' ' + v.hs_number : ''}</span>` : ''}
         ${v.is_episode ? `<span class="badge badge-episode" title="Épisode: publication séparée des tomes qui la compilent ensuite">🎬 Épisode${v.episode_number ? ' ' + v.episode_number : ''}</span>` : ''}
-        ${ci.writer ? `<span class="badge">✍️ ${escapeHtml(ci.writer)}</span>` : (v.author ? `<span class="badge">👤 ${escapeHtml(v.author)}</span>` : '')}
-        ${uniqueArtists.length ? `<span class="badge">🎨 ${escapeHtml(uniqueArtists.join(', '))}</span>` : ''}
-        ${ci.publisher ? `<span class="badge">🏢 ${escapeHtml(ci.publisher)}</span>` : ''}
-        ${ci.genre ? `<span class="badge">🏷️ ${escapeHtml(ci.genre)}</span>` : ''}
-        ${v.resolution ? `<span class="badge" title="Qualité/résolution du scan">🖼️ ${escapeHtml(String(v.resolution))}</span>` : ''}
-        ${v.release_group ? `<span class="badge" title="Releaser">📀 ${escapeHtml(String(v.release_group))}</span>` : ''}
+        ${ci.writer ? `<span class="badge" title="Scénario">${escapeHtml(ci.writer)}</span>` : (v.author ? `<span class="badge" title="Auteur">${escapeHtml(v.author)}</span>` : '')}
+        ${uniqueArtists.length && uniqueArtists.join(', ') !== (ci.writer || '') ? `<span class="badge" title="Dessin">${escapeHtml(uniqueArtists.join(', '))}</span>` : ''}
+        ${ci.publisher ? `<span class="badge" title="Éditeur">${escapeHtml(ci.publisher)}</span>` : ''}
+        ${ci.genre ? `<span class="badge" title="Genre">${escapeHtml(ci.genre)}</span>` : ''}
+        ${v.resolution ? `<span class="badge" title="Qualité/résolution du scan">${escapeHtml(String(v.resolution))}</span>` : ''}
+        ${v.release_group ? `<span class="badge" title="Releaser">${escapeHtml(String(v.release_group))}</span>` : ''}
     `;
 }
 
@@ -3204,9 +3204,9 @@ function buildVolumeMetaBadgesHtml(v) {
 function buildVolumeFileDetailHtml(v) {
     const ci = v.comicinfo || {};
     const ratingHtml = ci.communityrating
-        ? ` • <span class="bd-rating-link" data-tooltip="Voir les avis Bédéthèque" onclick="openBedethequeReviewsModal(${v.id})">⭐ ${escapeHtml(String(ci.communityrating))}/5${ci.communityratingcount ? ` (${escapeHtml(String(ci.communityratingcount))} votes)` : ''}</span>`
+        ? ` · <span class="bd-rating-link" data-tooltip="Voir les avis Bédéthèque" onclick="openBedethequeReviewsModal(${v.id})">★ ${escapeHtml(String(ci.communityrating))}/5${ci.communityratingcount ? ` (${escapeHtml(String(ci.communityratingcount))} votes)` : ''}</span>`
         : '';
-    return `${(ci.year || v.year) ? `<span${_volumeDateTooltipAttr(v)}>📅 ${escapeHtml(_volumeDateLabel(v))}</span> • ` : ''}📄 ${v.page_count} pages • 💾 ${formatBytes(v.file_size)} • ${(v.format || '').toUpperCase()}${ratingHtml}`;
+    return `${(ci.year || v.year) ? `<span${_volumeDateTooltipAttr(v)}>${escapeHtml(_volumeDateLabel(v))}</span> · ` : ''}${v.page_count} pages · ${formatBytes(v.file_size)} · ${(v.format || '').toUpperCase()}${ratingHtml}`;
 }
 
 // Construit les actions propres à un tome précis (MAJ métadonnées, conversion
@@ -3656,8 +3656,8 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
                     <div class="volume-filename">${escapeHtml(_displayVolumeTitle(v) || v.filename)}${buildVolumeReadingBadgeHtml(v)}</div>
                     ${buildVolumeActionIconsHtml(v)}
                 </div>
-                ${ci.title ? `<div class="volume-file-detail">${escapeHtml(v.filename)}</div>` : ''}
-                <div class="volume-file-detail">
+                ${ci.title ? `<div class="volume-file-detail volume-file-name">${escapeHtml(v.filename)}</div>` : ''}
+                <div class="volume-file-detail volume-file-stats">
                     ${buildVolumeFileDetailHtml(v)}
                 </div>
                 <div class="volume-meta">

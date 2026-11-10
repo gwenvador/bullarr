@@ -5095,3 +5095,42 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
 .import-files-table > tbody > tr > td:nth-child(5) { width: 19%; overflow-wrap: break-word; word-break: normal; hyphens: auto; }
 .import-files-table > thead > tr > th:nth-child(8),
 .import-files-table > tbody > tr > td:nth-child(8) { width: 14%; }
+
+/* « c'est moche le mode aperçu » : carte neutre bordée (plus de fond vert ni de
+   glissement au survol), méta en texte simple, puces discrètes, case de sélection
+   visible au survol ou cochée. */
+.volume-item:not(.volume-item-placeholder),
+[data-theme="dark"] .volume-item:not(.volume-item-placeholder) {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+}
+.volume-item { padding: 14px 16px; margin: 10px 0; gap: 16px; align-items: start; transition: border-color .15s, background .15s; }
+.volume-item:not(.volume-item-placeholder):hover,
+[data-theme="dark"] .volume-item:not(.volume-item-placeholder):hover {
+    background: color-mix(in srgb, var(--color-text) 3%, var(--color-surface));
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+    transform: none;
+}
+.volume-item .volume-number { margin-top: 2px; }
+.volume-item .volume-table-row-checkbox { opacity: 0; transition: opacity .15s; }
+.volume-item:hover .volume-table-row-checkbox,
+.volume-item .volume-table-row-checkbox:checked,
+.volume-item .volume-table-row-checkbox:focus-visible { opacity: 1; }
+.volume-item .volume-cover { width: 96px; height: 144px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.volume-item .volume-filename { font-size: 1.08em; font-weight: 650; }
+.volume-file-detail.volume-file-name { font-size: .74em; opacity: .75; margin: 2px 0 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.volume-file-detail.volume-file-stats { font-family: inherit; font-size: .84em; margin-bottom: 0; }
+.volume-item .volume-meta { gap: 6px; margin-top: 10px; }
+.volume-item .volume-meta .badge:not([class*="badge-"]),
+[data-theme="dark"] .volume-item .volume-meta .badge:not([class*="badge-"]) {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    padding: 2px 9px;
+    font-size: .78em;
+    border-radius: 999px;
+}
+.volume-item .volume-summary { font-size: .86em; margin-top: 8px; }
+@media (max-width: 768px) {
+    .volume-item .volume-cover { width: 70px; height: 105px; }
+}
