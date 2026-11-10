@@ -1499,11 +1499,23 @@ function _groupNouveautesSeriesRows(body) {
                 .find(Boolean);
             if (seriesLink) name.appendChild(seriesLink.cloneNode(true));
             else name.textContent = first.dataset.seriesName || '';
-            members.forEach(r => r.querySelectorAll('.nouveautes-matched-series a[href]:not([href="#"])').forEach(a => a.remove()));
+            members.forEach(r => {
+                r.querySelectorAll('.nouveautes-matched-series a[href]:not([href="#"])').forEach(a => a.remove());
+                // Le crayon restant, seul sur sa ligne, rejoint la ligne du titre de l'album.
+                const matched = r.querySelector('.nouveautes-details-cell > .nouveautes-matched-series');
+                const titleLine = r.querySelector('.nouveautes-details-cell > div:first-child');
+                if (matched && titleLine && titleLine !== matched && !matched.textContent.trim()) {
+                    titleLine.append(...matched.childNodes);
+                    matched.remove();
+                }
+            });
+            const nameRow = document.createElement('div');
+            nameRow.className = 'nouveautes-series-group-head';
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'nouveautes-group-toggle';
-            details.append(name, btn);
+            nameRow.append(name, btn);
+            details.append(nameRow);
             header.appendChild(details);
             const rest = first.cells.length - header.cells.length;
             if (rest > 0) {

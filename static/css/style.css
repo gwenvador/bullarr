@@ -5032,7 +5032,20 @@ div:has(> .replace-results-table) { container-type: inline-size; }
 #nouveautes-events-body tr.nouveautes-series-group-row { cursor: pointer; border-bottom: 1px solid var(--color-border); }
 #nouveautes-events-body tr.nouveautes-series-group-row:hover > td { background: color-mix(in srgb, var(--color-accent) 5%, transparent); }
 #nouveautes-events-body tr.nouveautes-series-group-row > td { padding: 10px; }
-.nouveautes-series-group-name { font-weight: 600; }
+.nouveautes-series-group-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.nouveautes-series-group-name { font-weight: 600; font-size: 1.02em; }
+.nouveautes-series-group-name a { color: var(--color-text); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.nouveautes-series-group-name a:hover { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }
+.nouveautes-series-group-name a img { margin-right: 0 !important; }
+.nouveautes-series-group-head .nouveautes-group-toggle { margin-top: 0; }
+#nouveautes-events-body tr.nouveautes-series-group-open > td { border-bottom: 0; }
+/* Albums dépliés : sous-lignes en retrait, légèrement teintées, titre plus discret. */
+#nouveautes-events-body tr.nouveautes-row-grouped > td { background: color-mix(in srgb, var(--color-text) 3%, transparent); }
+#nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell { padding-left: 26px !important; position: relative; }
+#nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell::before {
+    content: ""; position: absolute; left: 12px; top: 0; bottom: 0; width: 1px; background: var(--color-border); }
+#nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell > div:first-child { font-weight: 500 !important; font-size: 0.93em; }
+#nouveautes-events-body tr.nouveautes-row-grouped .nouveautes-details-cell .icon-owned .icon { width: 14px; height: 14px; }
 
 /* Activités : icône de type cliquable vers la page d'origine du téléchargement. */
 a.client-source-link { display: inline-flex; border-radius: 6px; padding: 2px; transition: background .15s, box-shadow .15s; }
