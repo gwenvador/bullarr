@@ -3426,14 +3426,23 @@ body.comic-reader-open { overflow: hidden; }
 /* Aide : liste des raccourcis du lecteur (bouton ? ou touche ?). */
 .comic-reader-help { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, 0.72); cursor: pointer; }
 .comic-reader-help[hidden] { display: none; }
-.comic-reader-help-card { max-width: 760px; max-height: 100%; overflow: auto; padding: 20px 24px; border-radius: 12px; background: #1c1c1c; border: 1px solid rgba(255, 255, 255, 0.15); cursor: default; }
-.comic-reader-help-card h2 { margin: 0 0 14px; font-size: 1.15rem; color: #fff; }
-.comic-reader-help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px 28px; }
-.comic-reader-help-group h3 { margin: 0 0 6px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-accent); }
-.comic-reader-help-row { display: flex; align-items: baseline; gap: 12px; padding: 3px 0; font-size: 0.9rem; color: #ddd; }
-.comic-reader-help-keys { flex: 0 0 11.5em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.82rem; color: #fff; background: rgba(255, 255, 255, 0.1); padding: 2px 8px; border-radius: 5px; }
-.comic-reader-help-close { margin: 16px 0 0; text-align: center; font-size: 0.8rem; color: #999; }
-@media (max-width: 600px) { .comic-reader-help-keys { flex-basis: 8em; } }
+.comic-reader-help-card { position: relative; width: min(1500px, 100%); max-height: 100%; overflow: auto; padding: 22px 24px 18px; border-radius: 10px; background: #212121; border: 1px solid rgba(255, 255, 255, 0.1); cursor: default; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+.comic-reader-help-x { position: absolute; top: 10px; right: 12px; background: none; border: 0; color: #ddd; font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.comic-reader-help-x:hover { background: rgba(255,255,255,.08); color: #fff; }
+.comic-reader-help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 28px; }
+.comic-reader-help-group h3 { margin: 0 0 8px; text-align: center; font-size: 1.15rem; font-weight: 500; color: #ccc; }
+.comic-reader-help-group table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.comic-reader-help-group th { text-align: left; font-size: 0.72rem; font-weight: 600; color: #bbb; padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.comic-reader-help-group td { padding: 9px 14px; border-bottom: 1px solid rgba(255,255,255,.12); color: #e5e5e5; vertical-align: middle; }
+.comic-reader-help-group tbody tr:hover { background: rgba(255,255,255,.06); }
+.comic-reader-help-keys { width: 1%; white-space: nowrap; }
+.comic-reader-help-group thead th { background: transparent !important; color: #bbb !important; }
+.comic-reader-help-keys kbd { display: inline-block; min-width: 1.7em; text-align: center; padding: 2px 7px; border-radius: 4px; background: #333; border: 1px solid #444; border-bottom-width: 2px; color: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.95rem; line-height: 1.4; }
+.comic-reader-help-or { margin: 0 6px; font-size: 0.72rem; color: #888; }
+.comic-reader-help-gesture { color: #aaa; font-size: 0.82rem; white-space: normal; }
+@media (max-width: 600px) { .comic-reader-help-group td, .comic-reader-help-group th { padding: 7px 8px; } }
+/* « M » : barres masquées */
+.comic-reader.chrome-hidden .comic-reader-bar, .comic-reader.chrome-hidden .comic-reader-footer { display: none; }
 
 
 /* Tableau de la bibliothèque sur petit écran: la règle globale `table { display: block; overflow-x: auto }`

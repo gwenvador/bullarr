@@ -24,7 +24,7 @@ class ComicReaderHelpTest(unittest.TestCase):
     def test_documented_keys_are_really_handled(self):
         handler = self.js[self.js.index('function _comicReaderKeydown('):self.js.index('function _applyComicReaderFit(')]
         shortcuts = self.js[self.js.index('const COMIC_READER_SHORTCUTS'):self.js.index('function _comicReaderHelpHtml(')]
-        for label, key in (('D', "d:"), ('Z', "z:"), ('M', "m:"), ('F', "f:"), ('Début', 'Home:'), ('Fin', 'End:'),
+        for label, key in (('D', "d:"), ('Z', "z:"), ('M', "m:"), ('L', "l:"), ('V', "v:"), ('C', "c:"), ('T', "t:"), ('F', "f:"), ('Début', 'Home:'), ('Fin', 'End:'),
                            ('PageDown', 'PageDown:'), ('PageUp', 'PageUp:'), ('Échap', 'Escape:'), ('0', '0:'),
                            ('Espace', "' ':"), ('+', "'+':"), ('−', "'-':")):
             self.assertIn(label, shortcuts, label)

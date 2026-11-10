@@ -84,47 +84,76 @@ function _comicReaderStepTarget(page, step, count, spread) {
     return target < 1 || target > count || target === page ? null : target;
 }
 
+// Raccourcis alignés sur ceux du lecteur Komga (L / R / V / W, C, D, F, M, T, H, Échap).
+// Chaque ligne : [touches (tableau = touches clavier, texte = geste), description].
 const COMIC_READER_SHORTCUTS = [
-    ['Pages', [
-        ['→  PageDown  Espace', 'Page suivante (← en sens manga)'],
-        ['←  PageUp  Maj + Espace', 'Page précédente (→ en sens manga)'],
-        ['Début  /  Fin', 'Première / dernière page'],
+    ['Navigation', [
+        [['→'], 'Page suivante (← en sens manga)'],
+        [['←'], 'Page précédente (→ en sens manga)'],
+        [['Espace'], 'Page suivante'],
+        [['Maj + Espace'], 'Page précédente'],
+        [['PageDown'], 'Page suivante'],
+        [['PageUp'], 'Page précédente'],
+        [['Début'], 'Première page'],
+        [['Fin'], 'Dernière page'],
+        [['['], 'Tome précédent'],
+        [[']'], 'Tome suivant'],
+    ]],
+    ['Lecture', [
+        [['L'], 'Gauche → droite'],
+        [['R'], 'Droite → gauche (manga), mémorisé par série'],
+        [['V', 'W'], 'Webtoon : défilement vertical continu'],
+        [['C', 'Z'], 'Ajustement : page entière, largeur, hauteur'],
+        [['D'], 'Une ou deux pages côte à côte'],
+        [['F'], 'Plein écran'],
+    ]],
+    ['Menus', [
+        [['M'], 'Afficher / masquer les barres'],
+        [['T'], 'Afficher / masquer les miniatures'],
+        [['H', '?'], 'Afficher / masquer cette aide'],
+        [['Échap'], 'Fermer l\'aide, puis le lecteur'],
+    ]],
+    ['Zoom et gestes', [
+        [['+', '−'], 'Zoomer / dézoomer'],
+        [['0'], 'Revenir à 100 %'],
+        ['Ctrl / ⌘ + molette', 'Zoomer autour du pointeur'],
         ['Clic droite / gauche', 'Page suivante / précédente'],
-        ['Molette', 'Page suivante / précédente'],
         ['Glisser un doigt', 'Page suivante / précédente'],
-    ]],
-    ['Albums', [
-        ['[  /  ]', 'Tome précédent / suivant'],
-        ['Dernière page puis →', 'Ouvre le tome suivant'],
-    ]],
-    ['Affichage', [
-        ['W', 'Mode webtoon : défilement vertical continu'],
-        ['R', 'Sens manga (droite → gauche), mémorisé par série'],
-        ['D', 'Une ou deux pages côte à côte'],
-        ['Z', 'Ajustement : page entière, largeur, hauteur'],
-        ['M', 'Bande de miniatures'],
-        ['F', 'Plein écran'],
-    ]],
-    ['Zoom', [
-        ['+  /  −', 'Zoomer / dézoomer'],
-        ['0', 'Revenir à 100 %'],
-        ['Ctrl ou ⌘ + molette', 'Zoomer autour du pointeur'],
-        ['Glisser', 'Déplacer l\'image zoomée'],
-    ]],
-    ['Autres', [
-        ['?  H', 'Afficher / masquer cette aide'],
-        ['Échap', 'Fermer l\'aide, puis le lecteur'],
     ]],
 ];
 
 function _comicReaderHelpHtml() {
     const escape = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const keysHtml = keys => Array.isArray(keys)
+        ? keys.map(key => `<kbd>${escape(key)}</kbd>`).join('<span class="comic-reader-help-or">ou</span>')
+        : `<span class="comic-reader-help-gesture">${escape(keys)}</span>`;
     const groups = COMIC_READER_SHORTCUTS.map(([title, rows]) => `
         <section class="comic-reader-help-group">
             <h3>${escape(title)}</h3>
-            ${rows.map(([keys, label]) => `<div class="comic-reader-help-row"><span class="comic-reader-help-keys">${escape(keys)}</span><span>${escape(label)}</span></div>`).join('')}
+            <table><thead><tr><th>Touche</th><th>Description</th></tr></thead><tbody>
+            ${rows.map(([keys, label]) => `<tr><td class="comic-reader-help-keys">${keysHtml(keys)}</td><td>${escape(label)}</td></tr>`).join('')}
+            </tbody></table>
         </section>`).join('');
-    return `<div class="comic-reader-help-card" role="document"><h2>Raccourcis du lecteur</h2><div class="comic-reader-help-grid">${groups}</div><p class="comic-reader-help-close">Cliquez ou appuyez sur Échap pour fermer</p></div>`;
+    return `<div class="comic-reader-help-card" role="document"><button type="button" class="comic-reader-help-x" aria-label="Fermer l'aide">×</button><div class="comic-reader-help-grid">${groups}</div></div>`;
+}
+
+// « M » : masque la barre du haut et le pied (miniatures, curseur), comme Komga.
+function toggleComicReaderChrome(force) {
+    const overlay = document.getElementById('comic-reader');
+    if (!overlay) return;
+    const hide = force === undefined ? !overlay.classList.contains('chrome-hidden') : !!force;
+    overlay.classList.toggle('chrome-hidden', hide);
+    requestAnimationFrame(() => { if (!comicReader.webtoon) _layoutComicReaderPages(); });
+}
+
+// Sens de lecture explicite (L / R) : quitte le webtoon si besoin.
+function setComicReaderMode(mode) {
+    if (mode === 'webtoon') {
+        if (!comicReader.webtoon) toggleComicReaderWebtoon();
+        return;
+    }
+    if (comicReader.webtoon) toggleComicReaderWebtoon();
+    if (comicReader.rtl !== (mode === 'rtl')) toggleComicReaderRtl();
 }
 
 function toggleComicReaderHelp(force) {
@@ -203,15 +232,15 @@ function _buildComicReader() {
                 <button type="button" class="comic-reader-btn" data-reader-action="zoom-in" aria-label="Zoomer" data-tooltip="Zoomer (+)">+</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="prev-volume" id="comic-reader-prev-volume" aria-label="Tome précédent" data-tooltip="Tome précédent ([)" hidden>⏮</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="next-volume" id="comic-reader-next-volume" aria-label="Tome suivant" data-tooltip="Tome suivant (])" hidden>⏭</button>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="webtoon" id="comic-reader-webtoon-btn" aria-label="Mode webtoon" data-tooltip="Mode webtoon : défilement vertical continu (W)">↕<span class="comic-reader-btn-label">Webtoon</span></button>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="rtl" id="comic-reader-rtl-btn" aria-label="Sens manga" data-tooltip="Sens manga : droite → gauche (R)">⇆<span class="comic-reader-btn-label">Manga</span></button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="webtoon" id="comic-reader-webtoon-btn" aria-label="Mode webtoon" data-tooltip="Mode webtoon : défilement vertical continu (W ou V)">↕<span class="comic-reader-btn-label">Webtoon</span></button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="rtl" id="comic-reader-rtl-btn" aria-label="Sens manga" data-tooltip="Sens manga : droite → gauche (R, L pour revenir)">⇆<span class="comic-reader-btn-label">Manga</span></button>
                 <button type="button" class="comic-reader-btn comic-reader-btn-spread" data-reader-action="spread" id="comic-reader-spread-btn" aria-label="Deux pages côte à côte" data-tooltip="Deux pages côte à côte (D)">▯▯</button>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="fit" id="comic-reader-fit" aria-label="Ajustement de l'image" data-tooltip="Ajustement de l'image : page entière, largeur ou hauteur de l'écran (Z)"></button>
-                <button type="button" class="comic-reader-btn" data-reader-action="thumbs" id="comic-reader-thumbs-btn" aria-label="Miniatures des pages" data-tooltip="Miniatures des pages (M)">▦</button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="fit" id="comic-reader-fit" aria-label="Ajustement de l'image" data-tooltip="Ajustement de l'image : page entière, largeur ou hauteur de l'écran (C)"></button>
+                <button type="button" class="comic-reader-btn" data-reader-action="thumbs" id="comic-reader-thumbs-btn" aria-label="Miniatures des pages" data-tooltip="Miniatures des pages (T)">▦</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="left" id="comic-reader-left-btn" aria-label="Page précédente" data-tooltip="Page précédente (←)">‹</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="right" id="comic-reader-right-btn" aria-label="Page suivante" data-tooltip="Page suivante (→)">›</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="fullscreen" aria-label="Plein écran" data-tooltip="Plein écran (F)">⛶</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="help" id="comic-reader-help-btn" aria-label="Raccourcis clavier" data-tooltip="Raccourcis clavier (?)">?</button>
+                <button type="button" class="comic-reader-btn" data-reader-action="help" id="comic-reader-help-btn" aria-label="Raccourcis clavier" data-tooltip="Raccourcis clavier (H)">?</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="close" aria-label="Fermer le lecteur" data-tooltip="Fermer (Échap)">×</button>
             </div>
         </div>
@@ -428,13 +457,17 @@ function _comicReaderKeydown(event) {
         ArrowRight: () => stepComicReader(_comicReaderRtl() ? -1 : 1), ArrowLeft: () => stepComicReader(_comicReaderRtl() ? 1 : -1),
         '[': () => openComicReaderNeighbour(-1), ']': () => openComicReaderNeighbour(1),
         w: () => toggleComicReaderWebtoon(), W: () => toggleComicReaderWebtoon(),
-        r: () => toggleComicReaderRtl(), R: () => toggleComicReaderRtl(),
+        v: () => setComicReaderMode('webtoon'), V: () => setComicReaderMode('webtoon'),
+        l: () => setComicReaderMode('ltr'), L: () => setComicReaderMode('ltr'),
+        r: () => setComicReaderMode('rtl'), R: () => setComicReaderMode('rtl'),
         ' ': () => stepComicReader(event.shiftKey ? -1 : 1), PageDown: () => stepComicReader(1),
         PageUp: () => stepComicReader(-1), Home: () => showComicReaderPage(1),
         End: () => showComicReaderPage(comicReader.count), Escape: () => closeComicReader(),
         f: () => toggleComicReaderFullscreen(), F: () => toggleComicReaderFullscreen(),
         z: () => cycleComicReaderFit(), Z: () => cycleComicReaderFit(),
-        m: () => toggleComicReaderThumbs(), M: () => toggleComicReaderThumbs(),
+        c: () => cycleComicReaderFit(), C: () => cycleComicReaderFit(),
+        t: () => toggleComicReaderThumbs(), T: () => toggleComicReaderThumbs(),
+        m: () => toggleComicReaderChrome(), M: () => toggleComicReaderChrome(),
         d: () => toggleComicReaderSpread(), D: () => toggleComicReaderSpread(),
         '?': () => toggleComicReaderHelp(), h: () => toggleComicReaderHelp(), H: () => toggleComicReaderHelp(),
         '+': () => zoomComicReaderBy(COMIC_READER_ZOOM_STEP), '=': () => zoomComicReaderBy(COMIC_READER_ZOOM_STEP),
