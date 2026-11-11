@@ -4206,14 +4206,16 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
 .toolbar-dropdown-menu-autoclose .toolbar-dropdown-item { padding-left: 10px; }
 .toolbar-dropdown-menu-autoclose .toolbar-dropdown-item::before { content: none; }
 
-/* « l'album en gros et les pages internes en petit » : sur écran large, les pages de
-   l'aperçu forment un petit éventail qui chevauche le bas de la couverture, au lieu
-   d'une rangée de vignettes dessous. Clic : visionneuse en galerie, comme avant. */
+/* « par défaut met la couverture en front et les petits screenshots derrière qu'on peut
+   afficher en passant la souris dessus » : sur écran large, les pages de l'aperçu sont
+   rangées derrière la couverture (seuls leurs bords dépassent en bas) ; au survol elles
+   passent devant en éventail. Clic sur une page : visionneuse en galerie, comme avant. */
 .series-cover-stack { position: relative; display: flex; flex-direction: column; gap: 8px; }
 @media (min-width: 769px) {
     .series-cover-stack { display: block; margin: 0 0 30px 0; }
+    .series-cover-stack .series-detail-cover { position: relative; z-index: 2; }
     .series-cover-stack .series-preview-pages {
-        position: absolute; left: 4%; right: 4%; bottom: -26px;
+        position: absolute; left: 4%; right: 4%; bottom: -26px; z-index: 1;
         display: flex; align-items: flex-end; justify-content: center; gap: 0;
         pointer-events: none;
     }
@@ -4224,21 +4226,25 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
         opacity: 1; border: 3px solid #fff; border-radius: 3px;
         box-shadow: 0 6px 16px rgba(0,0,0,.35);
         transform-origin: 50% 100%;
+        --r: 0deg; --y: 0px;
+        transform: translateY(-8px) rotate(calc(var(--r) * .5));
+        transition: transform .22s ease, box-shadow .22s ease;
     }
-    .series-cover-stack .series-preview-page:first-child { margin-left: 0; transform: rotate(-8deg); }
-    .series-cover-stack .series-preview-page:nth-child(2) { transform: rotate(-3deg) translateY(-5px); z-index: 1; }
-    .series-cover-stack .series-preview-page:nth-child(3) { transform: rotate(3deg) translateY(-5px); z-index: 2; }
-    .series-cover-stack .series-preview-page:nth-child(4) { transform: rotate(8deg); z-index: 3; }
+    .series-cover-stack .series-preview-page:first-child { margin-left: 0; --r: -8deg; }
+    .series-cover-stack .series-preview-page:nth-child(2) { --r: -3deg; --y: -5px; z-index: 1; }
+    .series-cover-stack .series-preview-page:nth-child(3) { --r: 3deg; --y: -5px; z-index: 2; }
+    .series-cover-stack .series-preview-page:nth-child(4) { --r: 8deg; z-index: 3; }
     .series-cover-stack .series-preview-page:nth-child(n+5) { display: none; }
     .series-cover-stack .series-preview-page[data-more]::after { content: none; }
-    .series-cover-stack .series-preview-page:hover,
-    .series-cover-stack .series-preview-page:focus-visible { transform: translateY(-10px) scale(1.06); z-index: 4; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
+    .series-cover-stack .series-preview-pages:hover,
+    .series-cover-stack .series-preview-pages:focus-within { z-index: 3; }
+    .series-cover-stack .series-preview-pages:hover .series-preview-page,
+    .series-cover-stack .series-preview-pages:focus-within .series-preview-page {
+        transform: rotate(var(--r)) translateY(var(--y));
+    }
+    .series-cover-stack .series-preview-pages .series-preview-page:hover,
+    .series-cover-stack .series-preview-pages .series-preview-page:focus-visible {
+        transform: translateY(-10px) scale(1.06); z-index: 4; box-shadow: 0 10px 24px rgba(0,0,0,.45);
+    }
     [data-theme="dark"] .series-cover-stack .series-preview-page { border-color: #e9e4da; }
-}
-
-/* « la couverture principale doit passer devant quand je passe la souris dessus » */
-@media (min-width: 769px) {
-    .series-cover-stack .series-detail-cover { position: relative; z-index: 0; transition: box-shadow .15s ease; }
-    .series-cover-stack .series-detail-cover:hover,
-    .series-cover-stack .series-detail-cover:focus-visible { z-index: 10; box-shadow: 0 10px 28px rgba(0,0,0,.45); }
 }
