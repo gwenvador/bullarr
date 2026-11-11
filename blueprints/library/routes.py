@@ -3302,11 +3302,13 @@ def get_series_details(series_id):
             pass
 
         # Récupérer tous les volumes
+        from .page_size import ensure_columns as _ensure_page_size_columns
+        _ensure_page_size_columns(conn)
         cursor.execute('''
             SELECT id, part_number, part_name, volume_number, filename, filepath, filesystem_present, filesystem_checked_at,
                    author, year, resolution, release_group, file_size, page_count, format, comicinfo, cover_path,
                    komga_book_url, komga_book_id, is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
-                   is_special, special_label, is_bis, bis_suffix
+                   is_special, special_label, is_bis, bis_suffix, page_width, page_height
             FROM volumes
             WHERE series_id = ?
             ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, filename
@@ -3326,6 +3328,8 @@ def get_series_details(series_id):
                 'author': vol['author'],
                 'year': vol['year'],
                 'resolution': vol['resolution'],
+                'page_width': vol['page_width'] or None,
+                'page_height': vol['page_height'] or None,
                 'release_group': vol['release_group'],
                 'file_size': vol['file_size'],
                 'page_count': vol['page_count'],

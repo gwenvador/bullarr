@@ -190,6 +190,10 @@ def create_app(config_name='default'):
         from blueprints.komga.read_progress import read_progress_scheduler
         read_progress_scheduler.start(app)
 
+        # Taille réelle des pages des tomes (colonne Qualité), mesurée peu à peu en fond.
+        from blueprints.library.page_size import page_size_scheduler
+        page_size_scheduler.start(app)
+
         # IA : tags des nouvelles séries, si l'option est cochée (Configuration → IA).
         from blueprints.ai.auto_tag import auto_tag_scheduler
         auto_tag_scheduler.start(app)

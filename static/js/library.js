@@ -3204,7 +3204,7 @@ function buildVolumeCreditsHtml(v) {
     }
     if (ci.publisher) fields.push(['Éditeur', ci.publisher]);
     if (ci.genre) fields.push(['Genre', ci.genre]);
-    if (v.resolution) fields.push(['Scan', String(v.resolution)]);
+    if (_volumeQualityLabel(v)) fields.push(['Qualité', _volumeQualityLabel(v)]);
     if (v.release_group) fields.push(['Release', String(v.release_group)]);
     if (!fields.length) return '';
     return `<dl class="volume-credits">${fields.map(([k, val]) => `<div><dt>${escapeHtml(k)}</dt><dd title="${escapeHtml(val)}">${escapeHtml(val)}</dd></div>`).join('')}</dl>`;
@@ -3747,7 +3747,7 @@ const VOLUME_TABLE_OPTIONAL_COLUMNS = [
         if (!ci.communityrating) return '—';
         return `${ci.communityrating}/5${ci.communityratingcount ? ` (${ci.communityratingcount} votes)` : ''}`;
     } },
-    { key: 'quality', label: 'Qualité', icon: '🖼️', header: 'Qualité', filterType: 'text', render: v => v.resolution || '—' },
+    { key: 'quality', label: 'Qualité', icon: '🖼️', header: 'Qualité', filterType: 'text', render: v => _volumeQualityLabel(v) || '—' },
     { key: 'releaser', label: 'Releaser', icon: '📀', header: 'Releaser', filterType: 'text', render: v => v.release_group || '—' },
     { key: 'blackAndWhite', label: 'Noir & Blanc', icon: '◐', header: 'N&B', render: v => _isBlackAndWhiteVolume(v) ? 'Oui' : 'Non' },
 ];
@@ -3817,6 +3817,22 @@ function renderVolumeTableColumnsMenu() {
 // Valeur comparable d'un tome pour une colonne triable donnée - null/'' pour une donnée
 // absente (ex: taille/format d'un tome non possédé), toujours envoyée en fin de liste par
 // _compareVolumesForSort quel que soit le sens du tri.
+// Qualité d'un tome : taille réelle des pages (mesurée dans le fichier, voir page_size.py),
+// avec une étiquette tirée du plus grand côté, sinon la qualité lue dans le nom de fichier.
+// « Basse déf. » suit le seuil de l'amélioration au lecteur de l'app (≤ 1600 px).
+function _volumeQualityTier(v) {
+    const side = Math.max(v.page_width || 0, v.page_height || 0);
+    if (!side) return '';
+    if (side <= 1600) return 'Basse déf.';
+    if (side < 2500) return 'Standard';
+    return 'HD';
+}
+
+function _volumeQualityLabel(v) {
+    if (v.page_width && v.page_height) return `${v.page_width}×${v.page_height} · ${_volumeQualityTier(v)}`;
+    return v.resolution ? String(v.resolution) : '';
+}
+
 function _volumeTableSortValue(v, column) {
     const ci = v.comicinfo || {};
     switch (column) {
@@ -3832,6 +3848,8 @@ function _volumeTableSortValue(v, column) {
             return v.file_size ?? null;
         case 'path':
             return (v.filepath || '').toLowerCase();
+        case 'quality':
+            return Math.max(v.page_width || 0, v.page_height || 0) || null;
         default: {
             const col = VOLUME_TABLE_OPTIONAL_COLUMNS.find(c => c.key === column);
             return col ? col.render(v) : null;
@@ -4954,8 +4972,8 @@ async function renderSeriesDetail(seriesId) {
         const oneshotSearchNumber = oneshotFile
             ? (oneshotFile.volume_number ?? oneshotFile.integral_number ?? oneshotFile.hs_number ?? 'null')
             : 'null';
-        const oneshotQualityText = oneshotFile && oneshotFile.resolution
-            ? `🖼️ ${escapeHtml(String(oneshotFile.resolution))}` : '';
+        const oneshotQualityText = oneshotFile && _volumeQualityLabel(oneshotFile)
+            ? `🖼️ ${escapeHtml(_volumeQualityLabel(oneshotFile))}` : '';
         const oneshotReleaserText = oneshotFile && oneshotFile.release_group
             ? `📀 ${escapeHtml(String(oneshotFile.release_group))}` : '';
         const oneshotExtraParts = [oneshotReleaserText, oneshotQualityText].filter(Boolean);

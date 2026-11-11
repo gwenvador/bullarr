@@ -395,6 +395,10 @@ class LibraryScanner:
             ('release_group', 'TEXT'),
             ('filesystem_present', 'INTEGER'),
             ('filesystem_checked_at', 'TIMESTAMP'),
+            # Taille réelle des pages, voir page_size.py.
+            ('page_width', 'INTEGER'),
+            ('page_height', 'INTEGER'),
+            ('page_size_file_size', 'INTEGER'),
         ]
 
         for col_name, col_type in volume_columns:
