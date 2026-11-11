@@ -3525,6 +3525,7 @@ body.comic-reader-open { overflow: hidden; }
 }
 .poster-read-progress span { display: block; height: 100%; background: var(--color-accent); }
 .overview-tag-reading { color: var(--color-success, #2e7d32); }
+.overview-tag-lowdef { color: var(--color-warning, #b26a00); }
 .volume-reading-badge {
     display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px;
     font-size: 0.78em; font-weight: 600; line-height: 1.6; white-space: nowrap; vertical-align: 1px;

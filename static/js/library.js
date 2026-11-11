@@ -740,6 +740,7 @@ function buildOverviewRowHtml(s) {
                 ${komgaReadingInfo(s)?.started ? `<span class="overview-tag overview-tag-reading" title="Avancement de lecture (Komga)">✓ ${escapeHtml(komgaReadingLabel(komgaReadingInfo(s)))}</span>` : ''}
                 ${s.to_read_later ? `<span class="overview-tag">${svgIcon('pin')} À lire</span>` : ''}
                 ${s.is_favorite ? `<span class="overview-tag">${svgIcon('star')} Favori</span>` : ''}
+                ${seriesLowDefBadgeHtml(s)}
                 ${overviewUserTagsHtml(s.tags)}
             </div>
         </div>
@@ -800,7 +801,8 @@ const TABLE_OPTIONAL_COLUMNS = [
     { key: 'votes', label: 'Votes', icon: '⭐', header: 'Votes', filterType: 'text',
       render: s => s.total_votes ? Number(s.total_votes).toLocaleString('fr-FR') : '—' },
     { key: 'path', label: 'Chemin', icon: '📁', header: 'Chemin', filterType: 'text', render: s => s.path || '—' },
-    { key: 'tags', label: 'Tags', icon: '🏷️', header: 'Tags', filterType: 'text', render: s => (s.tags || []).join(', ') || '—' }
+    { key: 'tags', label: 'Tags', icon: '🏷️', header: 'Tags', filterType: 'text', render: s => (s.tags || []).join(', ') || '—' },
+    { key: 'quality', label: 'Qualité', icon: '🖼️', header: 'Qualité', render: s => _seriesQualityLabel(s) }
 ];
 
 const TABLE_FIXED_COLUMNS = [
@@ -1814,7 +1816,7 @@ function normalizeForSearch(text) {
 // la barre de recherche n'ait plus qu'une comparaison de sous-chaîne à faire par série,
 // au lieu de re-normaliser plusieurs champs à chaque frappe pour chaque série
 function buildSearchHaystack(s) {
-    const parts = [s.title, s.local_author, seriesGenre(s), ...(s.tags || [])].filter(Boolean);
+    const parts = [s.title, s.local_author, seriesGenre(s), ...(s.tags || []), s.low_def_volumes ? 'Basse déf.' : ''].filter(Boolean);
     return normalizeForSearch(parts.join(' '));
 }
 
@@ -1843,6 +1845,7 @@ function seriesMatchesFilterKey(s, key) {
     if (key.startsWith('year:')) return (s.year || '') === key.slice('year:'.length);
     if (key.startsWith('status:')) return _seriesStatusLabel(s) === key.slice('status:'.length);
     if (key.startsWith('origin:')) return _seriesOriginLabel(s) === key.slice('origin:'.length);
+    if (key.startsWith('quality:')) return _seriesQualityLabel(s) === key.slice('quality:'.length);
     if (key.startsWith('tag:')) {
         const wanted = normalizeForSearch(key.slice('tag:'.length)).replace(/-/g, ' ');
         return (s.tags || []).some(tag => normalizeForSearch(tag).replace(/-/g, ' ') === wanted);
@@ -2083,6 +2086,28 @@ function _originFilterIcon(v) {
         : `<span class="filter-item-icon">${svgIcon('info')}</span>`;
 }
 
+// Qualité d'une série : celle de son tome le plus faible (voir _volumeQualityTier), pour
+// repérer les séries à améliorer à la lecture ou à remplacer par une meilleure version.
+const _QUALITY_FILTER_ORDER = ['Basse déf.', 'Standard', 'HD', 'Non mesurée'];
+function _seriesQualityLabel(s) {
+    const side = s.min_page_side || 0;
+    if (!side) return 'Non mesurée';
+    return _volumeQualityTier({ page_width: side, page_height: 0 });
+}
+
+function _qualityFilterIcon() {
+    return `<span class="filter-item-icon">${svgIcon('image')}</span>`;
+}
+
+function seriesLowDefBadgeHtml(s) {
+    if (!s.low_def_volumes) return '';
+    const owned = [s.owned_tomes, s.owned_integrals, s.owned_hs, s.owned_episodes, s.owned_specials]
+        .reduce((sum, c) => sum + (Number(c) || 0), 0);
+    const detail = owned > 1 ? `${s.low_def_volumes} album${s.low_def_volumes > 1 ? 's' : ''} sur ${owned} en basse définition`
+        : 'Album en basse définition';
+    return `<span class="overview-tag overview-tag-lowdef" data-tooltip="${escapeHtml(detail)} (pages de ${s.min_page_side} px au plus)">${svgIcon('image')} Basse déf.${owned > 1 ? ` ${s.low_def_volumes}/${owned}` : ''}</span>`;
+}
+
 function _fillCountFilterMenu(menuId, prefix, getValue, order, iconFor) {
     const menu = document.getElementById(menuId);
     if (!menu) return;
@@ -2102,6 +2127,7 @@ function _fillCountFilterMenu(menuId, prefix, getValue, order, iconFor) {
 function populateStatusLanguageFilters() {
     _fillCountFilterMenu('status-filter-menu', 'status:', _seriesStatusLabel, _STATUS_FILTER_ORDER, _statusFilterIcon);
     _fillCountFilterMenu('origin-filter-menu', 'origin:', _seriesOriginLabel, _ORIGIN_FILTER_ORDER, _originFilterIcon);
+    _fillCountFilterMenu('quality-filter-menu', 'quality:', _seriesQualityLabel, _QUALITY_FILTER_ORDER, _qualityFilterIcon);
     _fillGenreFilterMenu();
 }
 
@@ -2198,7 +2224,7 @@ function populateDynamicFilterOptions() {
 
 // Libellé lisible d'une clé de filtre, utilisé pour les badges dans la toolbar
 // [catégorie, valeur] d'un filtre actif, pour les puces sous la barre d'outils.
-const _FILTER_KEY_CATEGORIES = { 'status:': 'Statut', 'origin:': 'Origine', 'genre:': 'Genre', 'author:': 'Auteur', 'year:': 'Année', 'tag:': 'Tag' };
+const _FILTER_KEY_CATEGORIES = { 'status:': 'Statut', 'origin:': 'Origine', 'quality:': 'Qualité', 'genre:': 'Genre', 'author:': 'Auteur', 'year:': 'Année', 'tag:': 'Tag' };
 const _FILTER_KEY_FIXED = {
     'missing': ['', 'Volumes manquants'], 'oneshot': ['', 'One-shot'], 'ebdz-unmatched': ['', 'Matching EBDZ'],
     'missing-metadata': ['', 'Sans métadonnées'], 'to-read': ['Liste', 'À lire plus tard'], 'favorite': ['Liste', 'Favoris'],
@@ -2221,6 +2247,7 @@ function getFilterKeyLabel(key) {
     if (key.startsWith('tag:')) return '🏷️ ' + key.slice('tag:'.length);
     if (key.startsWith('status:')) return 'Statut : ' + key.slice('status:'.length);
     if (key.startsWith('origin:')) return 'Origine : ' + key.slice('origin:'.length);
+    if (key.startsWith('quality:')) return 'Qualité : ' + key.slice('quality:'.length);
     for (const section of DYNAMIC_FILTER_SECTIONS) {
         if (key.startsWith(section.prefix)) {
             return `${section.icon} ${key.slice(section.prefix.length)}`;
@@ -2337,6 +2364,7 @@ function clearSeriesFilters() {
 const FILTER_TOOLBAR_BUTTONS = [
     { id: 'status-filter-btn', match: key => key.startsWith('status:') },
     { id: 'origin-filter-btn', match: key => key.startsWith('origin:') },
+    { id: 'quality-filter-btn', match: key => key.startsWith('quality:') },
     { id: 'lists-filter-btn', match: key => key === 'to-read' || key === 'favorite' },
     { id: 'genre-filter-btn', match: key => key.startsWith('genre:') },
     { id: 'author-filter-btn', match: key => key.startsWith('author:') },

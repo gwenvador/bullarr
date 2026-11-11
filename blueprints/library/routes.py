@@ -2626,6 +2626,8 @@ def get_library_series(library_id):
         progress_sql, progress_params, _, komga_only = current_progress_source()
         # Avancement local : tout tome avec fichier compte ; Komga : seulement les tomes rattachés.
         progress_scope = 'v.komga_book_id IS NOT NULL AND ' if komga_only else ''
+        from .page_size import ensure_columns as _ensure_page_size_columns
+        _ensure_page_size_columns(conn)
         cursor.execute(f'''
             SELECT s.id, s.title, s.path, s.total_volumes, s.missing_volumes, s.has_parts, s.last_scanned, s.added_at,
                    s.ebdz_volumes_count, s.ebdz_missing_volumes, s.ebdz_checked_at, s.ebdz_thread_url,
@@ -2646,6 +2648,10 @@ def get_library_series(library_id):
                             NULLIF(TRIM(s.local_genre), '')) AS genre,
                    CAST(COALESCE(s.manual_year_start, s.bedetheque_year_start, s.local_year) AS TEXT) AS year,
                    s.volumes_without_metadata, s.oneshot_is_integral,
+                   (SELECT MIN(MAX(v.page_width, v.page_height)) FROM volumes v
+                     WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.page_width > 0) AS min_page_side,
+                   (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL
+                     AND v.page_width > 0 AND MAX(v.page_width, v.page_height) <= 1600) AS low_def_volumes,
                    s.tags, s.to_read_later, s.is_favorite,
                    s.manual_complete_override, s.bedetheque_complete, s.bedetheque_complete_reason,
                    s.filesystem_state, s.filesystem_checked_at, s.filesystem_missing_count, s.filesystem_verification_error,
@@ -2733,6 +2739,8 @@ def get_library_series(library_id):
                 'is_oneshot': bool(row['is_oneshot']),
                 'oneshot_is_integral': bool(row['oneshot_is_integral']),
                 'volumes_without_metadata': row['volumes_without_metadata'],
+                'min_page_side': row['min_page_side'],
+                'low_def_volumes': row['low_def_volumes'],
                 'tags': tags,
                 'to_read_later': bool(row['to_read_later']),
                 'is_favorite': bool(row['is_favorite']),
