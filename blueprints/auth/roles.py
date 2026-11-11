@@ -32,6 +32,8 @@ READER_ENDPOINTS = {
     'auth.get_profile': _GET, 'auth.update_profile': frozenset({'PUT'}),
     'auth.upload_avatar': frozenset({'POST'}), 'auth.delete_avatar': frozenset({'DELETE'}),
     'auth.choose_avatar': frozenset({'PUT'}), 'auth.avatar_presets': _GET,
+    'auth.get_my_api_key': _GET, 'auth.create_my_api_key': frozenset({'POST'}),
+    'auth.delete_my_api_key': frozenset({'DELETE'}),
     # Bibliothèques et séries (lecture)
     'library.libraries': _GET, 'library.library_operations': _GET, 'library.get_library_info': _GET,
     'library.get_library_last_updated': _GET, 'library.get_library_series': _GET,
@@ -98,7 +100,10 @@ def init_tables(cursor):
     columns = {row[1] for row in cursor.execute('PRAGMA table_info(users)').fetchall()}
     # status : NULL = actif, 'pending' = demande d'inscription à valider par un admin.
     # avatar : nom du fichier dans data/avatars (photo de profil choisie par le compte).
-    for column in ('allowed_libraries_json', 'blocked_genres_json', 'password_hash', 'status', 'avatar'):
+    # api_key_hash / api_key_enc : clé API personnelle (empreinte pour la recherche,
+    # valeur chiffrée pour l'afficher à son propriétaire dans « Mon profil »).
+    for column in ('allowed_libraries_json', 'blocked_genres_json', 'password_hash', 'status', 'avatar',
+                   'api_key_hash', 'api_key_enc'):
         if column not in columns:
             cursor.execute(f'ALTER TABLE users ADD COLUMN {column} TEXT')
     # Demande à valider : bibliothèque visée au moment de la demande, décision (qui, quand).
@@ -202,7 +207,7 @@ def current_role(config=None):
     if 'bullarr_role' in g:
         return g.bullarr_role
     role = ROLE_ADMIN
-    user = session.get('user')
+    user = request_user()
     if user and not g.get('api_key_auth') and not current_app.config.get('AUTH_BYPASS_LOGIN', False):
         if config is None:
             from .config_store import load_oidc_config
@@ -213,6 +218,11 @@ def current_role(config=None):
     return role
 
 
+def request_user():
+    """Compte de la requête : celui de la clé API personnelle envoyée, sinon celui de la session."""
+    return g.get('api_user') or session.get('user')
+
+
 def is_reader():
     try:
         return current_role() == ROLE_READER
@@ -221,7 +231,7 @@ def is_reader():
 
 
 def current_user_key():
-    return user_key(session.get('user'))
+    return user_key(request_user())
 
 
 def reader_allowed(endpoint, method):

@@ -37,8 +37,8 @@ def _connect():
 def _session_actor():
     if not has_request_context():
         return None, None
-    from .roles import user_key
-    user = session.get('user') or None
+    from .roles import request_user, user_key
+    user = request_user() or None
     if not user:
         return None, None
     return user_key(user), user.get('name') or user.get('email')

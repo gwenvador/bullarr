@@ -106,6 +106,18 @@
                                 </form>
                             </section>
 
+                            <section id="pf-apikey-card" class="pf-card" hidden>
+                                <h3><span data-pf-icon="key-round"></span>Clé API</h3>
+                                <p class="pf-hint">Pour les applications (extension Mihon / Tachiyomi…) : elles accèdent à Bullarr avec vos droits, par l’en-tête <code>X-Api-Key</code>. Un compte local peut aussi s’y connecter avec son identifiant et son mot de passe.</p>
+                                <label class="pf-field"><span>Votre clé</span>
+                                    <span class="pf-pass"><input type="password" id="pf-apikey" readonly placeholder="Aucune clé" spellcheck="false" autocomplete="off"><button type="button" class="pf-eye" data-pf-toggle="pf-apikey" aria-label="Afficher" data-pf-icon="eye"></button><button type="button" class="pf-eye" id="pf-apikey-copy" aria-label="Copier" data-pf-icon="copy" hidden></button></span></label>
+                                <div class="pf-form-foot">
+                                    <div id="pf-apikey-message" class="pf-message"></div>
+                                    <button type="button" id="pf-apikey-delete" class="rq-btn rq-btn-ghost" hidden>Supprimer</button>
+                                    <button type="button" id="pf-apikey-create" class="rq-btn rq-btn-primary"><span data-pf-icon="key-round"></span><span>Générer une clé</span></button>
+                                </div>
+                            </section>
+
                             <section id="pf-sso-card" class="pf-card" hidden>
                                 <h3><span data-pf-icon="shield-check"></span>Compte SSO</h3>
                                 <p class="pf-hint">Votre nom, votre e-mail et votre mot de passe viennent de votre fournisseur d’identité (Pocket ID) : modifiez-les là-bas, ils seront repris à la prochaine connexion. L’avatar, lui, se règle ici.</p>

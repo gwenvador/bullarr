@@ -129,7 +129,8 @@ _COVER_COLUMNS = 's.local_cover_path, s.bedetheque_cover_path, s.komga_cover_pat
 
 
 def _session_user():
-    user = session.get('user') or {}
+    from blueprints.auth.roles import request_user
+    user = request_user() or {}
     return current_user_key(), user.get('name') or user.get('email')
 
 

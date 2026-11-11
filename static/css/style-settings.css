@@ -541,6 +541,12 @@
     border: 2px solid #bee5eb;
 }
 
+/* Mode sombre : les fonds pastel du mode clair éblouissaient (« Clé copiée »). */
+[data-theme="dark"] .message.success { background: rgba(76, 194, 104, .12); color: #8fdca3; border-color: rgba(76, 194, 104, .35); }
+[data-theme="dark"] .message.error { background: rgba(229, 83, 83, .12); color: #f1a1a1; border-color: rgba(229, 83, 83, .35); }
+[data-theme="dark"] .message.warning { background: rgba(230, 180, 60, .12); color: #f0cf7e; border-color: rgba(230, 180, 60, .35); }
+[data-theme="dark"] .message.info { background: rgba(80, 170, 200, .12); color: #9fd3e6; border-color: rgba(80, 170, 200, .35); }
+
 /* Section d'aide */
 .help-section {
     background: var(--color-surface-alt);

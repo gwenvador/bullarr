@@ -8,7 +8,9 @@ password_hash ; sa clé est « password:<identifiant> » (voir roles.user_key). 
 role_override (admin / reader), administrateur par défaut. Les comptes OIDC (Pocket ID)
 apparaissent dans la même table à leur première connexion.
 """
+import hashlib
 import re
+import secrets
 import time
 
 from flask import current_app
@@ -215,3 +217,61 @@ def session_revoked(key, login_at):
     finally:
         conn.close()
     return bool(row) and float(login_at or 0) < row['revoked_at']
+
+
+def _api_key_hash(key):
+    return hashlib.sha256(key.encode('utf-8')).hexdigest()
+
+
+def create_api_key(key):
+    """Crée (ou remplace) la clé API personnelle du compte `key` ; None si le compte n'existe pas."""
+    from encryption import encrypt
+    value = secrets.token_hex(16)
+    conn = _connect()
+    try:
+        updated = conn.execute('UPDATE users SET api_key_hash = ?, api_key_enc = ? WHERE user_key = ?',
+                               (_api_key_hash(value), encrypt(value), key)).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return value if updated else None
+
+
+def get_api_key(key):
+    from encryption import decrypt
+    row = get_user(key)
+    if not row or not row['api_key_enc']:
+        return None
+    return decrypt(row['api_key_enc']) or None
+
+
+def delete_api_key(key):
+    conn = _connect()
+    try:
+        conn.execute('UPDATE users SET api_key_hash = NULL, api_key_enc = NULL WHERE user_key = ?', (key,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def user_for_api_key(supplied):
+    """Compte actif dont la clé personnelle est `supplied`, sinon None."""
+    if not supplied or not _has_database():
+        return None
+    conn = _connect()
+    try:
+        row = conn.execute('SELECT * FROM users WHERE api_key_hash = ?', (_api_key_hash(supplied),)).fetchone()
+    finally:
+        conn.close()
+    if not row or row['status'] == STATUS_PENDING:
+        return None
+    return row
+
+
+def api_user(row):
+    """Utilisateur (même forme que session['user']) correspondant à une ligne de users."""
+    key = row['user_key']
+    if key.startswith('oidc:'):
+        return {'sub': key[len('oidc:'):], 'name': row['name'], 'email': row['email'],
+                'auth_method': row['auth_method'] or 'oidc', 'via': 'api-key'}
+    return {'name': key[len('password:'):], 'auth_method': 'password', 'via': 'api-key'}

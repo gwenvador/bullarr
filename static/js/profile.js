@@ -170,6 +170,32 @@ function pfRenderKomga() {
     form.hidden = false;
 }
 
+let pfApiKey = '';
+
+function pfRenderApiKey() {
+    document.getElementById('pf-apikey-card').hidden = false;
+    document.getElementById('pf-apikey').value = pfApiKey;
+    document.getElementById('pf-apikey-copy').hidden = !pfApiKey;
+    document.getElementById('pf-apikey-delete').hidden = !pfApiKey;
+    document.querySelector('#pf-apikey-create span:last-child').textContent = pfApiKey ? 'Régénérer' : 'Générer une clé';
+}
+
+async function pfApiKeyCall(method, okMessage) {
+    try {
+        const response = await fetch('/api/auth/profile/api-key', {method});
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+            if (method === 'GET') return; // carte masquée (pas de compte : authentification désactivée)
+            throw new Error(data.error || 'Opération impossible');
+        }
+        pfApiKey = data.api_key || '';
+        pfRenderApiKey();
+        if (okMessage) pfMessage('pf-apikey-message', okMessage);
+    } catch (error) {
+        pfMessage('pf-apikey-message', error.message, true);
+    }
+}
+
 async function pfLoadKomga() {
     try {
         const response = await fetch('/api/komga/me');
@@ -256,6 +282,28 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = false;
         }
     });
+    document.getElementById('pf-apikey-create').addEventListener('click', async () => {
+        if (pfApiKey && !confirm('Remplacer la clé ? Les applications qui utilisent l’ancienne devront être reconfigurées.')) return;
+        await pfApiKeyCall('POST', 'Nouvelle clé créée.');
+    });
+    document.getElementById('pf-apikey-delete').addEventListener('click', async () => {
+        if (!confirm('Supprimer la clé ? Les applications qui l’utilisent perdront l’accès.')) return;
+        await pfApiKeyCall('DELETE', 'Clé supprimée.');
+    });
+    document.getElementById('pf-apikey-copy').addEventListener('click', async () => {
+        const field = document.getElementById('pf-apikey');
+        try {
+            await navigator.clipboard.writeText(field.value);
+        } catch (error) {
+            const type = field.type;
+            field.type = 'text';
+            field.select();
+            document.execCommand('copy');
+            field.type = type;
+        }
+        pfMessage('pf-apikey-message', 'Clé copiée.');
+    });
     pfLoad();
     pfLoadKomga();
+    pfApiKeyCall('GET');
 });

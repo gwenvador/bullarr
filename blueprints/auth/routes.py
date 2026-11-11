@@ -20,14 +20,14 @@ from .config_store import (AUTH_MODES, LEGACY_AUTH_MODES, load_oidc_config, save
                            generate_api_key)
 from . import accounts
 from .activity import log_activity, list_activity
-from .roles import (ROLES, ROLE_READER, PARENTAL_PRESET, all_genres, computed_role, current_role, normalize_groups,
+from .roles import (request_user, ROLES, ROLE_READER, PARENTAL_PRESET, all_genres, computed_role, current_role, normalize_groups,
                     reader_allowed, reader_scope_allowed, record_login, user_key)
 
 # Endpoints toujours accessibles, même quand le SSO/OIDC est activé (sans quoi
 # l'utilisateur ne pourrait jamais atteindre le flux de connexion ou les assets statiques)
 _PUBLIC_ENDPOINTS = {
     'auth.login', 'auth.login_password', 'auth.login_redirect', 'auth.callback', 'auth.app_login',
-    'auth.signup',
+    'auth.signup', 'auth.api_token',
     'auth.logout', 'auth.logout_provider',
     'static', 'serve_cover',
     # Serveur MCP : authentifié par son propre jeton (BULLARR_MCP_TOKEN), pas par la session
@@ -215,7 +215,19 @@ def enforce_login():
         g.api_key_auth = True
         return None
     if api_key_ok is False:
-        return jsonify({'success': False, 'error': 'Clé API invalide'}), 401
+        # Clé personnelle d'un compte : mêmes droits que ce compte (lecteur limité à ses
+        # routes et à ses bibliothèques), sans jeton CSRF.
+        row = accounts.user_for_api_key(_supplied_api_key())
+        if row is None:
+            return jsonify({'success': False, 'error': 'Clé API invalide'}), 401
+        g.api_user = accounts.api_user(row)
+        if current_role(config) == ROLE_READER:
+            if not reader_allowed(request.endpoint, request.method):
+                return jsonify({'success': False, 'error': 'Réservé aux administrateurs'}), 403
+            if not reader_scope_allowed(request.view_args,
+                                        request.get_json(silent=True) if request.method == 'POST' else None):
+                return jsonify({'success': False, 'error': 'Contenu non disponible pour ce compte'}), 404
+        return None
 
     mode = _auth_mode(config)
     if mode == 'none':
@@ -474,7 +486,7 @@ def logout_provider():
 @auth_bp.route('/api/auth/me')
 def current_user():
     """Retourne l'utilisateur de la session courante (ou null si non connecté)"""
-    user = session.get('user')
+    user = request_user()
     profile = None
     if user:
         try:
@@ -1107,7 +1119,7 @@ def test_oidc_discovery():
 @auth_bp.route('/api/auth/api-key', methods=['GET'])
 def get_api_key():
     """Clé API de Bullarr (en-tête X-Api-Key pour les applications externes)."""
-    if getattr(g, 'api_key_auth', False):
+    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
         return jsonify({'success': False, 'error': 'La clé API ne peut pas être lue avec la clé API'}), 403
     config = load_oidc_config()
     return jsonify({'success': True, 'api_key': config.get('api_key_decrypted') or ''})
@@ -1116,7 +1128,7 @@ def get_api_key():
 @auth_bp.route('/api/auth/api-key', methods=['POST'])
 def regenerate_api_key():
     """Crée (ou remplace) la clé API ; l'ancienne cesse aussitôt de fonctionner."""
-    if getattr(g, 'api_key_auth', False):
+    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
         return jsonify({'success': False, 'error': 'La clé API ne peut pas être changée avec la clé API'}), 403
     config = load_oidc_config()
     config['api_key_decrypted'] = generate_api_key()
@@ -1128,7 +1140,7 @@ def regenerate_api_key():
 @auth_bp.route('/api/auth/api-key', methods=['DELETE'])
 def delete_api_key():
     """Supprime la clé API : plus aucun accès par clé."""
-    if getattr(g, 'api_key_auth', False):
+    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
         return jsonify({'success': False, 'error': 'La clé API ne peut pas être supprimée avec la clé API'}), 403
     config = load_oidc_config()
     config.pop('api_key', None)
@@ -1136,6 +1148,75 @@ def delete_api_key():
     if not save_oidc_config(config):
         return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
     return jsonify({'success': True})
+
+
+def _my_api_key_owner():
+    """Compte connecté par session (pas par une clé) dont on gère la clé personnelle."""
+    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
+        return None, (jsonify({'success': False, 'error': 'Gérez votre clé depuis Bullarr, pas avec une clé API'}), 403)
+    key = user_key(session.get('user'))
+    if not key or not accounts.get_user(key):
+        return None, (jsonify({'success': False, 'error': 'Aucun compte connecté'}), 400)
+    return key, None
+
+
+@auth_bp.route('/api/auth/profile/api-key', methods=['GET'])
+def get_my_api_key():
+    """Clé API personnelle du compte connecté (applications : extension Mihon...)."""
+    key, error = _my_api_key_owner()
+    if error:
+        return error
+    return jsonify({'success': True, 'api_key': accounts.get_api_key(key) or ''})
+
+
+@auth_bp.route('/api/auth/profile/api-key', methods=['POST'])
+def create_my_api_key():
+    """Crée ou remplace la clé personnelle ; l'ancienne cesse aussitôt de fonctionner."""
+    key, error = _my_api_key_owner()
+    if error:
+        return error
+    value = accounts.create_api_key(key)
+    log_activity('api_key_created', detail='Clé API personnelle')
+    return jsonify({'success': True, 'api_key': value})
+
+
+@auth_bp.route('/api/auth/profile/api-key', methods=['DELETE'])
+def delete_my_api_key():
+    key, error = _my_api_key_owner()
+    if error:
+        return error
+    accounts.delete_api_key(key)
+    return jsonify({'success': True})
+
+
+@auth_bp.route('/api/auth/token', methods=['POST'])
+def api_token():
+    """Identifiant + mot de passe d'un compte local -> sa clé API personnelle (créée au
+    besoin). Pour les applications qui demandent un login (extension Mihon / Tachiyomi)."""
+    config = load_oidc_config()
+    if not _password_enabled(config):
+        return jsonify({'success': False, 'error': 'Connexion par mot de passe non activée'}), 400
+    address = request.remote_addr or ''
+    if _password_login_blocked(address):
+        return jsonify({'success': False, 'error': 'Trop de tentatives, réessayez dans une minute'}), 429
+    data = request.get_json(silent=True) or request.form
+    username = str(data.get('username') or '').strip()
+    password = str(data.get('password') or '')
+    row = accounts.authenticate(username, password)
+    if row is None:
+        _record_password_login_failure(address)
+        log_activity('login_failed', actor_key=None, actor_name=username[:80] or '?',
+                     target_name=username[:80] or None, success=False,
+                     detail=f'Application (clé API) · IP {address}')
+        return jsonify({'success': False, 'error': 'Identifiant ou mot de passe incorrect'}), 401
+    if row['status'] == accounts.STATUS_PENDING:
+        return jsonify({'success': False, 'error': 'Compte en attente de validation'}), 403
+    with _app_login_lock:
+        _password_login_failures.pop(address, None)
+    value = accounts.get_api_key(row['user_key']) or accounts.create_api_key(row['user_key'])
+    log_activity('login', actor_key=row['user_key'], actor_name=row['name'] or username,
+                 detail=f'Application (clé API) · IP {address}')
+    return jsonify({'success': True, 'api_key': value})
 
 
 def api_routes():

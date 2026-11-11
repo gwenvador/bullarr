@@ -274,6 +274,7 @@ const USER_ACTIVITY = {
     profile_edited: ['user', 'user-pen', 'Profil modifié'],
     password_change_failed: ['user', 'key-round', 'Changement de mot de passe refusé'],
     avatar_changed: ['user', 'camera', 'Photo de profil'],
+    api_key_created: ['user', 'key-round', 'Clé API personnelle créée'],
     settings_changed: ['user', 'settings', 'Réglage des comptes'],
     request_created: ['request', 'book-plus', 'Demande de BD'],
     request_approved: ['request', 'check', 'Demande de BD validée'],
