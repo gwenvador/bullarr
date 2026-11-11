@@ -922,7 +922,7 @@ async function openComicReader(volumeId) {
         if (comicReader.next) nextButton.dataset.tooltip = `Tome suivant : ${comicReader.next.label} (])`;
         _applyComicReaderWebtoon();
         const subtitle = data.title && !comicReader.title.includes(data.title) ? ` · ${data.title}` : '';
-        document.getElementById('comic-reader-title').textContent = comicReader.title + subtitle;
+        _setComicReaderTitle(comicReader.title + subtitle, data.series_id);
         const slider = document.getElementById('comic-reader-slider');
         slider.max = String(data.page_count);
         _buildComicReaderThumbs();
@@ -943,6 +943,27 @@ async function openComicReader(volumeId) {
         document.getElementById('comic-reader-title').textContent = 'Lecture impossible';
         document.getElementById('comic-reader-status').textContent = error.message;
     }
+}
+
+// Titre cliquable : ferme le lecteur et ouvre la fiche de la série (simple fermeture si on y est déjà).
+function _setComicReaderTitle(text, seriesId) {
+    const title = document.getElementById('comic-reader-title');
+    if (!seriesId) {
+        title.textContent = text;
+        return;
+    }
+    const link = document.createElement('a');
+    link.className = 'comic-reader-title-link';
+    link.href = '/series/' + seriesId;
+    link.textContent = text;
+    link.dataset.tooltip = 'Ouvrir la fiche de la série';
+    link.addEventListener('click', event => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+        event.preventDefault();
+        closeComicReader();
+        if (location.pathname !== link.pathname) location.href = link.href;
+    });
+    title.replaceChildren(link);
 }
 
 function closeComicReader() {

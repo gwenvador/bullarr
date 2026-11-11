@@ -3417,6 +3417,8 @@ body.comic-reader-open { overflow: hidden; }
 .comic-reader[hidden] { display: none; }
 .comic-reader-bar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(0,0,0,0.6); flex: 0 0 auto; }
 .comic-reader-title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comic-reader-title-link { color: inherit; text-decoration: none; }
+.comic-reader-title-link:hover, .comic-reader-title-link:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
 .comic-reader-counter { font-variant-numeric: tabular-nums; color: #bbb; white-space: nowrap; }
 .comic-reader-actions { display: flex; gap: 6px; }
 .comic-reader-btn { width: 38px; height: 38px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: #fff; font-size: 22px; line-height: 1; cursor: pointer; }
