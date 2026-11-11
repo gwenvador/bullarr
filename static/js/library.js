@@ -3692,6 +3692,7 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
             <div class="volume-cover-wrapper">
                 ${coverHtml}
                 ${buildVolumeCoverReadingHtml(v)}
+                ${buildVolumeCoverQualityHtml(v)}
             </div>
             <div class="volume-details">
                 <div class="volume-filename-row">
@@ -3940,6 +3941,25 @@ function buildVolumeTableMissingBadgeHtml(v) {
 }
 
 // pas le bouton 🔗 Liens, qui n'est pas une action mais une consultation externe.
+// Étiquette « Basse déf. » à côté du titre de la fiche, comme dans la Bibliothèque.
+function _seriesDetailLowDefChipHtml(data) {
+    const owned = (data.volumes || []).filter(hasVolumeFile);
+    const low = owned.filter(v => _volumeQualityTier(v) === 'Basse déf.');
+    if (!low.length) return '';
+    const minSide = Math.min(...low.map(v => Math.max(v.page_width, v.page_height)));
+    const count = owned.length > 1 ? ` ${low.length}/${owned.length}` : '';
+    return `<span class="series-detail-chip series-detail-chip-lowdef" data-tooltip="${low.length} album${low.length > 1 ? 's' : ''} en basse définition (pages de ${minSide} px au plus)">${svgIcon('image')} Basse déf.${count}</span>`;
+}
+
+// Définition des pages sur la couverture (vue Aperçu des albums) : LD (basse déf.), SD, HD.
+function buildVolumeCoverQualityHtml(v) {
+    const tier = _volumeQualityTier(v);
+    if (!tier) return '';
+    const short = { 'Basse déf.': 'LD', 'Standard': 'SD', 'HD': 'HD' }[tier];
+    const cls = { LD: 'low', SD: 'standard', HD: 'high' }[short];
+    return `<span class="volume-cover-quality volume-cover-quality-${cls}" data-tooltip="${escapeHtml(tier)} : pages de ${v.page_width}×${v.page_height} px" aria-label="${escapeHtml(tier)}">${short}</span>`;
+}
+
 // Sur la couverture (vue Aperçu des albums) : pastille ✓ pour un tome lu, barre de
 // progression pour un tome commencé.
 function buildVolumeCoverReadingHtml(v) {
@@ -5170,6 +5190,7 @@ async function renderSeriesDetail(seriesId) {
                         <div class="series-detail-title-with-icon">
                             <h2 class="series-detail-title">${escapeHtml(data.title)}</h2>
                             ${completenessIconHtml}
+                            ${_seriesDetailLowDefChipHtml(data)}
                             ${data.to_read_later ? `<span class="series-detail-chip series-detail-chip-read-later" data-tooltip="Dans ta liste à lire">${svgIcon('bookmark')} À lire</span>` : ''}
                             ${data.is_favorite ? `<span class="series-detail-chip series-detail-chip-favorite" data-tooltip="Dans tes favoris">${svgIcon('heart')} Favori</span>` : ''}
                         </div>
