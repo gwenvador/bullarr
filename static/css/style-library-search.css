@@ -134,10 +134,45 @@
     gap: 8px;
 }
 
-.series-detail-completeness-icon {
-    font-size: 0.75em;
-    cursor: default;
+.series-detail-title-with-icon {
+    flex-wrap: wrap;
 }
+
+/* Étiquettes à côté du titre de la fiche : complète/incomplète, à lire, favori. */
+.series-detail-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+    cursor: default;
+    color: var(--chip-color);
+    background: color-mix(in srgb, var(--chip-color) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--chip-color) 30%, transparent);
+}
+
+.series-detail-chip .icon {
+    width: 13px;
+    height: 13px;
+}
+
+.series-detail-chip-read-later .icon,
+.series-detail-chip-favorite .icon {
+    fill: currentColor;
+}
+
+.series-detail-chip-complete { --chip-color: #2e8b57; }
+.series-detail-chip-incomplete { --chip-color: #c27a00; }
+.series-detail-chip-read-later { --chip-color: #3b82f6; }
+.series-detail-chip-favorite { --chip-color: #e5486b; }
+[data-theme="dark"] .series-detail-chip-complete { --chip-color: #5fd08f; }
+[data-theme="dark"] .series-detail-chip-incomplete { --chip-color: #f0b44c; }
+[data-theme="dark"] .series-detail-chip-read-later { --chip-color: #7aa7ff; }
+[data-theme="dark"] .series-detail-chip-favorite { --chip-color: #ff7a98; }
 
 .series-detail-title-row {
     display: flex;
@@ -3466,7 +3501,25 @@ body.comic-reader-open { overflow: hidden; }
 
 .series-list-icon {
     cursor: default;
+    display: inline-flex;
 }
+
+/* À lire plus tard (marque-page) et Favori (cœur) : icônes pleines, couleur propre. */
+.series-list-icon .icon {
+    width: 1em;
+    height: 1em;
+    fill: currentColor;
+    stroke-width: 1.5;
+}
+
+.series-list-icon-read-later,
+.overview-tag-read-later { color: #3b82f6; }
+.series-list-icon-favorite,
+.overview-tag-favorite { color: #e5486b; }
+[data-theme="dark"] .series-list-icon-read-later,
+[data-theme="dark"] .overview-tag-read-later { color: #7aa7ff; }
+[data-theme="dark"] .series-list-icon-favorite,
+[data-theme="dark"] .overview-tag-favorite { color: #ff7a98; }
 
 
 

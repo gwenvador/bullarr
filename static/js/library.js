@@ -738,8 +738,8 @@ function buildOverviewRowHtml(s) {
                 ${statusInfo ? `<span class="overview-tag">${svgIcon(statusInfo.icon)} ${escapeHtml(statusInfo.label)}</span>` : ''}
                 <span class="overview-tag">${svgIcon('book-open')} ${volumeLabel}</span>
                 ${komgaReadingInfo(s)?.started ? `<span class="overview-tag overview-tag-reading" title="Avancement de lecture (Komga)">✓ ${escapeHtml(komgaReadingLabel(komgaReadingInfo(s)))}</span>` : ''}
-                ${s.to_read_later ? `<span class="overview-tag">${svgIcon('pin')} À lire</span>` : ''}
-                ${s.is_favorite ? `<span class="overview-tag">${svgIcon('star')} Favori</span>` : ''}
+                ${s.to_read_later ? `<span class="overview-tag overview-tag-read-later">${svgIcon('bookmark')} À lire</span>` : ''}
+                ${s.is_favorite ? `<span class="overview-tag overview-tag-favorite">${svgIcon('heart')} Favori</span>` : ''}
                 ${seriesLowDefBadgeHtml(s)}
                 ${overviewUserTagsHtml(s.tags)}
             </div>
@@ -1006,8 +1006,8 @@ function overviewUserTagsHtml(tags) {
 
 // Icônes des listes personnelles, affichées à côté du titre quand la série y figure
 function seriesListIconsHtml(s) {
-    const readLater = s.to_read_later ? '<span class="series-list-icon" data-tooltip="À lire plus tard : cette série est dans ta liste à lire" aria-label="À lire plus tard">📚</span>' : '';
-    const favorite = s.is_favorite ? '<span class="series-list-icon" data-tooltip="Favori : cette série est dans tes favoris" aria-label="Favori">⭐</span>' : '';
+    const readLater = s.to_read_later ? `<span class="series-list-icon series-list-icon-read-later" data-tooltip="À lire plus tard : cette série est dans ta liste à lire" aria-label="À lire plus tard">${svgIcon('bookmark')}</span>` : '';
+    const favorite = s.is_favorite ? `<span class="series-list-icon series-list-icon-favorite" data-tooltip="Favori : cette série est dans tes favoris" aria-label="Favori">${svgIcon('heart')}</span>` : '';
     return readLater || favorite ? `<span class="series-list-icons">${readLater}${favorite}</span>` : '';
 }
 
@@ -2242,8 +2242,8 @@ function getFilterKeyLabel(key) {
     if (key === 'oneshot') return '🔸 One-Shot';
     if (key === 'ebdz-unmatched') return '🎯 Matching EBDZ';
     if (key === 'missing-metadata') return '📄 Sans métadonnées';
-    if (key === 'to-read') return '📚 À lire plus tard';
-    if (key === 'favorite') return '⭐ Favoris';
+    if (key === 'to-read') return '🔖 À lire plus tard';
+    if (key === 'favorite') return '♥ Favoris';
     if (key.startsWith('tag:')) return '🏷️ ' + key.slice('tag:'.length);
     if (key.startsWith('status:')) return 'Statut : ' + key.slice('status:'.length);
     if (key.startsWith('origin:')) return 'Origine : ' + key.slice('origin:'.length);
@@ -5014,9 +5014,9 @@ async function renderSeriesDetail(seriesId) {
 
         let completenessIconHtml = '';
         if (data.bedetheque_complete != null) {
-            const icon = data.bedetheque_complete ? '✅' : '⚠️';
-            const label = data.bedetheque_complete ? 'Série complète' : 'Série incomplète';
-            completenessIconHtml = `<span class="series-detail-completeness-icon" data-tooltip="${escapeHtml(label)} - ${escapeHtml(data.bedetheque_complete_reason || '')}">${icon}</span>`;
+            const complete = !!data.bedetheque_complete;
+            const label = complete ? 'Série complète' : 'Série incomplète';
+            completenessIconHtml = `<span class="series-detail-chip ${complete ? 'series-detail-chip-complete' : 'series-detail-chip-incomplete'}" data-tooltip="${escapeHtml(label)} - ${escapeHtml(data.bedetheque_complete_reason || '')}">${svgIcon(complete ? 'check' : 'alert-triangle')} ${complete ? 'Complète' : 'Incomplète'}</span>`;
         }
 
         // Mise en page façon Sonarr: couverture en colonne de gauche occupant toute la
@@ -5170,7 +5170,8 @@ async function renderSeriesDetail(seriesId) {
                         <div class="series-detail-title-with-icon">
                             <h2 class="series-detail-title">${escapeHtml(data.title)}</h2>
                             ${completenessIconHtml}
-                            ${seriesListIconsHtml(data)}
+                            ${data.to_read_later ? `<span class="series-detail-chip series-detail-chip-read-later" data-tooltip="Dans ta liste à lire">${svgIcon('bookmark')} À lire</span>` : ''}
+                            ${data.is_favorite ? `<span class="series-detail-chip series-detail-chip-favorite" data-tooltip="Dans tes favoris">${svgIcon('heart')} Favori</span>` : ''}
                         </div>
                         ${navHtml}
                     </div>
@@ -5223,8 +5224,8 @@ async function renderSeriesDetail(seriesId) {
                             <button class="toolbar-dropdown-item" onclick="updateSeriesMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)" aria-label="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)">${svgIcon('tag')} MAJ métadonnées (série + tomes)</button>
                             <button class="toolbar-dropdown-item" onclick="openMergeSeriesModal(${seriesId})" title="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)" aria-label="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)">${svgIcon('git-merge')} Fusionner</button>
                             <button class="toolbar-dropdown-item" onclick="openManualEditModal(${seriesId})" title="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque" aria-label="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque">${svgIcon('pencil')} Éditer manuellement</button>
-                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">📚 ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
-                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">⭐ ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
+                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">${svgIcon('bookmark')} ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
+                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">${svgIcon('heart')} ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
                             ${_seriesReadMenuItemHtml(data)}
                             ${data.is_oneshot ? `
                             <button class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(${seriesId})" title="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé" aria-label="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé">${svgIcon('upload')} Ajouter un fichier</button>
