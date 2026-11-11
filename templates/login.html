@@ -41,6 +41,15 @@
         .login-divider { display:flex; align-items:center; gap:12px; margin:20px 0 4px; color:var(--login-muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; }
         .login-divider::before, .login-divider::after { content:""; flex:1; height:1px; background:var(--login-border); }
         @media (max-width:520px) { .login-container { padding:28px 22px; border-radius:20px; } }
+        /* Mode sombre (même préférence que le reste de Bullarr, lue dans localStorage). */
+        [data-theme="dark"] { --login-bg:#161a24; --login-card:#1f2431; --login-text:#e6e9f2; --login-muted:#9aa3b8; --login-border:#343b4d; --login-accent:#818cf8; }
+        [data-theme="dark"] .login-container { border-color:var(--login-border); box-shadow:0 24px 70px rgba(0,0,0,.45); }
+        [data-theme="dark"] .login-field label { color:#c3c9d8; }
+        [data-theme="dark"] .login-input-wrap svg { color:#7d869b; }
+        [data-theme="dark"] .login-field input { background:#181c27; }
+        [data-theme="dark"] .login-field input:focus { background:#1b2030; box-shadow:0 0 0 4px rgba(129,140,248,.2); }
+        [data-theme="dark"] .login-error { background:rgba(229,83,83,.12); border-color:rgba(229,83,83,.4); color:#f3a5a5; }
+        [data-theme="dark"] .login-notice { background:rgba(76,194,104,.12); border-color:rgba(76,194,104,.4); color:#8fdca3; }
     </style>
 </head>
 <body data-role="{{ user_role }}">
