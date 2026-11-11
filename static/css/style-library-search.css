@@ -3619,12 +3619,19 @@ body.comic-reader-open { overflow: hidden; }
     background: var(--color-success, #2e7d32); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 .volume-cover-quality {
-    position: absolute; top: 6px; left: 6px; padding: 1px 5px; border-radius: 4px;
-    font-size: 10px; font-weight: 800; letter-spacing: .04em; line-height: 1.5; color: #fff;
-    background: rgba(60, 60, 60, 0.85); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); cursor: default;
+    position: absolute; top: 5px; left: 5px; min-width: 40px; overflow: hidden;
+    display: flex; flex-direction: column; align-items: stretch; text-align: center;
+    border-radius: 5px; background: #1c1c1e; color: #fff; cursor: default;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); font-family: system-ui, -apple-system, sans-serif;
 }
-.volume-cover-quality-low { background: #d97706; }
-.volume-cover-quality-high { background: #2e8b57; }
+.volume-cover-quality-size { padding: 1px 5px 0; font-size: 11px; font-weight: 700; line-height: 1.3; }
+.volume-cover-quality-label {
+    padding: 0 4px; font-size: 6.5px; font-weight: 800; letter-spacing: .05em; line-height: 1.6;
+    text-transform: uppercase; white-space: nowrap;
+    background: linear-gradient(90deg, #ff4d4d, #e00000);
+}
+.volume-cover-quality-standard .volume-cover-quality-label { background: linear-gradient(90deg, #ffd84d, #f5a800); color: #fff; }
+.volume-cover-quality-high .volume-cover-quality-label { background: linear-gradient(90deg, #3ecf7a, #13a454); }
 .volume-cover-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0, 0, 0, 0.35); }
 .volume-cover-progress span { display: block; height: 100%; background: var(--color-accent); }
 
@@ -4214,16 +4221,16 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
 .toolbar-dropdown-menu-autoclose .toolbar-dropdown-item { padding-left: 10px; }
 .toolbar-dropdown-menu-autoclose .toolbar-dropdown-item::before { content: none; }
 
-/* « par défaut met la couverture en front et les petits screenshots derrière qu'on peut
-   afficher en passant la souris dessus » : sur écran large, les pages de l'aperçu sont
-   rangées derrière la couverture (seuls leurs bords dépassent en bas) ; au survol elles
-   passent devant en éventail. Clic sur une page : visionneuse en galerie, comme avant. */
+/* Pages de l'aperçu en petit éventail par-dessus le bas de la couverture, assez bas
+   pour n'en cacher qu'une petite partie (« décale un peu plus vers le bas les
+   screenshots, mets-les par-dessus mais que ça cache moins le cover »). Clic sur une
+   page : visionneuse en galerie. */
 .series-cover-stack { position: relative; display: flex; flex-direction: column; gap: 8px; }
 @media (min-width: 769px) {
-    .series-cover-stack { display: block; margin: 0 0 30px 0; }
-    .series-cover-stack .series-detail-cover { position: relative; z-index: 2; }
+    .series-cover-stack { display: block; margin: 0 0 64px 0; }
+    .series-cover-stack .series-detail-cover { position: relative; z-index: 1; }
     .series-cover-stack .series-preview-pages {
-        position: absolute; left: 4%; right: 4%; bottom: -26px; z-index: 1;
+        position: absolute; left: 4%; right: 4%; bottom: -58px; z-index: 2;
         display: flex; align-items: flex-end; justify-content: center; gap: 0;
         pointer-events: none;
     }
@@ -4234,25 +4241,16 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
         opacity: 1; border: 3px solid #fff; border-radius: 3px;
         box-shadow: 0 6px 16px rgba(0,0,0,.35);
         transform-origin: 50% 100%;
-        --r: 0deg; --y: 0px;
-        transform: translateY(-8px) rotate(calc(var(--r) * .5));
-        transition: transform .22s ease, box-shadow .22s ease;
+        transition: transform .18s ease, box-shadow .18s ease;
     }
-    .series-cover-stack .series-preview-page:first-child { margin-left: 0; --r: -8deg; }
-    .series-cover-stack .series-preview-page:nth-child(2) { --r: -3deg; --y: -5px; z-index: 1; }
-    .series-cover-stack .series-preview-page:nth-child(3) { --r: 3deg; --y: -5px; z-index: 2; }
-    .series-cover-stack .series-preview-page:nth-child(4) { --r: 8deg; z-index: 3; }
+    .series-cover-stack .series-preview-page:first-child { margin-left: 0; transform: rotate(-8deg); }
+    .series-cover-stack .series-preview-page:nth-child(2) { transform: rotate(-3deg) translateY(-5px); z-index: 1; }
+    .series-cover-stack .series-preview-page:nth-child(3) { transform: rotate(3deg) translateY(-5px); z-index: 2; }
+    .series-cover-stack .series-preview-page:nth-child(4) { transform: rotate(8deg); z-index: 3; }
     .series-cover-stack .series-preview-page:nth-child(n+5) { display: none; }
     .series-cover-stack .series-preview-page[data-more]::after { content: none; }
-    .series-cover-stack .series-preview-pages:hover,
-    .series-cover-stack .series-preview-pages:focus-within { z-index: 3; }
-    .series-cover-stack .series-preview-pages:hover .series-preview-page,
-    .series-cover-stack .series-preview-pages:focus-within .series-preview-page {
-        transform: rotate(var(--r)) translateY(var(--y));
-    }
-    .series-cover-stack .series-preview-pages .series-preview-page:hover,
-    .series-cover-stack .series-preview-pages .series-preview-page:focus-visible {
-        transform: translateY(-10px) scale(1.06); z-index: 4; box-shadow: 0 10px 24px rgba(0,0,0,.45);
-    }
+    .series-cover-stack .series-preview-page:hover,
+    .series-cover-stack .series-preview-page:focus-visible { transform: translateY(-10px) scale(1.06); z-index: 4; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
     [data-theme="dark"] .series-cover-stack .series-preview-page { border-color: #e9e4da; }
+}
 }

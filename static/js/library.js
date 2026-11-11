@@ -3951,13 +3951,15 @@ function _seriesDetailLowDefChipHtml(data) {
     return `<span class="series-detail-chip series-detail-chip-lowdef" data-tooltip="${low.length} album${low.length > 1 ? 's' : ''} en basse définition (pages de ${minSide} px au plus)">${svgIcon('image')} Basse déf.${count}</span>`;
 }
 
-// Définition des pages sur la couverture (vue Aperçu des albums) : LD (basse déf.), SD, HD.
+// Définition des pages sur la couverture (vue Aperçu des albums), façon « 1080p / FULL HD » :
+// plus grand côté des pages en haut, catégorie dans le bandeau coloré.
 function buildVolumeCoverQualityHtml(v) {
     const tier = _volumeQualityTier(v);
     if (!tier) return '';
-    const short = { 'Basse déf.': 'LD', 'Standard': 'SD', 'HD': 'HD' }[tier];
-    const cls = { LD: 'low', SD: 'standard', HD: 'high' }[short];
-    return `<span class="volume-cover-quality volume-cover-quality-${cls}" data-tooltip="${escapeHtml(tier)} : pages de ${v.page_width}×${v.page_height} px" aria-label="${escapeHtml(tier)}">${short}</span>`;
+    const side = Math.max(v.page_width, v.page_height);
+    const cls = { 'Basse déf.': 'low', 'Standard': 'standard', 'HD': 'high' }[tier];
+    const label = side >= 3500 ? 'Ultra HD' : { low: 'Basse déf', standard: 'Standard', high: 'HD' }[cls];
+    return `<span class="volume-cover-quality volume-cover-quality-${cls}" data-tooltip="${escapeHtml(tier)} : pages de ${v.page_width}×${v.page_height} px" aria-label="${escapeHtml(tier)}"><span class="volume-cover-quality-size">${side}p</span><span class="volume-cover-quality-label">${label}</span></span>`;
 }
 
 // Sur la couverture (vue Aperçu des albums) : pastille ✓ pour un tome lu, barre de
