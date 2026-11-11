@@ -106,6 +106,7 @@ const COMIC_READER_SHORTCUTS = [
         [['C', 'Z'], 'Ajustement : page entière, largeur, hauteur'],
         [['D'], 'Une ou deux pages côte à côte'],
         [['F'], 'Plein écran'],
+        [['U'], 'Amélioration des pages en basse définition : désactivée, navigateur, serveur'],
     ]],
     ['Menus', [
         [['M'], 'Afficher / masquer les barres'],
@@ -196,6 +197,11 @@ function _comicReaderPageUrl(number) {
     return `/api/volumes/${comicReader.volumeId}/reader/page/${number}`;
 }
 
+// Page à afficher : sa version améliorée si elle est prête (reader-upscale.js), sinon l'originale.
+function _comicReaderShownUrl(number) {
+    return (typeof comicReaderUpscaleUrl === 'function' && comicReaderUpscaleUrl(number)) || _comicReaderPageUrl(number);
+}
+
 function _comicReaderThumbUrl(number) {
     return `/api/volumes/${comicReader.volumeId}/reader/thumb/${number}`;
 }
@@ -236,6 +242,8 @@ function _buildComicReader() {
                 <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="rtl" id="comic-reader-rtl-btn" aria-label="Sens manga" data-tooltip="Sens manga : droite → gauche (R, L pour revenir)">⇆<span class="comic-reader-btn-label">Manga</span></button>
                 <button type="button" class="comic-reader-btn comic-reader-btn-spread" data-reader-action="spread" id="comic-reader-spread-btn" aria-label="Deux pages côte à côte" data-tooltip="Deux pages côte à côte (D)">▯▯</button>
                 <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="fit" id="comic-reader-fit" aria-label="Ajustement de l'image" data-tooltip="Ajustement de l'image : page entière, largeur ou hauteur de l'écran (C)"></button>
+                <span class="comic-reader-upscale-status" id="comic-reader-upscale-status" hidden></span>
+                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="upscale" id="comic-reader-upscale-btn" aria-label="Amélioration des pages" data-tooltip="Amélioration des pages en basse définition (U)">✨<span class="comic-reader-btn-label">HD</span></button>
                 <button type="button" class="comic-reader-btn" data-reader-action="thumbs" id="comic-reader-thumbs-btn" aria-label="Miniatures des pages" data-tooltip="Miniatures des pages (T)">▦</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="left" id="comic-reader-left-btn" aria-label="Page précédente" data-tooltip="Page précédente (←)">‹</button>
                 <button type="button" class="comic-reader-btn" data-reader-action="right" id="comic-reader-right-btn" aria-label="Page suivante" data-tooltip="Page suivante (→)">›</button>
@@ -274,6 +282,7 @@ function _buildComicReader() {
             else if (action === 'webtoon') toggleComicReaderWebtoon();
             else if (action === 'rtl') toggleComicReaderRtl();
             else if (action === 'fit') cycleComicReaderFit();
+            else if (action === 'upscale') toggleComicReaderUpscaleMenu();
             else if (action === 'spread') toggleComicReaderSpread();
             else if (action === 'help') toggleComicReaderHelp();
             else if (action === 'zoom-in') zoomComicReaderBy(COMIC_READER_ZOOM_STEP);
@@ -467,6 +476,7 @@ function _comicReaderKeydown(event) {
         z: () => cycleComicReaderFit(), Z: () => cycleComicReaderFit(),
         c: () => cycleComicReaderFit(), C: () => cycleComicReaderFit(),
         t: () => toggleComicReaderThumbs(), T: () => toggleComicReaderThumbs(),
+        u: () => cycleComicReaderUpscale(), U: () => cycleComicReaderUpscale(),
         m: () => toggleComicReaderChrome(), M: () => toggleComicReaderChrome(),
         d: () => toggleComicReaderSpread(), D: () => toggleComicReaderSpread(),
         '?': () => toggleComicReaderHelp(), h: () => toggleComicReaderHelp(), H: () => toggleComicReaderHelp(),
@@ -653,6 +663,8 @@ function _clearComicReaderImages() {
     document.querySelectorAll('#comic-reader-pages .comic-reader-image').forEach(image => {
         image.removeAttribute('src');
         image.removeAttribute('data-page');
+        image.removeAttribute('data-enhanced');
+        image.removeAttribute('data-original-src');
         image.style.width = '';
         image.style.height = '';
     });
@@ -735,12 +747,16 @@ function showComicReaderPage(number) {
     document.getElementById('comic-reader-status').textContent = '';
     first.dataset.page = String(shown[0]);
     first.alt = `${comicReader.title} - page ${shown[0]}`;
-    first.src = _comicReaderPageUrl(shown[0]);
+    first.src = _comicReaderShownUrl(shown[0]);
+    delete first.dataset.enhanced;
+    delete first.dataset.originalSrc;
     if (shown[1]) {
         second.hidden = false;
         second.dataset.page = String(shown[1]);
         second.alt = `${comicReader.title} - page ${shown[1]}`;
-        second.src = _comicReaderPageUrl(shown[1]);
+        second.src = _comicReaderShownUrl(shown[1]);
+        delete second.dataset.enhanced;
+        delete second.dataset.originalSrc;
     } else {
         second.hidden = true;
         second.removeAttribute('src');
@@ -768,6 +784,7 @@ function _comicReaderPageShown(page, shown) {
         `${shown.length > 1 ? `${shown[0]}-${shown[1]}` : shown[0]} / ${comicReader.count}`;
     document.getElementById('comic-reader-slider').value = String(page);
     _highlightComicReaderThumb();
+    if (typeof comicReaderUpscaleShown === 'function') comicReaderUpscaleShown(shown);
     _comicReaderSavePref(_comicReaderStorageKey(comicReader.volumeId), String(page));
     if (comicReader.progressReady) _scheduleComicReaderProgress();
     else comicReader.progressReady = true;  // premier affichage : pas d'envoi
@@ -911,6 +928,7 @@ async function openComicReader(volumeId) {
         comicReader.seriesId = data.series_id;
         comicReader.previous = data.previous || null;
         comicReader.next = data.next || null;
+        if (typeof comicReaderUpscaleOpen === 'function') comicReaderUpscaleOpen(volumeId, data.upscale_server);
         // Sens manga : choix mémorisé pour la série, sinon d'office pour une origine Asie.
         const savedRtl = data.series_id ? _comicReaderPref(_comicReaderRtlKey(), null) : null;
         comicReader.rtl = savedRtl === null ? !!data.manga : savedRtl === '1';
@@ -976,6 +994,7 @@ function closeComicReader() {
     overlay.hidden = true;
     document.body.classList.remove('comic-reader-open');
     _clearComicReaderImages();
+    if (typeof comicReaderUpscaleClose === 'function') comicReaderUpscaleClose();
     document.getElementById('comic-reader-thumbs').innerHTML = '';
     document.getElementById('comic-reader-webtoon').innerHTML = '';
     // Laisse l'envoi de la page partir avant de relire l'avancement (rangée « Continuer la lecture »).

@@ -46,6 +46,7 @@ READER_ENDPOINTS = {
     'bedetheque.get_authors_photos': _GET,
     # Lecture en ligne et téléchargement
     'library.get_volume_reader_info': _GET, 'library.get_volume_reader_page': _GET,
+    'library.get_volume_reader_page_enhanced': _GET,
     'library.get_volume_reader_thumbnail': _GET, 'library.post_volume_reader_progress': frozenset({'POST'}),
     # « Marquer comme lu / non lu » (tome, série) : état de lecture propre au compte.
     'library.post_volume_read_status': frozenset({'POST'}), 'library.post_series_read_status': frozenset({'POST'}),

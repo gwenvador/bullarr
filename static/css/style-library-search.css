@@ -4263,3 +4263,17 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
     [data-theme="dark"] .series-cover-stack .series-preview-page { border-color: #e9e4da; }
 }
 }
+
+/* Amélioration des pages (lecteur) : indicateur et menu */
+.comic-reader-upscale-status { font-size: 12px; font-weight: 600; color: #fde68a; background: rgba(217,119,6,0.25); border: 1px solid rgba(253,230,138,0.35); padding: 3px 9px; border-radius: 999px; white-space: nowrap; animation: comic-upscale-pulse 1.4s ease-in-out infinite; }
+.comic-reader-upscale-status.error { color: #fecaca; background: rgba(220,38,38,0.25); border-color: rgba(254,202,202,0.35); animation: none; }
+@keyframes comic-upscale-pulse { 50% { opacity: 0.55; } }
+.comic-reader-upscale-menu { position: fixed; z-index: 5; width: 290px; padding: 12px; border-radius: 10px; background: #212121; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 12px 40px rgba(0,0,0,.5); color: #eee; }
+.comic-reader-upscale-title { font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+.comic-reader-upscale-subtitle { font-size: 12px; color: #aaa; margin: 10px 0 6px; }
+.comic-reader-upscale-row { display: flex; gap: 6px; }
+.comic-reader-upscale-option { flex: 1; padding: 6px 8px; border: 1px solid rgba(255,255,255,0.15); border-radius: 7px; background: rgba(255,255,255,0.06); color: #eee; font-size: 13px; cursor: pointer; }
+.comic-reader-upscale-option:hover:not(:disabled) { background: rgba(255,255,255,0.16); }
+.comic-reader-upscale-option.active { background: var(--color-accent); border-color: transparent; color: #fff; }
+.comic-reader-upscale-option:disabled { opacity: 0.4; cursor: not-allowed; }
+.comic-reader-upscale-note { margin-top: 10px; font-size: 11px; color: #999; }

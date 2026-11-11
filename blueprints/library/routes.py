@@ -2018,7 +2018,14 @@ def get_volume_reader_info(volume_id):
                     # lecture par défaut : droite à gauche pour une série d'origine Asie.
                     'previous': previous, 'next': following, 'manga': manga,
                     # Page atteinte d'après Komga (tout lecteur, tout appareil) : la reprise.
-                    'resume_page': resume_page, 'read_completed': read_completed})
+                    'resume_page': resume_page, 'read_completed': read_completed,
+                    # Amélioration des pages en basse définition possible sur le serveur.
+                    'upscale_server': _upscale_available()})
+
+
+def _upscale_available():
+    from .upscale import available
+    return available()
 
 
 def _reader_komga_progress(volume_id):
@@ -2260,6 +2267,35 @@ def get_volume_reader_page(volume_id, number):
         return jsonify({'success': False, 'error': error_message(e, 'Lecture de la page impossible')}), 500
     response = current_app.response_class(data, mimetype=mimetype)
     response.headers['Cache-Control'] = 'private, max-age=3600'
+    return response
+
+
+@library_bp.route('/api/volumes/<int:volume_id>/reader/page/<int:number>/enhanced', methods=['GET'])
+def get_volume_reader_page_enhanced(volume_id, number):
+    """Lecteur intégré : page `number` améliorée sur le serveur (Real-ESRGAN, ?model=fast ou
+    quality), agrandie x2 en JPEG ; 204 si la page n'est pas en basse définition."""
+    from .reader import read_page
+    from . import upscale
+    row, error = _reader_volume(volume_id)
+    if error:
+        return error
+    model = request.args.get('model', 'fast')
+    if model not in upscale.MODELS:
+        return jsonify({'success': False, 'error': 'Modèle inconnu'}), 400
+    if not upscale.available():
+        return jsonify({'success': False, 'error': "L'amélioration n'est pas disponible sur ce serveur"}), 503
+    cache_dir = os.path.join(current_app.config['COVERS_DIR'], '..', 'upscale')
+    try:
+        data = upscale.enhanced_page(row['filepath'], row['format'], number, model,
+                                     os.path.normpath(cache_dir), read_page)
+    except IndexError as e:
+        return jsonify({'success': False, 'error': error_message(e)}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Amélioration de la page impossible')}), 500
+    if data is None:
+        return '', 204
+    response = current_app.response_class(data, mimetype='image/jpeg')
+    response.headers['Cache-Control'] = 'private, max-age=86400'
     return response
 
 
