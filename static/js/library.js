@@ -2965,7 +2965,7 @@ function _applyReadStateInPlace(volumeIds, read) {
             host.querySelectorAll('.volume-reading-badge').forEach(e => e.remove());
             const nameEl = host.querySelector('.volume-table-name, .volume-filename');
             if (nameEl) nameEl.insertAdjacentHTML('beforeend', buildVolumeReadingBadgeHtml(v));
-            const cover = host.querySelector('.volume-cover-wrapper');
+            const cover = host.querySelector('.volume-cover-frame') || host.querySelector('.volume-cover-wrapper');
             if (cover) {
                 cover.querySelectorAll('.volume-cover-read, .volume-cover-progress').forEach(e => e.remove());
                 cover.insertAdjacentHTML('beforeend', buildVolumeCoverReadingHtml(v));
@@ -3690,8 +3690,10 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
                 ${numberLabel}
             </div>
             <div class="volume-cover-wrapper">
-                ${coverHtml}
-                ${buildVolumeCoverReadingHtml(v)}
+                <div class="volume-cover-frame">
+                    ${coverHtml}
+                    ${buildVolumeCoverReadingHtml(v)}
+                </div>
                 ${buildVolumeCoverQualityHtml(v)}
             </div>
             <div class="volume-details">

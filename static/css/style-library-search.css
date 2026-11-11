@@ -1397,6 +1397,12 @@
     display: inline-block;
 }
 
+/* Couverture et pastilles de lecture (✓, barre d'avancement), la définition reste dessous. */
+.volume-cover-frame {
+    position: relative;
+}
+.volume-cover-frame > img.volume-cover { display: block; }
+
 /* Titre du volume + lien direct Komga vers ce tome */
 .volume-filename-row {
     display: flex;
