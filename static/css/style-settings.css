@@ -1593,3 +1593,190 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
     #tab-backup .backup-card { padding: 18px; }
     #tab-backup .backup-btn { flex: 1 1 auto; }
 }
+
+/* ================================================================================
+   Configuration — refonte visuelle commune à tous les onglets et modales
+   (« fais toutes les pages de configuration et améliore l'UI »). Mêmes composants
+   partout : titre avec pastille d'icône (decorateSettingsUI dans settings.js à la place
+   des emoji), cartes plus aérées, champs et listes plus lisibles, bouton
+   « Sauvegarder/Enregistrer » plein (.btn-save), les autres boutons restent teintés.
+   Préfixé par .settings-content / .settings-modal-content pour passer devant style.css
+   (chargé après ce fichier) sans toucher au reste de l'app.
+   ================================================================================ */
+:is(.settings-content, .settings-modal-content) {
+    --cfg-radius: 14px;
+    --cfg-field-bg: color-mix(in srgb, var(--color-surface) 70%, var(--color-bg));
+    --cfg-tint: color-mix(in srgb, var(--color-accent) 11%, transparent);
+}
+
+/* --- En-têtes de page et de section ------------------------------------------------ */
+.settings-content .section-header { margin-bottom: 22px; }
+:is(.settings-content, .settings-modal-content) .section-header h2 {
+    font-size: 1.9em; line-height: 1.15; margin: 0 0 8px; gap: 14px; letter-spacing: -.01em;
+}
+:is(.settings-content, .settings-modal-content) .settings-title-icon {
+    flex: none; width: 46px; height: 46px; border-radius: 13px; display: inline-grid; place-items: center;
+    background: var(--cfg-tint); color: var(--color-accent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+:is(.settings-content, .settings-modal-content) .settings-title-icon svg { width: 23px; height: 23px; }
+:is(.settings-content, .settings-modal-content) .settings-title-icon .section-header-logo { width: 26px; height: 26px; opacity: 1; }
+/* Sous-sections d'un même onglet (Recherche : extensions, ordre des sources…) */
+.settings-content .section-header.settings-subheader { margin-top: 38px !important; }
+.settings-content .section-header.settings-subheader h2 { font-size: 1.4em; gap: 12px; }
+.settings-content .section-header.settings-subheader .settings-title-icon { width: 36px; height: 36px; border-radius: 10px; }
+.settings-content .section-header.settings-subheader .settings-title-icon svg { width: 18px; height: 18px; }
+.settings-content .section-description { font-size: 1em; line-height: 1.6; max-width: 900px; margin: 0; }
+.settings-content .settings-back-link {
+    font-size: .88em; font-weight: 600; padding: 5px 11px 5px 8px; margin-bottom: 14px; border-radius: 999px;
+    background: var(--color-surface-alt); border: 1px solid var(--color-border);
+}
+.settings-content .settings-back-link:hover { border-color: var(--color-accent); }
+
+/* --- Cartes -------------------------------------------------------------------------- */
+:is(.settings-content, .settings-modal-content) .settings-card {
+    border: 1px solid var(--color-border); border-radius: 18px; padding: 26px 28px; margin-bottom: 22px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 6px 20px -12px rgba(0, 0, 0, .12);
+}
+:is(.settings-content, .settings-modal-content) .settings-card h3 {
+    font-size: 1.2em; font-weight: 700; color: var(--color-text); display: flex; align-items: center; gap: 10px;
+}
+:is(.settings-content, .settings-modal-content) .settings-card-icon {
+    flex: none; width: 34px; height: 34px; border-radius: 10px; display: inline-grid; place-items: center;
+    background: var(--cfg-tint); color: var(--color-accent); font-size: 0 !important;
+}
+:is(.settings-content, .settings-modal-content) .settings-card-icon svg { width: 18px; height: 18px; }
+:is(.settings-content, .settings-modal-content) .settings-card-icon.is-warning {
+    background: color-mix(in srgb, #d97706 13%, transparent); color: #d97706;
+}
+
+/* --- Champs ---------------------------------------------------------------------------- */
+:is(.settings-content, .settings-modal-content) .form-group { margin-bottom: 18px; }
+:is(.settings-content, .settings-modal-content) .form-group > label:not(.switch) { font-size: .95em; margin-bottom: 7px; }
+:is(.settings-content, .settings-modal-content) :is(
+    input[type="text"], input[type="password"], input[type="email"], input[type="url"],
+    input[type="number"], input[type="time"], input:not([type]), textarea, select) {
+    border: 1px solid var(--color-border); border-radius: 10px; background: var(--cfg-field-bg);
+    color: var(--color-text); font-size: 1em; font-family: inherit; padding: 10px 13px; min-height: 42px;
+    transition: border-color .15s, box-shadow .15s, background .15s;
+}
+:is(.settings-content, .settings-modal-content) textarea { min-height: 90px; line-height: 1.5; }
+:is(.settings-content, .settings-modal-content) select { padding-right: 34px; cursor: pointer; }
+:is(.settings-content, .settings-modal-content) :is(input, textarea, select):hover:not(:disabled):not([type="checkbox"]):not([type="radio"]) {
+    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+}
+:is(.settings-content, .settings-modal-content) :is(input, textarea, select):focus:not([type="checkbox"]):not([type="radio"]) {
+    outline: none; transform: none; border-color: var(--color-accent); background: var(--color-surface);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+:is(.settings-content, .settings-modal-content) .help-text { font-size: .9em; line-height: 1.5; margin-top: 6px; }
+:is(.settings-content, .settings-modal-content) .form-row { gap: 18px; }
+:is(.settings-content, .settings-modal-content) .password-input-group input { padding-right: 46px; }
+
+/* --- Interrupteurs (blocs .checkbox-group) ---------------------------------------------- */
+:is(.settings-content, .settings-modal-content) .checkbox-group {
+    align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--color-border); border-radius: var(--cfg-radius);
+    background: var(--cfg-field-bg); transition: border-color .15s, background .15s;
+}
+:is(.settings-content, .settings-modal-content) .checkbox-group:hover { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); }
+:is(.settings-content, .settings-modal-content) .checkbox-group:has(input:checked) {
+    background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface));
+    border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+}
+:is(.settings-content, .settings-modal-content) .checkbox-group + .checkbox-group { margin-top: 10px; }
+:is(.settings-content, .settings-modal-content) .checkbox-group label { gap: 3px; }
+:is(.settings-content, .settings-modal-content) .checkbox-group label strong { font-size: 1.02em; }
+:is(.settings-content, .settings-modal-content) .checkbox-group .help-text { margin-top: 0; }
+:is(.settings-content, .settings-modal-content) .checkbox-group input[type="checkbox"] { margin-top: 0; }
+
+/* --- Boutons ----------------------------------------------------------------------------- */
+:is(.settings-content, .settings-modal-content) .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 8px 16px; min-height: 38px; font-size: .93em; border-radius: 10px; line-height: 1.2;
+}
+:is(.settings-content, .settings-modal-content) .btn .icon,
+:is(.settings-content, .settings-modal-content) .btn svg { width: 16px; height: 16px; vertical-align: 0; flex: none; }
+:is(.settings-content, .settings-modal-content) .btn.btn-sm { padding: 5px 11px; min-height: 30px; font-size: .85em; border-radius: 8px; }
+:is(.settings-content, .settings-modal-content) .btn.btn-save {
+    background: var(--color-accent); color: #fff; border-color: transparent;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+}
+:is(.settings-content, .settings-modal-content) .btn.btn-save:hover { background: var(--color-accent-hover, var(--color-accent)); filter: brightness(1.05); }
+:is(.settings-content, .settings-modal-content) .btn.btn-save:disabled { background: var(--color-surface-alt); color: var(--color-text-muted); }
+:is(.settings-content, .settings-modal-content) .form-actions { gap: 10px; align-items: center; }
+:is(.settings-content, .settings-modal-content) .settings-card > .form-actions:last-child,
+:is(.settings-content, .settings-modal-content) .settings-card > .form-actions:nth-last-child(2) {
+    margin-top: 22px !important; padding-top: 18px; border-top: 1px solid var(--color-border);
+}
+:is(.settings-content, .settings-modal-content) :is(.btn-neutral-sm, .btn-secondary) { border-radius: 8px; }
+
+/* --- Messages, aide, tableaux ------------------------------------------------------------- */
+:is(.settings-content, .settings-modal-content) .message { border-radius: 12px; padding: 12px 16px; font-size: .95em; line-height: 1.5; }
+:is(.settings-content, .settings-modal-content) .help-details {
+    border: 1px solid var(--color-border); border-radius: var(--cfg-radius); background: var(--color-surface);
+}
+:is(.settings-content, .settings-modal-content) .help-details summary { font-weight: 600; padding: 14px 18px; }
+:is(.settings-content, .settings-modal-content) .help-content { line-height: 1.6; }
+:is(.settings-content, .settings-modal-content) .settings-card table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .95em; }
+:is(.settings-content, .settings-modal-content) .settings-card table :is(th, td) { padding: 10px 12px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+:is(.settings-content, .settings-modal-content) .settings-card table th {
+    font-size: .8em; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted); background: var(--color-surface-alt);
+}
+:is(.settings-content, .settings-modal-content) .settings-card table tr:last-child td { border-bottom: 0; }
+:is(.settings-content, .settings-modal-content) .settings-card table code {
+    font-size: .92em; padding: 2px 6px; border-radius: 6px; background: var(--cfg-tint); color: var(--color-accent);
+}
+
+/* --- Cartes Indexeurs / Clients / Intégrations ---------------------------------------------- */
+.settings-content .integration-cards-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; }
+.settings-content .integration-card {
+    border: 1px solid var(--color-border); border-radius: 18px; gap: 12px; padding: 26px 16px; aspect-ratio: auto; min-height: 190px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+.settings-content .integration-card:hover { box-shadow: 0 10px 24px -14px rgba(0, 0, 0, .3); }
+.settings-content .integration-card-logo { width: 56px; height: 56px; }
+.settings-content .integration-card-name { font-size: 1.05em; }
+.settings-content .integration-card-status { font-size: .8em; font-weight: 600; padding: 4px 12px; }
+
+/* Modales de configuration : un peu plus larges, texte à la même taille que les onglets */
+.settings-modal-content { font-size: 16px; max-width: 860px; border-radius: 20px; }
+
+@media (max-width: 720px) {
+    :is(.settings-content, .settings-modal-content) .settings-card { padding: 18px 16px; border-radius: 14px; }
+    :is(.settings-content, .settings-modal-content) .section-header h2 { font-size: 1.5em; gap: 10px; }
+    :is(.settings-content, .settings-modal-content) .settings-title-icon { width: 38px; height: 38px; border-radius: 11px; }
+    :is(.settings-content, .settings-modal-content) .settings-title-icon svg { width: 19px; height: 19px; }
+    .settings-content .integration-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .settings-content .integration-card { min-height: 150px; padding: 18px 10px; }
+}
+
+/* Listes ordonnées (formats, sources, repli IA) : les ▲▼ texte (rendus en carrés noirs
+   type emoji sur macOS/iOS) laissent place à des chevrons dessinés en masque CSS. */
+:is(.settings-content, .settings-modal-content) .format-priority-item { border-radius: 12px; padding: 10px 14px; }
+:is(.settings-content, .settings-modal-content) :is(.format-priority-controls button, button[title="Monter"], button[title="Descendre"], button[aria-label="Monter"], button[aria-label="Descendre"]) {
+    font-size: 0 !important; width: 32px; height: 32px; min-height: 32px; padding: 0 !important; border-radius: 9px;
+    display: inline-grid; place-items: center; background: var(--color-surface); color: var(--color-text);
+    border: 1px solid var(--color-border); cursor: pointer;
+}
+:is(.settings-content, .settings-modal-content) :is(.format-priority-controls button, button[title="Monter"], button[title="Descendre"], button[aria-label="Monter"], button[aria-label="Descendre"])::before {
+    content: ''; width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 15-6-6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 15-6-6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+:is(.settings-content, .settings-modal-content) :is(button[title="Descendre"], button[aria-label="Descendre"])::before { transform: rotate(180deg); }
+:is(.settings-content, .settings-modal-content) :is(.format-priority-controls button, button[title="Monter"], button[title="Descendre"], button[aria-label="Monter"], button[aria-label="Descendre"]):hover:not(:disabled) {
+    border-color: var(--color-accent); color: var(--color-accent); background: var(--cfg-tint);
+}
+:is(.settings-content, .settings-modal-content) :is(.format-priority-controls button, button[title="Monter"], button[title="Descendre"], button[aria-label="Monter"], button[aria-label="Descendre"]):disabled {
+    opacity: .35; cursor: default;
+}
+/* Ajout d'une extension bloquée : champ et bouton à la taille des autres contrôles */
+.settings-content #blockedExtensionCustomInput { max-width: 240px !important; padding: 9px 12px !important; font-size: .95em !important; }
+.settings-content #blockedExtensionCustomInput + .btn-neutral-sm { padding: 9px 14px; font-size: .9em; border-radius: 10px; min-height: 40px; }
+
+/* Titres de carte : un peu d'air avant le contenu (les h3 avec marges en ligne gardent les leurs) */
+:is(.settings-content, .settings-modal-content) .settings-card > h3 { margin: 0 0 16px; }
+:is(.settings-content, .settings-modal-content) .checkbox-group + .form-group,
+:is(.settings-content, .settings-modal-content) .checkbox-group + .form-row { margin-top: 18px; }
+/* Surveillance : la note sous l'interrupteur n'a plus besoin de son trait (le bas de carte en a un) */
+.settings-content #missingVolumesSettings > .help-text { border-top: 0 !important; padding-top: 0 !important; }

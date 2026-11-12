@@ -4010,3 +4010,83 @@ async function clearAiHistory() {
         loadAiHistory();
     }
 }
+
+// Habillage commun des onglets et modales de Configuration (voir le bloc « refonte
+// visuelle » de style-settings.css) : l'emoji en tête des titres h2/h3 est remplacé par
+// une icône SVG dans une pastille (le logo d'une intégration est gardé, dans la pastille),
+// les titres suivants d'un même onglet deviennent des sous-sections, et le bouton
+// « Sauvegarder / Enregistrer » de chaque bloc devient le bouton principal (.btn-save).
+const SETTINGS_EMOJI_ICONS = {
+    '🔌': 'plug', '🎨': 'palette', '✨': 'sparkles', '🧩': 'link', '💻': 'monitor', '🔐': 'lock',
+    '🗂': 'folder-open', '🚫': 'ban', '🔀': 'arrow-left-right', '📁': 'folder', '🔎': 'search',
+    '📇': 'database', '✏': 'pencil', '💾': 'save', '🤖': 'bot', '📊': 'activity', '📥': 'download',
+    '📖': 'book-open', '📂': 'folder-open', '⏰': 'clock', '⚠': 'triangle-alert',
+    '↩': 'undo', '⏸': 'pause', '▶': 'play',
+};
+const SETTINGS_TITLE_FALLBACK = { 'tab-telegram': 'bell' };
+const _SETTINGS_EMOJI_RE = /^\s*(\p{Extended_Pictographic})️?\s*/u;
+
+function _settingsIconFor(emoji) {
+    return SETTINGS_EMOJI_ICONS[emoji] || null;
+}
+
+function _settingsStripEmoji(heading) {
+    const first = heading.firstChild;
+    if (!first || first.nodeType !== Node.TEXT_NODE) return null;
+    const match = first.textContent.match(_SETTINGS_EMOJI_RE);
+    if (!match) return null;
+    first.textContent = first.textContent.slice(match[0].length);
+    return match[1];
+}
+
+function decorateSettingsUI() {
+    if (typeof svgIcon !== 'function') return;
+    const roots = document.querySelectorAll('.settings-content .tab-content, .settings-modal-content');
+    roots.forEach(root => {
+        root.querySelectorAll('.section-header').forEach((header, index) => {
+            const h2 = header.querySelector('h2');
+            if (!h2 || h2.querySelector('.settings-title-icon')) return;
+            if (index > 0 && root.classList.contains('tab-content')) header.classList.add('settings-subheader');
+            const badge = document.createElement('span');
+            badge.className = 'settings-title-icon';
+            const logo = h2.querySelector(':scope > img.section-header-logo');
+            const emoji = _settingsStripEmoji(h2);
+            if (logo) {
+                badge.appendChild(logo);
+            } else if (emoji && _settingsIconFor(emoji)) {
+                badge.innerHTML = svgIcon(_settingsIconFor(emoji));
+            } else if (SETTINGS_TITLE_FALLBACK[root.id] && index === 0) {
+                badge.innerHTML = svgIcon(SETTINGS_TITLE_FALLBACK[root.id]);
+            } else {
+                return;
+            }
+            h2.prepend(badge);
+        });
+        root.querySelectorAll('.settings-card h3, .help-section h3').forEach(h3 => {
+            if (h3.querySelector('.settings-card-icon, .notification-channel-icon, img')) return;
+            const emoji = _settingsStripEmoji(h3);
+            const icon = emoji && _settingsIconFor(emoji);
+            if (icon) h3.insertAdjacentHTML('afterbegin', `<span class="settings-card-icon">${svgIcon(icon)}</span>`);
+        });
+        // Pastilles emoji posées à côté d'un h3 (Surveillance : ⚠️, ✨, ⏰)
+        root.querySelectorAll('span[style*="font-size: 24px"]').forEach(span => {
+            const emoji = (span.textContent.match(/\p{Extended_Pictographic}/u) || [])[0];
+            const icon = emoji && _settingsIconFor(emoji);
+            if (!icon) return;
+            span.removeAttribute('style');
+            span.className = `settings-card-icon${icon === 'triangle-alert' ? ' is-warning' : ''}`;
+            span.innerHTML = svgIcon(icon);
+        });
+        root.querySelectorAll('button.btn').forEach(btn => {
+            if (btn.closest('#tab-backup')) return;
+            // Emoji en tête d'un libellé de bouton (💾 Enregistrer, ✨ …) : même icône SVG
+            // que les autres boutons de la page.
+            const emoji = _settingsStripEmoji(btn);
+            const icon = emoji && _settingsIconFor(emoji);
+            if (icon) btn.insertAdjacentHTML('afterbegin', svgIcon(icon));
+            if (/^(Sauvegarder|Enregistrer)\b/.test(btn.textContent.trim())) btn.classList.add('btn-save');
+        });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', decorateSettingsUI);
