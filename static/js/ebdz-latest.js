@@ -1581,12 +1581,12 @@ function _groupNouveautesSeriesRows(body) {
                 // l'en-tête, ces trois cellules vides sont fusionnées dans Détails, dont le
                 // contenu part alors un peu en retrait au lieu d'après la colonne Origine.
                 // « ça doit être aligné » : tous les albums d'un groupe sont fusionnés de la
-                // même façon ; une date, une source ou une origine différente de l'en-tête
+                // même façon ; une source ou une origine différente de l'en-tête
                 // passe en puce sous le titre au lieu de garder sa colonne.
                 if ([0, 1, 2].every(c => r.cells[c])
                         && r.cells[3] && r.cells[3].classList.contains('nouveautes-details-cell')) {
                     const details = r.cells[3];
-                    const diff = [0, 1, 2].filter(c => !r.cells[c].classList.contains('nouveautes-cell-repeat'));
+                    const diff = [1, 2].filter(c => !r.cells[c].classList.contains('nouveautes-cell-repeat')); // l'heure des autres albums ne sert à rien
                     if (diff.length) {
                         let meta = details.querySelector(':scope > .nouveautes-meta');
                         if (!meta) {
