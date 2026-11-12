@@ -39,7 +39,7 @@ function reviewDateHtml(createdAt) {
 }
 function reviewSourceIcon(candidate) {
     const source = candidate.source || '';
-    const icons = { ebdz:'/static/img/ebdz-logo.png', prowlarr:'/static/img/prowlarr-logo.svg', telegram:'/static/img/telegram-logo.svg', fourtoutici:'/static/img/web-logo.svg', annas_archive:'/static/img/web-logo.svg' };
+    const icons = { ebdz:'/static/img/ebdz-logo.png', prowlarr:'/static/img/prowlarr-logo.svg', telegram:'/static/img/telegram-logo.svg', fourtoutici:'/static/img/web-logo.svg', annas_archive:'/static/img/web-logo.svg', rss:'/static/img/rss-logo.svg', vk:'/static/img/vk-logo.svg' };
     return icons[source] ? `<img class="review-source-icon" src="${icons[source]}" alt="" title="${reviewEscape(source)}">` : '';
 }
 
@@ -148,13 +148,21 @@ async function retryReviewSeriesAddition(reviewId, button) {
     }
 }
 
+// Fichiers proposés : dépliés d'office quand il y en a peu (≤ 3), repliés au-delà ;
+// expandedReviewCandidates garde les tomes que l'utilisateur a basculés à la main.
+function _reviewCandidatesOpen(reviewId, count) {
+    return (count <= 3) !== expandedReviewCandidates.has(reviewId);
+}
+
 function toggleReviewCandidates(reviewId) {
     if (expandedReviewCandidates.has(reviewId)) expandedReviewCandidates.delete(reviewId);
     else expandedReviewCandidates.add(reviewId);
-    const isExpanded = expandedReviewCandidates.has(reviewId);
     const list = document.getElementById(`review-candidates-${reviewId}`);
-    if (list) list.style.display = isExpanded ? 'grid' : 'none';
-    document.getElementById(`review-candidates-toggle-${reviewId}`)?.classList.toggle('review-candidates-toggle-open', isExpanded);
+    const toggle = document.getElementById(`review-candidates-toggle-${reviewId}`);
+    const count = Number(toggle?.dataset.count || 0);
+    const isExpanded = _reviewCandidatesOpen(reviewId, count);
+    if (list) list.hidden = !isExpanded;
+    toggle?.classList.toggle('review-candidates-toggle-open', isExpanded);
 }
 
 async function openReviewBedethequeModal(reviewId, title) {
@@ -208,6 +216,18 @@ async function selectReviewBedethequeCandidate(url, title) {
     }
 }
 
+const REVIEW_SOURCE_NAMES = { ebdz: 'EBDZ', prowlarr: 'Prowlarr', telegram: 'Telegram', fourtoutici: 'fourtoutici', annas_archive: "Anna's Archive", vk: 'VK', rss: 'Flux RSS' };
+
+// Raison technique enregistrée par le serveur → phrase qui dit quoi vérifier.
+function _reviewReasonHtml(reason) {
+    if (!reason) return '';
+    const near = reason.match(/Titre détecté « (.+?) » proche mais pas identique à « (.+?) »/);
+    const text = near
+        ? `Le fichier parle de <strong>« ${reviewEscape(near[1])} »</strong> et la série de la bibliothèque s'appelle <strong>« ${reviewEscape(near[2])} »</strong>. Les noms se ressemblent sans être identiques : vérifiez que c'est bien le bon album avant de le télécharger.`
+        : reviewEscape(reason);
+    return `<div class="review-why">${svgIcon('info')}<div><span class="review-why-title">À vérifier</span><p>${text}</p></div></div>`;
+}
+
 // Un tome (une ligne de validation) au sein de sa carte de série - voir
 // loadAutoAcquireReviews pour le regroupement. Dismiss/téléchargement restent par tome
 // (chaque candidat garde son propre review.id), seuls le titre/auteur de série remontent
@@ -216,31 +236,48 @@ function _reviewTomeHtml(review) {
     const volume = review.volume_label || (review.volume_number == null ? 'Album' : `Tome ${review.volume_number}`);
     const knownUrl = !review.series_id && (review.candidates || []).find(candidate => candidate.bedetheque_url)?.bedetheque_url;
     if (knownUrl) reviewKnownSeriesUrls.set(review.id, knownUrl);
+    const bdIcon = '<img src="/static/img/bedetheque-logo.png" alt="" class="review-btn-logo">';
     const retryAction = knownUrl
-        ? `<button class="review-icon-btn review-download-btn" type="button" onclick="retryReviewSeriesAddition(${review.id}, this)" title="Réessayer l'ajout et la recherche">${svgIcon('refresh-cw')}</button><a class="review-icon-btn" href="${reviewAttr(knownUrl)}" target="_blank" rel="noopener" title="Fiche Bédéthèque identifiée"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:18px;height:18px;object-fit:contain;"></a>`
-        : '';
-    const seriesMatchAction = !review.series_id
-        ? `<button class="review-icon-btn review-download-btn" type="button" onclick="openReviewBedethequeModal(${review.id}, '${reviewAttr(review.series_title || '')}')" title="Matcher cette série sur Bédéthèque"><img src="/static/img/bedetheque-logo.png" alt="" style="width:18px;height:18px;object-fit:contain;"></button>`
+        ? `<div class="review-tome-note">Série repérée sur Bédéthèque mais pas encore dans la bibliothèque.
+            <button class="review-btn" type="button" onclick="retryReviewSeriesAddition(${review.id}, this)">${svgIcon('refresh-cw')} Ajouter la série et relancer</button>
+            <a class="review-btn review-btn-ghost" href="${reviewAttr(knownUrl)}" target="_blank" rel="noopener">${bdIcon} Fiche Bédéthèque</a></div>`
         : '';
     const candidateList = (review.candidates || []).slice(0, 20);
     const candidatesHtml = candidateList.map((candidate, index) => {
         const name = reviewDecodeFilename(candidate.filename || candidate.title || 'Résultat sans nom');
         const url = reviewSourceUrl(candidate);
+        const size = reviewFileSize(candidate.size);
+        const meta = [
+            REVIEW_SOURCE_NAMES[candidate.source] || candidate.source || '',
+            size !== '—' ? size : '',
+        ].filter(Boolean).map(part => `<span>${reviewEscape(part)}</span>`).join('');
         const action = review.series_id
-            ? `<button class="review-icon-btn review-download-btn" type="button" title="Ajouter ce fichier au téléchargement" onclick="downloadReviewCandidate(${review.id}, ${candidate.candidate_index ?? index}, this)">${svgIcon('plus')}</button>`
-            : knownUrl ? '' : seriesMatchAction;
-        return `<div class="review-candidate"><span class="review-source">${reviewSourceIcon(candidate)}</span><span class="review-candidate-name">${reviewEscape(name)}</span><span class="review-candidate-size" title="Taille du fichier">${reviewEscape(reviewFileSize(candidate.size))}</span>${_reviewCandidateAvailabilityHtml(candidate, review.id, index)}${url ? `<a class="review-icon-btn" href="${reviewAttr(url)}" target="_blank" rel="noopener" title="Ouvrir la source">${svgIcon('link')}</a>` : ''}${action}</div>`;
+            ? `<button class="review-btn review-btn-primary" type="button" onclick="downloadReviewCandidate(${review.id}, ${candidate.candidate_index ?? index}, this)">${svgIcon('download')} Télécharger</button>`
+            : knownUrl ? ''
+            : `<button class="review-btn review-btn-primary" type="button" onclick="openReviewBedethequeModal(${review.id}, '${reviewAttr(review.series_title || '')}')">${bdIcon} Associer à une série</button>`;
+        return `<div class="review-candidate">
+            <span class="review-source">${reviewSourceIcon(candidate) || svgIcon('file-check')}</span>
+            <div class="review-candidate-text"><span class="review-candidate-name" title="${reviewAttr(name)}">${reviewEscape(name)}</span>
+                <span class="review-candidate-meta">${meta}${_reviewCandidateAvailabilityHtml(candidate, review.id, index)}</span></div>
+            <div class="review-candidate-actions">${url ? `<a class="review-btn review-btn-ghost" href="${reviewAttr(url)}" target="_blank" rel="noopener" title="Ouvrir la page d'origine du fichier">${svgIcon('external-link')} Source</a>` : ''}${action}</div>
+        </div>`;
     }).join('');
-    const isExpanded = expandedReviewCandidates.has(review.id);
     const count = candidateList.length;
+    const isExpanded = _reviewCandidatesOpen(review.id, count);
+    const listLabel = count ? `${count} fichier${count > 1 ? 's' : ''} trouvé${count > 1 ? 's' : ''}` : 'Aucun fichier';
+    const toggle = count > 0
+        ? `<button class="review-candidates-toggle${isExpanded ? ' review-candidates-toggle-open' : ''}" type="button" id="review-candidates-toggle-${review.id}" data-count="${count}" onclick="toggleReviewCandidates(${review.id})">${listLabel} ${svgIcon('chevron-down')}</button>`
+        : `<span class="review-candidates-label">${listLabel}</span>`;
     return `<div class="review-tome" data-review-id="${review.id}">
-        <button class="review-dismiss-btn" type="button" title="Supprimer cette validation" onclick="resolveAutoAcquireReview(${review.id})">${svgIcon('x')}</button>
         <div class="review-tome-header">
-            <span class="review-volume">${reviewEscape(volume)} ${reviewDateHtml(review.created_at)} ${retryAction}</span>
-            <button class="review-candidates-toggle${isExpanded ? ' review-candidates-toggle-open' : ''}" type="button" id="review-candidates-toggle-${review.id}" onclick="toggleReviewCandidates(${review.id})">${count} candidat${count > 1 ? 's' : ''} ${svgIcon('chevron-down')}</button>
+            <span class="review-volume">${reviewEscape(volume)}</span>
+            ${reviewDateHtml(review.created_at)}
+            <button class="review-btn review-btn-ghost review-dismiss-btn" type="button" title="Retirer de la liste sans rien télécharger" onclick="resolveAutoAcquireReview(${review.id})">${svgIcon('x')} Ignorer</button>
         </div>
-        ${review.reason ? `<div class="review-meta">${reviewEscape(review.reason)}</div>` : ''}
-        <div class="review-candidates" id="review-candidates-${review.id}" style="display:${isExpanded ? 'grid' : 'none'}">${candidatesHtml || '<div class="review-meta">Aucun candidat détaillé.</div>'}</div>
+        ${_reviewReasonHtml(review.reason)}
+        ${retryAction}
+        ${toggle}
+        <div class="review-candidates" id="review-candidates-${review.id}"${isExpanded ? '' : ' hidden'}>${candidatesHtml || '<div class="review-meta">Aucun candidat détaillé.</div>'}</div>
     </div>`;
 }
 
@@ -267,14 +304,15 @@ async function loadAutoAcquireReviews() {
             group.reviews.push(review);
         }
         root.innerHTML = groups.map(group => {
-            const authorNames = [group.scenaristes, group.dessinateurs]
-                .filter(Boolean).filter((name, i, arr) => arr.indexOf(name) === i).join(', ');
+            // Un même auteur peut être scénariste et dessinateur : chaque nom une seule fois.
+            const authorNames = [...new Set([group.scenaristes, group.dessinateurs].filter(Boolean)
+                .flatMap(names => String(names).split(/\s*,\s*/)).filter(Boolean))].join(', ');
             const seriesHeading = group.seriesId
                 ? `<a href="/series/${group.seriesId}">${reviewEscape(group.seriesTitle)}</a>`
                 : reviewEscape(group.seriesTitle);
-            const countBadge = group.reviews.length > 1 ? `<span class="review-group-count">${group.reviews.length} tomes</span>` : '';
+            const countBadge = group.reviews.length > 1 ? `<span class="review-group-count">${group.reviews.length} albums</span>` : '';
             const closeAllBtn = group.reviews.length > 1
-                ? `<button class="review-icon-btn review-group-close-btn" type="button" title="Supprimer les ${group.reviews.length} validations de cette série" onclick="resolveReviewGroup([${group.reviews.map(r => r.id).join(',')}], this)">${svgIcon('x')}</button>`
+                ? `<button class="review-btn review-btn-ghost review-group-close-btn" type="button" title="Retirer les ${group.reviews.length} albums de cette série" onclick="resolveReviewGroup([${group.reviews.map(r => r.id).join(',')}], this)">${svgIcon('x')} Tout ignorer</button>`
                 : '';
             const tomesHtml = group.reviews.map(review => _reviewTomeHtml(review)).join('');
             return `<article class="review-card">
@@ -306,7 +344,7 @@ function _removeReviewTome(reviewId) {
             groupEl.remove();
         } else if (remaining > 1) {
             const badge = groupEl.querySelector('.review-group-count');
-            if (badge) badge.textContent = `${remaining} tomes`;
+            if (badge) badge.textContent = `${remaining} albums`;
             const closeAllBtn = groupEl.querySelector('.review-group-close-btn');
             if (closeAllBtn) closeAllBtn.setAttribute('onclick', `resolveReviewGroup([${[...groupEl.querySelectorAll('.review-tome')].map(el => el.dataset.reviewId).join(',')}], this)`);
         } else {

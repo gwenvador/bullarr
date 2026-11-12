@@ -258,3 +258,79 @@
     padding: 40px;
     color: var(--color-text-muted);
 }
+
+/* ================================================================================
+   Refonte des cartes (« l'interface est un peu confusing ») : raison expliquée en clair
+   dans un encadré « À vérifier », fichiers en lignes lisibles (source · taille), boutons
+   avec texte : Télécharger (plein), Source, Ignorer.
+   ================================================================================ */
+.review-card { border-radius: 18px; padding: 22px 24px; }
+.review-card h2 { font-size: 1.3em; }
+.review-group-author { font-size: .95em; }
+.review-tome { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 16px 0 4px; }
+.review-group-items .review-tome + .review-tome { border-top: 1px solid var(--color-border); padding-top: 18px; }
+.review-tome-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0; }
+.review-volume { font-weight: 700; font-size: 1.05em; color: var(--color-text); }
+.review-tome-header .review-dismiss-btn { margin-left: auto; position: static; }
+.review-why {
+    display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: 12px; line-height: 1.5;
+    background: color-mix(in srgb, #d97706 9%, var(--color-surface)); border: 1px solid color-mix(in srgb, #d97706 26%, transparent);
+}
+.review-why > .icon, .review-why > svg { flex: none; width: 18px; height: 18px; margin-top: 2px; color: #d97706; }
+.review-why-title { display: block; font-weight: 700; font-size: .82em; text-transform: uppercase; letter-spacing: .05em; color: #b45309; margin-bottom: 2px; }
+[data-theme="dark"] .review-why-title { color: #fbbf24; }
+.review-why p { margin: 0; color: var(--color-text); font-size: .95em; }
+.review-why strong { font-weight: 600; }
+.review-tome-note { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: .92em; color: var(--color-text-muted); }
+.review-candidates-toggle, .review-candidates-label {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: .88em; font-weight: 700;
+    color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .04em; background: none; border: 0; padding: 2px 0; cursor: pointer;
+}
+.review-candidates-label { cursor: default; }
+.review-candidates-toggle:hover { color: var(--color-accent); background: none; }
+.review-candidates { display: grid; gap: 8px; margin: 0; }
+.review-candidates[hidden] { display: none; }
+.review-candidate {
+    display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px;
+    background: var(--color-surface-alt); border: 1px solid var(--color-border);
+}
+.review-candidate:hover { border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border)); }
+.review-candidate .review-source { flex: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+    background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-muted); }
+.review-candidate .review-source img, .review-candidate .review-source svg { width: 20px; height: 20px; object-fit: contain; margin: 0; }
+.review-candidate-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.review-candidate-text .review-candidate-name { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text); }
+.review-candidate-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .84em; color: var(--color-text-muted); }
+.review-candidate-meta > span + span::before { content: '·'; margin-right: 10px; }
+.review-candidate-meta .review-candidate-availability { font-size: inherit; padding: 0; background: none; }
+.review-candidate-actions { flex: none; display: flex; gap: 8px; align-items: center; }
+.review-btn {
+    display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; min-height: 36px; border-radius: 9px; font: inherit;
+    font-size: .88em; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap;
+    background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface)); color: var(--color-accent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 26%, transparent); transition: background .15s, border-color .15s, color .15s;
+}
+.review-btn:hover { background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface)); text-decoration: none; }
+.review-btn .icon, .review-btn svg { width: 16px; height: 16px; }
+.review-btn-logo { width: 16px; height: 16px; object-fit: contain; }
+.review-btn-primary { background: var(--color-accent); color: #fff; border-color: transparent; }
+.review-btn-primary:hover { background: var(--color-accent-hover, var(--color-accent)); filter: brightness(1.05); color: #fff; }
+.review-btn-ghost { background: transparent; color: var(--color-text-muted); border-color: var(--color-border); }
+.review-btn-ghost:hover { color: var(--color-text); border-color: var(--color-text-muted); background: var(--color-surface-alt); }
+.review-btn.review-dismiss-btn:hover { color: #b91c1c; border-color: color-mix(in srgb, #ef4444 40%, transparent); background: color-mix(in srgb, #ef4444 8%, var(--color-surface)); }
+.review-btn:disabled { opacity: .5; cursor: progress; }
+.review-group-close-btn { position: static; }
+@media (max-width: 720px) {
+    .review-card { padding: 16px; }
+    .review-candidate { flex-wrap: wrap; }
+    .review-candidate-text { flex-basis: calc(100% - 50px); }
+    .review-candidate-actions { width: 100%; justify-content: flex-end; }
+}
+.review-tome { padding-right: 0; }
+.review-tome-header { justify-content: flex-start; }
+.review-date { margin-left: 0; font-size: .85em; }
+.review-btn.review-dismiss-btn, .review-btn.review-group-close-btn { width: auto; height: auto; padding: 6px 12px; min-height: 32px; border: 1px solid var(--color-border); }
+.review-btn.review-dismiss-btn .icon, .review-btn.review-group-close-btn .icon { width: 15px; height: 15px; }
+.review-candidate-text .review-candidate-name { flex: none; line-height: 1.3; overflow-wrap: normal; }
+.review-group-count { font-size: .8rem; }
