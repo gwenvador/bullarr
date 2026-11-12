@@ -36,7 +36,7 @@ function renderThemeGroups() {
         </div>
         ${(themeGroups || []).map(group => `
         <div class="theme-group">
-            <h3 class="theme-group-title">${escapeHtml(group.name)}</h3>
+            <h3 class="theme-group-title">${escapeHtml(group.name)} <span class="theme-group-count">${group.themes.length}</span></h3>
             <div class="theme-group-buttons">
                 ${group.themes.map(t => `<button class="btn-neutral-sm theme-button" data-theme-name="${escapeHtml(t.name.toLowerCase())}" onclick="openThemeDetail('${escapeForAttribute(t.slug)}', '${escapeForAttribute(t.name)}', '${escapeForAttribute(t.url)}')">${escapeHtml(t.name)}</button>`).join('')}
             </div>
@@ -117,7 +117,8 @@ function renderThemeDetail() {
     }
     const ownedFilter = window.themeDetailOwnedFilter || '';
     document.getElementById('themeDetailList').innerHTML = `
-        <table class="series-table series-table-compact series-table-with-covers">
+        ${enrichSummaryHtml(rows, x => x.already_owned, ownedFilter)}
+        <table class="series-table series-table-compact series-table-with-covers enrich-table">
             <!-- Voir le commentaire jumeau dans bdgest-top.js (renderBdgestTop) -
                  table-layout:fixed (media mobile, style.css) a besoin de ce <colgroup>
                  pour que les largeurs de colonnes soient garanties, pas juste indicatives. -->
@@ -147,9 +148,7 @@ function renderThemeDetail() {
                     const titleCellHtml = (x.already_owned && x.series_id)
                         ? `<a class="indispensable-series-link" href="/series/${x.series_id}">${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">${svgIcon('external-link')}</a>`
                         : `<a class="indispensable-series-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title)}</a>`;
-                    const actionHtml = x.already_owned
-                        ? ''
-                        : `<button class="btn-icon-only" onclick="addThemeSeries(${i}, this)" data-tooltip="Ajouter cette série" aria-label="Ajouter cette série">${svgIcon('plus')}</button>`;
+                    const actionHtml = x.already_owned ? enrichOpenHtml(x.series_id) : enrichAddButtonHtml(`addThemeSeries(${i}, this)`);
                     return `<tr class="series-table-row${x.already_owned ? '' : ' indispensable-row-missing'}">
                         <td class="volume-table-select-cell"><input type="checkbox" class="theme-detail-checkbox" data-index="${i}" aria-label="Sélectionner ${escapeHtml(x.title)}" onchange="_updateThemeDetailBulkActionsBar()"${x.already_owned ? ' disabled' : ''}></td>
                         <td class="theme-cover-cell">${x.cover ? `<img src="${escapeHtml(x.cover)}" alt="" class="theme-cover-thumb" onclick="openCoverModal('${escapeForAttribute(x.cover)}', '${escapeForAttribute(x.title)}')" style="cursor:pointer;">` : ''}</td>
@@ -157,7 +156,7 @@ function renderThemeDetail() {
                         <td>${escapeHtml(x.origin || '-')}</td>
                         <td>${escapeHtml(x.authors || '-')}</td>
                         <td class="theme-note-cell">${escapeHtml((x.note || '').replace('Note : ', ''))}</td>
-                        <td class="indispensable-owned" data-owned="${x.already_owned ? '1' : '0'}">${x.already_owned ? svgIcon('check') : svgIcon('x')}</td>
+                        <td class="indispensable-owned" data-owned="${x.already_owned ? '1' : '0'}">${enrichStatusHtml(x.already_owned)}</td>
                         <td class="pantheon-action">${actionHtml}</td>
                     </tr>`;
                 }).join('')}
@@ -194,9 +193,8 @@ async function addThemeSeries(index, button) {
         const d = await r.json();
         if (!r.ok || !d.success) throw Error(d.error || 'Échec');
         x.already_owned = true;
-        button.innerHTML = svgIcon('check');
-        button.setAttribute('data-tooltip', d.already_exists ? 'Déjà présente' : 'Ajoutée');
-        button.classList.add('indispensable-added');
+        x.series_id = d.series_id || x.series_id;
+        enrichMarkAdded(button, x.series_id);
         notifyIndispensable(d.already_exists ? `La série « ${x.title} » est déjà présente dans la bibliothèque.` : `La série « ${x.title} » a été ajoutée à la bibliothèque.`, 'success');
     } catch (e) {
         button.disabled = false;
@@ -232,7 +230,7 @@ async function addSelectedThemeDetail() {
     const selected = [...document.querySelectorAll('.theme-detail-checkbox:checked:not(:disabled)')];
     if (!selected.length) { notifyIndispensable('Sélectionne au moins une série.', 'info'); return; }
     for (const cb of selected) {
-        const button = cb.closest('tr').querySelector('.pantheon-action button');
+        const button = cb.closest('tr').querySelector('.pantheon-action button.enrich-add');
         if (button) await addThemeSeries(Number(cb.dataset.index), button);
     }
     _updateThemeDetailBulkActionsBar();

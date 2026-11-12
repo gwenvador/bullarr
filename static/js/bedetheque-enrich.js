@@ -146,3 +146,76 @@ document.addEventListener('keydown', function(event) {
 window.addEventListener('load', () => {
     if (typeof openIndispensablesTab === 'function') openIndispensablesTab();
 });
+
+
+// ============================================
+// Composants communs des onglets d'Enrichir (« ameliore toutes les tabs de enrichir ») :
+// résumé avec progression + filtre segmenté, rang en pastille, statut lisible, boutons
+// Ajouter / Fiche avec libellé. Le filtre segmenté pilote le <select> « présence en
+// bibliothèque » déjà présent dans l'en-tête du tableau (même filtrage, une seule source).
+// ============================================
+function enrichRankHtml(rank) {
+    const n = Number(rank);
+    return `<span class="indisp-rank${n >= 1 && n <= 3 ? ` indisp-rank-${n}` : ''}">${escapeHtml(String(rank ?? ''))}</span>`;
+}
+
+function enrichStatusHtml(owned, okLabel = 'Possédée', noLabel = 'Absente') {
+    return owned
+        ? `<span class="indisp-status indisp-status-ok">${svgIcon('check')} ${okLabel}</span>`
+        : `<span class="indisp-status">${noLabel}</span>`;
+}
+
+function enrichAddButtonHtml(onclick) {
+    return `<button class="btn-icon-only enrich-add" onclick="${onclick}" data-tooltip="Ajouter cette série" aria-label="Ajouter cette série">${svgIcon('plus')}<span>Ajouter</span></button>`;
+}
+
+function enrichOpenHtml(seriesId, label = 'Fiche') {
+    return seriesId ? `<a class="enrich-open" href="/series/${seriesId}" data-tooltip="Ouvrir la fiche">${svgIcon('library')}<span>${label}</span></a>` : '';
+}
+
+function enrichSummaryHtml(items, isOwned, currentFilter, label = 'séries possédées', missingLabel = 'À ajouter', ownedLabel = 'Possédées') {
+    const total = items.length;
+    const owned = items.filter(isOwned).length;
+    const pct = total ? Math.round(100 * owned / total) : 0;
+    const btn = (value, text, count) => `<button type="button" data-owned="${value}" class="${(currentFilter || '') === value ? 'active' : ''}" onclick="enrichSetOwnedFilter(this, '${value}')">${text} <span>${count}</span></button>`;
+    return `<div class="indisp-summary enrich-summary">
+            <div class="indisp-summary-main">
+                <span class="indisp-summary-count"><strong>${owned}</strong> / ${total}</span>
+                <span class="indisp-summary-label">${label}</span>
+                <span class="indisp-summary-pct">${pct} %</span>
+            </div>
+            <div class="indisp-summary-bar"><span style="width:${pct}%"></span></div>
+            <div class="indisp-summary-filters" role="group" aria-label="Afficher">
+                ${btn('', 'Toutes', total)}${btn('0', missingLabel, total - owned)}${btn('1', ownedLabel, owned)}
+            </div>
+        </div>`;
+}
+
+// Bouton du filtre segmenté -> <select> de l'en-tête (son onchange existant filtre).
+function enrichSetOwnedFilter(button, value) {
+    const box = button.closest('.series-list');
+    const select = box && box.querySelector('select[aria-label*="présence"]');
+    if (!select) return;
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+// Et inversement : le <select> de l'en-tête met à jour le filtre segmenté.
+document.addEventListener('change', event => {
+    const select = event.target;
+    if (!(select instanceof HTMLSelectElement) || !/présence/.test(select.getAttribute('aria-label') || '')) return;
+    const box = select.closest('.series-list');
+    box?.querySelectorAll('.enrich-summary .indisp-summary-filters button')
+        .forEach(b => b.classList.toggle('active', b.dataset.owned === select.value));
+});
+
+// Après un ajout réussi depuis une ligne : statut « Possédée » et bouton Fiche.
+function enrichMarkAdded(button, seriesId) {
+    const row = button.closest('tr');
+    const cell = row?.querySelector('.indispensable-owned');
+    if (cell) { cell.dataset.owned = '1'; cell.innerHTML = enrichStatusHtml(true); }
+    row?.classList.remove('indispensable-row-missing');
+    const checkbox = row?.querySelector('input[type="checkbox"]');
+    if (checkbox) { checkbox.checked = false; checkbox.disabled = true; }
+    button.outerHTML = seriesId ? enrichOpenHtml(seriesId, 'Ajoutée') : `<span class="indisp-status indisp-status-ok">${svgIcon('check')} Ajoutée</span>`;
+}

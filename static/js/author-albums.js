@@ -225,7 +225,8 @@ async function _renderAuthorAlbumsTable(containerEl, titleEl, authorName, author
              (voir bedetheque-indispensables.js/bedetheque-enrich.js): remplace le bouton
              "Ajouter la sélection" auparavant toujours visible sous le tableau. -->
         <div id="author-albums-bulk-actions-bar" class="volume-bulk-actions-bar" style="display:none; margin-bottom:12px;"></div>
-        <table class="series-table series-table-compact">
+        ${enrichSummaryHtml(_authorAlbumsCache, a => a.already_in_library, window.authorAlbumsOwnedFilter || '', 'séries en bibliothèque')}
+        <table class="series-table series-table-compact enrich-table">
             <thead>
                 <tr>
                     <th class="volume-table-select-cell"><input type="checkbox" id="author-albums-select-all" aria-label="Sélectionner tous les albums" onchange="_toggleAllAuthorAlbums(this.checked)"></th>
@@ -245,11 +246,11 @@ async function _renderAuthorAlbumsTable(containerEl, titleEl, authorName, author
                 ${_authorAlbumsCache.map((a, i) => `
                     <tr class="series-table-row${a.already_in_library ? ' author-album-row-owned' : ''}">
                         <td class="volume-table-select-cell"><input type="checkbox" class="author-album-checkbox" data-index="${i}" aria-label="Sélectionner ${escapeHtml(a.title)}" onchange="_updateAuthorAlbumsBulkActionsBar()"></td>
-                        <td><a class="author-album-link" href="${escapeHtml(a.bedetheque_url)}" target="_blank" rel="noopener">${escapeHtml(a.title)}</a></td>
+                        <td><a class="author-album-link" href="${escapeHtml(a.bedetheque_url)}" target="_blank" rel="noopener">${escapeHtml(a.title)}</a><a class="indispensable-source-link" href="${escapeHtml(a.bedetheque_url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">${svgIcon('external-link')}</a></td>
                         <td class="author-album-year-cell">${yearLabel(a)}</td>
                         <td class="author-album-action-cell" data-owned="${a.already_in_library ? '1' : '0'}">${a.already_in_library
-                            ? `<span class="author-album-owned-tag" data-tooltip="Déjà dans votre bibliothèque">${svgIcon('check')} En bibliothèque</span>`
-                            : `<a href="${escapeHtml(a.bedetheque_url)}" target="_blank" rel="noopener" class="btn-icon-only" data-tooltip="Voir sur Bédéthèque"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:16px; height:16px; vertical-align:middle;"></a>`}</td>
+                            ? `<span class="indisp-status indisp-status-ok" data-tooltip="Déjà dans votre bibliothèque">${svgIcon('check')} En bibliothèque</span>`
+                            : '<span class="indisp-status">Absente</span>'}</td>
                     </tr>
                 `).join('')}
             </tbody>

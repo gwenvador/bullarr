@@ -5528,3 +5528,91 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
 .indispensable-tab-link .icon { width: 14px; height: 14px; }
 .indispensable-source-link { margin-left: 6px; font-size: 1em; }
 .indispensable-tab-link { font-size: 1em; margin-left: 4px; }
+
+
+/* ================================================================================
+   Enrichir : même habillage pour tous les onglets (Panthéon, Thèmes, Top 100 BDGest,
+   Sorties, Par auteur) que la refonte d'Indispensables (résumé, statut, boutons).
+   ================================================================================ */
+.enrich-tab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 14px; }
+.enrich-tab-head > div { display: flex; align-items: center; gap: 10px; }
+.enrich-tab-head .subtitle { margin: 0 !important; font-size: 1.05em; font-weight: 600; color: var(--color-text); }
+.enrich-tab-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.enrich-tab-toolbar select.form-control { border-radius: 10px; min-height: 38px; font-weight: 600; }
+
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList, #author-albums-table-container) .enrich-table {
+    border-radius: 14px; overflow: hidden; border: 1px solid var(--color-border); border-collapse: separate; border-spacing: 0;
+}
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList, #author-albums-table-container) .enrich-table .series-table-row,
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList, #author-albums-table-container) .enrich-table .indispensable-row-missing {
+    background: var(--color-surface); box-shadow: none;
+}
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList, #author-albums-table-container) .enrich-table .series-table-row td {
+    padding: 9px 12px; font-size: .9em; vertical-align: middle; border-bottom: 1px solid var(--color-border);
+}
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList, #author-albums-table-container) .enrich-table .series-table-row:last-child td { border-bottom: 0; }
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList, #author-albums-table-container) .enrich-table .series-table-row:hover td {
+    background: color-mix(in srgb, var(--color-text) 3%, var(--color-surface));
+}
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList, #author-albums-table-container) .indispensable-series-link,
+#author-albums-table-container .author-album-link { font-size: 1.05em; font-weight: 600; }
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList) .indispensable-row-missing .indispensable-series-link { color: var(--color-text-muted); }
+.enrich-sub { font-size: .85em; color: var(--color-text-muted); margin-top: 2px; }
+:is(#themeDetailList, #bdgestTopList, #sortiesList) .theme-summary { font-size: .85em; line-height: 1.45; color: var(--color-text-muted); margin: 4px 0 0; }
+
+/* Couvertures et portraits */
+:is(#themeDetailList, #bdgestTopList, #sortiesList) .theme-cover-thumb {
+    border-radius: 6px; border: 1px solid var(--color-border); box-shadow: 0 2px 6px -3px rgba(0,0,0,.35); object-fit: cover;
+    transition: transform .15s;
+}
+:is(#themeDetailList, #bdgestTopList, #sortiesList) .theme-cover-thumb:hover { transform: scale(1.05); }
+.enrich-avatar {
+    flex: none; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: grid; place-items: center;
+    background: var(--color-surface-alt); border: 1px solid var(--color-border); font-weight: 700; color: var(--color-text-muted);
+}
+.enrich-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#pantheonList .pantheon-works-cell { font-size: .85em; color: var(--color-text-muted); line-height: 1.45; }
+
+/* Date des sorties */
+.enrich-date { display: inline-block; padding: 3px 9px; border-radius: 8px; background: var(--color-surface-alt); border: 1px solid var(--color-border);
+    font-size: .85em; font-weight: 600; white-space: nowrap; text-transform: capitalize; }
+
+/* Statut + actions */
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList) td.indispensable-owned { width: 130px; text-align: center; }
+:is(#pantheonList, #themeDetailList, #bdgestTopList, #sortiesList) td.pantheon-action { width: 140px; text-align: center; white-space: nowrap; }
+.enrich-add, .enrich-open, #indispensablesList td.indispensable-action > .indisp-add {
+    width: auto !important; min-width: 0 !important; height: 30px !important; padding: 0 12px !important; gap: 6px; border-radius: 9px !important;
+    font-size: .88em; font-weight: 600; text-decoration: none; display: inline-flex !important; align-items: center; justify-content: center;
+}
+.enrich-add .icon, .enrich-open .icon { width: 15px; height: 15px; }
+.enrich-add { background: var(--color-accent) !important; color: #fff !important; border: 1px solid transparent !important; }
+.enrich-add:hover { filter: brightness(1.07); }
+.enrich-open { color: var(--color-text) !important; background: var(--color-surface) !important; border: 1px solid var(--color-border) !important; }
+.enrich-open:hover { border-color: var(--color-accent) !important; color: var(--color-accent) !important; }
+
+/* Thèmes : groupes en cartes, thèmes en pastilles */
+#themesGroupsList .theme-search-row { margin-bottom: 18px; }
+#themesGroupsList .theme-search-row input { max-width: 380px; border-radius: 10px; min-height: 40px; }
+#themesGroupsList { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+#themesGroupsList > .theme-search-row { grid-column: 1 / -1; }
+#themesGroupsList .theme-group {
+    margin: 0; padding: 16px 18px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface);
+}
+#themesGroupsList .theme-group-title { margin: 0 0 12px; font-size: 1em; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.theme-group-count { font-size: .75em; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--color-surface-alt); color: var(--color-text-muted); border: 1px solid var(--color-border); }
+#themesGroupsList .theme-group-buttons { gap: 6px; }
+#themesGroupsList .theme-button {
+    border-radius: 999px; padding: 5px 12px; font-size: .85em; background: var(--color-surface-alt); border: 1px solid var(--color-border); color: var(--color-text);
+}
+#themesGroupsList .theme-button:hover { border-color: var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); }
+
+/* Par auteur */
+.enrich-author-card { padding: 20px 22px; margin-bottom: 18px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface); }
+.enrich-author-intro { margin: 0 0 14px; color: var(--color-text-muted); line-height: 1.5; }
+#author-albums-table-title { font-weight: 600; color: var(--color-text); }
+#author-albums-table-container td.author-album-action-cell { width: 170px; }
+
+@media (max-width: 900px) {
+    #themesGroupsList { grid-template-columns: 1fr; }
+    #pantheonList .pantheon-works-cell, #pantheonList th:nth-child(5) { display: none; }
+}

@@ -84,7 +84,8 @@ function renderSorties() {
     }
     const ownedFilter = window.sortiesOwnedFilter || '';
     box.innerHTML = `
-        <table class="series-table series-table-compact series-table-with-covers">
+        ${enrichSummaryHtml(sortiesItems, x => x.already_owned, ownedFilter, 'sorties de séries possédées')}
+        <table class="series-table series-table-compact series-table-with-covers enrich-table">
             <thead>
                 <tr>
                     <th>Date</th>
@@ -105,15 +106,13 @@ function renderSorties() {
                         ? `<a class="indispensable-series-link" href="/series/${x.series_id}">${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">${svgIcon('external-link')}</a>`
                         : `<a class="indispensable-series-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title)}</a>`;
                     const detail = [x.volume_label, x.subtitle].filter(Boolean).join(' · ');
-                    const actionHtml = x.already_owned
-                        ? ''
-                        : `<button class="btn-icon-only" onclick="addSortieSeries(${i}, this)" data-tooltip="Ajouter cette série" aria-label="Ajouter cette série">${svgIcon('plus')}</button>`;
+                    const actionHtml = x.already_owned ? enrichOpenHtml(x.series_id) : enrichAddButtonHtml(`addSortieSeries(${i}, this)`);
                     return `<tr class="series-table-row${x.already_owned ? '' : ' indispensable-row-missing'}">
-                        <td class="theme-note-cell" data-sort="${escapeHtml(x.date)}">${escapeHtml(_sortiesDateLabel(x.date))}</td>
+                        <td class="theme-note-cell enrich-date-cell" data-sort="${escapeHtml(x.date)}"><span class="enrich-date">${escapeHtml(_sortiesDateLabel(x.date))}</span></td>
                         <td class="theme-cover-cell">${x.cover ? `<img src="${escapeHtml(x.cover)}" alt="" loading="lazy" class="theme-cover-thumb" onclick="openCoverModal('${escapeForAttribute(x.cover)}', '${escapeForAttribute(x.title)}')" style="cursor:pointer;">` : ''}</td>
-                        <td>${titleHtml}${detail ? `<div class="pantheon-author-dates">${escapeHtml(detail)}</div>` : ''}${x.authors ? `<p class="theme-summary">${escapeHtml(x.authors)}</p>` : ''}</td>
+                        <td>${titleHtml}${detail ? `<div class="enrich-sub">${escapeHtml(detail)}</div>` : ''}${x.authors ? `<p class="theme-summary">${escapeHtml(x.authors)}</p>` : ''}</td>
                         <td>${escapeHtml(x.publisher || '-')}</td>
-                        <td class="indispensable-owned" data-owned="${x.already_owned ? '1' : '0'}">${x.already_owned ? svgIcon('check') : svgIcon('x')}</td>
+                        <td class="indispensable-owned" data-owned="${x.already_owned ? '1' : '0'}">${enrichStatusHtml(x.already_owned)}</td>
                         <td class="pantheon-action">${actionHtml}</td>
                     </tr>`;
                 }).join('')}

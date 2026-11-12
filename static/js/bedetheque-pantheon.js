@@ -67,7 +67,8 @@ function renderPantheon() {
     _updatePantheonTabCount();
     const countryOptions = [...new Set(rows.map(x => (x.country || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
     document.getElementById('pantheonList').innerHTML = `
-        <table class="series-table series-table-compact">
+        ${enrichSummaryHtml(rows, x => x.already_owned, ownedFilter, 'auteurs présents dans la bibliothèque', 'Absents', 'Présents')}
+        <table class="series-table series-table-compact enrich-table">
             <thead>
                 <tr>
                     <th class="volume-table-sortable" onclick="sortPantheon('rank')"><div class="th-filterable-row"><span class="th-filterable-label"># <span class="indispensable-sort-arrow" data-sort-field="rank">↕</span></span></div></th>
@@ -88,13 +89,14 @@ function renderPantheon() {
             </thead>
             <tbody>
                 ${rows.map(x => `<tr class="series-table-row${x.already_owned ? '' : ' indispensable-row-missing'}">
-                        <td class="indispensable-rank">${x.rank}</td>
-                        <td><a class="indispensable-series-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${x.photo ? `<img src="${escapeHtml(x.photo)}" alt="" class="pantheon-author-photo">` : ''}${escapeHtml(x.name)}</a>${x.dates ? ` <span class="pantheon-author-dates">${escapeHtml(x.dates)}</span>` : ''}</td>
-                        <td>${escapeHtml(x.professions || '-')}</td>
+                        <td class="indispensable-rank">${enrichRankHtml(x.rank)}</td>
+                        <td><div class="indisp-series"><span class="enrich-avatar">${x.photo ? `<img src="${escapeHtml(x.photo)}" alt="" loading="lazy">` : escapeHtml((x.name || '?').trim().slice(0, 1).toUpperCase())}</span>
+                            <div class="indisp-series-text"><a class="indispensable-series-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.name)}</a>${x.dates ? `<div class="enrich-sub">${escapeHtml(x.dates)}</div>` : ''}</div></div></td>
+                        <td>${String(x.professions || '').split(/\s*[,/]\s*/).filter(Boolean).map(p => `<span class="indisp-genre">${escapeHtml(p)}</span>`).join('') || '<span class="indisp-none">—</span>'}</td>
                         <td class="indispensable-category">${escapeHtml(x.country || '-')}</td>
                         <td class="pantheon-works-cell">${escapeHtml(x.notable_works || '-')}</td>
-                        <td class="indispensable-owned" data-owned="${x.already_owned ? '1' : '0'}">${x.already_owned ? svgIcon('check') : svgIcon('x')}</td>
-                        <td class="pantheon-action"><button class="btn-icon-only" onclick="viewPantheonAuthorBibliography('${escapeForAttribute(x.url)}', '${escapeForAttribute(x.name)}')" data-tooltip="Voir la bibliographie de cet auteur" aria-label="Voir la bibliographie de cet auteur">${svgIcon('book-open')}</button></td>
+                        <td class="indispensable-owned" data-owned="${x.already_owned ? '1' : '0'}">${enrichStatusHtml(x.already_owned, 'Présent', 'Absent')}</td>
+                        <td class="pantheon-action"><button class="btn-icon-only enrich-open" onclick="viewPantheonAuthorBibliography('${escapeForAttribute(x.url)}', '${escapeForAttribute(x.name)}')" data-tooltip="Voir la bibliographie de cet auteur" aria-label="Voir la bibliographie de cet auteur">${svgIcon('book-open')}<span>Bibliographie</span></button></td>
                     </tr>`).join('')}
             </tbody>
         </table>

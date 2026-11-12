@@ -91,7 +91,8 @@ function renderBdgestTop() {
     }
     const ownedFilter = window.bdgestTopOwnedFilter || '';
     box.innerHTML = `
-        <table class="series-table series-table-compact series-table-with-covers">
+        ${enrichSummaryHtml(rows, x => x.already_owned, ownedFilter)}
+        <table class="series-table series-table-compact series-table-with-covers enrich-table">
             <!-- "still too small" (mobile) - table-layout:auto par défaut ne traite width
                  sur .theme-cover-cell/.theme-cover-thumb que comme un INDICE, écrasable par
                  le contenu des autres colonnes (voir style.css: table-layout:fixed n'est
@@ -124,17 +125,15 @@ function renderBdgestTop() {
                     const titleCellHtml = (x.already_owned && x.series_id)
                         ? `<a class="indispensable-series-link" href="/series/${x.series_id}">${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">${svgIcon('external-link')}</a>`
                         : `<a class="indispensable-series-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title)}</a>`;
-                    const actionHtml = x.already_owned
-                        ? ''
-                        : `<button class="btn-icon-only" onclick="addBdgestSeries(${i}, this)" data-tooltip="Ajouter cette série" aria-label="Ajouter cette série">${svgIcon('plus')}</button>`;
+                    const actionHtml = x.already_owned ? enrichOpenHtml(x.series_id) : enrichAddButtonHtml(`addBdgestSeries(${i}, this)`);
                     return `<tr class="series-table-row${x.already_owned ? '' : ' indispensable-row-missing'}">
-                        <td class="indispensable-rank">${x.rank}</td>
+                        <td class="indispensable-rank">${enrichRankHtml(x.rank)}</td>
                         <td class="theme-cover-cell">${x.cover ? `<img src="${escapeHtml(x.cover)}" alt="" class="theme-cover-thumb" onclick="openCoverModal('${escapeForAttribute(x.cover)}', '${escapeForAttribute(x.title)}')" style="cursor:pointer;">` : ''}</td>
-                        <td>${titleCellHtml}${x.volume_label ? `<div class="pantheon-author-dates">${escapeHtml(x.volume_label)}</div>` : ''}<p class="theme-summary">${escapeHtml(x.summary || '')}</p></td>
+                        <td>${titleCellHtml}${x.volume_label ? `<div class="enrich-sub">${escapeHtml(x.volume_label)}</div>` : ''}<p class="theme-summary">${escapeHtml(x.summary || '')}</p></td>
                         <td>${escapeHtml(x.publisher || '-')}</td>
                         <td class="theme-note-cell">${escapeHtml(x.release_date || '-')}</td>
                         <td class="theme-note-cell">${escapeHtml(x.votes || '-')}</td>
-                        <td class="indispensable-owned" data-owned="${x.already_owned ? '1' : '0'}">${x.already_owned ? svgIcon('check') : svgIcon('x')}</td>
+                        <td class="indispensable-owned" data-owned="${x.already_owned ? '1' : '0'}">${enrichStatusHtml(x.already_owned)}</td>
                         <td class="pantheon-action">${actionHtml}</td>
                     </tr>`;
                 }).join('')}
@@ -171,9 +170,8 @@ async function addBdgestSeries(index, button) {
         const d = await r.json();
         if (!r.ok || !d.success) throw Error(d.error || 'Échec');
         x.already_owned = true;
-        button.innerHTML = svgIcon('check');
-        button.setAttribute('data-tooltip', d.already_exists ? 'Déjà présente' : 'Ajoutée');
-        button.classList.add('indispensable-added');
+        x.series_id = d.series_id || x.series_id;
+        enrichMarkAdded(button, x.series_id);
         notifyIndispensable(d.already_exists ? `La série « ${x.title} » est déjà présente dans la bibliothèque.` : `La série « ${x.title} » a été ajoutée à la bibliothèque.`, 'success');
     } catch (e) {
         button.disabled = false;
