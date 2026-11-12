@@ -89,3 +89,76 @@
 .upscaling-row-model { font-size: 0.9em; padding: 5px 8px; max-width: 200px; color: var(--color-text-muted); }
 .upscaling-row-model.custom { color: var(--color-text); border-color: var(--color-accent); }
 @media (max-width: 700px) { .upscaling-row-model { max-width: 130px; } }
+
+/* ===== Mise en forme v2 : même police partout, contrôles maison, tableau aéré ===== */
+.upscaling-page,
+.upscaling-page input, .upscaling-page select, .upscaling-page button, .upscaling-page textarea {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+.upscaling-page { font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+.upscaling-page .settings-card { border-radius: 14px; }
+.upscaling-page h3 { font-size: 1.15em; font-weight: 700; }
+.upscaling-count { font-size: 0.7em; font-weight: 700; padding: 2px 9px; background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)); color: var(--color-accent); }
+
+/* Champs : même style partout, anneau de focus aux couleurs du thème (plus de bleu natif) */
+.upscaling-page .upscaling-input,
+.upscaling-page .upscaling-filter {
+    font-size: 0.93em; color: var(--color-text); background: var(--color-surface);
+    border: 1px solid var(--color-border); border-radius: 9px; height: 38px; padding: 0 12px;
+    box-sizing: border-box; outline: none; transition: border-color .15s, box-shadow .15s;
+}
+.upscaling-page .upscaling-input:hover, .upscaling-page .upscaling-filter:hover { border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)); }
+.upscaling-page .upscaling-input:focus, .upscaling-page .upscaling-filter:focus,
+.upscaling-page .upscaling-input:focus-visible, .upscaling-page .upscaling-filter:focus-visible {
+    border-color: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent); outline: none;
+}
+.upscaling-page select.upscaling-input {
+    appearance: none; -webkit-appearance: none; padding-right: 32px; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; background-size: 15px;
+}
+.upscaling-search { position: relative; display: inline-flex; align-items: center; }
+.upscaling-search .icon { position: absolute; left: 11px; width: 16px; height: 16px; color: var(--color-text-muted); pointer-events: none; }
+.upscaling-page .upscaling-filter { width: 280px; max-width: 100%; padding-left: 34px; }
+.upscaling-page .upscaling-filter::placeholder { color: var(--color-text-muted); opacity: .8; }
+.upscaling-page .upscaling-filter::-webkit-search-cancel-button { cursor: pointer; }
+.upscaling-select-all { font-size: 0.93em; color: var(--color-text-muted); user-select: none; }
+.upscaling-actions .btn { height: 38px; border-radius: 9px; font-weight: 600; }
+
+/* Tableau */
+.upscaling-table-wrap { border-radius: 12px; max-height: 640px; }
+.upscaling-table { font-size: 0.95em; }
+.upscaling-table th { background: var(--color-surface-alt); padding: 11px 14px; font-size: 0.72em; font-weight: 700; letter-spacing: 0.06em; }
+.upscaling-table td { padding: 12px 14px; }
+.upscaling-table tbody tr { transition: background .12s; }
+.upscaling-table tbody tr:hover td { background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface)); }
+.upscaling-table tbody tr:has(.upscaling-select:checked) td { background: color-mix(in srgb, var(--color-accent) 9%, var(--color-surface)); }
+.upscaling-check { width: 44px; text-align: center; }
+.upscaling-album { gap: 3px; }
+.upscaling-album a { font-weight: 600; font-size: 1em; line-height: 1.3; }
+.upscaling-album span { font-size: 0.85em; line-height: 1.35; }
+.upscaling-def { color: var(--color-text); }
+.upscaling-def small, .upscaling-progress-label small { color: var(--color-text-muted); font-size: 0.8em; margin-left: 1px; }
+.upscaling-table .upscaling-row-model { height: 34px; width: 200px; max-width: 200px; font-size: 0.88em; color: var(--color-text-muted); }
+.upscaling-table .upscaling-row-model.custom { color: var(--color-text); font-weight: 600; border-color: var(--color-accent); background-color: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); }
+.upscaling-model-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.85em; font-weight: 600; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)); white-space: nowrap; }
+.upscaling-model-pill .icon { width: 13px; height: 13px; }
+.upscaling-row-actions .upscale-progress { width: 90px; height: 7px; border-radius: 4px; }
+.upscaling-progress-label { font-size: 0.85em; font-weight: 600; color: var(--color-text); min-width: 0; }
+.upscaling-row-actions .upscale-icon-btn { width: 32px; height: 32px; border-radius: 8px; }
+@media (max-width: 700px) {
+    .upscaling-page .upscaling-filter { width: 100%; }
+    .upscaling-search { flex: 1; }
+    .upscaling-table .upscaling-row-model { width: 140px; }
+}
+/* La colonne Album prend la place restante ; les autres restent à leur largeur utile */
+.upscaling-table td, .upscaling-table th { white-space: nowrap; }
+.upscaling-table td:has(.upscaling-album), .upscaling-table th:nth-child(2) { width: 100%; min-width: 240px; white-space: normal; }
+.upscaling-album span { word-break: normal; overflow-wrap: anywhere; }
+/* Liste vide : texte simple, sans cadre de tableau */
+.upscaling-table-wrap:not(:has(table)) { border: none; max-height: none; }
+.upscaling-table-wrap > p { margin: 0; padding: 4px 0; }
+@media (max-width: 1100px) { .upscaling-table .upscaling-row-model { width: 170px; } }
+.upscaling-def { line-height: 1.35; }
+.upscaling-def > span { display: block; font-variant-numeric: tabular-nums; }
+.upscaling-def .upscaling-def-meta { display: block; margin: 2px 0 0; font-size: 0.82em; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }

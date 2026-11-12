@@ -100,7 +100,7 @@ function renderUpscalingModels() {
 function _upProgress(job) {
     const pct = job.total ? Math.round(100 * (job.page || 0) / job.total) : 0;
     return `<span class="upscaling-progress"><span class="upscale-progress"><span style="width:${pct}%"></span></span>
-        <span class="upscale-progress-label">${job.total ? `${job.page || 0}/${job.total}` : '…'}</span></span>`;
+        <span class="upscale-progress-label upscaling-progress-label">${job.total ? `${job.page || 0}/${job.total}` : '…'}</span></span>`;
 }
 
 async function upscalingSaveConfig(values) {
@@ -240,7 +240,7 @@ function _upAlbumCell(item) {
 }
 
 function _upRowModelCell(item, canSelect, busy) {
-    if (busy) return `<span class="upscaling-muted">${_upEsc(_upModelLabel(item.job.model))}</span>`;
+    if (busy) return `<span class="upscaling-model-pill">${svgIcon('sparkles')}${_upEsc(_upModelLabel(item.job.model))}</span>`;
     if (!canSelect) return '<span class="upscaling-muted">—</span>';
     const chosen = upscalingRowModels[item.volume_id] || '';
     const options = [`<option value="">Par défaut (${_upEsc(_upModelLabel(upscalingData.model))})</option>`]
@@ -270,7 +270,7 @@ function renderUpscalingLowDefinition() {
     }
     const enabled = upscalingData.available;
     list.innerHTML = `<table class="upscaling-table"><thead><tr>
-            <th class="upscaling-check"></th><th>Album</th><th>Modèle</th><th>Définition</th><th class="upscaling-num">Pages</th><th class="upscaling-num upscaling-size">Taille</th><th class="upscaling-end"></th>
+            <th class="upscaling-check"></th><th>Album</th><th>Modèle</th><th>Définition</th><th class="upscaling-end"></th>
         </tr></thead><tbody>${items.map(item => {
         const busy = item.job && UPSCALING_BUSY.includes(item.job.status);
         const canSelect = enabled && item.upscalable && !busy;
@@ -279,9 +279,7 @@ function renderUpscalingLowDefinition() {
             <td class="upscaling-check">${canSelect ? `<input type="checkbox" class="upscaling-select" data-volume-id="${item.volume_id}"${selected.has(item.volume_id) ? ' checked' : ''} onchange="upscalingUpdateCount()" aria-label="Sélectionner ${_upEsc(item.filename)}">` : ''}</td>
             <td>${_upAlbumCell(item)}</td>
             <td>${_upRowModelCell(item, canSelect, busy)}</td>
-            <td class="upscaling-nowrap">${item.page_width} × ${item.page_height}</td>
-            <td class="upscaling-num">${item.page_count || '—'}</td>
-            <td class="upscaling-num upscaling-size">${_upBytes(item.file_size)}</td>
+            <td class="upscaling-def"><span>${item.page_width} × ${item.page_height}<small> px</small></span><small class="upscaling-def-meta">${item.page_count ? `${item.page_count} pages · ` : ''}${_upBytes(item.file_size)}</small></td>
             <td class="upscaling-end">${_upStateCell(item)}</td></tr>`;
     }).join('')}</tbody></table>`;
     controls.hidden = false;
