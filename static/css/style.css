@@ -5309,15 +5309,11 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
     display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: .85em;
     padding: 3px 10px 3px 8px; border-radius: 999px;
 }
-#nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell {
-    border-left: 3px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
-}
 
 @media (max-width: 900px) {
     .nouveautes-table > tbody > tr.nouveautes-event-row { padding: 8px 4px; }
     .nouveautes-table .nouveautes-title { font-size: 1.02em; }
     .nouveautes-actions-cell :is(.btn-icon-only, a.btn-icon-only) { width: 36px; height: 36px; }
-    #nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell { border-left: 0; }
 }
 /* Titre RSS : l'icône de lien suit le texte au lieu de flotter à droite */
 .nouveautes-table .nouveautes-title a.nouveautes-rss-link { display: inline; }
