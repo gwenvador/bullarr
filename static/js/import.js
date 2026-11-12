@@ -590,6 +590,16 @@ function _incompatibleFolderStatusHtml(folder) {
     return `<span class="import-download-error" data-tooltip="${escapeHtml(label)} : non importable automatiquement - convertir en CBZ puis le placer dans le dossier d'import">${svgIcon('alert-triangle')} Non importable automatiquement</span>`;
 }
 
+// Noms venant de clients/sources qui les renvoient déjà échappés (« Tome &amp; Darasse ») :
+// entités décodées pour l'affichage seulement (les appels gardent le nom brut).
+function _importDisplayName(value) {
+    const text = String(value ?? '');
+    if (!/&(?:#\d+|#x[0-9a-f]+|[a-z]+);/i.test(text)) return text;
+    const area = document.createElement('textarea');
+    area.innerHTML = text;
+    return area.value;
+}
+
 function _pendingDownloadRowHtml(pending) {
     const hasProgress = !!pending.bytes_total;
     const progressPct = hasProgress ? Math.min(100, Math.max(0, (pending.bytes_downloaded || 0) * 100 / pending.bytes_total)) : 0;
@@ -634,7 +644,7 @@ function _pendingDownloadRowHtml(pending) {
             <td class="import-date-cell">${_importDateCellHtml(pending?.created_at)}</td>
             <td>${clientBadgeHtml(pending.client, pending.id)}</td>
             <td>
-                <div style="font-weight:600;" data-tooltip="${escapeHtml(pending.title)}">${escapeHtml(pending.title)}</div>
+                <div class="import-dl-name" data-tooltip="${escapeHtml(_importDisplayName(pending.title))}">${escapeHtml(_importDisplayName(pending.title))}</div>
                 ${pending.already_owned ? `<div style="font-size:0.78em; color:var(--color-text-muted);" data-tooltip="Ce tome est déjà dans la bibliothèque (autre source) : ce téléchargement le remplacera ou sera ignoré comme doublon.">déjà possédé</div>` : ''}
             </td>
             <td>${_seriesCellHtml(pending.series_id, pending.series_title)}</td>
@@ -642,10 +652,12 @@ function _pendingDownloadRowHtml(pending) {
             <td class="import-ext-cell" style="text-align:center; text-transform:uppercase; color:var(--color-text-muted); font-size:0.85em; white-space:nowrap;">${escapeHtml(_importFileExtension({ filename: pending.title }))}</td>
             <td style="text-align:center; min-width:110px;">
                 ${statusHtml}
+                <div class="import-dl-actions">
                 ${pending.exhausted ? `<button class="btn-icon-only" onclick="retryTelegramDownload(${pending.id}, this)" data-tooltip="Relancer manuellement (budget de tentatives automatiques épuisé)">${svgIcon('refresh-cw')}</button>` : ''}
                 ${_pendingQueueButtonsHtml(pending)}
                 <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}', {is_integral: ${!!pending.is_integral}, integral_number: ${pending.integral_number ?? 'null'}, is_hs: ${!!pending.is_hs}, hs_number: ${pending.hs_number ?? 'null'}, is_episode: ${!!pending.is_episode}, episode_number: ${pending.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
                 <button class="btn-icon-only" onclick="removePendingDownload(${pending.id}, this)" data-tooltip="Retirer et annuler le téléchargement chez le client (si retrouvé)">${svgIcon('trash-2')}</button>
+                </div>
             </td>
         </tr>
     `;
@@ -945,7 +957,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
             <td class="import-date-cell">${_importDateCellHtml(_importDateRawForActive(item))}</td>
             <td>${clientBadgeHtml(clientKey, item.tracking_id)}</td>
             <td>
-                <div style="font-weight:600;" data-tooltip="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+                <div class="import-dl-name" data-tooltip="${escapeHtml(_importDisplayName(item.name))}">${escapeHtml(_importDisplayName(item.name))}</div>
                 <div class="active-download-size-line" style="font-size:0.9em;">${_activeDownloadSizeLineHtml(item)}</div>
             </td>
             <td>${_seriesCellHtml(item.series_id, item.series_title)}</td>
@@ -956,9 +968,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
                     <div class="active-download-progress-fill" style="height:100%; width:${progress}%; background:var(--color-accent);"></div>
                 </div>
                 <div class="active-download-progress-label" style="font-size:0.8em; margin-top:2px;">${_activeDownloadProgressLabelHtml(item)}</div>
-                ${_activeQueueButtonsHtml(clientKey, item)}
-                ${editButtonHtml}
-                ${deleteButtonHtml}
+                <div class="import-dl-actions">${_activeQueueButtonsHtml(clientKey, item)}${editButtonHtml}${deleteButtonHtml}</div>
             </td>
         </tr>
     `;

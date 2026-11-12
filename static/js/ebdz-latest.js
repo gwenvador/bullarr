@@ -554,7 +554,7 @@ function _nouveautesSeriesHtml(event) {
     const content = bedethequeUrl
         ? `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir la série sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="" style="width:14px; height:14px; vertical-align:-2px; margin-right:4px;">${escapeHtml(label)}</a>`
         : escapeHtml(label);
-    return `<div class="nouveautes-matched-series" style="display:flex; align-items:center; gap:6px;">${content}${pencilHtml}</div>`;
+    return `<div class="nouveautes-matched-series has-series" style="display:flex; align-items:center; gap:6px;">${content}${pencilHtml}</div>`;
 }
 
 // Colonne Genre (BD / Comics / Manga) : origine de la fiche Bédéthèque de la série, lue par
@@ -1541,6 +1541,9 @@ function renderNouveautesEvents(resetPage = true) {
         const key = _nouveautesSeriesGroupKey(e);
         return key ? html.replace(/<tr class="nouveautes-event-row/g, `<tr data-event-index="${e._index}" data-series-group="${escapeHtml(key)}" data-series-name="${escapeHtml(_nouveautesSeriesDisplayName(e))}" class="nouveautes-event-row`) : html;
     }).join('');
+    // « mets le nom de la série en premier et le nom du torrent en dessous, comme l'en-tête
+    // de groupe » : la ligne série (logo Bédéthèque + nom + crayon) passe au-dessus du titre.
+    body.querySelectorAll('.nouveautes-details-cell > .nouveautes-matched-series.has-series').forEach(line => line.parentElement.prepend(line));
     _groupNouveautesSeriesRows(body);
     checkEmuleStatus();
     fillNouveautesOriginFlags();
@@ -1628,7 +1631,10 @@ function _groupNouveautesSeriesRows(body) {
             // « mets le stylo au niveau du groupe » : un seul crayon sur l'en-tête, qui
             // rattache tous les albums du groupe à la même série ; plus de crayon par album.
             const indices = members.map(r => Number(r.dataset.eventIndex)).filter(Number.isInteger);
-            members.forEach(r => r.querySelectorAll('.nouveautes-details-cell a[href="#"][onclick*="Match"]').forEach(a => a.remove()));
+            members.forEach(r => {
+                r.querySelectorAll('.nouveautes-details-cell a[href="#"][onclick*="Match"]').forEach(a => a.remove());
+                r.querySelectorAll('.nouveautes-details-cell > .nouveautes-matched-series').forEach(line => { if (!line.children.length && !line.textContent.trim()) line.remove(); });
+            });
             const pencil = document.createElement('a');
             pencil.href = '#';
             pencil.className = 'icon-owned nouveautes-group-match';
@@ -1643,11 +1649,14 @@ function _groupNouveautesSeriesRows(body) {
             details.append(nameRow);
             header.appendChild(details);
             // « le bouton pour tout télécharger en un coup, juste l'éclair » : l'éclair vise
-            // déjà toute la série (tous ses tomes manquants), un seul suffit sur l'en-tête ;
-            // ceux des albums du groupe sont retirés.
+            // déjà toute la série (tous ses tomes manquants) : un éclair sur l'en-tête, en plus
+            // de celui de chaque album (« garde l'éclair dans les albums aussi »).
             const zaps = members.flatMap(r => [...r.querySelectorAll('.nouveautes-actions-cell [onclick^="addSeriesAndDownloadNouveautes"]')]);
-            const zapArgs = zaps.length ? (zaps[0].getAttribute('onclick').match(/addSeriesAndDownloadNouveautes\((\d+), this(?:, (\d+))?\)/) || null) : null;
-            zaps.forEach(z => z.remove());
+            // « pourquoi certains en-têtes n'ont pas l'éclair » : albums tous déjà possédés
+            // (bouton « remplacer » à la place) - l'éclair de l'en-tête vise quand même les
+            // autres tomes manquants de la série, il est donc toujours proposé.
+            const zapArgs = (zaps.length && zaps[0].getAttribute('onclick').match(/addSeriesAndDownloadNouveautes\((\d+), this(?:, (\d+))?\)/))
+                || (Number.isInteger(Number(first.dataset.eventIndex)) && first.dataset.eventIndex !== '' ? [null, first.dataset.eventIndex, undefined] : null);
             const rest = first.cells.length - header.cells.length;
             if (rest > 0) {
                 const filler = document.createElement('td');
@@ -1661,7 +1670,7 @@ function _groupNouveautesSeriesRows(body) {
                     const zap = document.createElement('button');
                     zap.type = 'button';
                     zap.className = 'btn-icon-only';
-                    zap.setAttribute('onclick', `addSeriesAndDownloadNouveautes(${zapArgs[1]}, this${zapArgs[2] != null ? `, ${zapArgs[2]}` : ''})`);
+                    zap.setAttribute('onclick', `addSeriesAndDownloadNouveautes(${Number(zapArgs[1])}, this${zapArgs[2] != null ? `, ${Number(zapArgs[2])}` : ''})`);
                     zap.dataset.tooltip = `Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants`;
                     zap.setAttribute('aria-label', 'Ajouter la série et télécharger tous ses tomes manquants');
                     zap.innerHTML = svgIcon('zap');

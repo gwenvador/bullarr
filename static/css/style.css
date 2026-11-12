@@ -5358,3 +5358,40 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
 @media (max-width: 900px) {
     #nouveautes-events-body tr.nouveautes-series-group-row > td.nouveautes-group-actions { display: block; flex: 0 0 auto; margin-left: auto; }
 }
+
+/* Activités / Import — téléchargements (« tu peux améliorer aussi ? ») : colonne Type
+   assez large pour son filtre, nom plus lisible, taille en gris, Statut aéré (barre de
+   progression arrondie, libellé, actions sur une ligne). Icônes toujours sans cadre. */
+.import-files-table > thead > tr > th:nth-child(3),
+.import-files-table > tbody > tr > td:nth-child(3) { width: 6%; }
+.import-files-table > thead > tr > th:nth-child(4),
+.import-files-table > tbody > tr > td:nth-child(4) { width: 37%; }
+.import-files-table > thead > tr > th:nth-child(8),
+.import-files-table > tbody > tr > td:nth-child(8) { width: 14%; }
+.import-files-table > thead > tr > th:nth-child(3) select.th-filterable-control { min-width: 0; width: 100%; }
+.import-files-table .import-dl-name { font-weight: 600; font-size: 1.05em; line-height: 1.35; color: var(--color-text); }
+.import-files-table :is(.active-download-size-line, .pending-download-size-line) { color: var(--color-text-muted); margin-top: 3px; }
+.import-files-table tbody td:last-child > div:first-child:has(> .active-download-progress-fill),
+.import-files-table tbody td:last-child > div:first-child:has(> .pending-download-progress-fill) {
+    height: 6px !important; border: 0 !important; border-radius: 999px !important;
+    background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface-alt)) !important;
+}
+.import-files-table :is(.active-download-progress-fill, .pending-download-progress-fill) { border-radius: 999px; }
+.import-files-table :is(.active-download-progress-label, .pending-download-progress-label) {
+    margin-top: 5px !important; color: var(--color-text-muted); font-variant-numeric: tabular-nums;
+}
+.import-files-table .import-dl-actions { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 6px; }
+.import-files-table .import-dl-actions .btn-icon-only { padding: 4px; border-radius: 6px; color: var(--color-text-muted); }
+.import-files-table .import-dl-actions .btn-icon-only:hover { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.import-files-table .import-dl-actions .btn-icon-only[onclick^="removePendingDownload"]:hover,
+.import-files-table .import-dl-actions .btn-icon-only[onclick^="deleteActiveDownload"]:hover { color: #dc2626; background: color-mix(in srgb, #dc2626 10%, transparent); }
+/* Série en premier (comme l'en-tête de groupe), nom de la release en dessous */
+.nouveautes-table .nouveautes-details-cell > .nouveautes-matched-series.has-series:first-child {
+    margin: 0 0 3px; font-size: 1.1em; font-weight: 700;
+}
+.nouveautes-table .nouveautes-details-cell > .nouveautes-matched-series.has-series:first-child a { color: var(--color-text); text-decoration: none; }
+.nouveautes-table .nouveautes-details-cell > .nouveautes-matched-series.has-series:first-child a:hover { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }
+.nouveautes-table .nouveautes-details-cell > .nouveautes-matched-series.has-series:first-child img { width: 16px !important; height: 16px !important; vertical-align: -3px !important; margin-right: 6px !important; }
+.nouveautes-table .nouveautes-details-cell:has(> .nouveautes-matched-series.has-series:first-child) > .nouveautes-title {
+    font-weight: 500; font-size: .95em; color: var(--color-text-muted);
+}
