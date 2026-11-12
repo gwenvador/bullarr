@@ -395,11 +395,29 @@ def _volumes_json(*volumes):
     return json.dumps({'volumes': [v for v in volumes if v]})
 
 
+def _volume_kind(volume_id):
+    """Type du tome (intégrale, HS, épisode) pour l'étiquette « Tome 3 » / « Hors-série 1 »."""
+    try:
+        from flask import current_app
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute('''SELECT is_integral, integral_number, is_hs, hs_number, is_episode, episode_number
+                                  FROM volumes WHERE id = ?''', (volume_id,)).fetchone()
+        finally:
+            conn.close()
+        return {k: row[k] for k in row.keys()} if row else {}
+    except Exception:  # noqa: BLE001 - colonnes absentes (tests) ou hors contexte
+        return {}
+
+
 def _volume_entry(row, model=None, **extra):
     if not row:
         return None
     entry = {'volume_id': row['id'], 'filename': row['filename'], 'volume_number': row['volume_number'],
+             'series_id': row['series_id'], 'series_title': row['series_title'],
              'model': upscale.MODEL_LABELS.get(model, model) if model else None}
+    entry.update({k: v for k, v in _volume_kind(row['id']).items() if v})
     if row['page_width'] and row['page_height']:
         entry['size'] = f"{row['page_width']} × {row['page_height']}"
     entry.update({k: v for k, v in extra.items() if v is not None})

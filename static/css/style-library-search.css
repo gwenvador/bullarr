@@ -4366,3 +4366,7 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
 .upscale-picker-model .upscale-picker-family { font-size: 0.7em; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 .upscale-picker-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .upscale-picker-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Molette d'un tome : action visible mais impossible (raison en info-bulle). */
+.toolbar-dropdown-item.is-disabled { opacity: .45; cursor: not-allowed; }
+.toolbar-dropdown-item.is-disabled:hover { background: transparent; }

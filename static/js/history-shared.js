@@ -511,24 +511,28 @@ function _isUpscaleAlbumEvent(e) {
     return (e.type || '').startsWith('upscale') && e.type !== 'upscale_settings' && e.actionId != null;
 }
 
-function _upscaleVolumesDetailHtml(volumes) {
+function _upscaleVolumesDetailHtml(volumes, action) {
     if (!volumes.length) return '<div style="padding:8px; color:#666;">Aucun détail disponible pour cette entrée</div>';
+    // Même tableau que le détail d'un import : fichier | série (lien) | tome.
     const rows = volumes.map(v => {
-        const tome = v.volume_number != null ? `Tome ${String(v.volume_number).replace(/\.0$/, '')}` : '';
+        const seriesId = v.series_id ?? action?.series_id;
+        const seriesTitle = v.series_title || action?.series_title || '';
         const size = v.size ? (v.after ? `${v.size} → ${v.after} px` : `${v.size} px`) : '';
-        const meta = [v.model, size].filter(Boolean).join(' · ');
+        const meta = [v.note, v.model, size].filter(Boolean).join(' · ');
+        const number = v.volume_number != null ? String(v.volume_number).replace(/\.0$/, '') : null;
+        const tome = importHistoryVolumeLabel({ ...v, volume_number: number });
         return `
-            <tr style="border-top:1px solid var(--color-border, #eee);">
-                <td style="padding:6px 8px; overflow-wrap:anywhere;">
-                    <div>${escapeHtmlHistory(v.filename || '')}</div>
-                    ${v.note ? `<div style="color:var(--color-text-muted); font-size:0.92em;">${escapeHtmlHistory(v.note)}</div>` : ''}
-                    ${v.error ? `<div style="color:var(--color-danger, #dc3545); font-size:0.92em;">⚠️ ${escapeHtmlHistory(v.error)}</div>` : ''}
+            <tr style="border-bottom:1px solid #eee;">
+                <td class="history-file-name">
+                    ${escapeHtmlHistory(v.filename || '')}
+                    ${meta ? `<div style="color:#888; font-size:0.9em;">${escapeHtmlHistory(meta)}</div>` : ''}
+                    ${v.error ? `<div style="color:#c0392b; font-size:0.9em;">⚠️ ${escapeHtmlHistory(v.error)}</div>` : ''}
                 </td>
-                <td style="padding:6px 8px; color:var(--color-text-muted); white-space:nowrap;">${escapeHtmlHistory(meta)}</td>
-                <td style="padding:6px 8px; color:var(--color-text-muted); white-space:nowrap;">${escapeHtmlHistory(tome)}</td>
+                <td class="history-file-series">${seriesId ? `<a class="history-link" href="/series/${encodeURIComponent(seriesId)}">${escapeHtmlHistory(seriesTitle)}</a>` : escapeHtmlHistory(seriesTitle)}</td>
+                <td class="history-file-volume">${escapeHtmlHistory(tome)}</td>
             </tr>`;
     });
-    return `<table style="width:100%; border-collapse:collapse; font-size:13px;"><tbody>${rows.join('')}</tbody></table>`;
+    return `<table class="history-files-detail-table"><tbody>${rows.join('')}</tbody></table>`;
 }
 
 async function toggleActionDetail(rowId, actionId, fullDate) {
@@ -557,7 +561,7 @@ async function toggleActionDetail(rowId, actionId, fullDate) {
         const files = (data.action && data.action.files) || [];
         const folder = data.action && data.action.folder;
         if ((data.action?.action_type || '').startsWith('upscale')) {
-            const html = _upscaleVolumesDetailHtml(data.action.volumes || []);
+            const html = _upscaleVolumesDetailHtml(data.action.volumes || [], data.action);
             actionDetailCache[actionId] = html;
             cell.innerHTML = dateHtml + html;
             return;

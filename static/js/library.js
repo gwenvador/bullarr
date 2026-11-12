@@ -2965,6 +2965,15 @@ function _seriesUpscaleMenuItemsHtml(data, seriesId) {
     const count = n => (n > 1 ? ` (${n} tomes)` : '');
     let html = '';
     if (eligible.length) html += `<button class="toolbar-dropdown-item" onclick="upscaleSeriesVolumes(${seriesId})" title="Agrandit x2 sur le serveur les tomes en basse définition ; les originaux SD sont gardés">${svgIcon('sparkles')} Upscaler en HD${count(eligible.length)}</button>`;
+    else if (!busy.length) {
+        // Toujours visible : grisé, avec la raison en info-bulle.
+        const owned = (data.volumes || []).filter(v => v.filepath);
+        const reason = !owned.length ? 'Aucun tome sur le disque'
+            : restorable.length === owned.length ? 'Tous les tomes sont déjà upscalés'
+            : !owned.some(v => (v.format || '').toLowerCase() === 'cbz') ? 'Seuls les tomes cbz peuvent être upscalés : convertissez-les d\'abord en cbz'
+            : `Aucun tome en basse définition : toutes les pages dépassent le seuil de ${_lowDefMaxSide()} px (réglable dans Configuration → Upscaling)`;
+        html += `<button type="button" class="toolbar-dropdown-item is-disabled" aria-disabled="true" data-tooltip="${escapeHtml(reason)}" onclick="event.stopPropagation()">${svgIcon('sparkles')} Upscaler en HD</button>`;
+    }
     if (busy.length) html += `<button class="toolbar-dropdown-item" onclick="cancelSeriesUpscale(${seriesId})">${svgIcon('x')} Annuler l'upscaling${count(busy.length)}</button>`;
     if (restorable.length) html += `<button class="toolbar-dropdown-item" onclick="restoreSeriesSd(${seriesId})" title="Remet les versions SD d'origine gardées à l'upscaling">${svgIcon('undo')} Restaurer la version SD${count(restorable.length)}</button>`;
     return html;
@@ -3532,11 +3541,17 @@ function buildVolumeActionsGearHtml(v) {
     // déf. »), remplacé par sa version HD ; l'original est gardé (« Restaurer la version SD »).
     const _side = Math.max(v.page_width || 0, v.page_height || 0);
     const _upscaling = ['queued', 'running'].includes(v.upscale_status);
+    // Toujours affiché : grisé, avec la raison en info-bulle, quand le tome ne peut pas l'être.
+    const _upscaleBlocked = v.sd_backup ? 'Déjà upscalé : restaurez d\'abord la version SD'
+        : (v.format || '').toLowerCase() !== 'cbz' ? 'Seuls les tomes cbz peuvent être upscalés : convertissez-le d\'abord en cbz'
+        : !_side ? 'Définition des pages pas encore mesurée'
+        : _side > _lowDefMaxSide() ? `Déjà en bonne définition : pages de ${_side} px, au-dessus du seuil de ${_lowDefMaxSide()} px (réglable dans Configuration → Upscaling)`
+        : '';
     const upscaleItemHtml = _upscaling
         ? `<button type="button" class="toolbar-dropdown-item" onclick="cancelVolumeUpscale(${v.id}, event)">${svgIcon('x')} Annuler l'upscaling</button>`
-        : (!v.sd_backup && (v.format || '').toLowerCase() === 'cbz' && _side > 0 && _side <= _lowDefMaxSide())
-            ? `<button type="button" class="toolbar-dropdown-item" onclick="upscaleVolume(${v.id}, event)">${svgIcon('sparkles')} Upscaler en HD</button>`
-            : '';
+        : _upscaleBlocked
+            ? `<button type="button" class="toolbar-dropdown-item is-disabled" aria-disabled="true" data-tooltip="${escapeHtml(_upscaleBlocked)}" onclick="event.stopPropagation()">${svgIcon('sparkles')} Upscaler en HD</button>`
+            : `<button type="button" class="toolbar-dropdown-item" onclick="upscaleVolume(${v.id}, event)">${svgIcon('sparkles')} Upscaler en HD</button>`;
     const restoreSdItemHtml = v.sd_backup && !_upscaling
         ? `<button type="button" class="toolbar-dropdown-item" onclick="restoreVolumeSd(${v.id}, event)">${svgIcon('undo')} Restaurer la version SD</button>`
         : '';

@@ -8443,10 +8443,13 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                         # vers un fichier qui n'existe alors déjà plus.
                         'source_path': original_source_path or source_path,
                         'destination_path': '',
-                        'series_title': '',
+                        # Série visée et tome lu dans le nom : l'album reste identifiable dans
+                        # l'historique même quand l'import échoue (fichier corrompu…).
+                        'series_title': (file_data.get('destination') or {}).get('series_title') or '',
                         'action': 'failed',
                         'status': 'error',
-                        'message': str(e)
+                        'message': str(e),
+                        'parsed_volume': _volume_fields_for_history(file_data.get('parsed') or {})
                     })
                     import traceback
                     traceback.print_exc()
