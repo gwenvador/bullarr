@@ -255,15 +255,17 @@ async function _runComicUpscaleQueue() {
             console.warn('Amélioration de la page impossible', error);
         }
         comicUpscale.running = null;
-        // Le lecteur a pu changer de tome, de mode ou de modèle pendant le calcul.
-        if (key !== _comicUpscaleKey(number) || volumeId !== comicUpscale.volumeId) {
+        // Le lecteur a pu changer de tome pendant le calcul : résultat inutile.
+        if (volumeId !== comicUpscale.volumeId) {
             if (url) URL.revokeObjectURL(url);
             continue;
         }
         if (!comicUpscale.error) {
+            // Gardé même si HD a été désactivé ou le modèle changé entre-temps (il resservira),
+            // mais affiché seulement s'il correspond toujours au réglage en cours.
             comicUpscale.cache.set(key, { url });
             _trimComicUpscaleCache();
-            if (url) _applyComicUpscale(number, url);
+            if (url && key === _comicUpscaleKey(number)) _applyComicUpscale(number, url);
         }
         _renderComicUpscaleStatus();
     }
@@ -275,7 +277,7 @@ function _trimComicUpscaleCache() {
     while (comicUpscale.cache.size > COMIC_UPSCALE_CACHE) {
         const [key, entry] = comicUpscale.cache.entries().next().value;
         const number = parseInt(key.split(':')[1], 10);
-        if (comicUpscale.shown.includes(number)) break;
+        if (comicUpscale.shown.includes(number) && key === _comicUpscaleKey(number)) break;
         if (entry.url) URL.revokeObjectURL(entry.url);
         comicUpscale.cache.delete(key);
     }
@@ -470,7 +472,11 @@ function setComicReaderUpscale(mode, model) {
     if (changed) {
         comicUpscale.error = '';
         _restoreComicUpscaleOriginals();
-        _comicUpscaleClear();
+        // Les pages déjà calculées restent en mémoire (clé = tome, page, mode, modèle) :
+        // désactiver puis réactiver HD, ou revenir à un modèle déjà essayé, les réaffiche
+        // aussitôt au lieu de les recalculer. Seule la file d'attente repart de zéro.
+        comicUpscale.queue = [];
+        comicUpscale.missing = null;
         if (comicUpscale.mode !== 'off' && comicReader.count) {
             comicReaderUpscaleShown(_comicReaderSpreadPages(comicReader.page, comicReader.count, _comicReaderSpread()));
         }

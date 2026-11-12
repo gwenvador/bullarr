@@ -107,6 +107,7 @@ def upscale_config():
     return jsonify({'success': True, 'server_enabled': bool(config.get('server_enabled')), 'model': config['model'],
                     'runtime': upscale.runtime_available(), 'models': upscale.model_status(),
                     'catalog': {key: {'label': spec['label'], 'detail': spec['detail']} for key, spec in upscale.MODELS.items()},
+                    'order': list(upscale.MODELS),
                     'max_side': upscale.LOW_DEF_MAX_SIDE,
                     'backups': [{k: item.get(k) for k in ('volume_id', 'series_id', 'series_title', 'filename', 'backup_path',
                                                           'bytes', 'exists', 'model', 'created_at')} for item in backups],

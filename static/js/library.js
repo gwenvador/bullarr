@@ -2975,11 +2975,13 @@ async function upscaleSeriesVolumes(seriesId) {
     if (!data || data.id !== seriesId) return;
     const { eligible } = _seriesUpscaleGroups(data);
     if (!eligible.length) return;
-    if (!confirm(`Upscaler ${eligible.length > 1 ? `les ${eligible.length} tomes en basse définition` : 'ce tome'} en HD sur le serveur ?\n\nLes pages sont agrandies x2 avec le modèle choisi dans Actions → Upscaling, puis chaque fichier est remplacé par sa version HD. Les originaux sont gardés et restaurables. Le serveur traite un tome à la fois.`)) return;
+    const model = await pickUpscaleModel(eligible.length > 1 ? `Upscaler ${eligible.length} tomes en HD` : 'Upscaler ce tome en HD',
+        `${eligible.length > 1 ? `Les ${eligible.length} tomes en basse définition de la série sont agrandis` : 'Le tome en basse définition de la série est agrandi'} x2 sur le serveur, un à la fois, puis remplacés par leur version HD. Les originaux sont gardés et restaurables.`);
+    if (!model) return;
     try {
         const response = await fetch('/api/upscale/batch', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ volume_ids: eligible.map(v => v.id) })
+            body: JSON.stringify({ volume_ids: eligible.map(v => v.id), model })
         });
         const result = await response.json();
         if (!result.success) throw new Error(result.error || 'Erreur inconnue');
@@ -9117,12 +9119,72 @@ document.addEventListener('keydown', (e) => {
 // à plus d'une heure : on suit l'avancement par un toast, la page reste utilisable.
 const _volumeUpscalePolls = {};
 
+// Fenêtre de choix du modèle avant un upscaling lancé depuis une molette (tome ou série) :
+// le modèle par défaut (Actions → Upscaling) est présélectionné. Résout le modèle choisi,
+// ou null si on annule.
+async function pickUpscaleModel(title, text) {
+    let config;
+    try {
+        config = await (await fetch('/api/settings/upscale')).json();
+    } catch (e) {
+        config = null;
+    }
+    if (!config || !config.success) { alert('❌ Configuration de l\'upscaling indisponible'); return null; }
+    if (!config.runtime) { alert('❌ Le moteur d\'upscaling (onnxruntime) n\'est pas disponible sur ce serveur'); return null; }
+    const order = (config.order || Object.keys(config.catalog || {})).filter(key => config.models?.[key]?.present !== false);
+    document.getElementById('upscale-model-picker')?.remove();
+    const modal = document.createElement('div');
+    modal.className = 'modal active upscale-picker-modal';
+    modal.id = 'upscale-model-picker';
+    modal.innerHTML = `
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="upscale-picker-title">
+            <span class="close-modal" data-pick-cancel aria-label="Fermer">×</span>
+            <h2 id="upscale-picker-title">${svgIcon('sparkles')} ${escapeHtml(title)}</h2>
+            <p class="upscale-picker-text">${escapeHtml(text)}</p>
+            <div class="upscale-picker-models" role="radiogroup" aria-label="Modèle">${order.map(key => {
+                const spec = config.catalog[key];
+                const family = key.startsWith('cugan') ? 'Real-CUGAN' : 'Real-ESRGAN';
+                return `<label class="upscale-picker-model${key === config.model ? ' active' : ''}">
+                    <input type="radio" name="upscale-picker-model" value="${key}"${key === config.model ? ' checked' : ''}>
+                    <span><strong>${escapeHtml(spec.label)}</strong>${key === config.model ? '<em>par défaut</em>' : ''}<small class="upscale-picker-family">${family}</small><small>${escapeHtml(spec.detail)}</small></span>
+                </label>`;
+            }).join('')}</div>
+            <p class="upscale-picker-hint">Pas sûr ? <a href="/upscaling#compare">Comparez les modèles</a> sur une de vos pages.</p>
+            <div class="upscale-picker-actions">
+                <button type="button" class="btn btn-secondary" data-pick-cancel>Annuler</button>
+                <button type="button" class="btn btn-primary" data-pick-ok>${svgIcon('sparkles')} Upscaler</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    modal.querySelectorAll('input[name="upscale-picker-model"]').forEach(input => input.addEventListener('change', () => {
+        modal.querySelectorAll('.upscale-picker-model').forEach(label => label.classList.toggle('active', label.contains(input) && input.checked));
+    }));
+    modal.querySelector('[data-pick-ok]').focus();
+    return new Promise(resolve => {
+        const close = value => {
+            document.removeEventListener('keydown', onKey, true);
+            modal.remove();
+            resolve(value);
+        };
+        const onKey = event => {
+            if (event.key === 'Escape') { event.stopPropagation(); close(null); }
+        };
+        document.addEventListener('keydown', onKey, true);
+        modal.addEventListener('click', event => {
+            if (event.target === modal || event.target.closest('[data-pick-cancel]')) close(null);
+            else if (event.target.closest('[data-pick-ok]')) close(modal.querySelector('input[name="upscale-picker-model"]:checked')?.value || config.model);
+        });
+    });
+}
+
 async function upscaleVolume(volumeId, evt) {
     evt?.stopPropagation();
-    if (!confirm('Upscaler ce tome en HD sur le serveur ?\n\nLes pages sont agrandies x2, puis le fichier est remplacé par la version HD. L\'original est gardé et peut être restauré depuis la molette.')) return;
+    const model = await pickUpscaleModel('Upscaler ce tome en HD',
+        'Les pages sont agrandies x2 sur le serveur, puis le fichier est remplacé par sa version HD. L\'original est gardé et peut être restauré depuis la molette.');
+    if (!model) return;
     try {
         const response = await fetch(`/api/volumes/${volumeId}/upscale`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model })
         });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Erreur inconnue');
