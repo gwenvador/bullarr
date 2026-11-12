@@ -12,7 +12,7 @@ class ComicReaderSpreadTest(unittest.TestCase):
         self.css = (ROOT / 'static/css/style-library-search.css').read_text()
 
     def test_reader_has_a_second_image_a_toggle_and_a_shortcut(self):
-        for needle in ('id="comic-reader-image-2"', 'data-reader-action="spread"', 'function toggleComicReaderSpread(',
+        for needle in ('id="comic-reader-image-2"', "['spread', 'Deux pages']", 'function toggleComicReaderSpread(',
                        "'comic-reader-spread'", 'd: () => toggleComicReaderSpread()'):
             self.assertIn(needle, self.js)
 

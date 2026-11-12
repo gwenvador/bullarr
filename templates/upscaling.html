@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t==='system'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}var p=localStorage.getItem('palette');if(p&&p!=='atelier'){document.documentElement.setAttribute('data-palette',p);}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Upscaling</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <!-- .th-filterable-row/-icon/-control (filtres colonne des 5 tableaux de cette page)
+         ne vivent QUE dans style-library-search.css (voir commentaire dans style.css) -
+         cette page ne le chargeait pas du tout, filtres sans style depuis leur ajout. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/palettes.css') }}?v={{ asset_version('css/palettes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modals.css') }}?v={{ asset_version('css/modals.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-upscaling.css') }}?v={{ asset_version('css/style-upscaling.css') }}">
+</head>
+<body data-role="{{ user_role }}">
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Activités</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/demandes" class="nav-link">📮 Demandes</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/upscaling" class="nav-link active">✨ Upscaling</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon"><svg class="icon header-title-svg" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg></span> <span class="header-title-full">Upscaling des albums</span><span class="header-title-short">Upscaling</span></h1>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+                    <div class="settings-section upscaling-page">
+                        <div class="section-header">
+                            <p class="section-description">Les albums dont les pages font 1600 px au plus peuvent être agrandis x2 et nettoyés sur le serveur, avec le modèle choisi ci-dessous. Le fichier est remplacé par sa version HD et l'original SD est gardé à part : il peut être remis à tout moment. <a href="/docs#upscaling">Comment ça marche</a></p>
+                        </div>
+
+                        <section class="settings-card" id="upscalingModelCard">
+                            <div class="upscaling-card-head">
+                                <h3>Modèle</h3>
+                                <div id="upscalingState" class="upscaling-state-badges"></div>
+                            </div>
+                            <p class="upscaling-lead">Utilisé pour tous les upscalings lancés depuis cette page ou la molette d'un tome. Pas sûr ? Comparez-les sur une de vos pages juste en dessous.</p>
+                            <div id="upscalingModels" class="upscaling-models" role="radiogroup" aria-label="Modèle d'upscaling"></div>
+                            <div id="upscalingRunning"></div>
+                        </section>
+
+                        <section class="settings-card" id="compare">
+                            <div class="upscaling-card-head">
+                                <h3>Comparer les modèles</h3>
+                            </div>
+                            <p class="upscaling-lead">Choisissez un album et une page, puis cliquez sur la page pour placer la zone à comparer. Chaque modèle agrandit le même extrait ; cliquez sur un résultat pour garder ce modèle.</p>
+                            <div class="upscaling-compare-controls">
+                                <label class="upscaling-field upscaling-field-grow"><span>Album</span><select id="compareVolume" class="upscaling-input" onchange="compareVolumeChanged()"></select></label>
+                                <label class="upscaling-field"><span>Page</span><input type="number" id="comparePage" class="upscaling-input" min="1" value="3" onchange="compareLoadPage()"></label>
+                                <button type="button" class="btn btn-primary" id="compareRunBtn" onclick="compareRun()">Comparer</button>
+                            </div>
+                            <div class="upscaling-compare">
+                                <div class="upscaling-compare-page" id="comparePageBox">
+                                    <img id="compareImage" alt="Page de l'album" onclick="compareMoveZone(event)" onload="compareDrawZone()">
+                                    <span class="upscaling-compare-zone" id="compareZone" hidden></span>
+                                </div>
+                                <div class="upscaling-compare-grid" id="compareGrid"><p class="upscaling-muted">Les résultats s'affichent ici.</p></div>
+                            </div>
+                        </section>
+
+                        <section class="settings-card" id="upscalingLowDefinitionCard">
+                            <div class="upscaling-card-head">
+                                <h3>Albums non HD <span class="upscaling-count" id="upscalingLowDefinitionCount">—</span></h3>
+                                <div class="upscaling-actions" id="upscalingBulkControls" hidden>
+                                    <input type="text" class="search-input upscaling-filter" id="upscalingFilter" placeholder="Filtrer par série ou fichier" oninput="upscalingApplyFilter()">
+                                    <label class="upscaling-select-all"><input type="checkbox" id="upscalingSelectAll" onchange="upscalingToggleAll(this)"> Tout sélectionner</label>
+                                    <button type="button" class="btn btn-primary" id="upscalingRunBtn" onclick="upscalingRunSelected()" disabled>Upscaler en HD (<span id="upscalingSelectedCount">0</span>)</button>
+                                </div>
+                            </div>
+                            <div id="upscalingLowDefinitionList" class="upscaling-table-wrap"><p class="upscaling-muted">Chargement…</p></div>
+                        </section>
+
+                        <section class="settings-card" id="upscalingBackupsCard">
+                            <div class="upscaling-card-head">
+                                <h3>Albums upscalés <span class="upscaling-count" id="upscalingBackupsCount">—</span></h3>
+                                <span class="upscaling-muted" id="upscalingBackupsBytes"></span>
+                            </div>
+                            <p class="upscaling-lead">L'original SD de chaque album upscalé est gardé dans le dossier caché <code>.bullarr-sd-backup</code> à la racine de sa bibliothèque. « Remettre la version SD » annule l'upscaling ; supprimer la sauvegarde garde la version HD et libère la place.</p>
+                            <div id="upscalingBackupsList" class="upscaling-table-wrap"><p class="upscaling-muted">Chargement…</p></div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/upscaling.js') }}?v={{ asset_version('js/upscaling.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

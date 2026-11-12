@@ -84,6 +84,104 @@ function _comicReaderStepTarget(page, step, count, spread) {
     return target < 1 || target > count || target === page ? null : target;
 }
 
+// Icônes de la barre du lecteur (tracés lucide).
+const COMIC_READER_ICONS = {
+    'chevron-left': '<path d="m15 18-6-6 6-6"/>',
+    'chevron-right': '<path d="m9 18 6-6-6-6"/>',
+    'chevrons-left': '<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>',
+    'chevrons-right': '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>',
+    minus: '<path d="M5 12h14"/>',
+    plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    sliders: '<path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/>',
+    maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+    help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    download: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+};
+
+function _readerIcon(name) {
+    return `<svg class="comic-reader-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${COMIC_READER_ICONS[name]}</svg>`;
+}
+
+// Panneau « Affichage » : tous les réglages de lecture regroupés (au lieu d'un bouton chacun).
+function toggleComicReaderSettings(force, scope) {
+    const panel = document.getElementById('comic-reader-settings');
+    if (!panel) return;
+    scope = scope || panel.dataset.scope || 'display';
+    // Clic sur l'autre bouton pendant que le panneau est ouvert : on change de contenu.
+    const switching = !panel.hidden && panel.dataset.scope !== scope;
+    const show = force === undefined ? (panel.hidden || switching) : !!force;
+    panel.hidden = !show;
+    panel.dataset.scope = scope;
+    for (const [id, own] of [['comic-reader-settings-btn', 'display'], ['comic-reader-hd-btn', 'hd']]) {
+        const other = document.getElementById(id);
+        if (!other) continue;
+        other.classList.toggle('open', show && scope === own);
+        other.setAttribute('aria-expanded', String(show && scope === own));
+    }
+    const button = document.getElementById(scope === 'hd' ? 'comic-reader-hd-btn' : 'comic-reader-settings-btn');
+    panel.setAttribute('aria-label', scope === 'hd' ? 'Amélioration HD' : 'Affichage');
+    if (show && button) {
+        toggleComicReaderHelp(false);
+        const rect = button.getBoundingClientRect();
+        panel.style.top = `${rect.bottom + 8}px`;
+        panel.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+        _renderComicReaderSettings();
+    }
+}
+
+function _renderComicReaderSettings() {
+    const panel = document.getElementById('comic-reader-settings');
+    if (!panel || panel.hidden) return;
+    const segment = (setting, options, current, disabled) => `
+        <div class="comic-reader-segmented${disabled ? ' disabled' : ''}" role="group">${options.map(([value, label]) =>
+            `<button type="button" class="comic-reader-segment${value === current ? ' active' : ''}" data-setting="${setting}" data-value="${value}" aria-pressed="${value === current}"${disabled ? ' disabled' : ''}>${label}</button>`).join('')}</div>`;
+    const section = (title, keys, body) => `
+        <section class="comic-reader-settings-section">
+            <div class="comic-reader-settings-head"><span>${title}</span>${keys ? `<span class="comic-reader-settings-keys">${keys.map(key => `<kbd>${key}</kbd>`).join('')}</span>` : ''}</div>
+            ${body}
+        </section>`;
+    if (panel.dataset.scope === 'hd') {
+        panel.innerHTML = typeof comicReaderUpscaleSettingsHtml === 'function' ? comicReaderUpscaleSettingsHtml(segment, section) : '';
+        return;
+    }
+    const layout = comicReader.webtoon ? 'webtoon' : comicReader.spread ? 'spread' : 'single';
+    panel.innerHTML = `
+        ${section('Disposition', ['D', 'W'], segment('layout', [['single', 'Une page'], ['spread', 'Deux pages'], ['webtoon', 'Webtoon']], layout))}
+        ${section('Sens de lecture', ['L', 'R'], segment('rtl', [['0', 'Gauche → droite'], ['1', 'Droite → gauche']], comicReader.rtl && !comicReader.webtoon ? '1' : '0', comicReader.webtoon))}
+        ${section('Ajustement', ['C'], segment('fit', Object.entries(COMIC_READER_FITS).map(([fit, value]) => [fit, value.label]), comicReader.fit, comicReader.webtoon))}
+        ${section('Miniatures', ['T'], segment('thumbs', [['1', 'Affichées'], ['0', 'Masquées']], comicReader.thumbs ? '1' : '0'))}`;
+}
+
+function _onComicReaderSettingsClick(event) {
+    event.stopPropagation();
+    const option = event.target.closest('[data-setting]');
+    if (!option || option.disabled) return;
+    const value = option.dataset.value;
+    const setting = option.dataset.setting;
+    if (setting === 'layout') {
+        if ((value === 'webtoon') !== comicReader.webtoon) toggleComicReaderWebtoon();
+        if (value !== 'webtoon' && (value === 'spread') !== comicReader.spread) toggleComicReaderSpread();
+    } else if (setting === 'rtl') {
+        if ((value === '1') !== comicReader.rtl) toggleComicReaderRtl();
+    } else if (setting === 'fit') {
+        if (value !== comicReader.fit) {
+            comicReader.fit = Object.keys(COMIC_READER_FITS).find(fit => COMIC_READER_FITS[fit].next === value) || comicReader.fit;
+            cycleComicReaderFit();
+        }
+    } else if (setting === 'thumbs') {
+        if ((value === '1') !== comicReader.thumbs) toggleComicReaderThumbs();
+    } else if (setting === 'upscale-mode' && typeof setComicReaderUpscale === 'function') {
+        setComicReaderUpscale(value);
+    } else if (setting === 'upscale-model' && typeof setComicReaderUpscale === 'function') {
+        setComicReaderUpscale(null, value);
+    } else if (setting === 'upscale-download' && typeof comicReaderUpscaleDownload === 'function') {
+        comicReaderUpscaleDownload(value);
+    }
+    _renderComicReaderSettings();
+}
+
 // Raccourcis alignés sur ceux du lecteur Komga (L / R / V / W, C, D, F, M, T, H, Échap).
 // Chaque ligne : [touches (tableau = touches clavier, texte = geste), description].
 const COMIC_READER_SHORTCUTS = [
@@ -109,6 +207,7 @@ const COMIC_READER_SHORTCUTS = [
         [['U'], 'Amélioration des pages en basse définition : désactivée, navigateur, serveur'],
     ]],
     ['Menus', [
+        [['O'], 'Panneau Affichage (disposition, sens, ajustement, miniatures)'],
         [['M'], 'Afficher / masquer les barres'],
         [['T'], 'Afficher / masquer les miniatures'],
         [['H', '?'], 'Afficher / masquer cette aide'],
@@ -231,27 +330,29 @@ function _buildComicReader() {
     overlay.innerHTML = `
         <div class="comic-reader-bar">
             <div class="comic-reader-title" id="comic-reader-title"></div>
-            <div class="comic-reader-counter" id="comic-reader-counter" aria-live="polite"></div>
+            <div class="comic-reader-nav">
+                <button type="button" class="comic-reader-btn comic-reader-btn-ghost" data-reader-action="prev-volume" id="comic-reader-prev-volume" aria-label="Tome précédent" data-tooltip="Tome précédent ([)" hidden>${_readerIcon('chevrons-left')}</button>
+                <button type="button" class="comic-reader-btn" data-reader-action="left" id="comic-reader-left-btn" aria-label="Page précédente" data-tooltip="Page précédente (←)">${_readerIcon('chevron-left')}</button>
+                <div class="comic-reader-counter" id="comic-reader-counter" aria-live="polite"></div>
+                <button type="button" class="comic-reader-btn" data-reader-action="right" id="comic-reader-right-btn" aria-label="Page suivante" data-tooltip="Page suivante (→)">${_readerIcon('chevron-right')}</button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-ghost" data-reader-action="next-volume" id="comic-reader-next-volume" aria-label="Tome suivant" data-tooltip="Tome suivant (])" hidden>${_readerIcon('chevrons-right')}</button>
+            </div>
             <div class="comic-reader-actions">
-                <button type="button" class="comic-reader-btn" data-reader-action="zoom-out" aria-label="Dézoomer" data-tooltip="Dézoomer (−)">−</button>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="zoom-reset" id="comic-reader-zoom" aria-label="Zoom : revenir à 100 %" data-tooltip="Revenir à 100 % (0)">100 %</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="zoom-in" aria-label="Zoomer" data-tooltip="Zoomer (+)">+</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="prev-volume" id="comic-reader-prev-volume" aria-label="Tome précédent" data-tooltip="Tome précédent ([)" hidden>⏮</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="next-volume" id="comic-reader-next-volume" aria-label="Tome suivant" data-tooltip="Tome suivant (])" hidden>⏭</button>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="webtoon" id="comic-reader-webtoon-btn" aria-label="Mode webtoon" data-tooltip="Mode webtoon : défilement vertical continu (W ou V)">↕<span class="comic-reader-btn-label">Webtoon</span></button>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="rtl" id="comic-reader-rtl-btn" aria-label="Sens manga" data-tooltip="Sens manga : droite → gauche (R, L pour revenir)">⇆<span class="comic-reader-btn-label">Manga</span></button>
-                <button type="button" class="comic-reader-btn comic-reader-btn-spread" data-reader-action="spread" id="comic-reader-spread-btn" aria-label="Deux pages côte à côte" data-tooltip="Deux pages côte à côte (D)">▯▯</button>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="fit" id="comic-reader-fit" aria-label="Ajustement de l'image" data-tooltip="Ajustement de l'image : page entière, largeur ou hauteur de l'écran (C)"></button>
-                <span class="comic-reader-upscale-status" id="comic-reader-upscale-status" hidden></span>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="upscale" id="comic-reader-upscale-btn" aria-label="Amélioration des pages" data-tooltip="Amélioration des pages en basse définition (U)">✨<span class="comic-reader-btn-label">HD</span></button>
-                <button type="button" class="comic-reader-btn" data-reader-action="thumbs" id="comic-reader-thumbs-btn" aria-label="Miniatures des pages" data-tooltip="Miniatures des pages (T)">▦</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="left" id="comic-reader-left-btn" aria-label="Page précédente" data-tooltip="Page précédente (←)">‹</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="right" id="comic-reader-right-btn" aria-label="Page suivante" data-tooltip="Page suivante (→)">›</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="fullscreen" aria-label="Plein écran" data-tooltip="Plein écran (F)">⛶</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="help" id="comic-reader-help-btn" aria-label="Raccourcis clavier" data-tooltip="Raccourcis clavier (H)">?</button>
-                <button type="button" class="comic-reader-btn" data-reader-action="close" aria-label="Fermer le lecteur" data-tooltip="Fermer (Échap)">×</button>
+                <button type="button" class="comic-reader-upscale-status" id="comic-reader-upscale-status" data-reader-action="hd" hidden></button>
+                <div class="comic-reader-group" id="comic-reader-zoom-group">
+                    <button type="button" class="comic-reader-btn" data-reader-action="zoom-out" aria-label="Dézoomer" data-tooltip="Dézoomer (−)">${_readerIcon('minus')}</button>
+                    <button type="button" class="comic-reader-btn comic-reader-zoom-label" data-reader-action="zoom-reset" id="comic-reader-zoom" aria-label="Zoom : revenir à 100 %" data-tooltip="Revenir à 100 % (0)">100 %</button>
+                    <button type="button" class="comic-reader-btn" data-reader-action="zoom-in" aria-label="Zoomer" data-tooltip="Zoomer (+)">${_readerIcon('plus')}</button>
+                </div>
+                <button type="button" class="comic-reader-btn comic-reader-btn-text comic-reader-hd-btn" data-reader-action="hd" id="comic-reader-hd-btn" aria-label="Amélioration HD" aria-haspopup="true" aria-expanded="false" data-tooltip="Amélioration des pages en basse définition (U)">HD</button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="settings" id="comic-reader-settings-btn" aria-label="Affichage" aria-haspopup="true" aria-expanded="false" data-tooltip="Disposition, sens de lecture, ajustement, miniatures (O)">${_readerIcon('sliders')}<span class="comic-reader-btn-label">Affichage</span></button>
+                <span class="comic-reader-sep" aria-hidden="true"></span>
+                <button type="button" class="comic-reader-btn comic-reader-btn-ghost" data-reader-action="fullscreen" aria-label="Plein écran" data-tooltip="Plein écran (F)">${_readerIcon('maximize')}</button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-ghost comic-reader-help-btn" data-reader-action="help" id="comic-reader-help-btn" aria-label="Raccourcis clavier" data-tooltip="Raccourcis clavier (H)">${_readerIcon('help')}</button>
+                <button type="button" class="comic-reader-btn comic-reader-btn-ghost" data-reader-action="close" aria-label="Fermer le lecteur" data-tooltip="Fermer (Échap)">${_readerIcon('x')}</button>
             </div>
         </div>
+        <div class="comic-reader-settings" id="comic-reader-settings" role="dialog" aria-label="Affichage" hidden></div>
         <div class="comic-reader-stage" id="comic-reader-stage" tabindex="-1">
             <div class="comic-reader-pages" id="comic-reader-pages">
                 <img class="comic-reader-image" id="comic-reader-image" alt="">
@@ -267,6 +368,13 @@ function _buildComicReader() {
         </div>
         <div class="comic-reader-help" id="comic-reader-help" hidden></div>`;
     document.body.appendChild(overlay);
+    const settings = overlay.querySelector('#comic-reader-settings');
+    settings.addEventListener('click', _onComicReaderSettingsClick);
+    overlay.addEventListener('click', event => {
+        if (!settings.hidden && !settings.contains(event.target) && !event.target.closest('[data-reader-action="settings"], [data-reader-action="hd"]')) {
+            toggleComicReaderSettings(false);
+        }
+    });
     const help = overlay.querySelector('#comic-reader-help');
     help.innerHTML = _comicReaderHelpHtml();
     help.addEventListener('click', event => { event.stopPropagation(); toggleComicReaderHelp(false); });
@@ -281,8 +389,8 @@ function _buildComicReader() {
             else if (action === 'next-volume') openComicReaderNeighbour(1);
             else if (action === 'webtoon') toggleComicReaderWebtoon();
             else if (action === 'rtl') toggleComicReaderRtl();
-            else if (action === 'fit') cycleComicReaderFit();
-            else if (action === 'upscale') toggleComicReaderUpscaleMenu();
+            else if (action === 'settings') toggleComicReaderSettings(undefined, 'display');
+            else if (action === 'hd') toggleComicReaderSettings(undefined, 'hd');
             else if (action === 'spread') toggleComicReaderSpread();
             else if (action === 'help') toggleComicReaderHelp();
             else if (action === 'zoom-in') zoomComicReaderBy(COMIC_READER_ZOOM_STEP);
@@ -477,6 +585,7 @@ function _comicReaderKeydown(event) {
         c: () => cycleComicReaderFit(), C: () => cycleComicReaderFit(),
         t: () => toggleComicReaderThumbs(), T: () => toggleComicReaderThumbs(),
         u: () => cycleComicReaderUpscale(), U: () => cycleComicReaderUpscale(),
+        o: () => toggleComicReaderSettings(undefined, 'display'), O: () => toggleComicReaderSettings(undefined, 'display'),
         m: () => toggleComicReaderChrome(), M: () => toggleComicReaderChrome(),
         d: () => toggleComicReaderSpread(), D: () => toggleComicReaderSpread(),
         '?': () => toggleComicReaderHelp(), h: () => toggleComicReaderHelp(), H: () => toggleComicReaderHelp(),
@@ -489,6 +598,11 @@ function _comicReaderKeydown(event) {
     const handler = keys[event.key];
     if (!handler) return;
     // Échap ferme d'abord l'aide des raccourcis, puis le lecteur.
+    if (event.key === 'Escape' && !document.getElementById('comic-reader-settings')?.hidden) {
+        event.preventDefault();
+        toggleComicReaderSettings(false);
+        return;
+    }
     if (event.key === 'Escape' && !document.getElementById('comic-reader-help')?.hidden) {
         event.preventDefault();
         toggleComicReaderHelp(false);
@@ -511,6 +625,7 @@ function _applyComicReaderFit() {
         button.innerHTML = `⤢<span class="comic-reader-btn-label">${label}</span>`;
         button.setAttribute('aria-label', `Ajustement de l'image : ${label}`);
     }
+    _renderComicReaderSettings();
 }
 
 // Zoom : l'image est agrandie par une transformation (échelle + décalage) sur la page
@@ -638,6 +753,7 @@ function _applyComicReaderSpread() {
     if (rtlButton) { rtlButton.classList.toggle('active', comicReader.rtl); rtlButton.hidden = comicReader.webtoon; }
     const spreadButton = document.getElementById('comic-reader-spread-btn');
     if (spreadButton) spreadButton.hidden = comicReader.webtoon;
+    _renderComicReaderSettings();
 }
 
 function _comicReaderRtlKey() {
@@ -686,6 +802,7 @@ function _applyComicReaderThumbs() {
     const strip = document.getElementById('comic-reader-thumbs');
     if (strip) strip.hidden = !comicReader.thumbs;
     document.getElementById('comic-reader-thumbs-btn')?.classList.toggle('active', comicReader.thumbs);
+    _renderComicReaderSettings();
 }
 
 function toggleComicReaderThumbs() {
@@ -863,11 +980,9 @@ function _applyComicReaderWebtoon() {
     document.getElementById('comic-reader-pages').hidden = webtoon;
     document.getElementById('comic-reader-webtoon').hidden = !webtoon;
     document.getElementById('comic-reader-webtoon-btn')?.classList.toggle('active', webtoon);
-    for (const id of ['comic-reader-fit', 'comic-reader-zoom']) {
-        const el = document.getElementById(id);
-        if (el) el.hidden = webtoon;
-    }
-    document.querySelectorAll('[data-reader-action="zoom-in"], [data-reader-action="zoom-out"]').forEach(el => { el.hidden = webtoon; });
+    // Webtoon : zoom du navigateur, pas de zoom du lecteur.
+    const zoomGroup = document.getElementById('comic-reader-zoom-group');
+    if (zoomGroup) zoomGroup.hidden = webtoon;
     _applyComicReaderSpread();
 }
 
@@ -928,7 +1043,7 @@ async function openComicReader(volumeId) {
         comicReader.seriesId = data.series_id;
         comicReader.previous = data.previous || null;
         comicReader.next = data.next || null;
-        if (typeof comicReaderUpscaleOpen === 'function') comicReaderUpscaleOpen(volumeId, data.upscale_server);
+        if (typeof comicReaderUpscaleOpen === 'function') comicReaderUpscaleOpen(volumeId);
         // Sens manga : choix mémorisé pour la série, sinon d'office pour une origine Asie.
         const savedRtl = data.series_id ? _comicReaderPref(_comicReaderRtlKey(), null) : null;
         comicReader.rtl = savedRtl === null ? !!data.manga : savedRtl === '1';
@@ -991,6 +1106,7 @@ function closeComicReader() {
     _flushComicReaderProgress();
     resetComicReaderZoom();
     toggleComicReaderHelp(false);
+    toggleComicReaderSettings(false);
     overlay.hidden = true;
     document.body.classList.remove('comic-reader-open');
     _clearComicReaderImages();

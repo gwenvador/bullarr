@@ -2018,14 +2018,7 @@ def get_volume_reader_info(volume_id):
                     # lecture par défaut : droite à gauche pour une série d'origine Asie.
                     'previous': previous, 'next': following, 'manga': manga,
                     # Page atteinte d'après Komga (tout lecteur, tout appareil) : la reprise.
-                    'resume_page': resume_page, 'read_completed': read_completed,
-                    # Amélioration des pages en basse définition possible sur le serveur.
-                    'upscale_server': _upscale_available()})
-
-
-def _upscale_available():
-    from .upscale import available
-    return available()
+                    'resume_page': resume_page, 'read_completed': read_completed})
 
 
 def _reader_komga_progress(volume_id):
@@ -2270,33 +2263,141 @@ def get_volume_reader_page(volume_id, number):
     return response
 
 
-@library_bp.route('/api/volumes/<int:volume_id>/reader/page/<int:number>/enhanced', methods=['GET'])
-def get_volume_reader_page_enhanced(volume_id, number):
-    """Lecteur intégré : page `number` améliorée sur le serveur (Real-ESRGAN, ?model=fast ou
-    quality), agrandie x2 en JPEG ; 204 si la page n'est pas en basse définition."""
-    from .reader import read_page
-    from . import upscale
-    row, error = _reader_volume(volume_id)
+@library_bp.route('/api/volumes/<int:volume_id>/upscale', methods=['POST', 'DELETE'])
+def upscale_volume_route(volume_id):
+    """Upscaling hors ligne d'un tome sur le serveur (POST {model} : mise en file ; DELETE :
+    annulation). Le CBZ est remplacé par la version HD, l'original est gardé de côté."""
+    from . import upscale, upscale_volume
+    if request.method == 'DELETE':
+        return jsonify({'success': upscale_volume.cancel(volume_id)})
+    body = request.get_json(silent=True) or {}
+    model = body.get('model') or upscale.load_config()['model']
+    state, error = upscale_volume.enqueue(current_app._get_current_object(), volume_id, model)
     if error:
-        return error
-    model = request.args.get('model', 'fast')
-    if model not in upscale.MODELS:
-        return jsonify({'success': False, 'error': 'Modèle inconnu'}), 400
-    if not upscale.available():
-        return jsonify({'success': False, 'error': "L'amélioration n'est pas disponible sur ce serveur"}), 503
-    cache_dir = os.path.join(current_app.config['COVERS_DIR'], '..', 'upscale')
+        return jsonify({'success': False, 'error': error}), 400
+    return jsonify({'success': True, 'job': state})
+
+
+@library_bp.route('/api/upscale/batch', methods=['POST'])
+def upscale_volumes_batch():
+    """Vérification > Albums non HD : met plusieurs tomes en file d'un coup."""
+    from . import upscale, upscale_volume
+    body = request.get_json(silent=True) or {}
+    model = body.get('model') or upscale.load_config()['model']
+    queued, errors = [], []
+    app = current_app._get_current_object()
+    for volume_id in body.get('volume_ids') or []:
+        try:
+            volume_id = int(volume_id)
+        except (TypeError, ValueError):
+            continue
+        state, error = upscale_volume.enqueue(app, volume_id, model)
+        if error:
+            errors.append({'volume_id': volume_id, 'error': error})
+        else:
+            queued.append(volume_id)
+    return jsonify({'success': bool(queued) or not errors, 'queued': queued, 'errors': errors,
+                    'error': errors[0]['error'] if errors and not queued else None})
+
+
+@library_bp.route('/upscaling')
+def upscaling_page():
+    """Page Upscaling (groupe Actions) : albums non HD à upscaler sur le serveur, file
+    d'attente, et albums upscalés dont la version SD d'origine est gardée."""
+    return render_template('upscaling.html')
+
+
+@library_bp.route('/api/upscale/volumes', methods=['GET'])
+def upscale_volumes_overview():
+    """Données de la page Upscaling : tomes basse définition, versions SD gardées, file."""
+    from . import upscale, upscale_volume
+    app = current_app._get_current_object()
+    config = upscale.load_config()
+    backups = sorted(upscale_volume.backups(app).values(), key=lambda item: item.get('created_at') or '', reverse=True)
+    return jsonify({
+        'success': True,
+        'available': upscale.available(),
+        'server_enabled': bool(config.get('server_enabled')),
+        'runtime': upscale.runtime_available(),
+        'model': config['model'],
+        'models': upscale.model_status(),
+        'order': list(upscale.MODELS),
+        'catalog': {key: {'label': spec['label'], 'detail': spec['detail']} for key, spec in upscale.MODELS.items()},
+        'max_side': upscale.LOW_DEF_MAX_SIDE,
+        'low_definition': upscale_volume.low_definition_volumes(app),
+        'backups': [{k: item.get(k) for k in ('volume_id', 'series_id', 'current_series_id', 'series_title', 'filename',
+                                              'bytes', 'exists', 'model', 'created_at', 'page_width', 'page_height')}
+                    for item in backups],
+        'backup_bytes': sum(item['bytes'] for item in backups),
+        'jobs': upscale_volume.jobs(),
+    })
+
+
+@library_bp.route('/api/upscale/preview', methods=['GET'])
+def upscale_preview():
+    """Comparaison des modèles (page Upscaling) : un extrait de la page `page` du tome,
+    agrandi x2 par `model` (ou 'original' pour un simple agrandissement), en JPEG."""
+    from . import upscale, upscale_volume
+    from .reader import read_page
     try:
-        data = upscale.enhanced_page(row['filepath'], row['format'], number, model,
-                                     os.path.normpath(cache_dir), read_page)
+        volume_id = int(request.args.get('volume_id', ''))
+        number = max(1, int(request.args.get('page', 1)))
+        cx = min(max(float(request.args.get('cx', 0.5)), 0.0), 1.0)
+        cy = min(max(float(request.args.get('cy', 0.45)), 0.0), 1.0)
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Paramètres invalides'}), 400
+    model = request.args.get('model', 'original')
+    if model != 'original' and model not in upscale.MODELS:
+        return jsonify({'success': False, 'error': 'Modèle inconnu'}), 400
+    if model != 'original' and not upscale.runtime_available():
+        return jsonify({'success': False, 'error': 'Moteur ONNX absent du serveur'}), 503
+    row = upscale_volume._volume_row(current_app._get_current_object(), volume_id)
+    if not row or not row['filepath'] or not os.path.isfile(row['filepath']):
+        return jsonify({'success': False, 'error': 'Tome introuvable'}), 404
+    try:
+        data, _mime = read_page(row['filepath'], (row['format'] or 'cbz').lower(), number)
+        crop = upscale.preview_crop(data, cx, cy)
+        result = upscale.preview((volume_id, number, round(cx, 3), round(cy, 3), os.path.getmtime(row['filepath'])), crop, model)
     except IndexError as e:
-        return jsonify({'success': False, 'error': error_message(e)}), 404
-    except Exception as e:
-        return jsonify({'success': False, 'error': error_message(e, 'Amélioration de la page impossible')}), 500
-    if data is None:
-        return '', 204
-    response = current_app.response_class(data, mimetype='image/jpeg')
-    response.headers['Cache-Control'] = 'private, max-age=86400'
+        return jsonify({'success': False, 'error': str(e)}), 404
+    except Exception as e:  # noqa: BLE001 - montré à côté de l'aperçu
+        return jsonify({'success': False, 'error': error_message(e, 'Aperçu impossible')}), 500
+    response = current_app.response_class(result, mimetype='image/jpeg')
+    response.headers['Cache-Control'] = 'private, max-age=600'
     return response
+
+
+@library_bp.route('/api/upscale/jobs', methods=['GET'])
+def upscale_jobs():
+    """File d'attente de l'upscaling hors ligne (en attente, en cours, récemment terminés)."""
+    from . import upscale_volume
+    return jsonify({'success': True, 'jobs': upscale_volume.jobs()})
+
+
+@library_bp.route('/api/volumes/<int:volume_id>/upscale/restore', methods=['POST'])
+def restore_volume_sd(volume_id):
+    """Remet la version SD gardée à la place de la version HD."""
+    from . import upscale_volume
+    try:
+        error = upscale_volume.restore(current_app._get_current_object(), volume_id)
+    except OSError as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Restauration impossible')}), 500
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
+    return jsonify({'success': True})
+
+
+@library_bp.route('/api/volumes/<int:volume_id>/upscale/backup', methods=['DELETE'])
+def delete_volume_sd_backup(volume_id):
+    """Supprime la version SD gardée d'un tome upscalé (la version HD reste)."""
+    from . import upscale_volume
+    try:
+        error = upscale_volume.delete_backup(current_app._get_current_object(), volume_id)
+    except OSError as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Suppression impossible')}), 500
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
+    return jsonify({'success': True})
 
 
 @library_bp.route('/api/volumes/<int:volume_id>/reader/thumb/<int:number>', methods=['GET'])
@@ -3358,10 +3459,20 @@ def get_series_details(series_id):
             ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, filename
         ''', (series_id,))
 
+        from .upscale_volume import ensure_table as _ensure_upscale_backups
+        _ensure_upscale_backups(conn)
+        sd_backups = {r[0] for r in conn.execute(
+            'SELECT b.volume_id FROM upscale_backups b JOIN volumes v ON v.id = b.volume_id WHERE v.series_id = ?',
+            (series_id,)).fetchall()}
+        from .upscale_volume import job as _upscale_job
+
         volumes = []
         for vol in cursor.fetchall():
+            upscale_state = _upscale_job(vol['id'])
             volumes.append({
                 'id': vol['id'],
+                'sd_backup': vol['id'] in sd_backups,
+                'upscale_status': upscale_state['status'] if upscale_state else None,
                 'part_number': vol['part_number'],
                 'part_name': vol['part_name'],
                 'volume_number': vol['volume_number'],

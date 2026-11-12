@@ -85,6 +85,35 @@ def rss_config():
         return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
 
 
+@settings_bp.route('/api/settings/upscale', methods=['GET', 'POST'])
+def upscale_config():
+    """Configuration > Upscaling : upscaling hors ligne des tomes sur le serveur (permis ou
+    non, modèle par défaut), modèles présents, versions SD gardées et file d'attente."""
+    from blueprints.library import upscale, upscale_volume
+    if request.method == 'POST':
+        body = request.get_json(silent=True) or {}
+        config = upscale.load_config()
+        if 'server_enabled' in body:
+            config['server_enabled'] = bool(body['server_enabled'])
+        if body.get('model') in upscale.MODELS:
+            config['model'] = body['model']
+        try:
+            upscale.save_config(config)
+        except OSError as e:
+            return jsonify({'success': False, 'error': error_message(e, 'Erreur de sauvegarde')}), 500
+    config = upscale.load_config()
+    backups = sorted(upscale_volume.backups(current_app._get_current_object()).values(),
+                     key=lambda item: item.get('created_at') or '', reverse=True)
+    return jsonify({'success': True, 'server_enabled': bool(config.get('server_enabled')), 'model': config['model'],
+                    'runtime': upscale.runtime_available(), 'models': upscale.model_status(),
+                    'catalog': {key: {'label': spec['label'], 'detail': spec['detail']} for key, spec in upscale.MODELS.items()},
+                    'max_side': upscale.LOW_DEF_MAX_SIDE,
+                    'backups': [{k: item.get(k) for k in ('volume_id', 'series_id', 'series_title', 'filename', 'backup_path',
+                                                          'bytes', 'exists', 'model', 'created_at')} for item in backups],
+                    'backup_bytes': sum(item['bytes'] for item in backups),
+                    'jobs': upscale_volume.jobs()})
+
+
 @settings_bp.route('/api/settings/rename', methods=['GET', 'POST'])
 def rename_config():
     """Format de renommage personnalisable des volumes et du dossier de série,

@@ -28,6 +28,7 @@
             <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
             <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
             <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/upscaling" class="nav-link">✨ Upscaling</a>
             <a href="/history" class="nav-link">🕓 Historique</a>
             <a href="/settings" class="nav-link active">⚙️ Configuration</a>
             <div class="nav-subgroup" id="settings-nav-subgroup">
@@ -38,6 +39,8 @@
                      recliquant sur Configuration depuis une autre page. -->
                 <a href="#indexeurs" class="nav-sublink" data-tab="indexeurs" onclick="switchTab('indexeurs'); return false;">🔌 Indexeurs</a>
                 <a href="#clients" class="nav-sublink" data-tab="clients" onclick="switchTab('clients'); return false;">💻 Clients</a>
+                <a href="#theme" class="nav-sublink" data-tab="theme" onclick="switchTab('theme'); return false;">🎨 Thème</a>
+                <a href="#upscale" class="nav-sublink" data-tab="upscale" onclick="switchTab('upscale'); return false;">✨ Upscaling</a>
                 <a href="#integrations" class="nav-sublink" data-tab="integrations" onclick="switchTab('integrations'); return false;">🧩 Intégrations</a>
                 <a href="#telegram" class="nav-sublink" data-tab="telegram" onclick="switchTab('telegram'); return false;">📱 Notifications</a>
                 <a href="#oidc" class="nav-sublink" data-tab="oidc" onclick="switchTab('oidc'); return false;">🔐 Login</a>
@@ -47,7 +50,6 @@
                 <a href="#libraries" class="nav-sublink" data-tab="libraries" onclick="switchTab('libraries'); return false;">✏️ Format</a>
                 <a href="#backup" class="nav-sublink" data-tab="backup" onclick="switchTab('backup'); return false;">💾 Backup</a>
                 <a href="#ai" class="nav-sublink" data-tab="ai" onclick="switchTab('ai'); return false;">🤖 IA</a>
-                <a href="#theme" class="nav-sublink" data-tab="theme" onclick="switchTab('theme'); return false;">🎨 Thème</a>
             </div>
         </div>
 
@@ -98,6 +100,13 @@
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">Thème</span>
                                     <span class="overview-card-desc">Palette de couleurs, clair, sombre ou système</span>
+                                </span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('upscale')">
+                                <span class="overview-card-icon" data-icon="sparkles"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Upscaling</span>
+                                    <span class="overview-card-desc">Modèles du bouton HD du lecteur, téléchargés dans ce navigateur</span>
                                 </span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('integrations')">
@@ -294,6 +303,39 @@
                                     </a></li>
                                 </ul>
                             </section>
+                            <section class="about-links-group" id="about-upscaling">
+                                <h4>Upscaling</h4>
+                                <ul>
+                                    <li><a class="about-link" href="https://github.com/xinntao/Real-ESRGAN" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="https://github.com/xinntao.png?size=64" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/web-logo.svg') }}'">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Real-ESRGAN</span>
+                                            <span class="about-link-desc">Modèles rapide, général et qualité</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://github.com/bilibili/ailab/tree/main/Real-CUGAN" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="https://github.com/bilibili.png?size=64" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/web-logo.svg') }}'">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Real-CUGAN</span>
+                                            <span class="about-link-desc">Modèles SE et Pro, débruitage</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://github.com/upscayl/custom-models" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="https://github.com/upscayl.png?size=64" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/web-logo.svg') }}'">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">Upscayl custom models</span>
+                                            <span class="about-link-desc">Modèle qualité (digital art)</span>
+                                        </span>
+                                    </a></li>
+                                    <li><a class="about-link" href="https://onnxruntime.ai" target="_blank" rel="noopener noreferrer">
+                                        <img class="about-link-logo" src="https://github.com/microsoft.png?size=64" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='{{ url_for('static', filename='img/web-logo.svg') }}'">
+                                        <span class="about-link-text">
+                                            <span class="about-link-name">ONNX Runtime</span>
+                                            <span class="about-link-desc">Calcul sur le serveur et dans le navigateur</span>
+                                        </span>
+                                    </a></li>
+                                </ul>
+                            </section>
                             </div>
                         </div>
                     </div>
@@ -359,6 +401,27 @@
                         </div>
                         <div class="theme-mode" id="themeModeSwitch"></div>
                         <div class="theme-grid" id="themeGrid"></div>
+                    </div>
+                </div>
+
+                <!-- Onglet Upscaling : amélioration des pages basse définition (settings-upscale.js). -->
+                <div class="tab-content" id="tab-upscale">
+                    <div class="settings-section">
+                        <div class="section-header">
+                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
+                            <h2>✨ Upscaling</h2>
+                            <p class="section-description">
+                                Le bouton HD du lecteur agrandit x2 et nettoie à la volée les pages en basse définition
+                                (1600 px au plus), sur la carte graphique de cet appareil. Téléchargez ici les modèles à
+                                utiliser dans ce navigateur. Pour upscaler des albums une fois pour toutes sur le serveur,
+                                ou comparer les modèles sur une de vos pages, ouvrez la page
+                                <a href="/upscaling">Actions → Upscaling</a>. <a href="/docs#upscaling">En savoir plus</a>
+                            </p>
+                        </div>
+                        <div class="settings-card">
+                            <h3 class="upscale-card-title">Modèles de ce navigateur</h3>
+                            <div id="upscaleBrowser"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -2529,6 +2592,8 @@
     <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
     <script src="{{ url_for('static', filename='js/search-results-table.js') }}?v={{ asset_version('js/search-results-table.js') }}"></script>
     <script src="{{ url_for('static', filename='js/settings.js') }}?v={{ asset_version('js/settings.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/reader-upscale.js') }}?v={{ asset_version('js/reader-upscale.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings-upscale.js') }}?v={{ asset_version('js/settings-upscale.js') }}"></script>
     <script src="{{ url_for('static', filename='js/avatar-picker.js') }}?v={{ asset_version('js/avatar-picker.js') }}"></script>
     <script src="{{ url_for('static', filename='js/settings-users.js') }}?v={{ asset_version('js/settings-users.js') }}"></script>
     <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>

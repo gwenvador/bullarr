@@ -523,7 +523,7 @@ function _initNavGroupFlyout(parent, links) {
 // donc déjà la bonne valeur pour chacun, plus de course entre les deux initialisations.
 const NAV_GROUPS_META = [
     { storageKey: 'activityExpanded', hrefs: ['/import', '/ebdz-nouveautes', '/history'] },
-    { storageKey: 'actionsExpanded', hrefs: ['/bedetheque-enrich', '/missing-monitor', '/verification'] },
+    { storageKey: 'actionsExpanded', hrefs: ['/bedetheque-enrich', '/missing-monitor', '/verification', '/upscaling'] },
 ];
 
 function _resolveActiveNavGroupStorage() {
@@ -545,14 +545,14 @@ function initActivityGroup() {
     });
 }
 
-// "Bédéthèque" + "Surveillance" + "Vérification" regroupés sous
+// "Bédéthèque" + "Surveillance" + "Vérification" + "Upscaling" regroupés sous
 // "🛠️ Actions" - même mécanisme qu'Activité (Import/Nouveautés/Historique) ci-dessus.
 function initActionsGroup() {
     initNavGroup({
         id: 'actions-nav-subgroup',
         storageKey: 'actionsExpanded',
         label: '🛠️ Actions',
-        hrefs: ['/bedetheque-enrich', '/missing-monitor', '/verification']
+        hrefs: ['/bedetheque-enrich', '/missing-monitor', '/verification', '/upscaling']
     });
 }
 
@@ -1262,6 +1262,7 @@ const SIDEBAR_ICON_MAP = {
     '📖': 'book-open',
     '🕓': 'history',
     '✅': 'check-check',
+    '✨': 'wand-sparkles',
     '📊': 'activity',
     '📡': 'radio',
     '⚙️': 'settings',

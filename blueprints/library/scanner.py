@@ -1246,6 +1246,9 @@ class LibraryScanner:
         
         for item in items:
             item_path = os.path.join(library_path, item)
+            # Sauvegarde des versions SD remplacées par l'upscaling (upscale_volume.py).
+            if item == '.bullarr-sd-backup':
+                continue
             
             # Si c'est un répertoire, c'est une série
             if os.path.isdir(item_path):
