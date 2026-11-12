@@ -128,7 +128,7 @@
    trop petite"). */
 .settings-content {
     min-height: 400px;
-    font-size: 15px;
+    font-size: 16.5px;  /* « les polices sont trop petites » : 15 px avant, tailles en em qui suivent */
 }
 
 /* Boutons de la page Configuration (Enregistrer/Sauvegarder/Tester/Réinitialiser...):
@@ -1234,23 +1234,25 @@ input[type="checkbox"].switch-input:disabled {
 #tab-overview > .settings-section { flex: 1; display: flex; flex-direction: column; }
 .about-card { margin-top: auto; padding: 0; overflow: hidden; }
 /* Vue d'ensemble : une carte par catégorie, icône au trait identique à celle du menu. */
-.overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 24px; }
+/* Tuiles souples : chacune part de 260 px et grandit pour remplir sa ligne (la dernière
+   ligne s'étire aussi), et les lignes se partagent la hauteur libre jusqu'à « À propos ». */
+.overview-grid { display: flex; flex-wrap: wrap; align-content: stretch; flex: 1 0 auto; gap: 14px; margin-bottom: 24px; }
 .overview-card {
-    display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
-    padding: 16px 18px; border-radius: 14px; cursor: pointer; font: inherit; color: var(--color-text);
+    display: flex; align-items: center; gap: 16px; flex: 1 1 260px; min-height: 92px; text-align: left;
+    padding: 18px 22px; border-radius: 14px; cursor: pointer; font: inherit; color: var(--color-text);
     background: var(--color-surface); border: 1px solid var(--color-border);
     transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 .overview-card:hover { border-color: var(--color-accent); box-shadow: 0 4px 14px rgba(0,0,0,.06); transform: translateY(-1px); }
 .overview-card:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .overview-card-icon {
-    flex: none; width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center;
+    flex: none; width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center;
     background: color-mix(in srgb, var(--color-accent) 13%, transparent); color: var(--color-accent);
 }
-.overview-card-icon svg { width: 21px; height: 21px; }
+.overview-card-icon svg { width: 24px; height: 24px; }
 .overview-card-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
-.overview-card-name { font-weight: 600; font-size: 1.05em; }
-.overview-card-desc { font-size: .9em; color: var(--color-text-muted); margin-top: 2px; }
+.overview-card-name { font-weight: 600; font-size: 1.1em; }
+.overview-card-desc { font-size: .92em; color: var(--color-text-muted); margin-top: 3px; }
 .about-card [hidden] { display: none !important; }
 
 /* En-tête : logo, nom, badges de version, liens projet */

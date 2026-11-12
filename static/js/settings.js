@@ -3239,6 +3239,35 @@ function escapeForAttribute(text) {
     return String(text ?? '').replace(/&/g, '&amp;').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ===== VUE D'ENSEMBLE : TUILES ÉQUILIBRÉES =====
+// « des tiles dynamiques pour que ça prenne la place et évite du vide » : autant de colonnes
+// que la largeur permet (260 px mini par tuile), puis les tuiles réparties à parts égales
+// entre les lignes (13 tuiles sur 4 colonnes : 4-3-3-3, pas 4-4-4-1) ; chaque ligne est
+// pleine et les tuiles des lignes plus courtes sont plus larges.
+function layoutOverviewTiles() {
+    const grid = document.querySelector('#tab-overview .overview-grid');
+    if (!grid || !grid.clientWidth) return;
+    const cards = [...grid.querySelectorAll('.overview-card')];
+    const gap = parseFloat(getComputedStyle(grid).columnGap) || 14;
+    const columns = Math.max(1, Math.min(cards.length, Math.floor((grid.clientWidth + gap) / (260 + gap))));
+    const rows = Math.ceil(cards.length / columns);
+    const base = Math.floor(cards.length / rows);
+    const longRows = cards.length % rows;
+    let index = 0;
+    for (let row = 0; row < rows; row++) {
+        const count = base + (row < longRows ? 1 : 0);
+        for (let i = 0; i < count; i++, index++) {
+            cards[index].style.flex = `0 0 calc((100% - ${(count - 1) * gap}px) / ${count})`;
+        }
+    }
+}
+document.addEventListener('DOMContentLoaded', () => {
+    const grid = document.querySelector('#tab-overview .overview-grid');
+    if (!grid) return;
+    layoutOverviewTiles();
+    if (window.ResizeObserver) new ResizeObserver(() => layoutOverviewTiles()).observe(grid);
+});
+
 // ===== BACKUP / RESTAURATION =====
 // Export CSV des BD : toutes les bibliothèques ou une seule (GET /api/export/volumes.csv).
 function exportVolumesCsv() {
