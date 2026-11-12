@@ -3274,13 +3274,13 @@ function _volumeCellHtml(file, index, disabled = false) {
     const optionsHtml = volumes.map((v, i) => `<option value="${i}"${i === matchIndex ? ' selected' : ''}>${escapeHtml(_bdVolumeOptionLabel(v))}</option>`).join('');
     const selectedLabel = matchIndex !== -1
         ? _bdVolumeOptionLabel(volumes[matchIndex])
-        : (isManual ? 'Autre (préciser un numéro)' : '—');
+        : (isManual ? 'Autre : nouveau tome, intégrale, HS…' : '—');
 
     return `
         <select class="import-volume-select" title="${escapeHtml(selectedLabel)}" onchange="updateFileVolumeSlot(${index}, this.value)"${disabledAttr}>
             <option value="none"${matchIndex === -1 && !isManual ? ' selected' : ''}>—</option>
             ${optionsHtml}
-            <option value="manual"${isManual ? ' selected' : ''}>Autre (préciser un numéro)</option>
+            <option value="manual"${isManual ? ' selected' : ''}>Autre : nouveau tome, intégrale, HS…</option>
         </select>
         ${isManual ? _manualVolumeFieldsHtml(file, index, disabledAttr) : ''}
     `;
@@ -3878,7 +3878,7 @@ async function updateVolumeOverrideVisibility(seriesValue, existingOverride) {
 
         slotSelect.innerHTML = '<option value="auto">Laisser tel quel</option>' +
             slotOptionsHtml +
-            '<option value="manual">Autre (préciser un numéro)</option>';
+            '<option value="manual">Autre : nouveau tome, intégrale, HS…</option>';
         slotSelect.value = 'auto';
         document.getElementById('volume-override-manual-group').style.display = 'none';
         updateVolumeOverrideFields();
@@ -3886,7 +3886,7 @@ async function updateVolumeOverrideVisibility(seriesValue, existingOverride) {
     }
 
     slotSelect.innerHTML = '<option value="auto">Laisser tel quel</option>' +
-        '<option value="manual">Autre (préciser un numéro)</option><option disabled>Chargement des tomes...</option>';
+        '<option value="manual">Autre : nouveau tome, intégrale, HS…</option><option disabled>Chargement des tomes...</option>';
     slotSelect.value = 'auto';
     document.getElementById('volume-override-manual-group').style.display = 'none';
 
@@ -3899,7 +3899,7 @@ async function updateVolumeOverrideVisibility(seriesValue, existingOverride) {
 
         slotSelect.innerHTML = '<option value="auto">Laisser tel quel</option>' +
             slotOptionsHtml +
-            '<option value="manual">Autre (préciser un numéro)</option>';
+            '<option value="manual">Autre : nouveau tome, intégrale, HS…</option>';
         slotSelect.value = 'auto';
 
         if (existingOverride) {
@@ -3941,7 +3941,7 @@ async function updateVolumeOverrideVisibility(seriesValue, existingOverride) {
         // fetch) si la liste des tomes n'a pas pu être chargée - la correction manuelle
         // reste possible via "Autre"
         slotSelect.innerHTML = '<option value="auto">Laisser tel quel</option>' +
-            '<option value="manual">Autre (préciser un numéro)</option>';
+            '<option value="manual">Autre : nouveau tome, intégrale, HS…</option>';
     }
     updateVolumeOverrideFields();
 }

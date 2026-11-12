@@ -1520,3 +1520,10 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
     .upscale-model-row, .upscale-job { flex-direction: column; align-items: flex-start; }
     .upscale-defaults { grid-template-columns: 1fr; }
 }
+
+/* Colonne Volume étroite : type puis numéro l'un sous l'autre, chacun sur toute la largeur
+   (côte à côte, la liste du type était écrasée à quelques pixels, impossible de choisir
+   « Intégrale »). */
+.import-volume-manual { flex-direction: column; }
+.import-volume-manual .import-volume-type,
+.import-volume-manual .import-volume-input { width: 100%; box-sizing: border-box; flex: none; }

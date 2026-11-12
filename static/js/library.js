@@ -2635,7 +2635,7 @@ async function _confirmUploadVolumeSlot(seriesId, fileData) {
                 <div class="form-group">
                     <select id="upload-volume-confirm-slot">
                         ${optionsHtml}
-                        <option value="manual">Autre (préciser un numéro)</option>
+                        <option value="manual">Autre : nouveau tome, intégrale, HS…</option>
                         <option value="none">Sans numéro (édition unique)</option>
                     </select>
                     <div id="upload-volume-confirm-manual" style="display:none; margin-top:8px;">
