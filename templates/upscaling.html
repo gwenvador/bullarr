@@ -95,12 +95,24 @@
                             <div id="upscalingLowDefinitionList" class="upscaling-table-wrap"><p class="upscaling-muted">Chargement…</p></div>
                         </section>
 
+                        <section class="settings-card" id="heavy">
+                            <div class="upscaling-card-head">
+                                <h3>Albums trop lourds <span class="upscaling-count" id="upscalingHeavyCount">—</span></h3>
+                                <div class="upscaling-actions" id="upscalingHeavyControls" hidden>
+                                    <label class="upscaling-select-all"><input type="checkbox" id="upscalingHeavySelectAll" onchange="upscalingHeavyToggleAll(this)"> Tout sélectionner</label>
+                                    <button type="button" class="btn btn-primary" id="upscalingHeavyRunBtn" onclick="upscalingHeavyRunSelected()" disabled>Réduire (<span id="upscalingHeavySelectedCount">0</span>)</button>
+                                </div>
+                            </div>
+                            <p class="upscaling-lead">L'inverse de l'upscaling : les albums aux pages de plus de 3200 px ou de plus de 3 Mo en moyenne. Leurs pages sont ramenées à la définition choisie et réencodées en JPEG de bonne qualité, ce qui divise souvent la taille du fichier par deux ou plus. L'original peut être gardé (restaurable) ou supprimé tout de suite.</p>
+                            <div id="upscalingHeavyList" class="upscaling-table-wrap"><p class="upscaling-muted">Chargement…</p></div>
+                        </section>
+
                         <section class="settings-card" id="upscalingBackupsCard">
                             <div class="upscaling-card-head">
-                                <h3>Albums upscalés <span class="upscaling-count" id="upscalingBackupsCount">—</span></h3>
+                                <h3>Originaux gardés <span class="upscaling-count" id="upscalingBackupsCount">—</span></h3>
                                 <span class="upscaling-muted" id="upscalingBackupsBytes"></span>
                             </div>
-                            <p class="upscaling-lead">L'original SD de chaque album upscalé est gardé dans le dossier caché <code>.bullarr-sd-backup</code> à la racine de sa bibliothèque. « Remettre la version SD » annule l'upscaling ; supprimer la sauvegarde garde la version HD et libère la place.</p>
+                            <p class="upscaling-lead">L'original de chaque album upscalé ou réduit est gardé dans le dossier caché <code>.bullarr-sd-backup</code> à la racine de sa bibliothèque. « Remettre l'original » annule l'upscaling ou la réduction ; supprimer la sauvegarde garde la nouvelle version et libère la place.</p>
                             <div id="upscalingBackupsList" class="upscaling-table-wrap"><p class="upscaling-muted">Chargement…</p></div>
                         </section>
                     </div>

@@ -17,7 +17,7 @@ const HISTORY_TYPE_ICONS = {
     import: 'package', download: 'download', rename: 'pencil', delete: 'trash-2', delete_volume: 'trash-2',
     renumber_volume: 'tag', convert: 'refresh-cw', merge: 'git-merge', move_volume: 'git-merge',
     add_series: 'plus', auto_acquire: 'radar', search: 'search', quality_upgrade: 'sparkles',
-    missing_volume_match: 'eye', ai: 'bot', request: 'book-plus', user: 'users', upscale: 'sparkles', upscale_queue: 'plus', upscale_start: 'play', upscale_cancel: 'x', upscale_settings: 'settings', upscale_restore: 'refresh-cw', upscale_backup_delete: 'trash-2'
+    missing_volume_match: 'eye', ai: 'bot', request: 'book-plus', user: 'users', upscale: 'sparkles', upscale_queue: 'plus', upscale_start: 'play', upscale_cancel: 'x', upscale_settings: 'settings', upscale_restore: 'refresh-cw', upscale_backup_delete: 'trash-2', downscale: 'minimize-2', downscale_queue: 'plus', downscale_start: 'play', downscale_cancel: 'x', downscale_restore: 'refresh-cw', downscale_backup_delete: 'trash-2'
 };
 const HISTORY_TYPE_LABELS = {
     import: 'Import', download: 'Téléchargement', rename: 'Renommage', delete: 'Suppression',
@@ -25,7 +25,7 @@ const HISTORY_TYPE_LABELS = {
     convert: 'Conversion', merge: 'Fusion', move_volume: 'Déplacement de tome',
     add_series: 'Ajout de série', auto_acquire: 'Recherche automatique', search: 'Recherche manuelle',
     quality_upgrade: 'Upgrade qualité', missing_volume_match: 'Tome manquant détecté', ai: 'IA',
-    request: 'Demande', user: 'Utilisateur', upscale: 'Upscaling HD', upscale_queue: 'Upscaling demandé', upscale_start: 'Upscaling commencé', upscale_cancel: 'Upscaling annulé', upscale_settings: 'Réglages d\'upscaling', upscale_restore: 'Version SD remise', upscale_backup_delete: 'Sauvegarde SD supprimée'
+    request: 'Demande', user: 'Utilisateur', upscale: 'Upscaling HD', upscale_queue: 'Upscaling demandé', upscale_start: 'Upscaling commencé', upscale_cancel: 'Upscaling annulé', upscale_settings: 'Réglages d\'upscaling', upscale_restore: 'Version SD remise', upscale_backup_delete: 'Sauvegarde SD supprimée', downscale: 'Réduction', downscale_queue: 'Réduction demandée', downscale_start: 'Réduction commencée', downscale_cancel: 'Réduction annulée', downscale_restore: 'Original remis', downscale_backup_delete: 'Original supprimé'
 };
 
 const HISTORY_SOURCE_LABELS = { ebdz: 'EBDZ', prowlarr: 'Prowlarr', telegram: 'Telegram', fourtoutici: 'fourtoutici', vk: 'VK' };
@@ -336,7 +336,7 @@ function mapHistoryResponsesToEvents(importResp, downloadResp, actionResp, aiRes
         seriesTitle: h.series_title,
         label: h.series_title || `Série #${h.series_id}`,
         // Upscaling en échec : le nom de l'album (detail) reste affiché, l'erreur en dessous.
-        detail: (h.action_type || '').startsWith('upscale') && h.error && h.detail
+        detail: /^(up|down)scale/.test(h.action_type || '') && h.error && h.detail
             ? `${h.detail}\n⚠️ ${h.error}`
             : (h.error || h.detail || ''),
         success: !!h.success
@@ -508,7 +508,7 @@ const actionDetailCache = {};
 // Entrées d'upscaling liées à des albums (pas les réglages) : dépliables comme un import,
 // le détail liste le ou les albums (tome, fichier, modèle, définition).
 function _isUpscaleAlbumEvent(e) {
-    return (e.type || '').startsWith('upscale') && e.type !== 'upscale_settings' && e.actionId != null;
+    return /^(up|down)scale/.test(e.type || '') && e.type !== 'upscale_settings' && e.actionId != null;
 }
 
 function _upscaleVolumesDetailHtml(volumes, action) {
@@ -560,7 +560,7 @@ async function toggleActionDetail(rowId, actionId, fullDate) {
         const data = await response.json();
         const files = (data.action && data.action.files) || [];
         const folder = data.action && data.action.folder;
-        if ((data.action?.action_type || '').startsWith('upscale')) {
+        if (/^(up|down)scale/.test(data.action?.action_type || '')) {
             const html = _upscaleVolumesDetailHtml(data.action.volumes || [], data.action);
             actionDetailCache[actionId] = html;
             cell.innerHTML = dateHtml + html;

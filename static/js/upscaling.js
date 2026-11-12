@@ -27,7 +27,13 @@ function _upDate(value) {
 }
 
 function _upModelLabel(key) {
+    const reduce = /^downscale:(\d+)/.exec(key || '');
+    if (reduce) return `Réduction à ${reduce[1]} px`;
     return (upscalingData?.catalog?.[key]?.label) || key || '—';
+}
+
+function _upIsDownscale(key) {
+    return String(key || '').startsWith('downscale:');
 }
 
 // Ordre de l'application Android (le JSON du serveur trie les clés par ordre alphabétique).
@@ -54,8 +60,10 @@ async function loadUpscaling() {
         }
         renderUpscalingModels();
         renderUpscalingLowDefinition();
+        renderUpscalingHeavy();
         renderUpscalingBackups();
         if (first) compareInit();
+        if (first && location.hash === '#heavy') document.getElementById('heavy')?.scrollIntoView({ block: 'start' });
         const busy = (data.jobs || []).some(job => UPSCALING_BUSY.includes(job.status));
         if (busy) upscalingPoll = setTimeout(loadUpscaling, 4000);
     } catch (error) {
@@ -76,7 +84,7 @@ function renderUpscalingModels() {
         badges = `<span class="upscale-badge upscale-badge-warn">${svgIcon('triangle-alert')} Désactivé</span>
             <button type="button" class="btn btn-sm" onclick="upscalingSaveConfig({ server_enabled: true })">Activer</button>`;
     } else if (running) {
-        badges = `<span class="upscale-badge upscale-badge-ok">${svgIcon('loader-circle', 'icon-spin')} Upscaling en cours</span>`;
+        badges = `<span class="upscale-badge upscale-badge-ok">${svgIcon('loader-circle', 'icon-spin')} ${_upIsDownscale(running.model) ? 'Réduction en cours' : 'Upscaling en cours'}</span>`;
     } else {
         badges = `<span class="upscale-badge upscale-badge-ok">${svgIcon('check')} Prêt</span>`;
     }
@@ -245,7 +253,7 @@ function _upAlbumCell(item) {
 }
 
 function _upRowModelCell(item, canSelect, busy) {
-    if (busy) return `<span class="upscaling-model-pill">${svgIcon('sparkles')}${_upEsc(_upModelLabel(item.job.model))}</span>`;
+    if (busy) return `<span class="upscaling-model-pill">${svgIcon(_upIsDownscale(item.job.model) ? 'minimize-2' : 'sparkles')}${_upEsc(_upModelLabel(item.job.model))}</span>`;
     if (!canSelect) return '<span class="upscaling-muted">—</span>';
     const chosen = upscalingRowModels[item.volume_id] || '';
     const options = [`<option value="">Par défaut (${_upEsc(_upModelLabel(upscalingData.model))})</option>`]
@@ -339,44 +347,128 @@ async function upscalingCancel(volumeId) {
     loadUpscaling();
 }
 
-// ----- Albums upscalés -----
+// ----- Albums trop lourds (réduction) -----
+function _upMbPerPage(item) {
+    if (!item.page_count || !item.file_size) return '—';
+    return `${(item.file_size / item.page_count / 1048576).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}<small> Mo</small>`;
+}
+
+function renderUpscalingHeavy() {
+    const items = upscalingData.heavy || [];
+    const list = document.getElementById('upscalingHeavyList');
+    const controls = document.getElementById('upscalingHeavyControls');
+    if (!list) return;
+    document.getElementById('upscalingHeavyCount').textContent = items.length;
+    const selected = new Set([...document.querySelectorAll('.upscaling-heavy-select:checked')].map(cb => Number(cb.dataset.volumeId)));
+    if (!items.length) {
+        list.innerHTML = `<p class="upscaling-muted">${svgIcon('check')} Aucun album trop lourd.</p>`;
+        controls.hidden = true;
+        return;
+    }
+    list.innerHTML = `<table class="upscaling-table"><thead><tr>
+            <th class="upscaling-check"></th><th>Album</th><th>Définition</th><th class="upscaling-num">Par page</th><th class="upscaling-end"></th>
+        </tr></thead><tbody>${items.map(item => {
+        const busy = item.job && UPSCALING_BUSY.includes(item.job.status);
+        const canSelect = item.reducible && !busy;
+        const side = Math.max(item.page_width || 0, item.page_height || 0);
+        return `<tr>
+            <td class="upscaling-check">${canSelect ? `<input type="checkbox" class="upscaling-heavy-select" data-volume-id="${item.volume_id}" data-side="${side}"${selected.has(item.volume_id) ? ' checked' : ''} onchange="upscalingHeavyUpdateCount()" aria-label="Sélectionner ${_upEsc(item.filename)}">` : ''}</td>
+            <td>${_upAlbumCell(item)}</td>
+            <td class="upscaling-def"><span>${item.page_width || '?'} × ${item.page_height || '?'}<small> px</small></span><small class="upscaling-def-meta">${item.page_count ? `${item.page_count} pages · ` : ''}${_upBytes(item.file_size)}</small></td>
+            <td class="upscaling-num upscaling-def">${_upMbPerPage(item)}</td>
+            <td class="upscaling-end">${_upHeavyStateCell(item)}</td></tr>`;
+    }).join('')}</tbody></table>`;
+    controls.hidden = false;
+    upscalingHeavyUpdateCount();
+}
+
+function _upHeavyStateCell(item) {
+    const job = item.job;
+    if (job && UPSCALING_BUSY.includes(job.status)) {
+        const progress = job.status === 'running' ? _upProgress(job) : `<span class="upscale-badge">${UPSCALING_STATUS.queued}</span>`;
+        return `<div class="upscaling-row-actions">${progress}<button type="button" class="upscale-icon-btn danger" onclick="upscalingCancel(${item.volume_id})" data-tooltip="Annuler" aria-label="Annuler">${svgIcon('x')}</button></div>`;
+    }
+    if (job && job.status === 'error' && _upIsDownscale(job.model)) return `<span class="upscale-badge upscale-badge-warn" title="${_upEsc(job.error || '')}">Erreur</span>`;
+    if (item.reason) return `<span class="upscaling-muted">${_upEsc(item.reason)}</span>`;
+    return '';
+}
+
+function upscalingHeavyToggleAll(checkbox) {
+    document.querySelectorAll('.upscaling-heavy-select').forEach(cb => { cb.checked = checkbox.checked; });
+    upscalingHeavyUpdateCount();
+}
+
+function upscalingHeavyUpdateCount() {
+    const count = document.querySelectorAll('.upscaling-heavy-select:checked').length;
+    document.getElementById('upscalingHeavySelectedCount').textContent = count;
+    document.getElementById('upscalingHeavyRunBtn').disabled = count === 0;
+}
+
+async function upscalingHeavyRunSelected() {
+    const boxes = [...document.querySelectorAll('.upscaling-heavy-select:checked')];
+    if (!boxes.length) return;
+    const ids = boxes.map(cb => Number(cb.dataset.volumeId));
+    const side = boxes.length === 1 ? Number(boxes[0].dataset.side) : 0;
+    const options = await pickDownscaleOptions(ids.length > 1 ? `Réduire ${ids.length} albums` : 'Réduire cet album',
+        'Les pages plus grandes que la définition choisie sont réduites sur le serveur, un album à la fois, et les pages lourdes (PNG…) réencodées en JPEG de bonne qualité. Un fichier n\'est remplacé que si sa version réduite est plus légère.', side);
+    if (!options) return;
+    const btn = document.getElementById('upscalingHeavyRunBtn');
+    btn.disabled = true;
+    try {
+        const response = await fetch('/api/upscale/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ volume_ids: ids, downscale: options }) });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Erreur inconnue');
+        const refused = (data.errors || []).length;
+        showToast('upscaling-heavy', `${data.queued.length} album(s) en file de réduction${refused ? `, ${refused} refusé(s) : ${data.errors[0].error}` : ''}.`, { icon: 'minimize-2', autoHideMs: 6000 });
+        boxes.forEach(cb => { cb.checked = false; });
+        document.getElementById('upscalingHeavySelectAll').checked = false;
+        loadUpscaling();
+    } catch (error) {
+        alert('❌ ' + error.message);
+        btn.disabled = false;
+    }
+}
+
+// ----- Originaux gardés (upscaling ou réduction) -----
 function renderUpscalingBackups() {
     const items = upscalingData.backups || [];
     const list = document.getElementById('upscalingBackupsList');
     document.getElementById('upscalingBackupsCount').textContent = items.length;
-    document.getElementById('upscalingBackupsBytes').textContent = items.length ? `${_upBytes(upscalingData.backup_bytes)} de versions SD gardées` : '';
+    document.getElementById('upscalingBackupsBytes').textContent = items.length ? `${_upBytes(upscalingData.backup_bytes)} d'originaux gardés` : '';
     if (!items.length) {
-        list.innerHTML = '<p class="upscaling-muted">Aucun album upscalé pour l\'instant.</p>';
+        list.innerHTML = '<p class="upscaling-muted">Aucun album upscalé ou réduit pour l\'instant.</p>';
         return;
     }
     list.innerHTML = `<table class="upscaling-table"><thead><tr>
-            <th>Album</th><th>Modèle</th><th>Upscalé le</th><th class="upscaling-num">Version SD</th><th class="upscaling-end"></th>
+            <th>Album</th><th>Traitement</th><th>Le</th><th class="upscaling-num">Original</th><th class="upscaling-end"></th>
         </tr></thead><tbody>${items.map(item => `<tr>
             <td>${_upAlbumCell({ ...item, series_id: item.current_series_id || item.series_id, series_title: item.series_title || '—', filename: item.filename || '' })}</td>
             <td>${_upEsc(_upModelLabel(item.model))}</td>
             <td class="upscaling-nowrap">${_upDate(item.created_at)}</td>
             <td class="upscaling-num">${item.exists ? _upBytes(item.bytes) : '<span class="upscale-badge upscale-badge-warn">Absente</span>'}</td>
             <td class="upscaling-end"><div class="upscaling-row-actions">
-                <button type="button" class="upscale-icon-btn" onclick="upscalingRestore(${item.volume_id})"${item.exists ? '' : ' disabled'} data-tooltip="Remettre la version SD" aria-label="Remettre la version SD">${svgIcon('undo')}</button>
-                <button type="button" class="upscale-icon-btn danger" onclick="upscalingDeleteBackup(${item.volume_id})" data-tooltip="Supprimer la version SD (garder la HD)" aria-label="Supprimer la version SD">${svgIcon('trash-2')}</button>
+                <button type="button" class="upscale-icon-btn" onclick="upscalingRestore(${item.volume_id}, ${_upIsDownscale(item.model)})"${item.exists ? '' : ' disabled'} data-tooltip="${_upIsDownscale(item.model) ? 'Remettre l\'original' : 'Remettre la version SD'}" aria-label="Remettre l'original">${svgIcon('undo')}</button>
+                <button type="button" class="upscale-icon-btn danger" onclick="upscalingDeleteBackup(${item.volume_id}, ${_upIsDownscale(item.model)})" data-tooltip="${_upIsDownscale(item.model) ? 'Supprimer l\'original (garder la version réduite, libère la place)' : 'Supprimer la version SD (garder la HD)'}" aria-label="Supprimer l'original">${svgIcon('trash-2')}</button>
             </div></td></tr>`).join('')}</tbody></table>`;
 }
 
-async function upscalingRestore(volumeId) {
-    if (!confirm('Remettre la version SD d\'origine de cet album ? La version HD sera supprimée.')) return;
+async function upscalingRestore(volumeId, reduced) {
+    if (!confirm(reduced ? 'Remettre le fichier d\'origine de cet album ? La version réduite sera supprimée.'
+        : 'Remettre la version SD d\'origine de cet album ? La version HD sera supprimée.')) return;
     try {
         const response = await fetch(`/api/volumes/${volumeId}/upscale/restore`, { method: 'POST' });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Erreur inconnue');
-        showToast('upscaling-restore', 'Version SD remise en place.', { icon: 'check', autoHideMs: 4000 });
+        showToast('upscaling-restore', reduced ? 'Fichier d\'origine remis en place.' : 'Version SD remise en place.', { icon: 'check', autoHideMs: 4000 });
     } catch (error) {
         alert('❌ ' + error.message);
     }
     loadUpscaling();
 }
 
-async function upscalingDeleteBackup(volumeId) {
-    if (!confirm('Supprimer définitivement la version SD gardée ? L\'album reste en HD, mais l\'upscaling ne pourra plus être annulé.')) return;
+async function upscalingDeleteBackup(volumeId, reduced) {
+    if (!confirm(reduced ? 'Supprimer définitivement l\'original gardé ? L\'album reste dans sa version réduite, et la réduction ne pourra plus être annulée.'
+        : 'Supprimer définitivement la version SD gardée ? L\'album reste en HD, mais l\'upscaling ne pourra plus être annulé.')) return;
     try {
         const response = await fetch(`/api/volumes/${volumeId}/upscale/backup`, { method: 'DELETE' });
         const data = await response.json();

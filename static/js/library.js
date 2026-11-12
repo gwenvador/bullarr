@@ -2957,7 +2957,35 @@ function _seriesUpscaleGroups(data) {
             && (v.format || '').toLowerCase() === 'cbz' && side > 0 && side <= _lowDefMaxSide();
     });
     const restorable = owned.filter(v => v.sd_backup && !_SERIES_UPSCALE_BUSY.includes(v.upscale_status));
-    return { busy, eligible, restorable };
+    // « Tomes lourds » : mêmes critères que la page Upscaling (plus de 3 Mo par page, ou pages
+    // de plus de 3200 px) ; la molette d'un tome permet aussi de réduire un tome moins lourd.
+    const reducible = owned.filter(v => !_volumeDownscaleBlocked(v)
+        && (bullarrIsHeavyVolume(v) || Math.max(v.page_width || 0, v.page_height || 0) > Math.max(...(window.BULLARR_DOWNSCALE_CHOICES || [3200]))));
+    return { busy, eligible, restorable, reducible };
+}
+
+// Réduction d'un tome trop lourd : raison pour laquelle il ne peut pas l'être, sinon ''.
+function _volumeDownscaleBlocked(v) {
+    const side = Math.max(v.page_width || 0, v.page_height || 0);
+    const choices = typeof bullarrDownscaleChoices === 'function' ? bullarrDownscaleChoices() : [2000, 2400, 2800, 3200];
+    const smallest = choices.length ? Math.min(...choices) : 0;
+    const heavy = typeof bullarrIsHeavyVolume === 'function' && bullarrIsHeavyVolume(v);
+    const perPage = v.page_count && v.file_size ? v.file_size / v.page_count / 1048576 : 0;
+    if (_SERIES_UPSCALE_BUSY.includes(v.upscale_status)) return 'Traitement en cours pour ce tome';
+    if (v.sd_backup) return v.backup_kind === 'downscale'
+        ? 'Déjà réduit : restaurez d\'abord l\'original, ou supprimez-le depuis la page Upscaling'
+        : 'Tome upscalé : restaurez d\'abord la version SD';
+    if ((v.format || '').toLowerCase() !== 'cbz') return 'Seuls les tomes cbz peuvent être réduits : convertissez-le d\'abord en cbz';
+    if (!side) return 'Définition des pages pas encore mesurée';
+    if (!smallest) return 'Aucune définition de réduction au-dessus du seuil de basse définition';
+    if (side <= smallest && !heavy) {
+        return `Rien à réduire : pages de ${side} px (sous ${smallest} px)${perPage ? ` et ${perPage.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo par page en moyenne` : ''}`;
+    }
+    return '';
+}
+
+function _isDownscaleModel(model) {
+    return String(model || '').startsWith('downscale:');
 }
 
 function _seriesUpscaleMenuItemsHtml(data, seriesId) {
@@ -2974,9 +3002,48 @@ function _seriesUpscaleMenuItemsHtml(data, seriesId) {
             : `Aucun tome en basse définition : toutes les pages dépassent le seuil de ${_lowDefMaxSide()} px (réglable dans Configuration → Upscaling)`;
         html += `<button type="button" class="toolbar-dropdown-item is-disabled" aria-disabled="true" data-tooltip="${escapeHtml(reason)}" onclick="event.stopPropagation()">${svgIcon('sparkles')} Upscaler en HD</button>`;
     }
-    if (busy.length) html += `<button class="toolbar-dropdown-item" onclick="cancelSeriesUpscale(${seriesId})">${svgIcon('x')} Annuler l'upscaling${count(busy.length)}</button>`;
-    if (restorable.length) html += `<button class="toolbar-dropdown-item" onclick="restoreSeriesSd(${seriesId})" title="Remet les versions SD d'origine gardées à l'upscaling">${svgIcon('undo')} Restaurer la version SD${count(restorable.length)}</button>`;
+    // Réduction des tomes trop lourds : toujours visible, grisée avec la raison sinon.
+    const { reducible } = _seriesUpscaleGroups(data);
+    if (reducible.length) html += `<button class="toolbar-dropdown-item" onclick="downscaleSeriesVolumes(${seriesId})" title="Réduit sur le serveur les tomes aux pages trop grandes ou trop lourdes">${svgIcon('minimize-2')} Réduire les tomes lourds${count(reducible.length)}</button>`;
+    else {
+        const owned = (data.volumes || []).filter(v => v.filepath);
+        const reasons = owned.map(_volumeDownscaleBlocked);
+        const reason = !owned.length ? 'Aucun tome sur le disque'
+            : reasons.every(r => r === 'Traitement en cours pour ce tome') ? 'Traitement en cours pour les tomes de la série'
+            : !owned.some(v => (v.format || '').toLowerCase() === 'cbz') ? 'Seuls les tomes cbz peuvent être réduits : convertissez-les d\'abord en cbz'
+            : owned.every(v => v.sd_backup || _SERIES_UPSCALE_BUSY.includes(v.upscale_status)) ? 'Tous les tomes ont déjà un original gardé (upscalés ou réduits)'
+            : `Aucun tome trop lourd : pages de ${Math.max(...(window.BULLARR_DOWNSCALE_CHOICES || [3200]))} px au plus et moins de ${Math.round(window.BULLARR_HEAVY_PAGE_BYTES / 1048576)} Mo par page`;
+        html += `<button type="button" class="toolbar-dropdown-item is-disabled" aria-disabled="true" data-tooltip="${escapeHtml(reason)}" onclick="event.stopPropagation()">${svgIcon('minimize-2')} Réduire les tomes lourds</button>`;
+    }
+    const reducing = busy.length && busy.every(v => _isDownscaleModel(v.upscale_model));
+    if (busy.length) html += `<button class="toolbar-dropdown-item" onclick="cancelSeriesUpscale(${seriesId})">${svgIcon('x')} ${reducing ? 'Annuler la réduction' : 'Annuler l\'upscaling'}${count(busy.length)}</button>`;
+    const originals = restorable.length && restorable.every(v => v.backup_kind === 'downscale');
+    if (restorable.length) html += `<button class="toolbar-dropdown-item" onclick="restoreSeriesSd(${seriesId})" title="Remet les fichiers d'origine gardés à l'upscaling ou à la réduction">${svgIcon('undo')} ${originals ? 'Restaurer l\'original' : 'Restaurer la version SD'}${count(restorable.length)}</button>`;
     return html;
+}
+
+async function downscaleSeriesVolumes(seriesId) {
+    const data = currentSeriesDetail;
+    if (!data || data.id !== seriesId) return;
+    const { reducible } = _seriesUpscaleGroups(data);
+    if (!reducible.length) return;
+    const options = await pickDownscaleOptions(reducible.length > 1 ? `Réduire ${reducible.length} tomes` : 'Réduire ce tome',
+        `${reducible.length > 1 ? `Les ${reducible.length} tomes lourds de la série sont réduits` : 'Le tome lourd de la série est réduit'} sur le serveur, un à la fois : les pages plus grandes que la définition choisie sont réduites, les pages lourdes (PNG…) réencodées en JPEG de bonne qualité. Un fichier n'est remplacé que si sa version réduite est plus légère.`, 0);
+    if (!options) return;
+    try {
+        const response = await fetch('/api/upscale/batch', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ volume_ids: reducible.map(v => v.id), downscale: options })
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'Erreur inconnue');
+        const refused = (result.errors || []).length;
+        showToast(`series-upscale-${seriesId}`, `${result.queued.length} tome(s) en file d'attente pour la réduction${refused ? `, ${refused} refusé(s) : ${result.errors[0].error}` : ''}.`, { icon: 'minimize-2', href: '/upscaling#heavy' });
+        _pollSeriesUpscale(seriesId, result.queued, 'downscale');
+        await renderSeriesDetail(seriesId);
+    } catch (error) {
+        alert('❌ ' + error.message);
+    }
 }
 
 async function upscaleSeriesVolumes(seriesId) {
@@ -3017,7 +3084,7 @@ async function restoreSeriesSd(seriesId) {
     if (!data || data.id !== seriesId) return;
     const { restorable } = _seriesUpscaleGroups(data);
     if (!restorable.length) return;
-    if (!confirm(`Remettre la version SD d'origine de ${restorable.length > 1 ? `ces ${restorable.length} tomes` : 'ce tome'} ? Les versions HD seront supprimées.`)) return;
+    if (!confirm(`Remettre le fichier d'origine de ${restorable.length > 1 ? `ces ${restorable.length} tomes` : 'ce tome'} ? Les versions HD ou réduites seront supprimées.`)) return;
     const failures = [];
     for (const v of restorable) {
         try {
@@ -3029,15 +3096,16 @@ async function restoreSeriesSd(seriesId) {
     }
     const done = restorable.length - failures.length;
     showToast(`series-upscale-${seriesId}`, failures.length
-        ? `${done} tome(s) remis en SD, ${failures.length} en échec : ${failures[0]}`
-        : `${done} tome(s) remis en version SD.`, { autoHideMs: failures.length ? 8000 : 4000 });
+        ? `${done} tome(s) remis dans leur version d'origine, ${failures.length} en échec : ${failures[0]}`
+        : `${done} tome(s) remis dans leur version d'origine.`, { autoHideMs: failures.length ? 8000 : 4000 });
     await renderSeriesDetail(seriesId);
 }
 
 // Un seul toast pour toute la série : tome en cours, page, et tomes restants.
 const _seriesUpscalePolls = {};
 
-function _pollSeriesUpscale(seriesId, volumeIds) {
+function _pollSeriesUpscale(seriesId, volumeIds, kind) {
+    const reduce = kind === 'downscale';
     clearTimeout(_seriesUpscalePolls[seriesId]);
     _seriesUpscalePolls[seriesId] = setTimeout(async () => {
         let jobs = null;
@@ -3046,22 +3114,24 @@ function _pollSeriesUpscale(seriesId, volumeIds) {
             jobs = (data.jobs || []).filter(job => volumeIds.includes(job.volume_id));
         } catch (e) { /* nouvel essai plus tard */ }
         const toastId = `series-upscale-${seriesId}`;
-        if (jobs === null) { _pollSeriesUpscale(seriesId, volumeIds); return; }
+        if (jobs === null) { _pollSeriesUpscale(seriesId, volumeIds, kind); return; }
         const pending = jobs.filter(job => _SERIES_UPSCALE_BUSY.includes(job.status));
         const done = jobs.filter(job => job.status === 'done').length;
         const failed = jobs.filter(job => job.status === 'error');
         if (pending.length) {
             const running = pending.find(job => job.status === 'running');
             const position = `${done + failed.length + 1}/${volumeIds.length}`;
-            const text = running ? `Upscaling HD, tome ${position} : page ${running.page || 0}/${running.total || '?'}`
-                : `Upscaling HD : ${pending.length} tome(s) en file d'attente…`;
-            showToast(toastId, text, { icon: 'sparkles', href: '/upscaling' });
-            _pollSeriesUpscale(seriesId, volumeIds);
+            const what = reduce ? 'Réduction' : 'Upscaling HD';
+            const text = running ? `${what}, tome ${position} : page ${running.page || 0}/${running.total || '?'}`
+                : `${what} : ${pending.length} tome(s) en file d'attente…`;
+            showToast(toastId, text, { icon: reduce ? 'minimize-2' : 'sparkles', href: '/upscaling' });
+            _pollSeriesUpscale(seriesId, volumeIds, kind);
             return;
         }
+        const version = reduce ? 'réduite' : 'HD';
         showToast(toastId, failed.length
-            ? `${done} tome(s) remplacé(s) par leur version HD, ${failed.length} en échec : ${failed[0].error}`
-            : `${done} tome(s) remplacé(s) par leur version HD. Originaux gardés.`, { autoHideMs: failed.length ? 8000 : 6000 });
+            ? `${done} tome(s) remplacé(s) par leur version ${version}, ${failed.length} en échec : ${failed[0].error}`
+            : `${done} tome(s) remplacé(s) par leur version ${version}.`, { autoHideMs: failed.length ? 8000 : 6000 });
         if (currentSeriesDetail && currentSeriesDetail.id === seriesId) renderSeriesDetail(seriesId);
     }, 4000);
 }
@@ -3548,13 +3618,20 @@ function buildVolumeActionsGearHtml(v) {
         : _side > _lowDefMaxSide() ? `Déjà en bonne définition : pages de ${_side} px, au-dessus du seuil de ${_lowDefMaxSide()} px (réglable dans Configuration → Upscaling)`
         : '';
     const upscaleItemHtml = _upscaling
-        ? `<button type="button" class="toolbar-dropdown-item" onclick="cancelVolumeUpscale(${v.id}, event)">${svgIcon('x')} Annuler l'upscaling</button>`
+        ? `<button type="button" class="toolbar-dropdown-item" onclick="cancelVolumeUpscale(${v.id}, event)">${svgIcon('x')} ${_isDownscaleModel(v.upscale_model) ? 'Annuler la réduction' : 'Annuler l\'upscaling'}</button>`
         : _upscaleBlocked
             ? `<button type="button" class="toolbar-dropdown-item is-disabled" aria-disabled="true" data-tooltip="${escapeHtml(_upscaleBlocked)}" onclick="event.stopPropagation()">${svgIcon('sparkles')} Upscaler en HD</button>`
             : `<button type="button" class="toolbar-dropdown-item" onclick="upscaleVolume(${v.id}, event)">${svgIcon('sparkles')} Upscaler en HD</button>`;
     const restoreSdItemHtml = v.sd_backup && !_upscaling
-        ? `<button type="button" class="toolbar-dropdown-item" onclick="restoreVolumeSd(${v.id}, event)">${svgIcon('undo')} Restaurer la version SD</button>`
+        ? `<button type="button" class="toolbar-dropdown-item" onclick="restoreVolumeSd(${v.id}, event, '${v.backup_kind === 'downscale' ? 'downscale' : 'upscale'}')">${svgIcon('undo')} ${v.backup_kind === 'downscale' ? 'Restaurer l\'original' : 'Restaurer la version SD'}</button>`
         : '';
+    // Réduction d'un tome trop lourd (pages trop grandes ou trop lourdes) : toujours affichée,
+    // grisée avec la raison en info-bulle quand le tome ne peut pas l'être.
+    const _downscaleBlocked = _upscaling ? '' : _volumeDownscaleBlocked(v);
+    const downscaleItemHtml = _upscaling ? ''
+        : _downscaleBlocked
+            ? `<button type="button" class="toolbar-dropdown-item is-disabled" aria-disabled="true" data-tooltip="${escapeHtml(_downscaleBlocked)}" onclick="event.stopPropagation()">${svgIcon('minimize-2')} Réduire le fichier</button>`
+            : `<button type="button" class="toolbar-dropdown-item" onclick="downscaleVolume(${v.id}, event, ${_side})">${svgIcon('minimize-2')} Réduire le fichier</button>`;
     // « ajoute un bouton lu pour un album » : bascule lu / non lu pour le compte courant.
     const markReadItemHtml = _volumeReadMenuItemHtml(v);
     // Permet de rechercher une meilleure source pour un tome DÉJÀ possédé (pas seulement
@@ -3599,6 +3676,7 @@ function buildVolumeActionsGearHtml(v) {
                 ${updateMetadataItemHtml}
                 ${convertCbrItemHtml}
                 ${upscaleItemHtml}
+                ${downscaleItemHtml}
                 ${restoreSdItemHtml}
                 ${editManuallyItemHtml}
                 ${searchAgainItemHtml}
@@ -9216,22 +9294,43 @@ async function upscaleVolume(volumeId, evt) {
     }
 }
 
+async function downscaleVolume(volumeId, evt, side) {
+    evt?.stopPropagation();
+    const options = await pickDownscaleOptions('Réduire ce tome',
+        'Les pages plus grandes que la définition choisie sont réduites sur le serveur, et les pages lourdes (PNG…) réencodées en JPEG de bonne qualité. Le fichier n\'est remplacé que si la version réduite est plus légère.', side);
+    if (!options) return;
+    try {
+        const response = await fetch(`/api/volumes/${volumeId}/downscale`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options)
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Erreur inconnue');
+        showToast(`volume-upscale-${volumeId}`, 'Réduction en file d\'attente…', { icon: 'minimize-2' });
+        _pollVolumeUpscale(volumeId, currentSeriesDetail ? currentSeriesDetail.id : null);
+        if (currentSeriesDetail) await renderSeriesDetail(currentSeriesDetail.id);
+    } catch (error) {
+        alert('❌ ' + error.message);
+    }
+}
+
 async function cancelVolumeUpscale(volumeId, evt) {
     evt?.stopPropagation();
     await fetch(`/api/volumes/${volumeId}/upscale`, { method: 'DELETE' }).catch(() => null);
-    showToast(`volume-upscale-${volumeId}`, 'Upscaling annulé, le tome est inchangé.', { autoHideMs: 4000 });
+    showToast(`volume-upscale-${volumeId}`, 'Traitement annulé, le tome est inchangé.', { autoHideMs: 4000 });
     if (currentSeriesDetail) await renderSeriesDetail(currentSeriesDetail.id);
 }
 
-async function restoreVolumeSd(volumeId, evt) {
+async function restoreVolumeSd(volumeId, evt, kind) {
     evt?.stopPropagation();
-    if (!confirm('Remettre la version SD d\'origine de ce tome ? La version HD sera supprimée.')) return;
+    const reduced = kind === 'downscale';
+    if (!confirm(reduced ? 'Remettre le fichier d\'origine de ce tome ? La version réduite sera supprimée.'
+        : 'Remettre la version SD d\'origine de ce tome ? La version HD sera supprimée.')) return;
     setVolumeActionsGearBusy(volumeId, true);
     try {
         const response = await fetch(`/api/volumes/${volumeId}/upscale/restore`, { method: 'POST' });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Erreur inconnue');
-        showToast(`volume-upscale-${volumeId}`, 'Version SD remise en place.', { autoHideMs: 4000 });
+        showToast(`volume-upscale-${volumeId}`, reduced ? 'Fichier d\'origine remis en place.' : 'Version SD remise en place.', { autoHideMs: 4000 });
         if (currentSeriesDetail) await renderSeriesDetail(currentSeriesDetail.id);
     } catch (error) {
         alert('❌ ' + error.message);
@@ -9248,17 +9347,21 @@ function _pollVolumeUpscale(volumeId, seriesId) {
             job = (data.jobs || []).find(item => item.volume_id === volumeId) || null;
         } catch (e) { /* nouvel essai plus tard */ }
         const toastId = `volume-upscale-${volumeId}`;
+        const reduce = _isDownscaleModel(job?.model);
         if (job && ['queued', 'running'].includes(job.status)) {
-            const text = job.status === 'queued' ? 'Upscaling HD en file d\'attente…'
-                : `Upscaling HD : page ${job.page || 0}/${job.total || '?'}`;
-            showToast(toastId, text, { icon: 'sparkles' });
+            const what = reduce ? 'Réduction' : 'Upscaling HD';
+            const text = job.status === 'queued' ? `${what} en file d'attente…`
+                : `${what} : page ${job.page || 0}/${job.total || '?'}`;
+            showToast(toastId, text, { icon: reduce ? 'minimize-2' : 'sparkles' });
             _pollVolumeUpscale(volumeId, seriesId);
             return;
         }
         if (job?.status === 'done') {
-            showToast(toastId, `Tome remplacé par sa version HD (${job.upscaled} pages agrandies). Original gardé.`, { autoHideMs: 6000 });
+            showToast(toastId, reduce
+                ? `Tome réduit (${job.upscaled} pages réduites).${String(job.model).endsWith(':drop') ? ' Original supprimé.' : ' Original gardé.'}`
+                : `Tome remplacé par sa version HD (${job.upscaled} pages agrandies). Original gardé.`, { autoHideMs: 6000 });
         } else if (job?.status === 'error') {
-            showToast(toastId, `Upscaling impossible : ${job.error}`, { autoHideMs: 8000 });
+            showToast(toastId, `${reduce ? 'Réduction' : 'Upscaling'} impossible : ${job.error}`, { autoHideMs: 8000 });
         }
         if (seriesId && currentSeriesDetail && currentSeriesDetail.id === seriesId) renderSeriesDetail(seriesId);
     }, 4000);

@@ -206,7 +206,8 @@ class QueueResumeTest(unittest.TestCase):
                 CREATE TABLE libraries (id INTEGER PRIMARY KEY, path TEXT);
                 CREATE TABLE series (id INTEGER PRIMARY KEY, title TEXT, library_id INTEGER);
                 CREATE TABLE volumes (id INTEGER PRIMARY KEY, series_id INTEGER, filename TEXT, filepath TEXT,
-                    format TEXT, page_width INTEGER, page_height INTEGER, file_size INTEGER, volume_number REAL);''')
+                    format TEXT, page_width INTEGER, page_height INTEGER, file_size INTEGER, volume_number REAL,
+                    page_count INTEGER);''')
             conn.commit()
             conn.close()
             app = Flask(__name__)
@@ -258,3 +259,118 @@ class ThresholdConfigTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def _big_cbz(path, sizes, fmt='PNG'):
+    """cbz aux pages bruitées (donc lourdes), dans le format demandé."""
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr('ComicInfo.xml', '<ComicInfo/>')
+        for index, (width, height) in enumerate(sizes, 1):
+            pixels = np.random.default_rng(index).integers(0, 255, (height, width, 3), dtype=np.uint8)
+            buffer = io.BytesIO()
+            Image.fromarray(pixels).save(buffer, fmt)
+            archive.writestr(f'{index:03d}.{fmt.lower()}', buffer.getvalue())
+
+
+@unittest.skipIf(np is None, 'numpy/Pillow absents')
+class DownscaleTest(unittest.TestCase):
+    def test_model_round_trip(self):
+        self.assertEqual(upscale_volume.downscale_model(2400, True), 'downscale:2400:keep')
+        self.assertEqual(upscale_volume.parse_downscale('downscale:2400:drop'), (2400, False))
+        self.assertEqual(upscale_volume.parse_downscale('downscale:2800'), (2800, True))
+        self.assertIsNone(upscale_volume.parse_downscale('fast'))
+        self.assertIsNone(upscale_volume.parse_downscale('downscale:abc'))
+        self.assertEqual(upscale_volume.job_label('downscale:2000:keep'), 'Réduction à 2000 px')
+
+    def test_downscale_image(self):
+        def page(width, height, fmt):
+            buffer = io.BytesIO()
+            pixels = np.random.default_rng(1).integers(0, 255, (height, width, 3), dtype=np.uint8)
+            Image.fromarray(pixels).save(buffer, fmt)
+            return buffer.getvalue()
+        result = upscale_volume.downscale_image(page(1000, 4000, 'JPEG'), 2000)
+        with Image.open(io.BytesIO(result)) as image:
+            self.assertEqual(image.size, (500, 2000))
+            self.assertEqual(image.format, 'JPEG')
+        # Déjà sous la cible et en JPEG : gardée telle quelle.
+        self.assertIsNone(upscale_volume.downscale_image(page(800, 1200, 'JPEG'), 2000))
+        # Sous la cible mais PNG lourd : réencodée en JPEG plus léger, même taille.
+        heavy = page(1200, 1800, 'PNG')
+        self.assertGreater(len(heavy), upscale_volume.REENCODE_PAGE_BYTES)
+        result = upscale_volume.downscale_image(heavy, 2000)
+        self.assertLess(len(result), len(heavy))
+        with Image.open(io.BytesIO(result)) as image:
+            self.assertEqual(image.size, (1200, 1800))
+
+    def _setup(self, tmp, sizes):
+        from flask import Flask
+        library = os.path.join(tmp, 'BD')
+        os.makedirs(os.path.join(library, 'Blake'))
+        book = os.path.join(library, 'Blake', 'T1.cbz')
+        _big_cbz(book, sizes)
+        original = open(book, 'rb').read()
+        db = os.path.join(tmp, 'b.db')
+        conn = sqlite3.connect(db)
+        side = max(max(s) for s in sizes)
+        conn.executescript(f'''
+            CREATE TABLE libraries (id INTEGER PRIMARY KEY, path TEXT);
+            CREATE TABLE series (id INTEGER PRIMARY KEY, title TEXT, library_id INTEGER);
+            CREATE TABLE volumes (id INTEGER PRIMARY KEY, series_id INTEGER, filename TEXT, filepath TEXT,
+                format TEXT, page_width INTEGER, page_height INTEGER, file_size INTEGER, page_size_file_size INTEGER,
+                volume_number REAL, page_count INTEGER);
+            INSERT INTO libraries VALUES (1, '{library}');
+            INSERT INTO series VALUES (1, 'Blake', 1);
+            INSERT INTO volumes VALUES (7, 1, 'T1.cbz', '{book}', 'cbz', {side // 2}, {side}, {len(original)}, {len(original)}, 1, {len(sizes)});
+        ''')
+        conn.commit()
+        conn.close()
+        app = Flask(__name__)
+        app.config.update(DATABASE=db, DATA_DIR=tmp)
+        return app, db, library, book, original
+
+    def test_keep_then_restore(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app, db, library, book, original = self._setup(tmp, [(1700, 3400), (1700, 3400)])
+            saved = upscale_volume._after_change
+            upscale_volume._after_change = lambda row: None
+            try:
+                with app.app_context():
+                    self.assertEqual([i['volume_id'] for i in upscale_volume.heavy_volumes(app)], [7])
+                    upscale_volume._process(app, 7, 'downscale:2400:keep')
+                    self.assertLess(os.path.getsize(book), len(original))
+                    with zipfile.ZipFile(book) as archive:
+                        self.assertIn('ComicInfo.xml', archive.namelist())
+                        with Image.open(io.BytesIO(archive.read('001.jpg'))) as image:
+                            self.assertEqual(image.size, (1200, 2400))
+                    row = sqlite3.connect(db).execute('SELECT page_width, page_height, file_size FROM volumes WHERE id = 7').fetchone()
+                    self.assertEqual(row, (1200, 2400, os.path.getsize(book)))
+                    self.assertTrue(upscale_volume.has_backup(app, 7))
+                    # Déjà réduit : refusé tant que l'original est gardé.
+                    _state, error = upscale_volume.enqueue(app, 7, 'downscale:2000:keep')
+                    self.assertIn('original', error)
+                    self.assertIsNone(upscale_volume.restore(app, 7))
+                    self.assertEqual(open(book, 'rb').read(), original)
+            finally:
+                upscale_volume._after_change = saved
+
+    def test_drop_replaces_without_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app, db, library, book, original = self._setup(tmp, [(1700, 3400)])
+            saved = upscale_volume._after_change
+            upscale_volume._after_change = lambda row: None
+            try:
+                with app.app_context():
+                    upscale_volume._process(app, 7, 'downscale:2000:drop')
+                    self.assertLess(os.path.getsize(book), len(original))
+                    self.assertFalse(upscale_volume.has_backup(app, 7))
+                    self.assertFalse(os.path.exists(os.path.join(library, '.bullarr-sd-backup')))
+                    self.assertFalse([n for n in os.listdir(os.path.dirname(book)) if n.endswith('hd-tmp')])
+            finally:
+                upscale_volume._after_change = saved
+
+    def test_nothing_to_reduce_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app, db, library, book, original = self._setup(tmp, [(300, 400)])
+            with app.app_context():
+                error = upscale_volume.check_volume(upscale_volume._volume_row(app, 7), 'downscale:2000:keep')
+                self.assertIn('Rien à réduire', error)

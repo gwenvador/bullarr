@@ -2285,14 +2285,44 @@ def upscale_volume_route(volume_id):
     return jsonify({'success': True, 'job': state})
 
 
+@library_bp.route('/api/volumes/<int:volume_id>/downscale', methods=['POST'])
+def downscale_volume_route(volume_id):
+    """Réduction d'un tome trop lourd (POST {target: px, keep: bool}) : pages ramenées à
+    `target` px et réencodées en JPEG. keep=false supprime l'original une fois la version
+    réduite vérifiée. Annulation : DELETE /api/volumes/<id>/upscale (même file)."""
+    from . import upscale_volume
+    app = current_app._get_current_object()
+    body = request.get_json(silent=True) or {}
+    try:
+        target = int(body.get('target') or 0)
+    except (TypeError, ValueError):
+        target = 0
+    model = upscale_volume.downscale_model(target, body.get('keep', True) is not False)
+    already = (upscale_volume.job(volume_id) or {}).get('status') in ('queued', 'running')
+    state, error = upscale_volume.enqueue(app, volume_id, model)
+    if error:
+        return jsonify({'success': False, 'error': error}), 400
+    if not already:
+        upscale_volume.log_queued(app, [(volume_id, model)])
+    return jsonify({'success': True, 'job': state})
+
+
 @library_bp.route('/api/upscale/batch', methods=['POST'])
 def upscale_volumes_batch():
     """Page Upscaling / molette d'une série : met plusieurs tomes en file d'un coup.
     `items` = [{volume_id, model}] (un modèle par tome, sinon `model` ou celui choisi
-    dans la configuration) ; `volume_ids` reste accepté."""
+    dans la configuration) ; `volume_ids` reste accepté. Réduction : `downscale`
+    = {target, keep} pour tous les tomes."""
     from . import upscale, upscale_volume
     body = request.get_json(silent=True) or {}
     model = body.get('model') or upscale.load_config()['model']
+    reduce_all = isinstance(body.get('downscale'), dict)
+    if reduce_all:
+        try:
+            model = upscale_volume.downscale_model(int(body['downscale'].get('target') or 0),
+                                                   body['downscale'].get('keep', True) is not False)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Taille cible invalide'}), 400
     items = body.get('items')
     if not isinstance(items, list):
         items = [{'volume_id': volume_id} for volume_id in body.get('volume_ids') or []]
@@ -2306,7 +2336,7 @@ def upscale_volumes_batch():
         except (TypeError, ValueError):
             continue
         already = (upscale_volume.job(volume_id) or {}).get('status') in ('queued', 'running')
-        chosen = item.get('model') or model
+        chosen = model if reduce_all else (item.get('model') or model)
         state, error = upscale_volume.enqueue(app, volume_id, chosen)
         if error:
             errors.append({'volume_id': volume_id, 'error': error})
@@ -2344,6 +2374,9 @@ def upscale_volumes_overview():
         'catalog': {key: {'label': spec['label'], 'detail': spec['detail']} for key, spec in upscale.MODELS.items()},
         'max_side': upscale.low_def_max_side(),
         'max_side_choices': list(upscale.MAX_SIDE_CHOICES),
+        'downscale_choices': upscale_volume.downscale_choices(),
+        'heavy_page_bytes': upscale_volume.HEAVY_PAGE_BYTES,
+        'heavy': upscale_volume.heavy_volumes(app),
         'low_definition': upscale_volume.low_definition_volumes(app),
         'backups': [{k: item.get(k) for k in ('volume_id', 'series_id', 'current_series_id', 'series_title', 'filename',
                                               'bytes', 'exists', 'model', 'created_at', 'page_width', 'page_height')}
@@ -2397,9 +2430,11 @@ def _low_def_side():
 def upscale_threshold():
     """Seuil de basse définition (px), lu par l'interface (étiquette « Basse déf. », molettes,
     bouton HD du lecteur) et par l'application Android."""
-    from . import upscale
+    from . import upscale, upscale_volume
     return jsonify({'success': True, 'max_side': upscale.low_def_max_side(),
-                    'choices': list(upscale.MAX_SIDE_CHOICES)})
+                    'choices': list(upscale.MAX_SIDE_CHOICES),
+                    'downscale_choices': upscale_volume.downscale_choices(),
+                    'heavy_page_bytes': upscale_volume.HEAVY_PAGE_BYTES})
 
 
 @library_bp.route('/api/upscale/jobs', methods=['GET'])
@@ -3496,8 +3531,8 @@ def get_series_details(series_id):
 
         from .upscale_volume import ensure_table as _ensure_upscale_backups
         _ensure_upscale_backups(conn)
-        sd_backups = {r[0] for r in conn.execute(
-            'SELECT b.volume_id FROM upscale_backups b JOIN volumes v ON v.id = b.volume_id WHERE v.series_id = ?',
+        sd_backups = {r[0]: r[1] for r in conn.execute(
+            'SELECT b.volume_id, b.model FROM upscale_backups b JOIN volumes v ON v.id = b.volume_id WHERE v.series_id = ?',
             (series_id,)).fetchall()}
         from .upscale_volume import job as _upscale_job
 
@@ -3507,7 +3542,11 @@ def get_series_details(series_id):
             volumes.append({
                 'id': vol['id'],
                 'sd_backup': vol['id'] in sd_backups,
+                # 'downscale' : l'original gardé est celui d'une réduction (« Restaurer l'original »)
+                'backup_kind': ('downscale' if str(sd_backups.get(vol['id']) or '').startswith('downscale:') else 'upscale')
+                               if vol['id'] in sd_backups else None,
                 'upscale_status': upscale_state['status'] if upscale_state else None,
+                'upscale_model': upscale_state['model'] if upscale_state else None,
                 'part_number': vol['part_number'],
                 'part_name': vol['part_name'],
                 'volume_number': vol['volume_number'],

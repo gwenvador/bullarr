@@ -166,7 +166,7 @@ function renderHistoryEvents(resetPage = true) {
             : currentHistoryFilter === 'delete'
                 ? allHistoryEvents.filter(e => e.type === 'delete' || e.type === 'delete_volume')
                 : currentHistoryFilter === 'upscale'
-                    ? allHistoryEvents.filter(e => (e.type || '').startsWith('upscale'))
+                    ? allHistoryEvents.filter(e => /^(up|down)scale/.test(e.type || ''))
                     : allHistoryEvents.filter(e => e.type === currentHistoryFilter);
     if (currentHistorySearchText.trim()) {
         const needle = _historyNormalizeForSearch(currentHistorySearchText.trim());

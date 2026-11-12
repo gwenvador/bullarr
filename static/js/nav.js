@@ -2489,5 +2489,101 @@ function bullarrSetLowDefMaxSide(value) {
     window.BULLARR_LOW_DEF_MAX_SIDE = side;
     try { localStorage.setItem('bullarr-low-def-max-side', String(side)); } catch (e) { /* navigation privée */ }
 }
+// Réduction des tomes trop lourds : tailles proposées (au-dessus du seuil de basse
+// définition) et poids moyen par page à partir duquel un tome est « lourd ».
+window.BULLARR_DOWNSCALE_CHOICES = [2000, 2400, 2800, 3200];
+window.BULLARR_HEAVY_PAGE_BYTES = 3 * 1024 * 1024;
+function bullarrDownscaleChoices() {
+    return (window.BULLARR_DOWNSCALE_CHOICES || []).filter(side => side > bullarrLowDefMaxSide());
+}
+function bullarrIsHeavyVolume(volume) {
+    return Boolean(volume && volume.page_count && volume.file_size
+        && volume.file_size / volume.page_count >= window.BULLARR_HEAVY_PAGE_BYTES);
+}
 fetch('/api/upscale/threshold').then(response => response.ok ? response.json() : null)
-    .then(data => { if (data && data.max_side) bullarrSetLowDefMaxSide(data.max_side); }).catch(() => {});
+    .then(data => {
+        if (!data) return;
+        if (data.max_side) bullarrSetLowDefMaxSide(data.max_side);
+        if (Array.isArray(data.downscale_choices)) window.BULLARR_DOWNSCALE_CHOICES = data.downscale_choices;
+        if (data.heavy_page_bytes) window.BULLARR_HEAVY_PAGE_BYTES = data.heavy_page_bytes;
+    }).catch(() => {});
+
+// Fenêtre de réduction d'un ou plusieurs tomes : demande la définition voulue (plus grand
+// côté des pages) et s'il faut garder l'original. Résout { target, keep }, ou null si on
+// annule. `side` = plus grand côté actuel des pages (pour un seul tome), sinon 0.
+async function pickDownscaleOptions(title, text, side) {
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const icon = name => (typeof svgIcon === 'function' ? svgIcon(name) : '');
+    let choices = bullarrDownscaleChoices();
+    try {
+        const data = await (await fetch('/api/upscale/threshold')).json();
+        if (Array.isArray(data.downscale_choices)) choices = data.downscale_choices;
+    } catch (e) { /* valeurs connues */ }
+    if (!choices.length) { alert('❌ Aucune définition de réduction possible au-dessus du seuil de basse définition'); return null; }
+    side = Number(side) || 0;
+    const below = side ? choices.filter(choice => choice < side) : choices;
+    const preferred = below.includes(2400) ? 2400 : (below.length ? below[below.length - 1] : choices[0]);
+    const hints = {
+        2000: 'Tablette, liseuse : gain maximal',
+        2400: 'Net sur un grand écran, bon compromis',
+        2800: 'Grand écran en double page',
+        3200: 'Très grand écran : gain plus faible',
+    };
+    document.getElementById('downscale-options-picker')?.remove();
+    const modal = document.createElement('div');
+    modal.className = 'modal active upscale-picker-modal';
+    modal.id = 'downscale-options-picker';
+    modal.innerHTML = `
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="downscale-picker-title">
+            <span class="close-modal" data-pick-cancel aria-label="Fermer">×</span>
+            <h2 id="downscale-picker-title">${icon('minimize-2')} ${esc(title)}</h2>
+            <p class="upscale-picker-text">${esc(text)}</p>
+            <h3 class="upscale-picker-section">Définition voulue${side ? ` <span>(pages actuelles : ${side} px)</span>` : ''}</h3>
+            <div class="upscale-picker-models upscale-picker-sizes" role="radiogroup" aria-label="Définition voulue">${choices.map(choice => {
+                const kept = side && choice >= side;
+                return `<label class="upscale-picker-model${choice === preferred ? ' active' : ''}">
+                    <input type="radio" name="downscale-picker-size" value="${choice}"${choice === preferred ? ' checked' : ''}>
+                    <span><strong>${choice} px</strong>${choice === preferred ? '<em>conseillé</em>' : ''}<small>${esc(kept ? 'Pages déjà plus petites : seulement réencodées' : hints[choice] || 'Plus grand côté des pages')}</small></span>
+                </label>`;
+            }).join('')}</div>
+            <h3 class="upscale-picker-section">Fichier d'origine</h3>
+            <div class="upscale-picker-models upscale-picker-keep" role="radiogroup" aria-label="Fichier d'origine">
+                <label class="upscale-picker-model active">
+                    <input type="radio" name="downscale-picker-keep" value="keep" checked>
+                    <span><strong>Garder l'original</strong><small>Restaurable à tout moment. Il reste dans le dossier caché <code>.bullarr-sd-backup</code> : la place n'est gagnée qu'en le supprimant ensuite (page Upscaling).</small></span>
+                </label>
+                <label class="upscale-picker-model">
+                    <input type="radio" name="downscale-picker-keep" value="drop">
+                    <span><strong>Supprimer l'original</strong><small>La place est gagnée tout de suite. La version réduite est vérifiée avant (archive lisible, toutes les pages), mais on ne peut plus revenir en arrière.</small></span>
+                </label>
+            </div>
+            <div class="upscale-picker-actions">
+                <button type="button" class="btn btn-secondary" data-pick-cancel>Annuler</button>
+                <button type="button" class="btn btn-primary" data-pick-ok>${icon('minimize-2')} Réduire</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    modal.querySelectorAll('input[type="radio"]').forEach(input => input.addEventListener('change', () => {
+        modal.querySelectorAll(`input[name="${input.name}"]`).forEach(other => other.closest('.upscale-picker-model').classList.toggle('active', other.checked));
+    }));
+    modal.querySelector('[data-pick-ok]').focus();
+    return new Promise(resolve => {
+        const close = value => {
+            document.removeEventListener('keydown', onKey, true);
+            modal.remove();
+            resolve(value);
+        };
+        const onKey = event => {
+            if (event.key === 'Escape') { event.stopPropagation(); close(null); }
+        };
+        document.addEventListener('keydown', onKey, true);
+        modal.addEventListener('click', event => {
+            if (event.target === modal || event.target.closest('[data-pick-cancel]')) { close(null); return; }
+            if (!event.target.closest('[data-pick-ok]')) return;
+            const target = Number(modal.querySelector('input[name="downscale-picker-size"]:checked')?.value) || preferred;
+            const keep = modal.querySelector('input[name="downscale-picker-keep"]:checked')?.value !== 'drop';
+            if (!keep && !confirm('Supprimer l\'original après la réduction ? Ce ne sera pas réversible.')) return;
+            close({ target, keep });
+        });
+    });
+}

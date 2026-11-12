@@ -39,6 +39,93 @@ class UpscaleCancelled(Exception):
     pass
 
 
+# ----- Réduction (« downscale ») des tomes trop lourds -----
+# Même file, même reprise, même sauvegarde que l'upscaling : une réduction est un « modèle »
+# de la forme downscale:<px>:keep|drop (keep = original gardé et restaurable, drop = original
+# supprimé une fois la version réduite vérifiée).
+DOWNSCALE_PREFIX = 'downscale:'
+DOWNSCALE_CHOICES = (2000, 2400, 2800, 3200)
+DOWNSCALE_QUALITY = 88
+HEAVY_PAGE_BYTES = 3 * 1024 * 1024      # plus de 3 Mo par page en moyenne : « fichier lourd »
+REENCODE_PAGE_BYTES = 1024 * 1024       # page PNG/WebP… de plus d'1 Mo : réencodée en JPEG
+
+
+def downscale_model(target, keep):
+    return f'{DOWNSCALE_PREFIX}{int(target)}:{"keep" if keep else "drop"}'
+
+
+def parse_downscale(model):
+    """(taille cible, original gardé) pour un modèle downscale:…, sinon None."""
+    if not isinstance(model, str) or not model.startswith(DOWNSCALE_PREFIX):
+        return None
+    parts = model[len(DOWNSCALE_PREFIX):].split(':')
+    try:
+        return int(parts[0]), (parts[1] if len(parts) > 1 else 'keep') != 'drop'
+    except (ValueError, IndexError):
+        return None
+
+
+def downscale_choices():
+    """Tailles proposées : toujours au-dessus du seuil de basse définition, pour qu'un tome
+    réduit ne redevienne pas « Basse déf. » (et upscalable)."""
+    return [side for side in DOWNSCALE_CHOICES if side > upscale.low_def_max_side()]
+
+
+def job_label(model):
+    """Libellé d'un travail : modèle d'upscaling, ou « Réduction à 2400 px »."""
+    spec = parse_downscale(model)
+    if spec:
+        return f'Réduction à {spec[0]} px'
+    return upscale.MODEL_LABELS.get(model, model)
+
+
+def _texts(model):
+    if parse_downscale(model):
+        return {'noun': 'réduction', 'requested': 'réduction demandée', 'cancelled': 'réduction annulée',
+                'impossible': 'réduction impossible', 'type': 'downscale'}
+    return {'noun': 'upscaling', 'requested': 'upscaling demandé', 'cancelled': 'upscaling annulé',
+            'impossible': 'upscaling impossible', 'type': 'upscale'}
+
+
+def downscale_image(data, target):
+    """Page réduite (plus grand côté ramené à `target` px) et réencodée en JPEG, ou None si
+    elle reste telle quelle. Une page déjà à la bonne taille mais lourde (PNG…) est seulement
+    réencodée, si ça la rend plus légère."""
+    from PIL import Image
+    try:
+        image = Image.open(io.BytesIO(data))
+    except Image.DecompressionBombError:
+        # Scan géant (plus de 180 Mpx) : c'est justement ce qu'on veut réduire.
+        limit, Image.MAX_IMAGE_PIXELS = Image.MAX_IMAGE_PIXELS, None
+        try:
+            image = Image.open(io.BytesIO(data))
+        finally:
+            Image.MAX_IMAGE_PIXELS = limit
+    with image:
+        width, height = image.size
+        too_big = max(width, height) > target
+        heavy = (image.format or '').upper() not in ('JPEG', 'JPG') and len(data) > REENCODE_PAGE_BYTES
+        if not too_big and not heavy:
+            return None
+        image.load()
+        page = image
+        if page.mode not in ('RGB', 'L'):
+            page = page.convert('RGBA') if 'A' in page.getbands() or page.mode == 'P' else page.convert('RGB')
+            if page.mode == 'RGBA':
+                flat = Image.new('RGB', page.size, (255, 255, 255))
+                flat.paste(page, mask=page.split()[-1])
+                page = flat
+        if too_big:
+            scale = target / max(width, height)
+            page = page.resize((max(1, round(width * scale)), max(1, round(height * scale))), Image.LANCZOS)
+        buffer = io.BytesIO()
+        page.save(buffer, 'JPEG', quality=DOWNSCALE_QUALITY, optimize=True, progressive=True)
+    result = buffer.getvalue()
+    if not too_big and len(result) >= len(data):
+        return None
+    return result
+
+
 def _db(app):
     conn = sqlite3.connect(app.config['DATABASE'], timeout=120.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -174,7 +261,7 @@ def _volume_row(app, volume_id):
     try:
         return conn.execute('''
             SELECT v.id, v.series_id, v.filename, v.filepath, v.format, v.page_width, v.page_height,
-                   v.file_size, v.volume_number, s.title AS series_title, l.path AS library_path
+                   v.file_size, v.page_count, v.volume_number, s.title AS series_title, l.path AS library_path
             FROM volumes v JOIN series s ON s.id = v.series_id
             LEFT JOIN libraries l ON l.id = s.library_id WHERE v.id = ?''', (volume_id,)).fetchone()
     finally:
@@ -241,18 +328,32 @@ def has_backup(app, volume_id):
     return bool(backups(app, {volume_id}))
 
 
-def check_volume(row):
-    """Message d'erreur si le tome ne peut pas être upscalé, sinon None."""
+def check_volume(row, model=None):
+    """Message d'erreur si le tome ne peut pas être upscalé (ou réduit), sinon None."""
     if not row:
         return 'Tome introuvable'
     if not row['filepath'] or not os.path.isfile(row['filepath']):
         return "Ce tome n'a pas de fichier sur le disque"
+    spec = parse_downscale(model)
     if (row['format'] or '').lower() != 'cbz':
-        return "Seuls les tomes cbz peuvent être upscalés : convertissez-le d'abord en cbz"
+        return f"Seuls les tomes cbz peuvent être {'réduits' if spec else 'upscalés'} : convertissez-le d'abord en cbz"
     side = max(row['page_width'] or 0, row['page_height'] or 0)
+    if spec:
+        if side and side <= spec[0] and not _is_heavy(row):
+            return f'Rien à réduire : pages de {side} px, déjà sous {spec[0]} px, et fichier pas lourd'
+        return None
     if side and side > upscale.low_def_max_side():
         return f'Ce tome est déjà en bonne définition (pages de {side} px)'
     return None
+
+
+def _is_heavy(row):
+    try:
+        pages = row['page_count'] if 'page_count' in row.keys() else None
+    except (AttributeError, IndexError):
+        pages = None
+    size = row['file_size'] or 0
+    return bool(pages) and size / pages >= HEAVY_PAGE_BYTES
 
 
 def jobs():
@@ -270,22 +371,30 @@ def job(volume_id):
 def enqueue(app, volume_id, model):
     """Ajoute un tome à la file. Renvoie (état, erreur)."""
     global _worker, _app
-    if model not in upscale.MODELS:
-        return None, 'Modèle inconnu'
-    if not upscale.runtime_available():
-        return None, "onnxruntime n'est pas disponible sur ce serveur"
-    if not upscale.load_config().get('server_enabled', True):
-        return None, "L'upscaling sur le serveur est désactivé (Configuration > Upscaling)"
+    spec = parse_downscale(model)
+    if spec:
+        if spec[0] not in downscale_choices():
+            return None, f'Taille cible invalide : {spec[0]} px (au-dessus du seuil de basse définition)'
+    else:
+        if model not in upscale.MODELS:
+            return None, 'Modèle inconnu'
+        if not upscale.runtime_available():
+            return None, "onnxruntime n'est pas disponible sur ce serveur"
+        if not upscale.load_config().get('server_enabled', True):
+            return None, "L'upscaling sur le serveur est désactivé (Configuration > Upscaling)"
     row = _volume_row(app, volume_id)
-    error = check_volume(row)
+    error = check_volume(row, model)
     if error:
         return None, error
     if has_backup(app, volume_id):
+        kept = backups(app, {volume_id}).get(volume_id) or {}
+        if parse_downscale(kept.get('model')):
+            return None, "Ce tome a déjà été réduit : restaurez l'original ou supprimez-le d'abord"
         return None, 'Ce tome a déjà été upscalé : restaurez d\'abord la version SD'
     size = os.path.getsize(row['filepath'])
     free = shutil.disk_usage(os.path.dirname(row['filepath'])).free
-    if free < size * 5:
-        return None, 'Pas assez de place sur le disque pour écrire la version HD'
+    if free < size * (2 if spec else 5):
+        return None, f"Pas assez de place sur le disque pour écrire la version {'réduite' if spec else 'HD'}"
     with _lock:
         current = _jobs.get(volume_id)
         if current and current['status'] in ('queued', 'running'):
@@ -363,7 +472,7 @@ def _run(app):
             _update(volume_id, status='cancelled', finished_at=time.time())
         except Exception as e:  # noqa: BLE001 - l'erreur est montrée dans l'interface
             _update(volume_id, status='error', error=str(e) or e.__class__.__name__, finished_at=time.time())
-            print(f'Upscaling du tome #{volume_id} impossible : {e}')
+            print(f"{_texts(model)['noun'].capitalize()} du tome #{volume_id} impossible : {e}")
             _log_failure(app, volume_id, model, e)
         # Terminé, annulé ou en échec : il sort de la file en base et ses pages gardées partent.
         _queue_remove(app, volume_id)
@@ -381,9 +490,9 @@ def _log_start(app, volume_id, model):
             row = _volume_row(app, volume_id)
             if not row:
                 return
-            label = upscale.MODEL_LABELS.get(model, model)
+            label = job_label(model)
             what = 'calcul repris après le redémarrage de Bullarr' if resumed else 'calcul commencé'
-            log_action('upscale_start', row['series_id'], row['series_title'],
+            log_action(_texts(model)['type'] + '_start', row['series_id'], row['series_title'],
                        f"{row['filename']} : {what} ({label})",
                        files_json=_volumes_json(_volume_entry(row, model, note=what[0].upper() + what[1:])))
     except Exception:  # noqa: BLE001
@@ -416,7 +525,7 @@ def _volume_entry(row, model=None, **extra):
         return None
     entry = {'volume_id': row['id'], 'filename': row['filename'], 'volume_number': row['volume_number'],
              'series_id': row['series_id'], 'series_title': row['series_title'],
-             'model': upscale.MODEL_LABELS.get(model, model) if model else None}
+             'model': job_label(model) if model else None}
     entry.update({k: v for k, v in _volume_kind(row['id']).items() if v})
     if row['page_width'] and row['page_height']:
         entry['size'] = f"{row['page_width']} × {row['page_height']}"
@@ -433,14 +542,16 @@ def log_queued(app, items):
         for volume_id, model in items:
             row = _volume_row(app, volume_id)
             if row:
-                by_series.setdefault((row['series_id'], row['series_title']), []).append((row, model))
-        for (series_id, series_title), volumes in by_series.items():
-            labels = sorted({upscale.MODEL_LABELS.get(model, model) for _row, model in volumes})
+                kind = _texts(model)['type']
+                by_series.setdefault((row['series_id'], row['series_title'], kind), []).append((row, model))
+        for (series_id, series_title, kind), volumes in by_series.items():
+            texts = _texts(volumes[0][1])
+            labels = sorted({job_label(model) for _row, model in volumes})
             if len(volumes) == 1:
-                detail = f"{volumes[0][0]['filename']} : upscaling demandé ({labels[0]})"
+                detail = f"{volumes[0][0]['filename']} : {texts['requested']} ({labels[0]})"
             else:
-                detail = f"{len(volumes)} tomes mis en file d'upscaling ({', '.join(labels)})"
-            log_action('upscale_queue', series_id, series_title, detail,
+                detail = f"{len(volumes)} tomes mis en file de {texts['noun']} ({', '.join(labels)})"
+            log_action(kind + '_queue', series_id, series_title, detail,
                        files_json=_volumes_json(*(_volume_entry(row, model) for row, model in volumes)))
     except Exception:  # noqa: BLE001
         pass
@@ -452,8 +563,9 @@ def log_cancelled(app, volume_id):
         row = _volume_row(app, volume_id)
         if row:
             state = job(volume_id) or {}
-            log_action('upscale_cancel', row['series_id'], row['series_title'],
-                       f"{row['filename']} : upscaling annulé, fichier inchangé",
+            texts = _texts(state.get('model'))
+            log_action(texts['type'] + '_cancel', row['series_id'], row['series_title'],
+                       f"{row['filename']} : {texts['cancelled']}, fichier inchangé",
                        files_json=_volumes_json(_volume_entry(row, state.get('model'),
                                                               note='Annulé, fichier inchangé')))
     except Exception:  # noqa: BLE001
@@ -484,10 +596,11 @@ def _log_failure(app, volume_id, model, error):
         from .action_history import log_action
         with app.app_context():
             row = _volume_row(app, volume_id)
-            label = upscale.MODEL_LABELS.get(model, model)
+            label = job_label(model)
+            texts = _texts(model)
             name = row['filename'] if row else f'Tome #{volume_id}'
-            log_action('upscale', row['series_id'] if row else None, row['series_title'] if row else None,
-                       f'{name} : upscaling impossible ({label}), fichier inchangé',
+            log_action(texts['type'], row['series_id'] if row else None, row['series_title'] if row else None,
+                       f"{name} : {texts['impossible']} ({label}), fichier inchangé",
                        success=False, error=str(error) or error.__class__.__name__,
                        files_json=_volumes_json(_volume_entry(row, model, error=str(error) or error.__class__.__name__)))
     except Exception:  # noqa: BLE001
@@ -581,26 +694,36 @@ def _store_page(work_dir, index, result):
 
 def _process(app, volume_id, model):
     row = _volume_row(app, volume_id)
-    error = check_volume(row)
+    error = check_volume(row, model)
     if error:
         raise ValueError(error)
+    spec = parse_downscale(model)
     filepath = row['filepath']
-    work_dir = work_dir_for(app, row, model)
+    work_dir = work_dir_for(app, row, model.replace(':', '_'))
     _clear_work(app, volume_id, keep=work_dir)   # pages d'un autre modèle ou d'un fichier modifié
+    page_function = (lambda data, _model: downscale_image(data, spec[0])) if spec else None
     temp, upscaled, median = upscale_cbz(
         filepath, model,
         progress=lambda page, total, done: _update(volume_id, page=page, total=total, upscaled=done),
-        cancelled=lambda: _cancelled(volume_id), work_dir=work_dir)
+        cancelled=lambda: _cancelled(volume_id), work_dir=work_dir, upscale_page=page_function)
     if not upscaled:
         os.remove(temp)
-        raise ValueError('Aucune page en basse définition dans ce tome')
+        raise ValueError(f'Aucune page à réduire sous {spec[0]} px dans ce tome' if spec
+                         else 'Aucune page en basse définition dans ce tome')
     if _cancelled(volume_id):
         os.remove(temp)
         raise UpscaleCancelled()
+    original_size = os.path.getsize(filepath)
+    if spec and os.path.getsize(temp) >= original_size:
+        os.remove(temp)
+        raise ValueError("La version réduite n'est pas plus légère que l'original : fichier inchangé")
     try:
         shutil.copymode(filepath, temp)
     except OSError:
         pass
+    if spec and not spec[1]:
+        _replace_without_backup(app, row, temp, upscaled, median, model, original_size)
+        return
     # L'original part dans la sauvegarde (déplacement sur le même disque), puis la version HD
     # prend sa place ; en cas d'échec entre les deux, l'original revient.
     backup = backup_path_for(filepath, row['library_path'])
@@ -609,7 +732,6 @@ def _process(app, volume_id, model):
         raise ValueError(f'Une sauvegarde existe déjà : {backup}')
     _makedirs_like(os.path.dirname(backup), os.path.dirname(filepath))
     _match_owner(temp, filepath)
-    original_size = os.path.getsize(filepath)
     shutil.move(filepath, backup)
     try:
         os.replace(temp, filepath)
@@ -632,16 +754,48 @@ def _process(app, volume_id, model):
     finally:
         conn.close()
     _after_change(row)
+    _log_done(row, model, upscaled, median, original_size, size, kept=True)
+
+
+def _mb(size):
+    return f'{size / 1048576:.0f} Mo' if size >= 10 * 1048576 else f'{size / 1048576:.1f} Mo'
+
+
+def _log_done(row, model, changed, median, before_size, after_size, kept):
     try:
         from .action_history import log_action
-        label = upscale.MODEL_LABELS.get(model, model)
+        label = job_label(model)
         after = f'{median[0]} × {median[1]}' if median else None
-        log_action('upscale', row['series_id'], row['series_title'],
-                   f"{row['filename']} : {upscaled} pages agrandies x2 ({label}), original gardé",
-                   files_json=_volumes_json(_volume_entry(row, model, after=after,
-                                                          note=f'{upscaled} pages agrandies x2, original SD gardé')))
+        spec = parse_downscale(model)
+        if spec:
+            what = f"{changed} pages réduites ({_mb(before_size)} → {_mb(after_size)})"
+            note = what + (', original gardé' if kept else ', original supprimé')
+        else:
+            what = f'{changed} pages agrandies x2'
+            note = what + ', original SD gardé'
+        log_action('downscale' if spec else 'upscale', row['series_id'], row['series_title'],
+                   f"{row['filename']} : {what} ({label}), {'original gardé' if kept else 'original supprimé'}",
+                   files_json=_volumes_json(_volume_entry(row, model, after=after, note=note)))
     except Exception:  # noqa: BLE001
         pass
+
+
+def _replace_without_backup(app, row, temp, changed, median, model, original_size):
+    """Réduction sans garder l'original (choisi par l'utilisateur) : la version réduite,
+    déjà vérifiée (archive lisible, toutes les pages), remplace le fichier d'un coup."""
+    filepath = row['filepath']
+    _match_owner(temp, filepath)
+    os.replace(temp, filepath)
+    size = os.path.getsize(filepath)
+    conn = _db(app)
+    try:
+        conn.execute('UPDATE volumes SET file_size = ?, page_width = ?, page_height = ?, page_size_file_size = ? WHERE id = ?',
+                     (size, median[0] if median else None, median[1] if median else None, size, row['id']))
+        conn.commit()
+    finally:
+        conn.close()
+    _after_change(row)
+    _log_done(row, model, changed, median, original_size, size, kept=False)
 
 
 def _after_change(row):
@@ -662,10 +816,10 @@ def restore(app, volume_id):
     with _lock:
         state = _jobs.get(volume_id)
         if state and state['status'] in ('queued', 'running'):
-            return 'Upscaling en cours pour ce tome'
+            return 'Traitement en cours pour ce tome'
     backup = backups(app, {volume_id}).get(volume_id)
     if not backup:
-        return 'Aucune version SD gardée pour ce tome'
+        return "Aucune version d'origine gardée pour ce tome"
     if not backup['exists']:
         return f"La sauvegarde n'est plus sur le disque : {backup['backup_path']}"
     row = _volume_row(app, volume_id)
@@ -687,9 +841,13 @@ def restore(app, volume_id):
     _after_change(row)
     try:
         from .action_history import log_action
-        log_action('upscale_restore', row['series_id'], row['series_title'], f"{row['filename']} : version SD remise",
+        reduced = parse_downscale(backup.get('model'))
+        log_action('downscale_restore' if reduced else 'upscale_restore', row['series_id'], row['series_title'],
+                   f"{row['filename']} : {'original remis' if reduced else 'version SD remise'}",
                    files_json=_volumes_json(_volume_entry(dict(row, page_width=backup['page_width'], page_height=backup['page_height']),
-                                                          backup.get('model'), note='Version SD remise à la place de la HD')))
+                                                          backup.get('model'),
+                                                          note='Original remis à la place de la version réduite' if reduced
+                                                          else 'Version SD remise à la place de la HD')))
     except Exception:  # noqa: BLE001
         pass
     return None
@@ -699,7 +857,7 @@ def delete_backup(app, volume_id):
     """Supprime la version SD gardée (la version HD reste). Renvoie une erreur ou None."""
     backup = backups(app, {volume_id}).get(volume_id)
     if not backup:
-        return 'Aucune version SD gardée pour ce tome'
+        return "Aucune version d'origine gardée pour ce tome"
     if backup['exists']:
         os.remove(backup['backup_path'])
         _remove_empty_dirs(os.path.dirname(backup['backup_path']))
@@ -713,10 +871,13 @@ def delete_backup(app, volume_id):
         from .action_history import log_action
         row = _volume_row(app, volume_id)
         if row:
-            log_action('upscale_backup_delete', row['series_id'], row['series_title'],
-                       f"{row['filename']} : version SD gardée supprimée, la version HD reste",
+            reduced = parse_downscale(backup.get('model'))
+            log_action('downscale_backup_delete' if reduced else 'upscale_backup_delete', row['series_id'], row['series_title'],
+                       f"{row['filename']} : " + ('original gardé supprimé, la version réduite reste' if reduced
+                                                  else 'version SD gardée supprimée, la version HD reste'),
                        files_json=_volumes_json(_volume_entry(row, backup.get('model'),
-                                                              note='Version SD supprimée, la HD reste')))
+                                                              note='Original supprimé, la version réduite reste' if reduced
+                                                              else 'Version SD supprimée, la HD reste')))
     except Exception:  # noqa: BLE001
         pass
     return None
@@ -765,6 +926,42 @@ def low_definition_volumes(app):
             'filename': row['filename'], 'format': fmt, 'page_width': row['page_width'],
             'page_height': row['page_height'], 'file_size': row['file_size'], 'page_count': row['page_count'],
             'upscalable': reason is None, 'reason': reason,
+            'job': {k: state.get(k) for k in ('status', 'page', 'total', 'error', 'model')} if state else None,
+        })
+    return items
+
+
+def heavy_volumes(app):
+    """Tomes possédés trop lourds (plus de 3 Mo par page en moyenne, ou pages de plus de
+    3200 px), proposés à la réduction sur la page Upscaling."""
+    conn = _db(app)
+    try:
+        ensure_table(conn)
+        rows = conn.execute('''
+            SELECT v.id, v.series_id, v.filename, v.format, v.page_width, v.page_height,
+                   v.file_size, v.page_count, s.title AS series_title,
+                   (SELECT model FROM upscale_backups b WHERE b.volume_id = v.id) AS backup_model
+            FROM volumes v JOIN series s ON s.id = v.series_id
+            WHERE v.filepath IS NOT NULL AND v.page_count > 0 AND v.file_size > 0
+              AND (v.file_size * 1.0 / v.page_count >= ? OR MAX(v.page_width, v.page_height) > ?)
+            ORDER BY v.file_size * 1.0 / v.page_count DESC''', (HEAVY_PAGE_BYTES, max(DOWNSCALE_CHOICES))).fetchall()
+    finally:
+        conn.close()
+    items = []
+    for row in rows:
+        state = job(row['id'])
+        fmt = (row['format'] or '').lower()
+        reason = None
+        if row['backup_model']:
+            reason = ('Déjà réduit (original gardé)' if parse_downscale(row['backup_model'])
+                      else 'Upscalé (version SD gardée)')
+        elif fmt != 'cbz':
+            reason = "Convertir d'abord en CBZ"
+        items.append({
+            'volume_id': row['id'], 'series_id': row['series_id'], 'series_title': row['series_title'],
+            'filename': row['filename'], 'format': fmt, 'page_width': row['page_width'],
+            'page_height': row['page_height'], 'file_size': row['file_size'], 'page_count': row['page_count'],
+            'reducible': reason is None, 'reason': reason,
             'job': {k: state.get(k) for k in ('status', 'page', 'total', 'error', 'model')} if state else None,
         })
     return items
