@@ -522,7 +522,7 @@ function _initNavGroupFlyout(parent, links) {
 // connu, son storageKey passe à 'true' et TOUS les autres à 'false' - initNavGroup lit
 // donc déjà la bonne valeur pour chacun, plus de course entre les deux initialisations.
 const NAV_GROUPS_META = [
-    { storageKey: 'activityExpanded', hrefs: ['/import', '/ebdz-nouveautes', '/history'] },
+    { storageKey: 'activityExpanded', hrefs: ['/import', '/nouveautes', '/history'] },
     { storageKey: 'actionsExpanded', hrefs: ['/bedetheque-enrich', '/missing-monitor', '/verification', '/upscaling'] },
 ];
 
@@ -540,7 +540,7 @@ function initActivityGroup() {
         id: 'activity-nav-subgroup',
         storageKey: 'activityExpanded',
         label: '📋 Suivi',
-        hrefs: ['/import', '/ebdz-nouveautes', '/history', '/lectures'],
+        hrefs: ['/import', '/nouveautes', '/history', '/lectures'],
         insertAfterHref: '/discover'
     });
 }
@@ -1198,7 +1198,7 @@ function initImportBadge(navLinks) {
 // sidebar ("affiche un numéro pour les nouveautés... comme pour import") - même pattern
 // qu'initImportBadge (interrogé périodiquement, visible depuis n'importe quelle page).
 // "since la dernière fois que j'ai validé" = la date de la dernière visite de
-// /ebdz-nouveautes, posée dans localStorage par ebdz-latest.js à chaque chargement
+// /nouveautes, posée dans localStorage par ebdz-latest.js à chaque chargement
 // réussi de la page (juste avoir vu la page = "validé", pas de bouton de validation
 // séparé). Première visite jamais faite: initialisée à "maintenant" ci-dessous plutôt que de
 // compter tout l'historique existant comme "nouveau" et afficher un nombre énorme et peu
@@ -1207,10 +1207,10 @@ const NOUVEAUTES_LAST_SEEN_KEY = 'nouveautesLastSeenAt';
 
 function initNouveautesBadge(navLinks) {
     // Même précaution que initImportBadge ci-dessus (voir son commentaire): pas de collision
-    // actuelle puisque '/ebdz-nouveautes' n'est pas hrefs[0] d'un groupe aujourd'hui, mais
+    // actuelle puisque '/nouveautes' n'est pas hrefs[0] d'un groupe aujourd'hui, mais
     // préfère quand même le vrai sous-lien si l'ordre venait à changer.
-    const nouveautesLink = Array.from(navLinks).find(link => link.getAttribute('href') === '/ebdz-nouveautes' && link.classList.contains('nav-sublink'))
-        || Array.from(navLinks).find(link => link.getAttribute('href') === '/ebdz-nouveautes');
+    const nouveautesLink = Array.from(navLinks).find(link => link.getAttribute('href') === '/nouveautes' && link.classList.contains('nav-sublink'))
+        || Array.from(navLinks).find(link => link.getAttribute('href') === '/nouveautes');
     if (!nouveautesLink) return;
 
     if (!localStorage.getItem(NOUVEAUTES_LAST_SEEN_KEY)) {

@@ -1,7 +1,7 @@
 """
 Routes pour la recherche de liens ED2K
 """
-from flask import render_template, request, jsonify, current_app
+from flask import render_template, request, jsonify, current_app, redirect
 from . import search_bp
 import sqlite3
 import re
@@ -285,10 +285,17 @@ def discover_page():
     return render_template('discover.html')
 
 
-@search_bp.route('/ebdz-nouveautes')
+@search_bp.route('/nouveautes')
 def ebdz_latest_page():
-    """Page listant les nouveaux épisodes/volumes du dernier scrape EBDZ"""
+    """Page Nouveautés (EBDZ, Telegram, RSS/VK)."""
     return render_template('ebdz-latest.html')
+
+
+@search_bp.route('/ebdz-nouveautes')
+def ebdz_latest_page_legacy():
+    """Ancienne adresse, gardée en redirection pour les favoris et liens existants."""
+    query = request.query_string.decode('utf-8', 'ignore')
+    return redirect('/nouveautes' + ('?' + query if query else ''), code=301)
 
 
 @search_bp.route('/api/search')

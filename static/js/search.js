@@ -1,4 +1,4 @@
-// Utilitaires d'action de téléchargement partagés entre /discover et /ebdz-nouveautes
+// Utilitaires d'action de téléchargement partagés entre /discover et /nouveautes
 // (voir templates/discover.html, templates/ebdz-latest.html) - ce fichier hébergeait à
 // l'origine le contrôleur d'une page /search autonome (recherche EBDZ/Prowlarr/Bédéthèque
 // avec son propre champ #searchInput/#results/#filterBox), supprimée depuis; seules les
