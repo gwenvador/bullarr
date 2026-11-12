@@ -54,21 +54,21 @@
                             <p class="section-description">Les albums dont les pages font <strong id="upscalingMaxSide">1600</strong> px au plus (<a href="/settings#upscale">réglable</a>) peuvent être agrandis x2 et nettoyés sur le serveur, avec le modèle choisi ci-dessous. Le fichier est remplacé par sa version HD et l'original SD est gardé à part : il peut être remis à tout moment. <a href="/docs#upscaling">Comment ça marche</a></p>
                         </div>
 
-                        <section class="settings-card" id="upscalingModelCard">
-                            <div class="upscaling-card-head">
-                                <h3>Modèle</h3>
-                                <div id="upscalingState" class="upscaling-state-badges"></div>
-                            </div>
-                            <p class="upscaling-lead">Utilisé pour tous les upscalings lancés depuis cette page ou la molette d'un tome. Pas sûr ? Comparez-les sur une de vos pages juste en dessous.</p>
-                            <div id="upscalingModels" class="upscaling-models" role="radiogroup" aria-label="Modèle d'upscaling"></div>
-                            <div id="upscalingRunning"></div>
-                        </section>
+                        <div id="upscalingRunning"></div>
 
-                        <section class="settings-card" id="compare">
-                            <div class="upscaling-card-head">
-                                <h3>Comparer les modèles</h3>
+                        <details class="settings-card upscaling-collapse" id="upscalingModelsGroup" ontoggle="upscalingGroupToggled(this)">
+                            <summary class="upscaling-card-head">
+                                <h3>Modèle et comparaison <span class="upscaling-muted upscaling-collapse-hint" id="upscalingModelSummary"></span></h3>
+                                <div id="upscalingState" class="upscaling-state-badges"></div>
+                            </summary>
+                            <div id="upscalingModelCard">
+                                <h4 class="upscaling-subhead">Modèle</h4>
+                                <p class="upscaling-lead">Utilisé pour tous les upscalings lancés depuis cette page ou la molette d'un tome. Pas sûr ? Comparez-les sur une de vos pages juste en dessous.</p>
+                                <div id="upscalingModels" class="upscaling-models" role="radiogroup" aria-label="Modèle d'upscaling"></div>
                             </div>
-                            <p class="upscaling-lead">Choisissez un album et une page, puis cliquez sur la page pour placer la zone à comparer. Chaque modèle agrandit le même extrait ; cliquez sur un résultat pour garder ce modèle.</p>
+                            <div id="compare">
+                                <h4 class="upscaling-subhead">Comparer les modèles</h4>
+                                <p class="upscaling-lead">Choisissez un album et une page, puis cliquez sur la page pour placer la zone à comparer. Chaque modèle agrandit le même extrait ; cliquez sur un résultat pour garder ce modèle.</p>
                             <div class="upscaling-compare-controls">
                                 <label class="upscaling-field upscaling-field-grow"><span>Album</span><select id="compareVolume" class="upscaling-input" onchange="compareVolumeChanged()"></select></label>
                                 <label class="upscaling-field"><span>Page</span><input type="number" id="comparePage" class="upscaling-input" min="1" value="3" onchange="compareLoadPage()"></label>
@@ -81,40 +81,40 @@
                                 </div>
                                 <div class="upscaling-compare-grid" id="compareGrid"><p class="upscaling-muted">Les résultats s'affichent ici.</p></div>
                             </div>
-                        </section>
+                            </div>
+                        </details>
 
-                        <section class="settings-card" id="upscalingLowDefinitionCard">
-                            <div class="upscaling-card-head">
-                                <h3>Albums non HD <span class="upscaling-count" id="upscalingLowDefinitionCount">—</span></h3>
-                                <div class="upscaling-actions" id="upscalingBulkControls" hidden>
+                        <details class="settings-card upscaling-collapse" id="upscalingLowDefinitionCard" open>
+                            <summary class="upscaling-card-head">                                <h3>Albums non HD <span class="upscaling-count" id="upscalingLowDefinitionCount">—</span></h3>
+                            </summary>
+
+                                <div class="upscaling-actions upscaling-actions-row" id="upscalingBulkControls" hidden>
                                     <label class="upscaling-search"><svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input type="search" class="upscaling-filter" id="upscalingFilter" placeholder="Filtrer par série ou fichier" aria-label="Filtrer par série ou fichier" oninput="upscalingApplyFilter()"></label>
                                     <label class="upscaling-select-all"><input type="checkbox" id="upscalingSelectAll" onchange="upscalingToggleAll(this)"> Tout sélectionner</label>
                                     <button type="button" class="btn btn-primary" id="upscalingRunBtn" onclick="upscalingRunSelected()" disabled>Upscaler en HD (<span id="upscalingSelectedCount">0</span>)</button>
-                                </div>
                             </div>
                             <div id="upscalingLowDefinitionList" class="upscaling-table-wrap"><p class="upscaling-muted">Chargement…</p></div>
-                        </section>
+                        </details>
 
-                        <section class="settings-card" id="heavy">
-                            <div class="upscaling-card-head">
-                                <h3>Albums trop lourds <span class="upscaling-count" id="upscalingHeavyCount">—</span></h3>
-                                <div class="upscaling-actions" id="upscalingHeavyControls" hidden>
+                        <details class="settings-card upscaling-collapse" id="heavy" open>
+                            <summary class="upscaling-card-head">                                <h3>Albums trop lourds <span class="upscaling-count" id="upscalingHeavyCount">—</span></h3>
+                            </summary>
+
+                                <div class="upscaling-actions upscaling-actions-row" id="upscalingHeavyControls" hidden>
                                     <label class="upscaling-select-all"><input type="checkbox" id="upscalingHeavySelectAll" onchange="upscalingHeavyToggleAll(this)"> Tout sélectionner</label>
                                     <button type="button" class="btn btn-primary" id="upscalingHeavyRunBtn" onclick="upscalingHeavyRunSelected()" disabled>Réduire (<span id="upscalingHeavySelectedCount">0</span>)</button>
-                                </div>
                             </div>
                             <p class="upscaling-lead">L'inverse de l'upscaling : les albums aux pages de plus de 3200 px ou de plus de 3 Mo en moyenne. Leurs pages sont ramenées à la définition choisie et réencodées en JPEG de bonne qualité, ce qui divise souvent la taille du fichier par deux ou plus. L'original peut être gardé (restaurable) ou supprimé tout de suite.</p>
                             <div id="upscalingHeavyList" class="upscaling-table-wrap"><p class="upscaling-muted">Chargement…</p></div>
-                        </section>
+                        </details>
 
-                        <section class="settings-card" id="upscalingBackupsCard">
-                            <div class="upscaling-card-head">
-                                <h3>Originaux gardés <span class="upscaling-count" id="upscalingBackupsCount">—</span></h3>
+                        <details class="settings-card upscaling-collapse" id="upscalingBackupsCard" open>
+                            <summary class="upscaling-card-head">                                <h3>Originaux gardés <span class="upscaling-count" id="upscalingBackupsCount">—</span></h3>
                                 <span class="upscaling-muted" id="upscalingBackupsBytes"></span>
-                            </div>
+                            </summary>
                             <p class="upscaling-lead">L'original de chaque album upscalé ou réduit est gardé dans le dossier caché <code>.bullarr-sd-backup</code> à la racine de sa bibliothèque. « Remettre l'original » annule l'upscaling ou la réduction ; supprimer la sauvegarde garde la nouvelle version et libère la place.</p>
                             <div id="upscalingBackupsList" class="upscaling-table-wrap"><p class="upscaling-muted">Chargement…</p></div>
-                        </section>
+                        </details>
                     </div>
                 </div>
             </div>

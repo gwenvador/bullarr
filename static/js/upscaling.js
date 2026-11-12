@@ -63,7 +63,8 @@ async function loadUpscaling() {
         renderUpscalingHeavy();
         renderUpscalingBackups();
         if (first) compareInit();
-        if (first && location.hash === '#heavy') document.getElementById('heavy')?.scrollIntoView({ block: 'start' });
+        if (first && location.hash === '#compare') document.getElementById('upscalingModelsGroup').open = true;
+        if (first && ['#heavy', '#compare'].includes(location.hash)) document.querySelector(location.hash)?.scrollIntoView({ block: 'start' });
         const busy = (data.jobs || []).some(job => UPSCALING_BUSY.includes(job.status));
         if (busy) upscalingPoll = setTimeout(loadUpscaling, 4000);
     } catch (error) {
@@ -82,7 +83,7 @@ function renderUpscalingModels() {
         badges = `<span class="upscale-badge upscale-badge-warn">${svgIcon('triangle-alert')} Moteur ONNX absent du serveur</span>`;
     } else if (!data.server_enabled) {
         badges = `<span class="upscale-badge upscale-badge-warn">${svgIcon('triangle-alert')} Désactivé</span>
-            <button type="button" class="btn btn-sm" onclick="upscalingSaveConfig({ server_enabled: true })">Activer</button>`;
+            <button type="button" class="btn btn-sm" onclick="event.preventDefault(); upscalingSaveConfig({ server_enabled: true })">Activer</button>`;
     } else if (running) {
         badges = `<span class="upscale-badge upscale-badge-ok">${svgIcon('loader-circle', 'icon-spin')} ${_upIsDownscale(running.model) ? 'Réduction en cours' : 'Upscaling en cours'}</span>`;
     } else {
@@ -90,6 +91,8 @@ function renderUpscalingModels() {
     }
     if (queued) badges += `<span class="upscale-badge">${queued} en attente</span>`;
     document.getElementById('upscalingState').innerHTML = badges;
+    const summary = document.getElementById('upscalingModelSummary');
+    if (summary) summary.textContent = `· ${_upModelLabel(data.model)}`;
 
     document.getElementById('upscalingModels').innerHTML = _upOrder().map(key => [key, data.catalog[key]]).map(([key, spec]) => {
         const present = data.models?.[key]?.present !== false;
@@ -146,7 +149,13 @@ function compareInit() {
     compareVolumeChanged();
 }
 
+// La zone de comparaison se mesure sur l'image affichée : on la redessine à l'ouverture.
+function upscalingGroupToggled(details) {
+    if (details.open) compareDrawZone();
+}
+
 function compareSelectVolume(volumeId) {
+    document.getElementById('upscalingModelsGroup').open = true;
     const select = document.getElementById('compareVolume');
     select.value = String(volumeId);
     compareVolumeChanged();
@@ -447,6 +456,7 @@ function renderUpscalingBackups() {
             <td class="upscaling-nowrap">${_upDate(item.created_at)}</td>
             <td class="upscaling-num">${item.exists ? _upBytes(item.bytes) : '<span class="upscale-badge upscale-badge-warn">Absente</span>'}</td>
             <td class="upscaling-end"><div class="upscaling-row-actions">
+                <button type="button" class="upscale-icon-btn" onclick="upscalingOpenCompare(${item.volume_id})"${item.exists ? '' : ' disabled'} data-tooltip="Comparer les pages avec l'original" aria-label="Comparer avec l'original">${svgIcon('arrow-left-right')}</button>
                 <button type="button" class="upscale-icon-btn" onclick="upscalingRestore(${item.volume_id}, ${_upIsDownscale(item.model)})"${item.exists ? '' : ' disabled'} data-tooltip="${_upIsDownscale(item.model) ? 'Remettre l\'original' : 'Remettre la version SD'}" aria-label="Remettre l'original">${svgIcon('undo')}</button>
                 <button type="button" class="upscale-icon-btn danger" onclick="upscalingDeleteBackup(${item.volume_id}, ${_upIsDownscale(item.model)})" data-tooltip="${_upIsDownscale(item.model) ? 'Supprimer l\'original (garder la version réduite, libère la place)' : 'Supprimer la version SD (garder la HD)'}" aria-label="Supprimer l'original">${svgIcon('trash-2')}</button>
             </div></td></tr>`).join('')}</tbody></table>`;
@@ -481,3 +491,209 @@ async function upscalingDeleteBackup(volumeId, reduced) {
 
 window.addEventListener('resize', () => compareDrawZone());
 document.addEventListener('DOMContentLoaded', loadUpscaling);
+
+// ----- Comparaison original / nouvelle version (albums upscalés ou réduits) -----
+// Côte à côte ou au curseur, page par page ; un clic sur une image passe en taille réelle
+// (les deux images à la même échelle, défilement synchronisé) et inversement.
+const upCmp = { id: null, page: 1, total: 0, mode: 'side', zoom: false, split: 0.5, info: null };
+
+async function upscalingOpenCompare(volumeId) {
+    let info;
+    try {
+        info = await (await fetch(`/api/volumes/${volumeId}/upscale/backup/info`)).json();
+        if (!info.success) throw new Error(info.error || 'Original introuvable');
+    } catch (error) {
+        alert('❌ ' + error.message);
+        return;
+    }
+    Object.assign(upCmp, { id: volumeId, page: 1, total: Math.min(info.original_pages, info.current_pages) || 1, zoom: false, split: 0.5, info });
+    const reduced = _upIsDownscale(info.model);
+    document.getElementById('upscalingCompareModal')?.remove();
+    const modal = document.createElement('div');
+    modal.className = 'modal active upcmp-modal';
+    modal.id = 'upscalingCompareModal';
+    modal.innerHTML = `
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="upcmp-title">
+            <span class="close-modal" onclick="upscalingCloseCompare()" aria-label="Fermer">×</span>
+            <div class="upcmp-head"><h2 id="upcmp-title">${_upEsc(info.series_title || '')}</h2><span>${_upEsc(info.filename || '')}</span></div>
+            <div class="upcmp-toolbar">
+                <span class="upcmp-pager">
+                    <button type="button" class="upscale-icon-btn" onclick="upCmpGo(-1)" aria-label="Page précédente"><span style="display:inline-flex;transform:rotate(180deg)">${svgIcon('chevron-right')}</span></button>
+                    Page <input type="number" id="upcmpPage" min="1" max="${upCmp.total}" value="1" onchange="upCmpGo(0, this.value)"> / ${upCmp.total}
+                    <button type="button" class="upscale-icon-btn" onclick="upCmpGo(1)" aria-label="Page suivante">${svgIcon('chevron-right')}</button>
+                </span>
+                <span class="upcmp-seg" role="group" aria-label="Affichage">
+                    <button type="button" data-mode="side" onclick="upCmpMode('side')">Côte à côte</button>
+                    <button type="button" data-mode="slider" onclick="upCmpMode('slider')">Curseur</button>
+                </span>
+                <span class="upcmp-seg"><button type="button" id="upcmpZoomBtn" onclick="upCmpZoom()">Taille réelle</button></span>
+                <span class="upcmp-hint">${reduced ? 'Réduction' : 'Upscaling'} : ${_upEsc(_upModelLabel(info.model))} · ←/→ pour changer de page</span>
+            </div>
+            <div class="upcmp-body" id="upcmpBody"></div>
+        </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', event => { if (event.target === modal) upscalingCloseCompare(); });
+    document.addEventListener('keydown', upCmpKey, true);
+    upCmpMode(upCmp.mode);
+}
+
+function upscalingCloseCompare() {
+    document.removeEventListener('keydown', upCmpKey, true);
+    document.getElementById('upscalingCompareModal')?.remove();
+}
+
+function upCmpKey(event) {
+    if (!document.getElementById('upscalingCompareModal')) return;
+    if (event.key === 'Escape') { event.stopPropagation(); upscalingCloseCompare(); }
+    else if (event.target.tagName === 'INPUT') return;
+    else if (event.key === 'ArrowLeft') { event.preventDefault(); upCmpGo(-1); }
+    else if (event.key === 'ArrowRight') { event.preventDefault(); upCmpGo(1); }
+}
+
+function upCmpGo(delta, value) {
+    const page = Math.min(Math.max(1, value != null ? Number(value) || 1 : upCmp.page + delta), upCmp.total);
+    if (page === upCmp.page && value == null) return;
+    upCmp.page = page;
+    document.getElementById('upcmpPage').value = page;
+    upCmpRender();
+}
+
+function upCmpMode(mode) {
+    upCmp.mode = mode;
+    document.querySelectorAll('.upcmp-seg [data-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
+    upCmpRender();
+}
+
+function upCmpZoom(anchor) {
+    upCmp.zoom = !upCmp.zoom;
+    document.getElementById('upcmpZoomBtn').classList.toggle('active', upCmp.zoom);
+    upCmpRender(anchor);
+}
+
+function _upCmpUrls() {
+    return {
+        original: `/api/volumes/${upCmp.id}/upscale/backup/page/${upCmp.page}`,
+        current: `/api/volumes/${upCmp.id}/reader/page/${upCmp.page}`,
+    };
+}
+
+function _upCmpMeta(img, bytes) {
+    const dims = img.naturalWidth ? `${img.naturalWidth} × ${img.naturalHeight} px` : '';
+    return [dims, bytes ? _upBytesPrecise(bytes) : ''].filter(Boolean).join(' · ');
+}
+
+function _upBytesPrecise(bytes) {
+    return bytes >= 1048576 ? `${(bytes / 1048576).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo`
+        : `${Math.max(1, Math.round(bytes / 1024)).toLocaleString('fr-FR')} Ko`;
+}
+
+async function _upCmpLoad(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Erreur ${response.status}`);
+    }
+    const blob = await response.blob();
+    const src = URL.createObjectURL(blob);
+    const img = new Image();
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('Image illisible')); img.src = src; });
+    return { img, bytes: blob.size, src };
+}
+
+async function upCmpRender(anchor) {
+    const body = document.getElementById('upcmpBody');
+    if (!body) return;
+    const token = `${upCmp.id}-${upCmp.page}-${upCmp.mode}-${upCmp.zoom}-${Math.random()}`;
+    body.dataset.token = token;
+    body.className = `upcmp-body ${upCmp.mode}${upCmp.zoom ? ' upcmp-zoom' : ''}`;
+    if (!body.children.length) body.innerHTML = `<p class="upscaling-muted">${svgIcon('loader-circle', 'icon-spin')} Chargement…</p>`;
+    let original, current;
+    try {
+        const urls = _upCmpUrls();
+        [original, current] = await Promise.all([_upCmpLoad(urls.original), _upCmpLoad(urls.current)]);
+    } catch (error) {
+        if (body.dataset.token === token) body.innerHTML = `<p class="upscaling-muted">${svgIcon('triangle-alert')} ${_upEsc(error.message)}</p>`;
+        return;
+    }
+    if (body.dataset.token !== token) return;
+    const reduced = _upIsDownscale(upCmp.info.model);
+    const newLabel = reduced ? 'Version réduite' : 'Version HD';
+    // Même échelle pour les deux images : la plus grande en taille réelle (zoom) ou ajustée.
+    const width = Math.max(original.img.naturalWidth, current.img.naturalWidth);
+    const height = Math.round(width * current.img.naturalHeight / current.img.naturalWidth);
+    const sized = upCmp.zoom ? ` style="width:${width}px;height:${height}px"` : '';
+    if (upCmp.mode === 'side') {
+        body.innerHTML = [['Original', original], [newLabel, current]].map(([label, item], index) => `
+            <div class="upcmp-pane">
+                <div class="upcmp-label"><strong>${label}</strong><span>${_upCmpMeta(item.img, item.bytes)}</span></div>
+                <div class="upcmp-scroll" data-pane="${index}"><img src="${item.src}" alt="${label}"${sized} onclick="upCmpImageClick(event)"></div>
+            </div>`).join('');
+        const panes = [...body.querySelectorAll('.upcmp-scroll')];
+        let syncing = false;
+        panes.forEach(pane => pane.addEventListener('scroll', () => {
+            if (syncing) return;
+            syncing = true;
+            panes.forEach(other => { if (other !== pane) { other.scrollLeft = pane.scrollLeft; other.scrollTop = pane.scrollTop; } });
+            requestAnimationFrame(() => { syncing = false; });
+        }));
+        if (!upCmp.zoom) panes.forEach(pane => _upCmpFit(pane.querySelector('img'), pane, width, height));
+        _upCmpScrollTo(panes, anchor);
+    } else {
+        body.innerHTML = `
+            <div class="upcmp-pane">
+                <div class="upcmp-label"><strong>Original ⇆ ${newLabel}</strong><span>${_upCmpMeta(original.img, original.bytes)} → ${_upCmpMeta(current.img, current.bytes)}</span></div>
+                <div class="upcmp-scroll"><div class="upcmp-stage">
+                    <img src="${current.src}" alt="${newLabel}"${sized}>
+                    <img class="upcmp-top" src="${original.src}" alt="Original">
+                    <span class="upcmp-divider"></span>
+                    <span class="upcmp-tag" style="left:8px">Original</span><span class="upcmp-tag" style="right:8px">${newLabel}</span>
+                </div></div>
+            </div>`;
+        const scroll = body.querySelector('.upcmp-scroll');
+        const stage = body.querySelector('.upcmp-stage');
+        const move = event => {
+            const rect = stage.getBoundingClientRect();
+            const x = (event.touches ? event.touches[0].clientX : event.clientX) - rect.left;
+            upCmp.split = Math.min(Math.max(x / rect.width, 0), 1);
+            _upCmpSplit(stage);
+        };
+        let dragging = false;
+        stage.addEventListener('pointerdown', event => { dragging = true; stage.setPointerCapture(event.pointerId); move(event); });
+        stage.addEventListener('pointermove', event => { if (dragging || event.pointerType === 'mouse') move(event); });
+        stage.addEventListener('pointerup', () => { dragging = false; });
+        stage.addEventListener('dblclick', event => upCmpImageClick(event));
+        if (!upCmp.zoom) _upCmpFit(stage.querySelector('img'), scroll, width, height);
+        _upCmpSplit(stage);
+        _upCmpScrollTo([scroll], anchor);
+    }
+}
+
+// Image ajustée à son cadre (sans dépasser), même échelle quelle que soit sa définition.
+function _upCmpFit(img, box, width, height) {
+    const scale = Math.min((box.clientWidth - 2) / width, (box.clientHeight - 2) / height);
+    img.style.width = `${Math.max(1, Math.floor(width * scale))}px`;
+    img.style.height = `${Math.max(1, Math.floor(height * scale))}px`;
+    img.style.maxWidth = 'none';
+    img.style.maxHeight = 'none';
+}
+
+function _upCmpSplit(stage) {
+    const pct = (upCmp.split * 100).toFixed(2);
+    stage.querySelector('.upcmp-top').style.clipPath = `inset(0 ${(100 - pct).toFixed(2)}% 0 0)`;
+    stage.querySelector('.upcmp-divider').style.left = `calc(${pct}% - 1px)`;
+}
+
+// Clic (double-clic au curseur) : taille réelle centrée sur le point cliqué, ou retour.
+function upCmpImageClick(event) {
+    const target = event.currentTarget || event.target;
+    const rect = target.getBoundingClientRect();
+    upCmpZoom({ x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height });
+}
+
+function _upCmpScrollTo(panes, anchor) {
+    if (!upCmp.zoom || !anchor) return;
+    panes.forEach(pane => {
+        pane.scrollLeft = anchor.x * pane.scrollWidth - pane.clientWidth / 2;
+        pane.scrollTop = anchor.y * pane.scrollHeight - pane.clientHeight / 2;
+    });
+}

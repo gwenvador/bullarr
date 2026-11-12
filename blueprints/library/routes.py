@@ -2263,6 +2263,47 @@ def get_volume_reader_page(volume_id, number):
     return response
 
 
+@library_bp.route('/api/volumes/<int:volume_id>/upscale/backup/info', methods=['GET'])
+def upscale_backup_info(volume_id):
+    """Fenêtre de comparaison : nombre de pages de l'original gardé et du fichier actuel."""
+    from . import upscale_volume
+    from .reader import page_index
+    app = current_app._get_current_object()
+    backup = upscale_volume.backups(app, {volume_id}).get(volume_id)
+    row, error = _reader_volume(volume_id)
+    if error:
+        return error
+    if not backup or not backup.get('exists'):
+        return jsonify({'success': False, 'error': "Aucun original gardé pour ce tome"}), 404
+    try:
+        _real, original = page_index(backup['backup_path'], 'cbz')
+        _real, current = page_index(row['filepath'], row['format'])
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Lecture impossible')}), 500
+    return jsonify({'success': True, 'original_pages': len(original), 'current_pages': len(current),
+                    'model': backup.get('model'), 'series_title': row['series_title'], 'filename': row['filename'],
+                    'original_bytes': backup.get('bytes'), 'current_bytes': os.path.getsize(row['filepath'])})
+
+
+@library_bp.route('/api/volumes/<int:volume_id>/upscale/backup/page/<int:number>', methods=['GET'])
+def upscale_backup_page(volume_id, number):
+    """Image de la page `number` (à partir de 1) de l'original gardé d'un tome."""
+    from . import upscale_volume
+    from .reader import read_page
+    backup = upscale_volume.backups(current_app._get_current_object(), {volume_id}).get(volume_id)
+    if not backup or not backup.get('exists'):
+        return jsonify({'success': False, 'error': "Aucun original gardé pour ce tome"}), 404
+    try:
+        data, mimetype = read_page(backup['backup_path'], 'cbz', number)
+    except IndexError as e:
+        return jsonify({'success': False, 'error': error_message(e)}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Lecture de la page impossible')}), 500
+    response = current_app.response_class(data, mimetype=mimetype)
+    response.headers['Cache-Control'] = 'private, max-age=3600'
+    return response
+
+
 @library_bp.route('/api/volumes/<int:volume_id>/upscale', methods=['POST', 'DELETE'])
 def upscale_volume_route(volume_id):
     """Upscaling hors ligne d'un tome sur le serveur (POST {model} : mise en file ; DELETE :
