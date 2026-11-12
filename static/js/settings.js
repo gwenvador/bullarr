@@ -3285,31 +3285,71 @@ function filterOverviewTiles(query) {
     layoutOverviewTiles();
 }
 
-// État de chaque catégorie, lu dans les onglets déjà chargés (mêmes badges que les
-// cartes Indexeurs/Clients, interrupteurs principaux des autres onglets).
-function _overviewCardsState(tabId) {
-    const badges = [...document.querySelectorAll(`#${tabId} .integration-card-status`)];
-    const on = badges.filter(badge => badge.classList.contains('integration-card-status-on'));
-    return { total: badges.length, on: on.length, loaded: badges.some(badge => badge.textContent.trim() !== '…') };
+// État de chaque catégorie, lu directement dans les API de configuration : les onglets
+// ne chargent leurs formulaires qu'à leur ouverture, leurs cases gardaient donc leurs
+// valeurs par défaut (IA « désactivée », Login « accès libre », 1/5 indexeur…).
+async function _overviewJson(url) {
+    try {
+        const response = await fetch(url);
+        return response.ok ? await response.json() : null;
+    } catch (error) {
+        return null;
+    }
 }
 
-function updateOverviewStatus() {
-    const checked = id => !!document.getElementById(id)?.checked;
+async function updateOverviewStatus() {
+    const urls = {
+        prowlarr: '/api/prowlarr/config', ebdz: '/api/ebdz/config', channels: '/api/telegram-channels/config',
+        rss: '/api/settings/rss', four: '/api/fourtoutici/config', anna: '/api/annas-archive/config', vk: '/api/vk/config',
+        amule: '/api/emule/config', qbittorrent: '/api/qbittorrent/config', rtorrent: '/api/rtorrent/config',
+        deluge: '/api/deluge/config', shelfmark: '/api/shelfmark/config', komga: '/api/komga/config',
+        monitor: '/api/missing-monitor/config', imports: '/api/import/config', ai: '/api/ai/config',
+        auth: '/api/auth/config', telegram: '/api/telegram/config', ntfy: '/api/ntfy/config',
+    };
+    const keys = Object.keys(urls);
+    const values = await Promise.all(keys.map(key => _overviewJson(urls[key])));
+    const c = Object.fromEntries(keys.map((key, i) => [key, values[i]]));
     const states = {};
-    const indexers = _overviewCardsState('tab-indexeurs');
-    if (indexers.loaded) states.indexeurs = indexers.on ? [`${indexers.on}/${indexers.total} actives`, 'on'] : ['Aucune source', 'warn'];
-    const clients = _overviewCardsState('tab-clients');
-    if (clients.loaded) states.clients = clients.on ? [`${clients.on} actif${clients.on > 1 ? 's' : ''}`, 'on'] : ['Aucun client', 'warn'];
-    const komga = document.getElementById('card-status-komga');
-    if (komga && komga.textContent.trim() !== '…') states.integrations = [komga.classList.contains('integration-card-status-on') ? 'Komga connecté' : 'Komga inactif', komga.classList.contains('integration-card-status-on') ? 'on' : 'off'];
-    const monitoring = [checked('settingsMonitorMissing') && 'manquants', checked('settingsQualityUpgrade') && 'upgrade'].filter(Boolean);
-    states.monitoring = monitoring.length ? [`Active : ${monitoring.join(', ')}`, 'on'] : ['Désactivée', 'off'];
-    states['import-auto'] = checked('auto-import-enabled') ? ['Import auto', 'on'] : ['Manuel', 'off'];
-    states.ai = checked('aiEnabled') ? ['Activée', 'on'] : ['Désactivée', 'off'];
-    const channels = [checked('telegramEnabled') && 'Telegram', checked('ntfyEnabled') && 'ntfy'].filter(Boolean);
-    states.telegram = channels.length ? [channels.join(' · '), 'on'] : ['Aucun canal', 'off'];
-    const authMode = document.getElementById('authMode')?.value;
-    if (authMode) states.oidc = authMode === 'none' ? ['Accès libre', 'warn'] : ['Protégé', 'on'];
+    const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
+
+    if (c.prowlarr && c.ebdz && c.channels && c.rss) {
+        const web = [c.four, c.anna, c.vk].some(cfg => cfg && cfg.enabled !== false);
+        const sources = [
+            !!c.prowlarr.enabled && (c.prowlarr.selected_indexers || []).length > 0,
+            (c.ebdz.forums || []).length > 0,
+            !!c.channels.connected,
+            (c.rss.feeds || []).some(feed => feed.enabled !== false),
+            web,
+        ].filter(Boolean).length;
+        states.indexeurs = sources ? [`${sources}/5 sources actives`, 'on'] : ['Aucune source', 'warn'];
+    }
+    const clients = ['amule', 'qbittorrent', 'rtorrent', 'deluge', 'shelfmark'].filter(key => c[key]);
+    if (clients.length) {
+        const on = clients.filter(key => c[key].enabled);
+        const names = { amule: 'aMule', qbittorrent: 'qBittorrent', rtorrent: 'rTorrent', deluge: 'Deluge', shelfmark: 'Shelfmark' };
+        states.clients = on.length ? [on.length <= 2 ? on.map(key => names[key]).join(' · ') : plural(on.length, 'client') + ' actifs', 'on'] : ['Aucun client', 'warn'];
+    }
+    if (c.komga) states.integrations = c.komga.enabled ? ['Komga activé', 'on'] : ['Komga désactivé', 'off'];
+    if (c.monitor) {
+        const parts = [(c.monitor.monitor_missing_volumes || {}).enabled !== false && 'manquants',
+            (c.monitor.quality_upgrade || c.monitor.upgrade_quality || {}).enabled === true && 'upgrade'].filter(Boolean);
+        states.monitoring = parts.length ? [`Active : ${parts.join(', ')}`, 'on'] : ['Désactivée', 'off'];
+    }
+    if (c.imports) states['import-auto'] = c.imports.auto_import_enabled ? ['Import auto', 'on'] : ['Manuel', 'off'];
+    if (c.ai) {
+        const provider = (c.ai.providers || []).find(p => p.id === c.ai.provider);
+        states.ai = c.ai.enabled ? [provider?.name ? `Activée · ${provider.name}` : 'Activée', 'on'] : ['Désactivée', 'off'];
+    }
+    if (c.auth) states.oidc = c.auth.mode === 'auth' ? [c.auth.oidc_enabled ? 'Protégé · OIDC' : 'Protégé', 'on'] : ['Accès libre', 'warn'];
+    if (c.telegram || c.ntfy) {
+        const channels = [c.telegram?.enabled && 'Telegram', c.ntfy?.enabled && 'ntfy'].filter(Boolean);
+        states.telegram = channels.length ? [channels.join(' · '), 'on'] : ['Aucun canal', 'off'];
+    }
+    // Serveur pas encore prêt (redémarrage) : on retente un peu plus tard.
+    if (!Object.keys(states).length && (updateOverviewStatus.retries = (updateOverviewStatus.retries || 0) + 1) <= 3) {
+        setTimeout(updateOverviewStatus, 3000);
+        return;
+    }
     document.querySelectorAll('#tab-overview [data-overview-status]').forEach(el => {
         const state = states[el.dataset.overviewStatus];
         el.hidden = !state;
@@ -3325,7 +3365,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tab.querySelectorAll('[data-icon]').forEach(el => { if (!el.innerHTML.trim() && typeof svgIcon === 'function') el.innerHTML = svgIcon(el.dataset.icon); });
     layoutOverviewTiles();
     if (window.ResizeObserver) new ResizeObserver(() => layoutOverviewTiles()).observe(tab);
-    [800, 2500, 6000].forEach(delay => setTimeout(updateOverviewStatus, delay));
+    updateOverviewStatus();
     // Revenir sur la vue d'ensemble après un réglage remet les états à jour.
     new MutationObserver(() => { if (tab.classList.contains('active')) updateOverviewStatus(); })
         .observe(tab, { attributes: true, attributeFilter: ['class'] });
