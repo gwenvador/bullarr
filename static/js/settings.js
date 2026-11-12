@@ -3291,13 +3291,47 @@ async function loadCsvExportLibraries() {
 }
 document.addEventListener('DOMContentLoaded', loadCsvExportLibraries);
 
+// Icônes des cartes Backup (data-icon, data-icon-before/after sur les boutons).
+function initBackupTab() {
+    const tab = document.getElementById('tab-backup');
+    if (!tab || typeof svgIcon !== 'function') return;
+    tab.querySelectorAll('[data-icon]').forEach(el => { if (!el.innerHTML.trim()) el.innerHTML = svgIcon(el.dataset.icon); });
+    tab.querySelectorAll('[data-icon-before]').forEach(el => el.insertAdjacentHTML('afterbegin', svgIcon(el.dataset.iconBefore)));
+    tab.querySelectorAll('[data-icon-after]').forEach(el => el.insertAdjacentHTML('beforeend', svgIcon(el.dataset.iconAfter)));
+    const drop = document.getElementById('backupDrop');
+    const input = document.getElementById('backupRestoreFile');
+    if (!drop || !input) return;
+    ['dragenter', 'dragover'].forEach(type => drop.addEventListener(type, event => { event.preventDefault(); drop.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(type => drop.addEventListener(type, () => drop.classList.remove('dragover')));
+    drop.addEventListener('drop', event => {
+        event.preventDefault();
+        if (event.dataTransfer?.files?.length) { input.files = event.dataTransfer.files; backupFileChosen(); }
+    });
+}
+document.addEventListener('DOMContentLoaded', initBackupTab);
+
+function backupFileChosen() {
+    const file = document.getElementById('backupRestoreFile').files[0];
+    const text = document.getElementById('backupDropText');
+    document.getElementById('backupDrop').classList.toggle('has-file', !!file);
+    document.getElementById('backupRestoreBtn').disabled = !file;
+    text.innerHTML = file
+        ? `<strong>${escapeHtml(file.name)}</strong> · ${(file.size / 1048576).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Mo`
+        : '<strong>Choisir un fichier .zip</strong> ou le déposer ici';
+    const message = document.getElementById('backupRestoreMessage');
+    message.className = 'backup-message';
+    message.innerHTML = '';
+}
+
 async function restoreBackup() {
     const fileInput = document.getElementById('backupRestoreFile');
     const messageEl = document.getElementById('backupRestoreMessage');
     const file = fileInput.files[0];
 
+    messageEl.className = 'backup-message';
     if (!file) {
-        messageEl.innerHTML = '<span style="color:#dc2626;">⚠️ Sélectionne un fichier .zip</span>';
+        messageEl.className = 'backup-message error';
+        messageEl.textContent = 'Choisissez d\'abord un fichier .zip.';
         return;
     }
 
@@ -3305,7 +3339,7 @@ async function restoreBackup() {
         return;
     }
 
-    messageEl.innerHTML = '⏳ Restauration en cours...';
+    messageEl.textContent = 'Restauration en cours…';
 
     try {
         const formData = new FormData();
@@ -3318,12 +3352,15 @@ async function restoreBackup() {
         const data = await response.json();
 
         if (data.success) {
-            messageEl.innerHTML = `<span style="color:#16a34a;">✅ ${escapeHtml(data.message)}</span><br><span class="help-text">Fichiers restaurés: ${data.restored.map(escapeHtml).join(', ')}</span>`;
+            messageEl.className = 'backup-message ok';
+            messageEl.innerHTML = `${escapeHtml(data.message)}<br><span class="help-text">Fichiers restaurés : ${data.restored.map(escapeHtml).join(', ')}</span>`;
         } else {
-            messageEl.innerHTML = `<span style="color:#dc2626;">❌ ${escapeHtml(data.error || 'Erreur inconnue')}</span>`;
+            messageEl.className = 'backup-message error';
+            messageEl.textContent = data.error || 'Erreur inconnue';
         }
     } catch (error) {
-        messageEl.innerHTML = `<span style="color:#dc2626;">❌ Erreur de connexion: ${escapeHtml(error.message)}</span>`;
+        messageEl.className = 'backup-message error';
+        messageEl.textContent = `Erreur de connexion : ${error.message}`;
     }
 }
 

@@ -2265,38 +2265,75 @@
                             </p>
                         </div>
 
-                        <div class="settings-card">
-                            <h3 style="margin-top:0;">Créer un backup</h3>
-                            <a class="btn" href="/api/settings/backup">⬇️ Télécharger un backup</a>
-                        </div>
+                        <div class="backup-grid">
+                            <div class="backup-card">
+                                <div class="backup-card-head">
+                                    <span class="backup-card-icon" data-icon="save"></span>
+                                    <div>
+                                        <h3>Sauvegarde complète</h3>
+                                        <p>Bases de données et configuration dans un seul .zip, à garder en lieu sûr.</p>
+                                    </div>
+                                </div>
+                                <ul class="backup-points">
+                                    <li>Séries, tomes, historique, avancement de lecture</li>
+                                    <li>Réglages et secrets, avec leur clé de chiffrement</li>
+                                    <li>Sans les fichiers BD eux-mêmes</li>
+                                </ul>
+                                <div class="backup-card-actions">
+                                    <a class="backup-btn backup-btn-primary" href="/api/settings/backup" data-icon-before="download">Télécharger la sauvegarde</a>
+                                </div>
+                            </div>
 
-                        <div class="settings-card">
-                            <h3 style="margin-top:0;">Export CSV des BD</h3>
-                            <p class="help-text" style="display:block; margin-bottom:10px;">
-                                Toutes les BD présentes sur le disque, une ligne par fichier : bibliothèque, série,
-                                tome, année, auteur, éditeur, genre, pages, taille, définition, chemin… Le fichier
-                                s'ouvre tel quel dans Excel ou LibreOffice. L'historique de lecture s'exporte et se
-                                réimporte depuis <a href="/lectures">Suivi → Lectures</a>.
-                            </p>
-                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                                <select id="csvExportLibrary" style="flex:0 1 260px; min-width:0;"><option value="">Toutes les bibliothèques</option></select>
-                                <button class="btn" onclick="exportVolumesCsv()">⬇️ Exporter en CSV</button>
+                            <div class="backup-card">
+                                <div class="backup-card-head">
+                                    <span class="backup-card-icon" data-icon="table"></span>
+                                    <div>
+                                        <h3>Export CSV des BD</h3>
+                                        <p>Une ligne par album, avec toutes les données de l'album et de sa série. S'ouvre tel quel dans Excel ou LibreOffice.</p>
+                                    </div>
+                                </div>
+                                <label class="backup-field">
+                                    <span>Bibliothèque</span>
+                                    <select id="csvExportLibrary" class="backup-select"><option value="">Toutes les bibliothèques</option></select>
+                                </label>
+                                <div class="backup-card-actions">
+                                    <button type="button" class="backup-btn backup-btn-primary" onclick="exportVolumesCsv()" data-icon-before="download">Exporter en CSV</button>
+                                </div>
+                            </div>
+
+                            <div class="backup-card">
+                                <div class="backup-card-head">
+                                    <span class="backup-card-icon" data-icon="bookmark"></span>
+                                    <div>
+                                        <h3>Historique de lecture</h3>
+                                        <p>Les albums lus ou commencés, la page atteinte et la date. Se réimporte sans jamais faire reculer un album.</p>
+                                    </div>
+                                </div>
+                                <div class="backup-card-actions">
+                                    <a class="backup-btn backup-btn-primary" href="/api/reading-history/export.csv" download data-icon-before="download">Exporter en CSV</a>
+                                    <a class="backup-btn backup-btn-ghost" href="/lectures" data-icon-after="chevron-right">Ouvrir Lectures</a>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="settings-card">
-                            <h3 style="margin-top:0;">Restaurer un backup</h3>
-                            <p class="help-text" style="display:block; margin-bottom:10px;">
-                                ⚠️ Écrase les bases de données et fichiers de configuration actuels
-                                (une copie de sécurité <code>.before_restore</code> de chaque fichier remplacé
-                                est gardée à côté). Un redémarrage du conteneur est nécessaire après import
-                                pour que tout reparte proprement.
-                            </p>
-                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                                <input type="file" id="backupRestoreFile" accept=".zip" style="flex:1 1 200px; min-width:0;">
-                                <button class="btn btn-danger" onclick="restoreBackup()">⬆️ Importer et restaurer</button>
+                        <div class="backup-card backup-card-danger">
+                            <div class="backup-card-head">
+                                <span class="backup-card-icon" data-icon="undo"></span>
+                                <div>
+                                    <h3>Restaurer une sauvegarde</h3>
+                                    <p>Remplace les bases de données et la configuration actuelles par celles du .zip.</p>
+                                </div>
                             </div>
-                            <div id="backupRestoreMessage" class="message"></div>
+                            <div class="backup-warning"><span data-icon="triangle-alert"></span><span>Les fichiers actuels sont écrasés ; une copie <code>.before_restore</code> de chacun est gardée à côté. Redémarrez le conteneur après la restauration.</span></div>
+                            <div class="backup-restore-row">
+                                <label class="backup-drop" id="backupDrop">
+                                    <input type="file" id="backupRestoreFile" accept=".zip" onchange="backupFileChosen()">
+                                    <span class="backup-drop-icon" data-icon="upload"></span>
+                                    <span class="backup-drop-text" id="backupDropText"><strong>Choisir un fichier .zip</strong> ou le déposer ici</span>
+                                </label>
+                                <button type="button" class="backup-btn backup-btn-danger" id="backupRestoreBtn" onclick="restoreBackup()" disabled data-icon-before="undo">Restaurer</button>
+                            </div>
+                            <div id="backupRestoreMessage" class="backup-message"></div>
                         </div>
                     </div>
                 </div>

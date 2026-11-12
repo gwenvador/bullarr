@@ -1535,3 +1535,61 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
 .upscale-threshold-text a { color: var(--color-accent); text-decoration: none; font-weight: 500; }
 .upscale-threshold.upscale-defaults { margin-top: 10px; padding-top: 0; border-top: none; }
 @media (max-width: 700px) { .upscale-threshold.upscale-defaults { grid-template-columns: 1fr; } }
+
+/* Configuration → Backup : cartes avec icône (même style que la vue d'ensemble), boutons
+   aux couleurs du thème, zone de dépôt pour le .zip, restauration signalée en rouge. */
+#tab-backup .backup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-bottom: 18px; }
+#tab-backup .backup-card { display: flex; flex-direction: column; gap: 16px; padding: 22px 24px; border-radius: 16px;
+    background: var(--color-surface); border: 1px solid var(--color-border); box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+#tab-backup .backup-card-head { display: flex; gap: 14px; align-items: flex-start; }
+#tab-backup .backup-card-head h3 { margin: 2px 0 4px; font-size: 1.1em; }
+#tab-backup .backup-card-head p { margin: 0; color: var(--color-text-muted); font-size: .92em; line-height: 1.45; }
+#tab-backup .backup-card-icon { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--color-accent) 13%, transparent); color: var(--color-accent); }
+#tab-backup .backup-card-icon svg { width: 22px; height: 22px; }
+#tab-backup .backup-points { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: .92em; color: var(--color-text-muted); }
+#tab-backup .backup-points li { position: relative; padding-left: 18px; }
+#tab-backup .backup-points li::before { content: ''; position: absolute; left: 4px; top: .6em; width: 6px; height: 6px; border-radius: 50%;
+    background: color-mix(in srgb, var(--color-accent) 60%, transparent); }
+#tab-backup .backup-card-actions { margin-top: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+#tab-backup .backup-field { display: grid; gap: 6px; font-size: .88em; font-weight: 600; color: var(--color-text-muted); }
+#tab-backup .backup-select { width: 100%; padding: 10px 36px 10px 12px; border-radius: 10px; border: 1px solid var(--color-border);
+    background: var(--color-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+    color: var(--color-text); font: inherit; font-weight: 500; appearance: none; -webkit-appearance: none; cursor: pointer; }
+#tab-backup .backup-select:focus { outline: 2px solid color-mix(in srgb, var(--color-accent) 45%, transparent); outline-offset: 1px; border-color: var(--color-accent); }
+#tab-backup .backup-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; border-radius: 10px;
+    font: inherit; font-size: .95em; font-weight: 600; text-decoration: none; cursor: pointer; border: 1px solid transparent;
+    transition: background .15s, border-color .15s, filter .15s, opacity .15s; }
+#tab-backup .backup-btn svg { width: 17px; height: 17px; }
+#tab-backup .backup-btn-primary { background: var(--color-accent); color: #fff; }
+#tab-backup .backup-btn-primary:hover { filter: brightness(1.08); }
+#tab-backup .backup-btn-ghost { background: transparent; color: var(--color-text); border-color: var(--color-border); }
+#tab-backup .backup-btn-ghost:hover { border-color: var(--color-accent); color: var(--color-accent); }
+#tab-backup .backup-btn-danger { background: #dc2626; color: #fff; }
+#tab-backup .backup-btn-danger:hover:not(:disabled) { background: #b91c1c; }
+#tab-backup .backup-btn:disabled { opacity: .45; cursor: not-allowed; }
+#tab-backup .backup-card-danger { border-color: color-mix(in srgb, #dc2626 28%, var(--color-border)); }
+#tab-backup .backup-card-danger .backup-card-icon { background: color-mix(in srgb, #dc2626 12%, transparent); color: #dc2626; }
+#tab-backup .backup-warning { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; font-size: .92em; line-height: 1.45;
+    background: color-mix(in srgb, #f59e0b 12%, transparent); color: var(--color-text); }
+#tab-backup .backup-warning > span:first-child { flex: none; color: #d97706; display: inline-flex; margin-top: 1px; }
+#tab-backup .backup-warning svg { width: 18px; height: 18px; }
+#tab-backup .backup-warning code { font-size: .92em; }
+#tab-backup .backup-restore-row { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; }
+#tab-backup .backup-drop { flex: 1 1 300px; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; cursor: pointer;
+    border: 1.5px dashed var(--color-border); background: var(--color-bg); transition: border-color .15s, background .15s; margin: 0; }
+#tab-backup .backup-drop:hover, #tab-backup .backup-drop.dragover { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg)); }
+#tab-backup .backup-drop.has-file { border-style: solid; border-color: var(--color-accent); }
+#tab-backup .backup-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+#tab-backup .backup-drop-icon { flex: none; color: var(--color-accent); display: inline-flex; }
+#tab-backup .backup-drop-icon svg { width: 22px; height: 22px; }
+#tab-backup .backup-drop-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); }
+#tab-backup .backup-drop-text strong { color: var(--color-text); }
+#tab-backup .backup-message:empty { display: none; }
+#tab-backup .backup-message { padding: 12px 14px; border-radius: 10px; font-size: .92em; background: var(--color-surface-alt, var(--color-bg)); }
+#tab-backup .backup-message.ok { background: color-mix(in srgb, #16a34a 12%, transparent); }
+#tab-backup .backup-message.error { background: color-mix(in srgb, #dc2626 10%, transparent); }
+@media (max-width: 600px) {
+    #tab-backup .backup-card { padding: 18px; }
+    #tab-backup .backup-btn { flex: 1 1 auto; }
+}

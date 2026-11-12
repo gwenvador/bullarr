@@ -4,7 +4,36 @@
 // import : POST /api/reading-history/import (multipart « file ») ; synchronisation Komga :
 // POST /api/komga/read-progress/sync.
 let readingData = null;
-const readingState = { status: 'all', query: '', library: '' };
+const readingState = { status: 'all', query: '', library: '', user: '' };
+let readingUsers = null;
+
+// Administrateur : choix du compte dont on voit l'historique (?user=). Lecteur : le sien.
+function _readingUserQuery(prefix) {
+    return readingState.user ? `${prefix}user=${encodeURIComponent(readingState.user)}` : '';
+}
+
+async function loadReadingUsers() {
+    if (document.body.dataset.role === 'reader') return;
+    try {
+        const data = await (await fetch('/api/reading-history/users')).json();
+        if (!data.success || !data.users || data.users.length < 2) return;
+        readingUsers = data.users;
+        const params = new URLSearchParams(location.search);
+        const wanted = params.get('user');
+        if (wanted && readingUsers.some(u => u.user_key === wanted)) readingState.user = wanted;
+    } catch (e) { /* liste facultative */ }
+}
+
+function readingSelectUser(value) {
+    const me = readingUsers?.find(u => u.me);
+    readingState.user = me && value === me.user_key ? '' : value;
+    const url = new URL(location.href);
+    if (readingState.user) url.searchParams.set('user', readingState.user); else url.searchParams.delete('user');
+    history.replaceState(null, '', url);
+    readingState.library = '';
+    readingState.limit = 300;
+    loadReadingHistory();
+}
 
 function _rdEsc(value) {
     return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,9 +50,11 @@ function _rdDate(value, withTime) {
 
 async function loadReadingHistory() {
     try {
-        const data = await (await fetch('/api/reading-history')).json();
+        const data = await (await fetch(`/api/reading-history${_readingUserQuery('?')}`)).json();
         if (!data.success) throw new Error(data.error || 'Erreur de chargement');
         readingData = data;
+        const exportLink = document.getElementById('readingExportLink');
+        if (exportLink) exportLink.href = `/api/reading-history/export.csv${_readingUserQuery('?')}`;
         renderReadingSource();
         renderReadingLibraries();
         renderReadingHistory();
@@ -35,10 +66,14 @@ async function loadReadingHistory() {
 function renderReadingSource() {
     const data = readingData;
     const sync = data.source !== 'local';
-    document.getElementById('readingSource').innerHTML = `
+    const me = readingUsers?.find(u => u.me);
+    const picker = readingUsers ? `<label class="reading-user"><span>Compte</span><select class="upscaling-input" onchange="readingSelectUser(this.value)">${readingUsers.map(u =>
+        `<option value="${_rdEsc(u.user_key)}"${(readingState.user || me?.user_key) === u.user_key ? ' selected' : ''}>${_rdEsc(u.name)}${u.me ? ' (moi)' : ''}${u.role === 'reader' ? ' · lecteur' : ''}</option>`).join('')}</select></label>` : '';
+    const foreign = !!readingState.user;
+    document.getElementById('readingSource').innerHTML = `${picker}
         <span class="upscale-badge upscale-badge-ok">${svgIcon(sync ? 'refresh-cw' : 'book-open')} ${_rdEsc(data.source_label)}</span>
-        ${sync ? `<span class="upscaling-muted">Dernière synchronisation : ${_rdDate(data.last_sync, true)}</span>
-            <button type="button" class="btn btn-sm" id="readingSyncBtn" onclick="syncReadingHistory()">${svgIcon('refresh-cw')} Synchroniser</button>` : ''}`;
+        ${sync && !foreign ? `<span class="upscaling-muted">Dernière synchronisation : ${_rdDate(data.last_sync, true)}</span>
+            <button type="button" class="btn btn-ghost" id="readingSyncBtn" onclick="syncReadingHistory()">${svgIcon('refresh-cw')} Synchroniser</button>` : ''}`;
 }
 
 function renderReadingLibraries() {
@@ -128,7 +163,8 @@ async function readingImportFile(input) {
     input.value = '';
     if (!file) return;
     const where = readingData?.source === 'local' ? 'dans Bullarr' : 'dans Komga';
-    if (!confirm(`Importer « ${file.name} » ?\n\nL'avancement de chaque album est remis ${where}. Un album déjà lu, ou lu plus loin que dans le fichier, n'est jamais ramené en arrière.`)) return;
+    const who = readingState.user ? ` du compte « ${readingUsers?.find(u => u.user_key === readingState.user)?.name || readingState.user} »` : '';
+    if (!confirm(`Importer « ${file.name} »${who} ?\n\nL'avancement de chaque album est remis ${where}. Un album déjà lu, ou lu plus loin que dans le fichier, n'est jamais ramené en arrière.`)) return;
     const result = document.getElementById('readingImportResult');
     result.className = 'message';
     result.textContent = 'Import en cours…';
@@ -136,7 +172,7 @@ async function readingImportFile(input) {
     try {
         const body = new FormData();
         body.append('file', file);
-        const data = await (await fetch('/api/reading-history/import', { method: 'POST', body })).json();
+        const data = await (await fetch(`/api/reading-history/import${_readingUserQuery('?')}`, { method: 'POST', body })).json();
         if (!data.success) throw new Error(data.error || 'Import impossible');
         const parts = [`${data.applied} album(s) mis à jour`, `${data.unchanged} déjà à jour`];
         if (data.unmatched) parts.push(`${data.unmatched} introuvable(s) dans la bibliothèque`);
@@ -150,4 +186,7 @@ async function readingImportFile(input) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', loadReadingHistory);
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-rd-icon]').forEach(el => { el.outerHTML = svgIcon(el.dataset.rdIcon); });
+    loadReadingUsers().then(loadReadingHistory);
+});

@@ -56,7 +56,13 @@
                         </div>
 
                         <div class="settings-card">
-                            <div class="reading-source" id="readingSource"><span class="upscaling-muted">Chargement…</span></div>
+                            <div class="reading-head">
+                                <div class="reading-source" id="readingSource"><span class="upscaling-muted">Chargement…</span></div>
+                                <div class="reading-actions">
+                                <a class="btn" id="readingExportLink" href="/api/reading-history/export.csv" download data-tooltip="Tout l'historique (page, lu, date) en CSV"><span data-rd-icon="download"></span>Exporter CSV</a>
+                                <label class="btn reading-import-btn" data-tooltip="Remettre l'avancement depuis un export CSV"><span data-rd-icon="upload"></span>Importer CSV<input type="file" accept=".csv,text/csv" hidden onchange="readingImportFile(this)"></label>
+                                </div>
+                            </div>
                             <div class="reading-toolbar">
                                 <span class="upcmp-seg reading-seg" role="group" aria-label="Statut">
                                     <button type="button" data-status="all" class="active" onclick="readingSetStatus('all')">Tout <span id="readingCountAll">—</span></button>
@@ -65,9 +71,6 @@
                                 </span>
                                 <input type="search" id="readingFilter" class="upscaling-input reading-filter" placeholder="Série, tome, fichier…" oninput="readingApplyFilters()" aria-label="Filtrer">
                                 <label class="reading-library" hidden><select id="readingLibrary" class="upscaling-input" onchange="readingApplyFilters()" aria-label="Bibliothèque"></select></label>
-                                <span class="reading-spacer"></span>
-                                <a class="btn" href="/api/reading-history/export.csv" download data-tooltip="Tout l'historique (page, lu, date) en CSV">⬇️ Exporter CSV</a>
-                                <label class="btn reading-import-btn" data-tooltip="Remettre l'avancement depuis un export CSV">⬆️ Importer CSV<input type="file" accept=".csv,text/csv" hidden onchange="readingImportFile(this)"></label>
                             </div>
                             <div id="readingImportResult" class="message" style="display:none"></div>
                             <div id="readingList" class="upscaling-table-wrap reading-list"><p class="upscaling-muted">Chargement…</p></div>

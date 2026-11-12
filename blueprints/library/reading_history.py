@@ -37,7 +37,7 @@ VOLUME_COLUMNS = [
 SOURCE_LABELS = {
     'komga': 'Compte Komga du serveur',
     'komga_user': 'Votre compte Komga',
-    'local': 'Lecteur de Bullarr (avancement propre à votre compte)',
+    'local': 'Lecteur de Bullarr (avancement propre au compte)',
 }
 
 
@@ -88,6 +88,66 @@ def _stamp():
 def _source():
     from blueprints.komga.user_link import current_progress_source
     return current_progress_source()
+
+
+def _account_role(row, admin_group):
+    """Rôle d'un compte de la table users (même règle que roles.role_for_user)."""
+    from blueprints.auth.roles import ROLES, ROLE_ADMIN, computed_role
+    if row['role_override'] in ROLES:
+        return row['role_override']
+    if row['auth_method'] == 'password':
+        return ROLE_ADMIN
+    return computed_role(json.loads(row['groups_json'] or '[]'), admin_group)
+
+
+def _accounts():
+    from blueprints.auth.config_store import load_oidc_config
+    admin_group = load_oidc_config().get('admin_group')
+    conn = _db()
+    try:
+        rows = conn.execute('SELECT user_key, name, email, auth_method, groups_json, role_override, status '
+                            'FROM users ORDER BY COALESCE(last_seen, first_seen) DESC').fetchall()
+    finally:
+        conn.close()
+    return [(row, _account_role(row, admin_group)) for row in rows]
+
+
+def _request_source():
+    """(source, user_key) de l'historique demandé. Un administrateur peut choisir le compte
+    (?user=<user_key>) ; un lecteur voit toujours le sien."""
+    from blueprints.auth.roles import ROLE_READER, current_user_key, is_reader
+    from blueprints.komga.user_link import progress_source
+    own = current_user_key()
+    wanted = request.values.get('user') or ''
+    if not wanted or wanted == own or is_reader():
+        return _source(), own
+    for row, role in _accounts():
+        if row['user_key'] == wanted:
+            return progress_source(wanted, role == ROLE_READER), wanted
+    return None, wanted
+
+
+def _unknown_user():
+    return jsonify({'success': False, 'error': 'Compte introuvable'}), 404
+
+
+@library_bp.route('/api/reading-history/users', methods=['GET'])
+def get_reading_history_users():
+    """Comptes dont un administrateur peut voir l'historique (route réservée aux
+    administrateurs : absente de READER_ENDPOINTS), avec la source de chacun."""
+    from blueprints.auth.roles import ROLE_READER, current_user_key
+    from blueprints.komga.user_link import progress_source
+    own = current_user_key()
+    users = []
+    for row, role in _accounts():
+        source = progress_source(row['user_key'], role == ROLE_READER)
+        users.append({'user_key': row['user_key'], 'name': row['name'] or row['email'] or row['user_key'],
+                      'email': row['email'], 'role': role, 'me': row['user_key'] == own,
+                      'source': source.kind, 'source_label': SOURCE_LABELS.get(source.kind, source.kind)})
+    if own and not any(u['me'] for u in users):
+        users.insert(0, {'user_key': own, 'name': 'Moi', 'email': None, 'role': 'admin', 'me': True,
+                         'source': _source().kind, 'source_label': SOURCE_LABELS.get(_source().kind)})
+    return jsonify({'success': True, 'users': users})
 
 
 def reading_rows(source, library_id=None):
@@ -143,7 +203,9 @@ def reading_history_page():
 @library_bp.route('/api/reading-history', methods=['GET'])
 def get_reading_history():
     """Tomes lus ou commencés par le compte courant, du plus récent au plus ancien."""
-    source = _source()
+    source, _ = _request_source()
+    if source is None:
+        return _unknown_user()
     items = []
     for row in reading_rows(source, request.args.get('library_id', type=int)):
         pages = row['pages_count'] or row['page_count']
@@ -165,7 +227,9 @@ def get_reading_history():
 
 @library_bp.route('/api/reading-history/export.csv', methods=['GET'])
 def export_reading_history():
-    source = _source()
+    source, _ = _request_source()
+    if source is None:
+        return _unknown_user()
     rows = [[row['library_name'] or '', row['series_title'], volume_label(row), _num(row['volume_number']),
              row['filename'], row['page'] or '', row['pages_count'] or row['page_count'] or '',
              'oui' if row['completed'] else 'non', row['read_at'] or row['synced_at'] or '',
@@ -309,7 +373,6 @@ def import_reading_rows(source, user_key, rows):
 @library_bp.route('/api/reading-history/import', methods=['POST'])
 def import_reading_history():
     """POST multipart (file) : remet l'avancement d'un export CSV de l'historique de lecture."""
-    from blueprints.auth.roles import current_user_key
     upload = request.files.get('file')
     if not upload:
         return jsonify({'success': False, 'error': 'Aucun fichier envoyé'}), 400
@@ -319,12 +382,14 @@ def import_reading_history():
         return jsonify({'success': False, 'error': f'CSV illisible : {e}'}), 400
     if rows and 'serie' not in rows[0] and 'komga_book_id' not in rows[0]:
         return jsonify({'success': False, 'error': "Colonnes attendues : celles d'un export de l'historique (serie, fichier, page, lu…)"}), 400
-    source = _source()
+    source, user_key = _request_source()
+    if source is None:
+        return _unknown_user()
     if source.kind == 'komga':
         from blueprints.komga.config_store import load_komga_config
         if not load_komga_config().get('enabled'):
             return jsonify({'success': False, 'error': "Komga n'est pas activé : l'avancement ne peut pas être enregistré"}), 400
-    stats = import_reading_rows(source, current_user_key(), rows)
+    stats = import_reading_rows(source, user_key, rows)
     return jsonify({'success': True, **stats, 'errors': stats['errors'][:50], 'error_count': len(stats['errors'])})
 
 
