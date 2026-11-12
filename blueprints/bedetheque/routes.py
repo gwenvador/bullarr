@@ -405,8 +405,10 @@ def indispensable_series():
             save_scrape_cache(cache_key, items)
             was_cached = False
         conn = sqlite3.connect(current_app.config['DATABASE'])
-        rows = conn.execute('SELECT id, title, bedetheque_url FROM series').fetchall()
+        rows = conn.execute('SELECT id, title, bedetheque_url, COALESCE(local_cover_path, komga_cover_path, bedetheque_cover_path) FROM series').fetchall()
         conn.close()
+        # Couverture des séries possédées, affichée en vignette dans le tableau.
+        cover_by_id = {row[0]: row[3] for row in rows if row[3]}
         # id nécessaire pour le bouton "Supprimer" côté frontend (une série déjà
         # possédée doit pouvoir être retirée directement depuis ce tableau) - avant, seule
         # une correspondance booléenne (already_in_library) était renvoyée.
@@ -414,7 +416,7 @@ def indispensable_series():
         series_by_title = {_normalize_indispensable_title(row[1]): row[0] for row in rows if row[1]}
         def _match_series_id(item):
             return series_by_url.get(item['url'].rstrip('/')) or series_by_title.get(_normalize_indispensable_title(item['title']))
-        items = [dict(item, already_in_library=_match_series_id(item) is not None, series_id=_match_series_id(item)) for item in items]
+        items = [dict(item, already_in_library=_match_series_id(item) is not None, series_id=_match_series_id(item), cover_path=cover_by_id.get(_match_series_id(item))) for item in items]
         return jsonify({'success': True, 'category': category, 'items': items, 'cached': was_cached})
     except Exception:
         logger.exception('Erreur lors du chargement Bédéthèque')

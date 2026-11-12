@@ -28,7 +28,7 @@ const INDISPENSABLE_CATEGORIES = ['all', 'franco-belge', 'comics', 'manga'];
 
 function _setIndispensableCategoryCount(category, owned, total) {
     const el = document.querySelector(`#indispensable-cat-tab-${category} .indispensable-cat-count`);
-    if (el) el.textContent = ` (${owned}/${total})`;
+    if (el) { el.textContent = `${owned}/${total}`; el.classList.toggle('is-complete', total > 0 && owned === total); }
 }
 
 // Catégorie affichée: recalculé à chaque rendu (changement de catégorie, série
@@ -65,21 +65,37 @@ function renderIndispensables() {
     const ownedFilter = window.indispensableOwnedFilter || '';
     const rows = indispensableItems;
     _updateIndispensablesTabCount();
+    const ownedCount = rows.filter(x => x.already_in_library).length;
+    const missingCount = rows.length - ownedCount;
+    const pct = rows.length ? Math.round(100 * ownedCount / rows.length) : 0;
     document.getElementById('indispensablesList').innerHTML = `
+        <div class="indisp-summary">
+            <div class="indisp-summary-main">
+                <span class="indisp-summary-count"><strong>${ownedCount}</strong> / ${rows.length}</span>
+                <span class="indisp-summary-label">séries possédées</span>
+                <span class="indisp-summary-pct">${pct} %</span>
+            </div>
+            <div class="indisp-summary-bar"><span style="width:${pct}%"></span></div>
+            <div class="indisp-summary-filters" role="group" aria-label="Afficher">
+                <button type="button" data-owned="" class="${ownedFilter === '' ? 'active' : ''}" onclick="setIndispensableOwnedFilter('')">Toutes <span>${rows.length}</span></button>
+                <button type="button" data-owned="0" class="${ownedFilter === '0' ? 'active' : ''}" onclick="setIndispensableOwnedFilter('0')">À ajouter <span>${missingCount}</span></button>
+                <button type="button" data-owned="1" class="${ownedFilter === '1' ? 'active' : ''}" onclick="setIndispensableOwnedFilter('1')">Possédées <span>${ownedCount}</span></button>
+            </div>
+        </div>
         <div id="indispensables-bulk-actions-bar" class="volume-bulk-actions-bar" style="display:none;"></div>
-        <table class="series-table series-table-compact">
+        <table class="series-table series-table-compact indisp-table">
             <thead>
                 <tr>
                     <th class="volume-table-select-cell"><input type="checkbox" id="indispensablesSelectAll" aria-label="Sélectionner toutes les séries visibles" onchange="toggleAllIndispensables(this.checked)"></th>
                     <th class="volume-table-sortable" onclick="sortIndispensables('rank')"><div class="th-filterable-row"><span class="th-filterable-label"># <span class="indispensable-sort-arrow" data-sort-field="rank">↕</span></span></div></th>
                     <th class="volume-table-sortable" onclick="sortIndispensables('title')"><div class="th-filterable-row"><span class="th-filterable-label">Série <span class="indispensable-sort-arrow" data-sort-field="title">↕</span></span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><input class="series-table-filter-input th-filterable-control" type="text" value="${escapeHtml(query)}" placeholder="Filtrer..." aria-label="Filtrer les séries" oninput="_syncFilterControlActive(this); filterIndispensablesTable(this.value)"></span></div></th>
                     <th><div class="th-filterable-row"><span class="th-filterable-label">Genre</span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><input class="series-table-filter-input th-filterable-control" type="text" value="${escapeHtml(genreQuery)}" placeholder="Filtrer..." aria-label="Filtrer par genre" oninput="_syncFilterControlActive(this); window.indispensableGenreFilter=this.value; filterIndispensablesTable()"></span></div></th>
-                    <th><div class="th-filterable-row"><span class="th-filterable-label">En bibliothèque</span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><select class="series-table-filter-select th-filterable-control" id="indispensables-owned-filter" aria-label="Filtrer par présence en bibliothèque" onchange="_syncFilterControlActive(this); window.indispensableOwnedFilter=this.value; filterIndispensablesTable()">
+                    <th><div class="th-filterable-row"><span class="th-filterable-label">En bibliothèque</span><span class="th-filterable-filter" onclick="event.stopPropagation()"><span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span><select class="series-table-filter-select th-filterable-control" id="indispensables-owned-filter" aria-label="Filtrer par présence en bibliothèque" onchange="_syncFilterControlActive(this); setIndispensableOwnedFilter(this.value)">
                         <option value="">Tous</option>
                         <option value="1"${ownedFilter === '1' ? ' selected' : ''}>Oui</option>
                         <option value="0"${ownedFilter === '0' ? ' selected' : ''}>Non</option>
                     </select></span></div></th>
-                    <th>Action</th>
+                    <th class="indispensable-action-head">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -91,17 +107,25 @@ function renderIndispensables() {
                     // une série depuis cet écran se fait maintenant depuis sa fiche série,
                     // pas ce tableau de découverte.
                     const actionHtml = x.already_in_library
-                        ? ''
-                        : `<button class="btn-icon-only" onclick="addIndispensable(${i},this)" data-tooltip="Ajouter cette série" aria-label="Ajouter cette série">${svgIcon('plus')}</button>`;
-                    const titleCellHtml = (x.already_in_library && x.series_id)
-                        ? `<a class="indispensable-series-link" href="/series/${x.series_id}">${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">↗</a>`
-                        : `<a class="indispensable-series-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title)}</a>`;
+                        ? (x.series_id ? `<a class="indisp-open" href="/series/${x.series_id}" data-tooltip="Ouvrir la fiche">${svgIcon('library')}<span>Fiche</span></a>` : '')
+                        : `<button class="btn-icon-only indisp-add" onclick="addIndispensable(${i},this)" data-tooltip="Ajouter cette série" aria-label="Ajouter cette série">${svgIcon('plus')}<span>Ajouter</span></button>`;
+                    const href = (x.already_in_library && x.series_id) ? `/series/${x.series_id}` : escapeHtml(x.url);
+                    const external = !(x.already_in_library && x.series_id);
+                    const cover = x.cover_path
+                        ? `<img src="/${escapeHtml(x.cover_path)}" alt="" loading="lazy">`
+                        : `<span class="indisp-cover-empty">${escapeHtml((x.title || '?').replace(/^(Les?|La|L'|Un|Une)\s+/i, '').slice(0, 1).toUpperCase())}</span>`;
+                    const titleCellHtml = `<div class="indisp-series"><a class="indisp-cover" href="${href}"${external ? ' target="_blank" rel="noopener"' : ''} tabindex="-1">${cover}</a>
+                        <div class="indisp-series-text"><a class="indispensable-series-link" href="${href}"${external ? ' target="_blank" rel="noopener"' : ''}>${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">↗</a></div></div>`;
+                    const genres = String(x.genre || '').split(/\s*,\s*/).filter(g => g && g !== '-');
+                    const genreHtml = genres.length ? genres.map(g => `<span class="indisp-genre">${escapeHtml(g)}</span>`).join('') : '<span class="indisp-none">—</span>';
                     return `<tr class="series-table-row${x.already_in_library ? '' : ' indispensable-row-missing'}">
                         <td class="volume-table-select-cell"><input type="checkbox" class="indispensable-checkbox" data-index="${i}" aria-label="Sélectionner ${escapeHtml(x.title)}" onchange="_updateIndispensablesBulkActionsBar()"${x.already_in_library ? ' disabled' : ''}></td>
-                        <td class="indispensable-rank">${x.rank}</td>
+                        <td class="indispensable-rank"><span class="indisp-rank${x.rank <= 3 ? ` indisp-rank-${x.rank}` : ''}">${x.rank}</span></td>
                         <td>${titleCellHtml}</td>
-                        <td class="indispensable-category">${escapeHtml(x.genre || '-')}</td>
-                        <td class="indispensable-owned" data-owned="${x.already_in_library ? '1' : '0'}">${x.already_in_library ? svgIcon('check') : svgIcon('x')}</td>
+                        <td class="indispensable-category">${genreHtml}</td>
+                        <td class="indispensable-owned" data-owned="${x.already_in_library ? '1' : '0'}">${x.already_in_library
+                            ? `<span class="indisp-status indisp-status-ok">${svgIcon('check')} Possédée</span>`
+                            : '<span class="indisp-status">Absente</span>'}</td>
                         <td class="indispensable-action">${actionHtml}</td>
                     </tr>`;
                 }).join('')}
@@ -136,6 +160,14 @@ function filterIndispensablesTable(query) {
             || (!!genreNeedle && !genre.includes(genreNeedle))
             || (!!ownedFilter && owned !== ownedFilter);
     });
+}
+
+function setIndispensableOwnedFilter(value) {
+    window.indispensableOwnedFilter = value;
+    const select = document.getElementById('indispensables-owned-filter');
+    if (select) { select.value = value; if (typeof _syncFilterControlActive === 'function') _syncFilterControlActive(select); }
+    document.querySelectorAll('.indisp-summary-filters button').forEach(b => b.classList.toggle('active', b.dataset.owned === value));
+    filterIndispensablesTable();
 }
 
 function _updateIndispensablesBulkActionsBar() {
@@ -186,13 +218,15 @@ async function addIndispensable(index,button) {
             // Après ajout, conserver un repère permanent et un accès direct à la
             // fiche interne plutôt qu'un bouton « + » qui disparaît au prochain
             // rendu du tableau.
-            button.outerHTML = `<a class="indispensable-added" href="${seriesHref}" data-tooltip="Ouvrir la série dans l'application">Ajouté</a>`;
+            button.outerHTML = `<a class="indisp-open indispensable-added" href="${seriesHref}" data-tooltip="Ouvrir la fiche">${svgIcon('check')}<span>Ajoutée</span></a>`;
         } else {
             button.innerHTML='Ajouté';
             button.setAttribute('data-tooltip', 'Ajoutée');
             button.classList.add('indispensable-added');
         }
         if (rowCheckbox) { rowCheckbox.checked = false; rowCheckbox.disabled = true; }
+        const ownedCell = rowCheckbox?.closest('tr')?.querySelector('.indispensable-owned');
+        if (ownedCell) { ownedCell.dataset.owned = '1'; ownedCell.innerHTML = `<span class="indisp-status indisp-status-ok">${svgIcon('check')} Possédée</span>`; ownedCell.closest('tr').classList.remove('indispensable-row-missing'); }
         _updateIndispensablesTabCount();
         notifyIndispensable(d.already_exists ? `La série « ${x.title} » est déjà présente dans la bibliothèque.` : `La série « ${x.title} » a été ajoutée à la bibliothèque.`,'success');
     } catch(e){
