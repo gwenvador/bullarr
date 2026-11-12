@@ -93,6 +93,7 @@ def upscale_config():
     if request.method == 'POST':
         body = request.get_json(silent=True) or {}
         config = upscale.load_config()
+        before = dict(config)
         if 'server_enabled' in body:
             config['server_enabled'] = bool(body['server_enabled'])
         if body.get('model') in upscale.MODELS:
@@ -106,6 +107,7 @@ def upscale_config():
             upscale.save_config(config)
         except OSError as e:
             return jsonify({'success': False, 'error': error_message(e, 'Erreur de sauvegarde')}), 500
+        upscale_volume.log_settings(before, upscale.load_config())
     config = upscale.load_config()
     backups = sorted(upscale_volume.backups(current_app._get_current_object()).values(),
                      key=lambda item: item.get('created_at') or '', reverse=True)

@@ -206,7 +206,7 @@ class QueueResumeTest(unittest.TestCase):
                 CREATE TABLE libraries (id INTEGER PRIMARY KEY, path TEXT);
                 CREATE TABLE series (id INTEGER PRIMARY KEY, title TEXT, library_id INTEGER);
                 CREATE TABLE volumes (id INTEGER PRIMARY KEY, series_id INTEGER, filename TEXT, filepath TEXT,
-                    format TEXT, page_width INTEGER, page_height INTEGER, file_size INTEGER);''')
+                    format TEXT, page_width INTEGER, page_height INTEGER, file_size INTEGER, volume_number REAL);''')
             conn.commit()
             conn.close()
             app = Flask(__name__)

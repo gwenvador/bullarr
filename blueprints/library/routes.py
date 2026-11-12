@@ -2268,13 +2268,20 @@ def upscale_volume_route(volume_id):
     """Upscaling hors ligne d'un tome sur le serveur (POST {model} : mise en file ; DELETE :
     annulation). Le CBZ est remplacé par la version HD, l'original est gardé de côté."""
     from . import upscale, upscale_volume
+    app = current_app._get_current_object()
     if request.method == 'DELETE':
-        return jsonify({'success': upscale_volume.cancel(volume_id)})
+        cancelled = upscale_volume.cancel(volume_id)
+        if cancelled:
+            upscale_volume.log_cancelled(app, volume_id)
+        return jsonify({'success': cancelled})
     body = request.get_json(silent=True) or {}
     model = body.get('model') or upscale.load_config()['model']
-    state, error = upscale_volume.enqueue(current_app._get_current_object(), volume_id, model)
+    already = (upscale_volume.job(volume_id) or {}).get('status') in ('queued', 'running')
+    state, error = upscale_volume.enqueue(app, volume_id, model)
     if error:
         return jsonify({'success': False, 'error': error}), 400
+    if not already:
+        upscale_volume.log_queued(app, [(volume_id, model)])
     return jsonify({'success': True, 'job': state})
 
 
@@ -2289,7 +2296,7 @@ def upscale_volumes_batch():
     items = body.get('items')
     if not isinstance(items, list):
         items = [{'volume_id': volume_id} for volume_id in body.get('volume_ids') or []]
-    queued, errors = [], []
+    queued, errors, logged = [], [], []
     app = current_app._get_current_object()
     for item in items:
         if not isinstance(item, dict):
@@ -2298,11 +2305,16 @@ def upscale_volumes_batch():
             volume_id = int(item.get('volume_id'))
         except (TypeError, ValueError):
             continue
-        state, error = upscale_volume.enqueue(app, volume_id, item.get('model') or model)
+        already = (upscale_volume.job(volume_id) or {}).get('status') in ('queued', 'running')
+        chosen = item.get('model') or model
+        state, error = upscale_volume.enqueue(app, volume_id, chosen)
         if error:
             errors.append({'volume_id': volume_id, 'error': error})
         else:
             queued.append(volume_id)
+            if not already:
+                logged.append((volume_id, chosen))
+    upscale_volume.log_queued(app, logged)
     return jsonify({'success': bool(queued) or not errors, 'queued': queued, 'errors': errors,
                     'error': errors[0]['error'] if errors and not queued else None})
 
@@ -10160,6 +10172,7 @@ def action_history_detail(action_id):
         detail = json.loads(action['files_json']) if action.get('files_json') else {'files': [], 'folder': None}
         action['files'] = detail.get('files', [])
         action['folder'] = detail.get('folder')
+        action['volumes'] = detail.get('volumes', [])   # entrées d'upscaling
         del action['files_json']
 
         return jsonify({'success': True, 'action': action})

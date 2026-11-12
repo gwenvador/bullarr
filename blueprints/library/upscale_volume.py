@@ -14,6 +14,7 @@ nouveau fichier est écrit à côté de l'original, vérifié (archive lisible, 
 pages), puis le remplace d'un coup ; une annulation ou une erreur laisse l'original intact.
 """
 import io
+import json
 import os
 import shutil
 import sqlite3
@@ -29,6 +30,7 @@ _wake = threading.Condition(_lock)
 _jobs = OrderedDict()   # volume_id -> état (dict)
 _worker = None
 _app = None          # application Flask du fil de travail (file en base)
+_resumed = set()     # tomes remis dans la file au démarrage (historique : « repris »)
 _MAX_FINISHED = 20
 BACKUP_DIR_NAME = '.bullarr-sd-backup'
 
@@ -155,6 +157,8 @@ def _resume_now(app):
                 except OSError:
                     pass
         state, error = enqueue(app, row['volume_id'], row['model'])
+        if not error:
+            _resumed.add(row['volume_id'])
         if error:
             print(f'Upscaling du tome #{row["volume_id"]} non repris : {error}')
             _queue_remove(app, row['volume_id'])
@@ -170,7 +174,7 @@ def _volume_row(app, volume_id):
     try:
         return conn.execute('''
             SELECT v.id, v.series_id, v.filename, v.filepath, v.format, v.page_width, v.page_height,
-                   v.file_size, s.title AS series_title, l.path AS library_path
+                   v.file_size, v.volume_number, s.title AS series_title, l.path AS library_path
             FROM volumes v JOIN series s ON s.id = v.series_id
             LEFT JOIN libraries l ON l.id = s.library_id WHERE v.id = ?''', (volume_id,)).fetchone()
     finally:
@@ -350,6 +354,7 @@ def _prune_finished():
 def _run(app):
     while True:
         volume_id, model = _next_job()
+        _log_start(app, volume_id, model)
         try:
             with app.app_context():
                 _process(app, volume_id, model)
@@ -366,6 +371,95 @@ def _run(app):
         _prune_finished()
 
 
+def _log_start(app, volume_id, model):
+    """Le calcul d'un tome commence (ou reprend après un redémarrage) : noté dans l'historique."""
+    resumed = volume_id in _resumed
+    _resumed.discard(volume_id)
+    try:
+        from .action_history import log_action
+        with app.app_context():
+            row = _volume_row(app, volume_id)
+            if not row:
+                return
+            label = upscale.MODEL_LABELS.get(model, model)
+            what = 'calcul repris après le redémarrage de Bullarr' if resumed else 'calcul commencé'
+            log_action('upscale_start', row['series_id'], row['series_title'],
+                       f"{row['filename']} : {what} ({label})",
+                       files_json=_volumes_json(_volume_entry(row, model, note=what[0].upper() + what[1:])))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _volumes_json(*volumes):
+    """files_json d'une entrée d'historique : les albums concernés, affichés en dépliant la ligne."""
+    return json.dumps({'volumes': [v for v in volumes if v]})
+
+
+def _volume_entry(row, model=None, **extra):
+    if not row:
+        return None
+    entry = {'volume_id': row['id'], 'filename': row['filename'], 'volume_number': row['volume_number'],
+             'model': upscale.MODEL_LABELS.get(model, model) if model else None}
+    if row['page_width'] and row['page_height']:
+        entry['size'] = f"{row['page_width']} × {row['page_height']}"
+    entry.update({k: v for k, v in extra.items() if v is not None})
+    return entry
+
+
+def log_queued(app, items):
+    """Tomes mis dans la file (molette, page Upscaling) : une entrée par série.
+    `items` = [(volume_id, model)]."""
+    try:
+        from .action_history import log_action
+        by_series = OrderedDict()
+        for volume_id, model in items:
+            row = _volume_row(app, volume_id)
+            if row:
+                by_series.setdefault((row['series_id'], row['series_title']), []).append((row, model))
+        for (series_id, series_title), volumes in by_series.items():
+            labels = sorted({upscale.MODEL_LABELS.get(model, model) for _row, model in volumes})
+            if len(volumes) == 1:
+                detail = f"{volumes[0][0]['filename']} : upscaling demandé ({labels[0]})"
+            else:
+                detail = f"{len(volumes)} tomes mis en file d'upscaling ({', '.join(labels)})"
+            log_action('upscale_queue', series_id, series_title, detail,
+                       files_json=_volumes_json(*(_volume_entry(row, model) for row, model in volumes)))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def log_cancelled(app, volume_id):
+    try:
+        from .action_history import log_action
+        row = _volume_row(app, volume_id)
+        if row:
+            state = job(volume_id) or {}
+            log_action('upscale_cancel', row['series_id'], row['series_title'],
+                       f"{row['filename']} : upscaling annulé, fichier inchangé",
+                       files_json=_volumes_json(_volume_entry(row, state.get('model'),
+                                                              note='Annulé, fichier inchangé')))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def log_settings(before, after):
+    """Configuration > Upscaling modifiée : noté dans l'historique (sans série)."""
+    changes = []
+    if before.get('max_side') != after.get('max_side'):
+        changes.append(f"seuil de basse définition {before.get('max_side')} → {after.get('max_side')} px")
+    if before.get('model') != after.get('model'):
+        changes.append('modèle par défaut : ' + upscale.MODEL_LABELS.get(after.get('model'), after.get('model')))
+    if bool(before.get('server_enabled')) != bool(after.get('server_enabled')):
+        changes.append('upscaling sur le serveur ' + ('activé' if after.get('server_enabled') else 'désactivé'))
+    if not changes:
+        return
+    try:
+        from .action_history import log_action
+        log_action('upscale_settings', None, None, 'Réglages d\'upscaling : ' + ', '.join(changes))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _log_failure(app, volume_id, model, error):
     """Un upscaling en échec apparaît aussi dans l'historique."""
     try:
@@ -376,7 +470,8 @@ def _log_failure(app, volume_id, model, error):
             name = row['filename'] if row else f'Tome #{volume_id}'
             log_action('upscale', row['series_id'] if row else None, row['series_title'] if row else None,
                        f'{name} : upscaling impossible ({label}), fichier inchangé',
-                       success=False, error=str(error) or error.__class__.__name__)
+                       success=False, error=str(error) or error.__class__.__name__,
+                       files_json=_volumes_json(_volume_entry(row, model, error=str(error) or error.__class__.__name__)))
     except Exception:  # noqa: BLE001
         pass
 
@@ -522,8 +617,11 @@ def _process(app, volume_id, model):
     try:
         from .action_history import log_action
         label = upscale.MODEL_LABELS.get(model, model)
+        after = f'{median[0]} × {median[1]}' if median else None
         log_action('upscale', row['series_id'], row['series_title'],
-                   f"{row['filename']} : {upscaled} pages agrandies x2 ({label}), original gardé")
+                   f"{row['filename']} : {upscaled} pages agrandies x2 ({label}), original gardé",
+                   files_json=_volumes_json(_volume_entry(row, model, after=after,
+                                                          note=f'{upscaled} pages agrandies x2, original SD gardé')))
     except Exception:  # noqa: BLE001
         pass
 
@@ -571,7 +669,9 @@ def restore(app, volume_id):
     _after_change(row)
     try:
         from .action_history import log_action
-        log_action('upscale_restore', row['series_id'], row['series_title'], f"{row['filename']} : version SD remise")
+        log_action('upscale_restore', row['series_id'], row['series_title'], f"{row['filename']} : version SD remise",
+                   files_json=_volumes_json(_volume_entry(dict(row, page_width=backup['page_width'], page_height=backup['page_height']),
+                                                          backup.get('model'), note='Version SD remise à la place de la HD')))
     except Exception:  # noqa: BLE001
         pass
     return None
@@ -596,7 +696,9 @@ def delete_backup(app, volume_id):
         row = _volume_row(app, volume_id)
         if row:
             log_action('upscale_backup_delete', row['series_id'], row['series_title'],
-                       f"{row['filename']} : version SD gardée supprimée, la version HD reste")
+                       f"{row['filename']} : version SD gardée supprimée, la version HD reste",
+                       files_json=_volumes_json(_volume_entry(row, backup.get('model'),
+                                                              note='Version SD supprimée, la HD reste')))
     except Exception:  # noqa: BLE001
         pass
     return None

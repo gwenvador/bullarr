@@ -88,7 +88,7 @@ async function loadHistoryEvents() {
 
 function filterHistoryEvents(type) {
     currentHistoryFilter = type;
-    document.querySelectorAll('#history-filter-all, #history-filter-import, #history-filter-download, #history-filter-search, #history-filter-rename, #history-filter-convert, #history-filter-delete, #history-filter-ai, #history-filter-request, #history-filter-user')
+    document.querySelectorAll('#history-filter-all, #history-filter-import, #history-filter-download, #history-filter-search, #history-filter-rename, #history-filter-convert, #history-filter-delete, #history-filter-ai, #history-filter-request, #history-filter-user, #history-filter-upscale')
         .forEach(btn => btn.classList.remove('history-filter-active'));
     document.getElementById('history-filter-' + type).classList.add('history-filter-active');
     // Reste synchronisé avec le select de la colonne Type (voir templates/history.html) -
@@ -165,7 +165,9 @@ function renderHistoryEvents(resetPage = true) {
             ? allHistoryEvents.filter(e => e.type === 'search' || e.type === 'auto_acquire')
             : currentHistoryFilter === 'delete'
                 ? allHistoryEvents.filter(e => e.type === 'delete' || e.type === 'delete_volume')
-                : allHistoryEvents.filter(e => e.type === currentHistoryFilter);
+                : currentHistoryFilter === 'upscale'
+                    ? allHistoryEvents.filter(e => (e.type || '').startsWith('upscale'))
+                    : allHistoryEvents.filter(e => e.type === currentHistoryFilter);
     if (currentHistorySearchText.trim()) {
         const needle = _historyNormalizeForSearch(currentHistorySearchText.trim());
         events = events.filter(e =>

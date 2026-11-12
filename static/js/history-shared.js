@@ -17,7 +17,7 @@ const HISTORY_TYPE_ICONS = {
     import: 'package', download: 'download', rename: 'pencil', delete: 'trash-2', delete_volume: 'trash-2',
     renumber_volume: 'tag', convert: 'refresh-cw', merge: 'git-merge', move_volume: 'git-merge',
     add_series: 'plus', auto_acquire: 'radar', search: 'search', quality_upgrade: 'sparkles',
-    missing_volume_match: 'eye', ai: 'bot', request: 'book-plus', user: 'users', upscale: 'sparkles', upscale_restore: 'refresh-cw', upscale_backup_delete: 'trash-2'
+    missing_volume_match: 'eye', ai: 'bot', request: 'book-plus', user: 'users', upscale: 'sparkles', upscale_queue: 'plus', upscale_start: 'play', upscale_cancel: 'x', upscale_settings: 'settings', upscale_restore: 'refresh-cw', upscale_backup_delete: 'trash-2'
 };
 const HISTORY_TYPE_LABELS = {
     import: 'Import', download: 'Téléchargement', rename: 'Renommage', delete: 'Suppression',
@@ -25,7 +25,7 @@ const HISTORY_TYPE_LABELS = {
     convert: 'Conversion', merge: 'Fusion', move_volume: 'Déplacement de tome',
     add_series: 'Ajout de série', auto_acquire: 'Recherche automatique', search: 'Recherche manuelle',
     quality_upgrade: 'Upgrade qualité', missing_volume_match: 'Tome manquant détecté', ai: 'IA',
-    request: 'Demande', user: 'Utilisateur', upscale: 'Upscaling HD', upscale_restore: 'Version SD remise', upscale_backup_delete: 'Sauvegarde SD supprimée'
+    request: 'Demande', user: 'Utilisateur', upscale: 'Upscaling HD', upscale_queue: 'Upscaling demandé', upscale_start: 'Upscaling commencé', upscale_cancel: 'Upscaling annulé', upscale_settings: 'Réglages d\'upscaling', upscale_restore: 'Version SD remise', upscale_backup_delete: 'Sauvegarde SD supprimée'
 };
 
 const HISTORY_SOURCE_LABELS = { ebdz: 'EBDZ', prowlarr: 'Prowlarr', telegram: 'Telegram', fourtoutici: 'fourtoutici', vk: 'VK' };
@@ -234,7 +234,7 @@ function toggleAiDetail(rowId, aiId, fullDate) {
         }
         const title = escapeHtmlHistory(d.title || `Série #${d.series_id}`);
         const link = d.series_id != null
-            ? `<a href="/series/${encodeURIComponent(d.series_id)}" style="color:var(--color-accent); text-decoration:underline;">${title}</a>`
+            ? `<a href="/series/${encodeURIComponent(d.series_id)}" class="history-link">${title}</a>`
             : title;
         const tags = (d.added || []).length
             ? (d.added || []).map(tag => `<span class="ai-history-tag">${escapeHtmlHistory(tag)}</span>`).join(' ')
@@ -335,7 +335,10 @@ function mapHistoryResponsesToEvents(importResp, downloadResp, actionResp, aiRes
         seriesId: h.action_type === 'delete' ? null : h.series_id,
         seriesTitle: h.series_title,
         label: h.series_title || `Série #${h.series_id}`,
-        detail: h.error || h.detail || '',
+        // Upscaling en échec : le nom de l'album (detail) reste affiché, l'erreur en dessous.
+        detail: (h.action_type || '').startsWith('upscale') && h.error && h.detail
+            ? `${h.detail}\n⚠️ ${h.error}`
+            : (h.error || h.detail || ''),
         success: !!h.success
     }));
 
@@ -389,7 +392,7 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
     // téléchargements n'ont qu'un seul fichier/tome et les suppressions un seul résumé,
     // déjà entièrement décrits par le libellé de la ligne.
     if (e.type === 'ai' && e.aiId) _aiHistoryEvents[e.aiId] = e;
-    const expandable = e.type === 'import' || e.type === 'rename' || _aiEventExpandable(e);
+    const expandable = e.type === 'import' || e.type === 'rename' || _isUpscaleAlbumEvent(e) || _aiEventExpandable(e);
     // Une série supprimée n'a plus de fiche à ouvrir (seriesId volontairement null pour
     // 'delete', voir loadHistoryEvents côté history.js) - un lien reste affiché pour
     // rename/delete_volume, mais pour rename il ouvre la fiche sans déclencher le
@@ -404,12 +407,12 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
     const clickableSeries = e.seriesId != null && !hideSeriesLink;
     const rowId = `${idPrefix}-${index}`;
     const rowOnclick = e.type === 'import' ? `onclick="toggleImportFiles('${rowId}', '${escapeAttrHistory(e.operationId)}', '${escapeAttrHistory(date)}')"`
-        : e.type === 'rename' ? `onclick="toggleActionDetail('${rowId}', ${e.actionId}, '${escapeAttrHistory(date)}')"`
+        : (e.type === 'rename' || _isUpscaleAlbumEvent(e)) ? `onclick="toggleActionDetail('${rowId}', ${e.actionId}, '${escapeAttrHistory(date)}')"`
         : expandable && e.type === 'ai' ? `onclick="toggleAiDetail('${rowId}', '${escapeAttrHistory(e.aiId)}', '${escapeAttrHistory(date)}')"`
         : clickableSeries ? `onclick="window.location.href='/series/${e.seriesId}'"`
         : '';
     const seriesLinkHtml = clickableSeries
-        ? `<a href="/series/${encodeURIComponent(e.seriesId)}" data-tooltip="Voir la fiche série" onclick="event.stopPropagation();" style="color:var(--color-accent); text-decoration:underline;">${escapeHtmlHistory(e.seriesTitle || e.label)}</a>`
+        ? `<a href="/series/${encodeURIComponent(e.seriesId)}" data-tooltip="Voir la fiche série" onclick="event.stopPropagation();" class="history-link">${escapeHtmlHistory(e.seriesTitle || e.label)}</a>`
         : '';
     const labelHtml = hideSeriesLink
         ? escapeHtmlHistory(e.label)
@@ -480,7 +483,7 @@ async function toggleImportFiles(rowId, operationId, fullDate) {
                                 ${escapeHtmlHistory(f.filename || '')}
                                 ${f.message ? `<div style="${f.action === 'failed' ? 'color:#c0392b;' : 'color:#888;'} font-size:0.9em;">${f.action === 'failed' ? '⚠️' : '🔄'} ${escapeHtmlHistory(f.message)}</div>` : ''}
                             </td>
-                            <td class="history-file-series">${f.series_id ? `<a href="/series/${f.series_id}">${escapeHtmlHistory(f.series_title || '')}</a>` : escapeHtmlHistory(f.series_title || '')}</td>
+                            <td class="history-file-series">${f.series_id ? `<a class="history-link" href="/series/${f.series_id}">${escapeHtmlHistory(f.series_title || '')}</a>` : escapeHtmlHistory(f.series_title || '')}</td>
                             <td class="history-file-volume">${escapeHtmlHistory(importHistoryVolumeLabel(f))}</td>
                         </tr>
                     `).join('')}
@@ -501,6 +504,32 @@ async function toggleImportFiles(rowId, operationId, fullDate) {
 // depuis history.js (déjà partagée par le widget /import) pour être réutilisable par
 // openSeriesHistoryModal (library.js) sans dupliquer cette logique une 3e fois.
 const actionDetailCache = {};
+
+// Entrées d'upscaling liées à des albums (pas les réglages) : dépliables comme un import,
+// le détail liste le ou les albums (tome, fichier, modèle, définition).
+function _isUpscaleAlbumEvent(e) {
+    return (e.type || '').startsWith('upscale') && e.type !== 'upscale_settings' && e.actionId != null;
+}
+
+function _upscaleVolumesDetailHtml(volumes) {
+    if (!volumes.length) return '<div style="padding:8px; color:#666;">Aucun détail disponible pour cette entrée</div>';
+    const rows = volumes.map(v => {
+        const tome = v.volume_number != null ? `Tome ${String(v.volume_number).replace(/\.0$/, '')}` : '';
+        const size = v.size ? (v.after ? `${v.size} → ${v.after} px` : `${v.size} px`) : '';
+        const meta = [v.model, size].filter(Boolean).join(' · ');
+        return `
+            <tr style="border-top:1px solid var(--color-border, #eee);">
+                <td style="padding:6px 8px; overflow-wrap:anywhere;">
+                    <div>${escapeHtmlHistory(v.filename || '')}</div>
+                    ${v.note ? `<div style="color:var(--color-text-muted); font-size:0.92em;">${escapeHtmlHistory(v.note)}</div>` : ''}
+                    ${v.error ? `<div style="color:var(--color-danger, #dc3545); font-size:0.92em;">⚠️ ${escapeHtmlHistory(v.error)}</div>` : ''}
+                </td>
+                <td style="padding:6px 8px; color:var(--color-text-muted); white-space:nowrap;">${escapeHtmlHistory(meta)}</td>
+                <td style="padding:6px 8px; color:var(--color-text-muted); white-space:nowrap;">${escapeHtmlHistory(tome)}</td>
+            </tr>`;
+    });
+    return `<table style="width:100%; border-collapse:collapse; font-size:13px;"><tbody>${rows.join('')}</tbody></table>`;
+}
 
 async function toggleActionDetail(rowId, actionId, fullDate) {
     const detailRow = document.getElementById(`${rowId}-files`);
@@ -527,6 +556,12 @@ async function toggleActionDetail(rowId, actionId, fullDate) {
         const data = await response.json();
         const files = (data.action && data.action.files) || [];
         const folder = data.action && data.action.folder;
+        if ((data.action?.action_type || '').startsWith('upscale')) {
+            const html = _upscaleVolumesDetailHtml(data.action.volumes || []);
+            actionDetailCache[actionId] = html;
+            cell.innerHTML = dateHtml + html;
+            return;
+        }
 
         const rows = [];
         if (folder && folder.changed) {
