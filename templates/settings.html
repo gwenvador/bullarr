@@ -81,13 +81,21 @@
                                 Toutes les catégories de configuration. Cliquez sur une carte pour l'ouvrir.
                             </p>
                         </div>
-                        <div class="overview-grid">
+                        <div class="overview-toolbar">
+                            <label class="overview-filter"><span data-icon="search"></span><input type="search" id="overviewFilter" placeholder="Filtrer les réglages (ex. Komga, Telegram, renommage)" oninput="filterOverviewTiles(this.value)" autocomplete="off"></label>
+                        </div>
+                        <p class="overview-empty" id="overviewEmpty" hidden>Aucun réglage ne correspond.</p>
+                        <div class="overview-groups">
+                        <section class="overview-group">
+                            <div class="overview-group-head"><h3>Sources et téléchargements</h3><p>Où chercher les albums, avec quoi les télécharger, comment les importer</p></div>
+                            <div class="overview-grid">
                             <button type="button" class="overview-card" onclick="switchTab('indexeurs')">
                                 <span class="overview-card-icon" data-icon="plug"></span>
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">Indexeurs</span>
                                     <span class="overview-card-desc">Prowlarr, EBDZ, canaux Telegram, RSS, Web Archive</span>
                                 </span>
+                                <span class="overview-card-status" data-overview-status="indexeurs" hidden></span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('clients')">
                                 <span class="overview-card-icon" data-icon="monitor"></span>
@@ -95,55 +103,7 @@
                                     <span class="overview-card-name">Clients</span>
                                     <span class="overview-card-desc">qBittorrent, rTorrent, Deluge, aMule, Shelfmark</span>
                                 </span>
-                            </button>
-                            <button type="button" class="overview-card" onclick="switchTab('theme')">
-                                <span class="overview-card-icon" data-icon="palette"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">Thème</span>
-                                    <span class="overview-card-desc">Palette de couleurs, clair, sombre ou système</span>
-                                </span>
-                            </button>
-                            <button type="button" class="overview-card" onclick="switchTab('upscale')">
-                                <span class="overview-card-icon" data-icon="sparkles"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">Upscaling</span>
-                                    <span class="overview-card-desc">Modèles du bouton HD du lecteur, téléchargés dans ce navigateur</span>
-                                </span>
-                            </button>
-                            <button type="button" class="overview-card" onclick="switchTab('integrations')">
-                                <span class="overview-card-icon" data-icon="link"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">Intégrations</span>
-                                    <span class="overview-card-desc">Komga : rescan, lecture</span>
-                                </span>
-                            </button>
-                            <button type="button" class="overview-card" onclick="switchTab('telegram')">
-                                <span class="overview-card-icon" data-icon="smartphone"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">Notifications</span>
-                                    <span class="overview-card-desc">Telegram et ntfy : imports, albums repérés</span>
-                                </span>
-                            </button>
-                            <button type="button" class="overview-card" onclick="switchTab('oidc')">
-                                <span class="overview-card-icon" data-icon="lock"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">Login</span>
-                                    <span class="overview-card-desc">Mot de passe, SSO OIDC, clé API</span>
-                                </span>
-                            </button>
-                            <button type="button" class="overview-card" onclick="switchTab('monitoring')">
-                                <span class="overview-card-icon" data-icon="activity"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">Surveillance</span>
-                                    <span class="overview-card-desc">Volumes manquants et nouveautés</span>
-                                </span>
-                            </button>
-                            <button type="button" class="overview-card" onclick="switchTab('import-auto')">
-                                <span class="overview-card-icon" data-icon="download"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">Imports</span>
-                                    <span class="overview-card-desc">Dossiers surveillés, import périodique</span>
-                                </span>
+                                <span class="overview-card-status" data-overview-status="clients" hidden></span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('search-formats')">
                                 <span class="overview-card-icon" data-icon="search"></span>
@@ -151,13 +111,89 @@
                                     <span class="overview-card-name">Recherche</span>
                                     <span class="overview-card-desc">Formats préférés dans les résultats</span>
                                 </span>
+                                <span class="overview-card-status" data-overview-status="search-formats" hidden></span>
                             </button>
+                            <button type="button" class="overview-card" onclick="switchTab('monitoring')">
+                                <span class="overview-card-icon" data-icon="activity"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Surveillance</span>
+                                    <span class="overview-card-desc">Volumes manquants et nouveautés</span>
+                                </span>
+                                <span class="overview-card-status" data-overview-status="monitoring" hidden></span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('import-auto')">
+                                <span class="overview-card-icon" data-icon="download"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Imports</span>
+                                    <span class="overview-card-desc">Dossiers surveillés, import périodique</span>
+                                </span>
+                                <span class="overview-card-status" data-overview-status="import-auto" hidden></span>
+                            </button>
+                            </div>
+                        </section>
+                        <section class="overview-group">
+                            <div class="overview-group-head"><h3>Bibliothèque et lecture</h3><p>Noms des fichiers, Komga, tags par IA, haute définition</p></div>
+                            <div class="overview-grid">
                             <button type="button" class="overview-card" onclick="switchTab('libraries')">
                                 <span class="overview-card-icon" data-icon="pencil"></span>
                                 <span class="overview-card-text">
                                     <span class="overview-card-name">Format</span>
                                     <span class="overview-card-desc">Modèles de renommage des fichiers</span>
                                 </span>
+                                <span class="overview-card-status" data-overview-status="libraries" hidden></span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('integrations')">
+                                <span class="overview-card-icon" data-icon="link"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Intégrations</span>
+                                    <span class="overview-card-desc">Komga : rescan, lecture</span>
+                                </span>
+                                <span class="overview-card-status" data-overview-status="integrations" hidden></span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('ai')">
+                                <span class="overview-card-icon" data-icon="bot"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">IA</span>
+                                    <span class="overview-card-desc">Tags des séries : Claude, Gemini, ChatGPT, Groq, LLM local…</span>
+                                </span>
+                                <span class="overview-card-status" data-overview-status="ai" hidden></span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('upscale')">
+                                <span class="overview-card-icon" data-icon="sparkles"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Upscaling</span>
+                                    <span class="overview-card-desc">Modèles du bouton HD du lecteur, téléchargés dans ce navigateur</span>
+                                </span>
+                                <span class="overview-card-status" data-overview-status="upscale" hidden></span>
+                            </button>
+                            </div>
+                        </section>
+                        <section class="overview-group">
+                            <div class="overview-group-head"><h3>Application</h3><p>Accès, alertes, apparence et sauvegardes</p></div>
+                            <div class="overview-grid">
+                            <button type="button" class="overview-card" onclick="switchTab('oidc')">
+                                <span class="overview-card-icon" data-icon="lock"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Login</span>
+                                    <span class="overview-card-desc">Mot de passe, SSO OIDC, clé API</span>
+                                </span>
+                                <span class="overview-card-status" data-overview-status="oidc" hidden></span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('telegram')">
+                                <span class="overview-card-icon" data-icon="smartphone"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Notifications</span>
+                                    <span class="overview-card-desc">Telegram et ntfy : imports, albums repérés</span>
+                                </span>
+                                <span class="overview-card-status" data-overview-status="telegram" hidden></span>
+                            </button>
+                            <button type="button" class="overview-card" onclick="switchTab('theme')">
+                                <span class="overview-card-icon" data-icon="palette"></span>
+                                <span class="overview-card-text">
+                                    <span class="overview-card-name">Thème</span>
+                                    <span class="overview-card-desc">Palette de couleurs, clair, sombre ou système</span>
+                                </span>
+                                <span class="overview-card-status" data-overview-status="theme" hidden></span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('backup')">
                                 <span class="overview-card-icon" data-icon="save"></span>
@@ -165,14 +201,10 @@
                                     <span class="overview-card-name">Backup</span>
                                     <span class="overview-card-desc">Sauvegarde et restauration</span>
                                 </span>
+                                <span class="overview-card-status" data-overview-status="backup" hidden></span>
                             </button>
-                            <button type="button" class="overview-card" onclick="switchTab('ai')">
-                                <span class="overview-card-icon" data-icon="sparkles"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">IA</span>
-                                    <span class="overview-card-desc">aiautotagging.com, Claude, Gemini, ChatGPT, OpenRouter, Groq ou LLM local : tags des séries</span>
-                                </span>
-                            </button>
+                            </div>
+                        </section>
                         </div>
 
                         <div class="settings-card about-card" id="about">

@@ -3244,28 +3244,91 @@ function escapeForAttribute(text) {
 // que la largeur permet (260 px mini par tuile), puis les tuiles réparties à parts égales
 // entre les lignes (13 tuiles sur 4 colonnes : 4-3-3-3, pas 4-4-4-1) ; chaque ligne est
 // pleine et les tuiles des lignes plus courtes sont plus larges.
+// Vue d'ensemble : tuiles rangées par famille (.overview-group). Chaque groupe répartit
+// ses tuiles en lignes équilibrées qui remplissent toute la largeur (5 → 5, ou 3 + 2 si
+// la place manque, jamais une tuile seule en bas).
 function layoutOverviewTiles() {
-    const grid = document.querySelector('#tab-overview .overview-grid');
-    if (!grid || !grid.clientWidth) return;
-    const cards = [...grid.querySelectorAll('.overview-card')];
-    const gap = parseFloat(getComputedStyle(grid).columnGap) || 14;
-    const columns = Math.max(1, Math.min(cards.length, Math.floor((grid.clientWidth + gap) / (260 + gap))));
-    const rows = Math.ceil(cards.length / columns);
-    const base = Math.floor(cards.length / rows);
-    const longRows = cards.length % rows;
-    let index = 0;
-    for (let row = 0; row < rows; row++) {
-        const count = base + (row < longRows ? 1 : 0);
-        for (let i = 0; i < count; i++, index++) {
-            cards[index].style.flex = `0 0 calc((100% - ${(count - 1) * gap}px) / ${count})`;
+    document.querySelectorAll('#tab-overview .overview-grid').forEach(grid => {
+        if (!grid.clientWidth) return;
+        const cards = [...grid.querySelectorAll('.overview-card')].filter(card => !card.hidden);
+        if (!cards.length) return;
+        const gap = parseFloat(getComputedStyle(grid).columnGap) || 14;
+        const columns = Math.max(1, Math.min(cards.length, Math.floor((grid.clientWidth + gap) / (205 + gap))));
+        const rows = Math.ceil(cards.length / columns);
+        const base = Math.floor(cards.length / rows);
+        const longRows = cards.length % rows;
+        let index = 0;
+        for (let row = 0; row < rows; row++) {
+            const count = base + (row < longRows ? 1 : 0);
+            for (let i = 0; i < count; i++, index++) {
+                cards[index].style.flex = `0 0 calc((100% - ${(count - 1) * gap}px) / ${count})`;
+            }
         }
-    }
+    });
 }
-document.addEventListener('DOMContentLoaded', () => {
-    const grid = document.querySelector('#tab-overview .overview-grid');
-    if (!grid) return;
+
+function filterOverviewTiles(query) {
+    const words = String(query || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/\s+/).filter(Boolean);
+    let shown = 0;
+    document.querySelectorAll('#tab-overview .overview-group').forEach(group => {
+        let groupShown = 0;
+        group.querySelectorAll('.overview-card').forEach(card => {
+            const text = card.textContent.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            card.hidden = !words.every(word => text.includes(word));
+            if (!card.hidden) groupShown++;
+        });
+        group.hidden = !groupShown;
+        shown += groupShown;
+    });
+    const empty = document.getElementById('overviewEmpty');
+    if (empty) empty.hidden = shown > 0;
     layoutOverviewTiles();
-    if (window.ResizeObserver) new ResizeObserver(() => layoutOverviewTiles()).observe(grid);
+}
+
+// État de chaque catégorie, lu dans les onglets déjà chargés (mêmes badges que les
+// cartes Indexeurs/Clients, interrupteurs principaux des autres onglets).
+function _overviewCardsState(tabId) {
+    const badges = [...document.querySelectorAll(`#${tabId} .integration-card-status`)];
+    const on = badges.filter(badge => badge.classList.contains('integration-card-status-on'));
+    return { total: badges.length, on: on.length, loaded: badges.some(badge => badge.textContent.trim() !== '…') };
+}
+
+function updateOverviewStatus() {
+    const checked = id => !!document.getElementById(id)?.checked;
+    const states = {};
+    const indexers = _overviewCardsState('tab-indexeurs');
+    if (indexers.loaded) states.indexeurs = indexers.on ? [`${indexers.on}/${indexers.total} actives`, 'on'] : ['Aucune source', 'warn'];
+    const clients = _overviewCardsState('tab-clients');
+    if (clients.loaded) states.clients = clients.on ? [`${clients.on} actif${clients.on > 1 ? 's' : ''}`, 'on'] : ['Aucun client', 'warn'];
+    const komga = document.getElementById('card-status-komga');
+    if (komga && komga.textContent.trim() !== '…') states.integrations = [komga.classList.contains('integration-card-status-on') ? 'Komga connecté' : 'Komga inactif', komga.classList.contains('integration-card-status-on') ? 'on' : 'off'];
+    const monitoring = [checked('settingsMonitorMissing') && 'manquants', checked('settingsQualityUpgrade') && 'upgrade'].filter(Boolean);
+    states.monitoring = monitoring.length ? [`Active : ${monitoring.join(', ')}`, 'on'] : ['Désactivée', 'off'];
+    states['import-auto'] = checked('auto-import-enabled') ? ['Import auto', 'on'] : ['Manuel', 'off'];
+    states.ai = checked('aiEnabled') ? ['Activée', 'on'] : ['Désactivée', 'off'];
+    const channels = [checked('telegramEnabled') && 'Telegram', checked('ntfyEnabled') && 'ntfy'].filter(Boolean);
+    states.telegram = channels.length ? [channels.join(' · '), 'on'] : ['Aucun canal', 'off'];
+    const authMode = document.getElementById('authMode')?.value;
+    if (authMode) states.oidc = authMode === 'none' ? ['Accès libre', 'warn'] : ['Protégé', 'on'];
+    document.querySelectorAll('#tab-overview [data-overview-status]').forEach(el => {
+        const state = states[el.dataset.overviewStatus];
+        el.hidden = !state;
+        if (!state) return;
+        el.textContent = state[0];
+        el.className = `overview-card-status is-${state[1]}`;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const tab = document.getElementById('tab-overview');
+    if (!tab) return;
+    tab.querySelectorAll('[data-icon]').forEach(el => { if (!el.innerHTML.trim() && typeof svgIcon === 'function') el.innerHTML = svgIcon(el.dataset.icon); });
+    layoutOverviewTiles();
+    if (window.ResizeObserver) new ResizeObserver(() => layoutOverviewTiles()).observe(tab);
+    [800, 2500, 6000].forEach(delay => setTimeout(updateOverviewStatus, delay));
+    // Revenir sur la vue d'ensemble après un réglage remet les états à jour.
+    new MutationObserver(() => { if (tab.classList.contains('active')) updateOverviewStatus(); })
+        .observe(tab, { attributes: true, attributeFilter: ['class'] });
 });
 
 // ===== BACKUP / RESTAURATION =====
@@ -4023,7 +4086,7 @@ const SETTINGS_EMOJI_ICONS = {
     '📖': 'book-open', '📂': 'folder-open', '⏰': 'clock', '⚠': 'triangle-alert',
     '↩': 'undo', '⏸': 'pause', '▶': 'play',
 };
-const SETTINGS_TITLE_FALLBACK = { 'tab-telegram': 'bell' };
+const SETTINGS_TITLE_FALLBACK = { 'tab-telegram': 'bell', 'tab-overview': 'settings' };
 const _SETTINGS_EMOJI_RE = /^\s*(\p{Extended_Pictographic})️?\s*/u;
 
 function _settingsIconFor(emoji) {
