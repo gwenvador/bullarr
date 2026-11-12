@@ -10,6 +10,7 @@ Les CSV sont en UTF-8 avec BOM et séparateur « ; » : ils s'ouvrent tels quels
 ou LibreOffice en français. L'import accepte aussi la virgule."""
 import csv
 import io
+import json
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -21,9 +22,18 @@ from . import library_bp
 
 READING_COLUMNS = ['bibliotheque', 'serie', 'tome', 'numero', 'fichier', 'page', 'pages', 'lu',
                    'date_lecture', 'komga_book_id', 'serie_id', 'volume_id']
-VOLUME_COLUMNS = ['bibliotheque', 'serie', 'tome', 'numero', 'integrale', 'hors_serie', 'annee', 'auteur',
-                  'editeur', 'genre', 'format', 'pages', 'taille_mo', 'largeur_px', 'hauteur_px', 'fichier',
-                  'chemin', 'komga_book_id', 'serie_id', 'volume_id']
+# Une ligne par album : ses propres données (fichier, ComicInfo, Bédéthèque, lecture) puis
+# celles de sa série, soit toutes les colonnes des tableaux Bibliothèque et Série.
+VOLUME_COLUMNS = [
+    'bibliotheque', 'serie', 'tome', 'numero', 'integrale', 'hors_serie', 'titre_album', 'resume_album',
+    'date_parution', 'annee', 'scenariste', 'dessinateur', 'coloriste', 'auteur', 'editeur', 'genre',
+    'isbn', 'note_bedetheque', 'votes_bedetheque', 'lien_bedetheque', 'releaser', 'format', 'pages',
+    'taille_mo', 'largeur_px', 'hauteur_px', 'qualite', 'lu', 'page_lue', 'date_lecture',
+    'serie_statut', 'serie_complete', 'serie_type', 'serie_langue', 'serie_annee_debut', 'serie_annee_fin',
+    'serie_resume', 'serie_auteur', 'serie_editeurs', 'serie_genre', 'serie_univers', 'serie_tags',
+    'serie_one_shot', 'serie_tomes_bedetheque', 'serie_tomes_manquants', 'serie_date_ajout',
+    'serie_derniere_update', 'serie_lien_bedetheque', 'serie_matching_komga', 'serie_matching_ebdz',
+    'fichier', 'chemin', 'komga_book_id', 'serie_id', 'volume_id']
 SOURCE_LABELS = {
     'komga': 'Compte Komga du serveur',
     'komga_user': 'Votre compte Komga',
@@ -319,11 +329,43 @@ def import_reading_history():
 
 
 # ----- Export CSV des BD -----
+def _json(value, default):
+    try:
+        data = json.loads(value) if value else default
+    except (TypeError, ValueError):
+        return default
+    return data if isinstance(data, type(default)) else default
+
+
+def _date_parution(ci):
+    year, month, day = ci.get('year'), ci.get('month'), ci.get('day')
+    if not year:
+        return ''
+    if month and day and not (str(month) == '1' and str(day) == '1'):
+        return f'{int(year):04d}-{int(month):02d}-{int(day):02d}' if str(month).isdigit() and str(day).isdigit() else str(year)
+    return str(year)
+
+
+def _quality(width, height, low_def):
+    side = max(width or 0, height or 0)
+    if not side:
+        return ''
+    return 'Basse déf.' if side <= low_def else ('Standard' if side < 2500 else 'HD')
+
+
+def _rating(ci):
+    value = ci.get('communityrating')
+    return str(value).replace('.', ',') if value not in (None, '') else ''
+
+
 @library_bp.route('/api/export/volumes.csv', methods=['GET'])
 def export_volumes_csv():
     """Toutes les BD (tomes présents sur le disque) d'une bibliothèque (?library_id=) ou de
-    toutes les bibliothèques."""
+    toutes les bibliothèques, avec les données de l'album et de sa série."""
+    from . import upscale
+    from .routes import _series_last_change_dates
     library_id = request.args.get('library_id', type=int)
+    source = _source()
     conn = _db()
     try:
         name = None
@@ -334,27 +376,66 @@ def export_volumes_csv():
             name = lib['name']
         rows = conn.execute('''
             SELECT v.*, s.title AS series_title, l.name AS library_name,
-                   COALESCE(NULLIF(s.manual_genre, ''), NULLIF(s.local_genre, ''), s.bedetheque_genre) AS genre,
-                   s.bedetheque_editeurs AS editeur,
-                   COALESCE(NULLIF(v.author, ''), NULLIF(s.manual_author, ''), s.local_author) AS any_author
+                   COALESCE(NULLIF(TRIM(s.manual_genre), ''), NULLIF(TRIM(s.bedetheque_genre), ''), NULLIF(TRIM(s.local_genre), '')) AS series_genre,
+                   COALESCE(NULLIF(TRIM(s.manual_author), ''), NULLIF(TRIM(s.local_author), '')) AS series_author,
+                   COALESCE(NULLIF(TRIM(s.manual_summary), ''), NULLIF(TRIM(s.local_summary), ''), NULLIF(TRIM(s.bedetheque_description), ''), NULLIF(TRIM(s.komga_summary), '')) AS series_summary,
+                   COALESCE(NULLIF(TRIM(s.manual_status), ''), s.bedetheque_status) AS series_status,
+                   CAST(COALESCE(s.manual_year_start, s.bedetheque_year_start, s.local_year) AS TEXT) AS series_year_start,
+                   CAST(COALESCE(s.manual_year_end, s.bedetheque_year_end) AS TEXT) AS series_year_end,
+                   s.bedetheque_editeurs, s.bedetheque_origin, s.bedetheque_language, s.bedetheque_url AS series_url,
+                   s.bedetheque_total_volumes, s.missing_volumes, s.tags, s.is_oneshot, s.added_at AS series_added_at,
+                   s.manual_complete_override, s.bedetheque_complete, s.bedetheque_albums,
+                   s.komga_match_status, s.ebdz_match_status, u.name AS universe_name,
+                   p.page AS read_page, p.completed AS read_completed, p.read_at AS read_at
             FROM volumes v JOIN series s ON s.id = v.series_id
             LEFT JOIN libraries l ON l.id = s.library_id
+            LEFT JOIN universes u ON u.id = s.universe_id
+            LEFT JOIN {progress} p ON p.vol_id = v.id
             WHERE v.filepath IS NOT NULL AND (? IS NULL OR s.library_id = ?)
             ORDER BY l.name, s.title COLLATE NOCASE, v.is_integral, v.is_hs, v.volume_number, v.filename
-        ''', (library_id, library_id)).fetchall()
+        '''.format(progress=source.sql), (*source.params, library_id, library_id)).fetchall()
+        try:
+            last_changes = _series_last_change_dates(conn.cursor())
+        except sqlite3.Error:
+            last_changes = {}
     finally:
         conn.close()
+    low_def = int(upscale.low_def_max_side())
+    isbn_cache = {}
     out = []
     for row in rows:
+        ci = _json(row['comicinfo'], {})
+        if row['series_id'] not in isbn_cache:
+            isbn_cache[row['series_id']] = {str(a.get('url') or '').rstrip('/'): a.get('isbn')
+                                            for a in _json(row['bedetheque_albums'], []) if isinstance(a, dict) and a.get('isbn')}
+        web = str(ci.get('web') or '').rstrip('/')
         size = row['file_size'] or 0
-        out.append([row['library_name'] or '', row['series_title'], volume_label(row), _num(row['volume_number']),
-                    _num(row['integral_number']) if row['is_integral'] else '',
-                    _num(row['hs_number']) if row['is_hs'] else '',
-                    row['year'] or '', row['any_author'] or '', _editeur(row['editeur']), row['genre'] or '',
-                    (row['format'] or '').lower(), row['page_count'] or '',
-                    f'{size / 1048576:.1f}'.replace('.', ',') if size else '',
-                    row['page_width'] or '', row['page_height'] or '', row['filename'], row['filepath'],
-                    row['komga_book_id'] or '', row['series_id'], row['id']])
+        missing = _json(row['missing_volumes'], [])
+        complete = row['manual_complete_override'] or row['bedetheque_complete']
+        changed = max(filter(None, (last_changes.get(row['series_id']), row['series_added_at'])), default=None)
+        out.append([
+            row['library_name'] or '', row['series_title'], volume_label(row), _num(row['volume_number']),
+            _num(row['integral_number']) if row['is_integral'] else '', _num(row['hs_number']) if row['is_hs'] else '',
+            ci.get('title') or '', ci.get('summary') or '', _date_parution(ci), row['year'] or ci.get('year') or '',
+            ci.get('writer') or '', ci.get('penciller') or '', ci.get('colorist') or '',
+            row['author'] or row['series_author'] or '', ci.get('publisher') or _editeur(row['bedetheque_editeurs']),
+            ci.get('genre') or row['series_genre'] or '', isbn_cache[row['series_id']].get(web) or '',
+            _rating(ci), ci.get('communityratingcount') or '', web, row['release_group'] or '',
+            (row['format'] or '').lower(), row['page_count'] or '',
+            f'{size / 1048576:.1f}'.replace('.', ',') if size else '',
+            row['page_width'] or '', row['page_height'] or '', _quality(row['page_width'], row['page_height'], low_def),
+            'oui' if row['read_completed'] else ('en cours' if (row['read_page'] or 0) > 0 else 'non'),
+            row['read_page'] or '', row['read_at'] or '',
+            row['series_status'] or '', '' if complete is None else ('oui' if complete else 'non'),
+            row['bedetheque_origin'] or '', row['bedetheque_language'] or '',
+            row['series_year_start'] or '', row['series_year_end'] or '', row['series_summary'] or '',
+            row['series_author'] or '', _editeur(row['bedetheque_editeurs']), row['series_genre'] or '',
+            row['universe_name'] or '', ', '.join(_json(row['tags'], [])), 'oui' if row['is_oneshot'] else 'non',
+            row['bedetheque_total_volumes'] or '', ', '.join(_num(m) for m in missing),
+            row['series_added_at'] or '', changed or '', row['series_url'] or '',
+            'oui' if row['komga_match_status'] == 'matched' else 'non',
+            'oui' if row['ebdz_match_status'] == 'matched' else 'non',
+            row['filename'], row['filepath'], row['komga_book_id'] or '', row['series_id'], row['id']])
     slug = ''.join(c if c.isalnum() else '-' for c in (name or 'toutes-les-bibliotheques').lower()).strip('-')
     return _csv_response(VOLUME_COLUMNS, out, f'bullarr-bd-{slug}-{_stamp()}.csv')
 

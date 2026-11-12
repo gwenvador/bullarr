@@ -4004,6 +4004,8 @@ const VOLUME_TABLE_OPTIONAL_COLUMNS = [
     } },
     { key: 'quality', label: 'Qualité', icon: '🖼️', header: 'Qualité', filterType: 'text', render: v => _volumeQualityLabel(v) || '—' },
     { key: 'releaser', label: 'Releaser', icon: '📀', header: 'Releaser', filterType: 'text', render: v => v.release_group || '—' },
+    // ISBN de l'album d'après le catalogue Bédéthèque en cache (get_series_volumes).
+    { key: 'isbn', label: 'ISBN', icon: '🔢', header: 'ISBN', filterType: 'text', render: v => v.isbn || '—' },
     { key: 'blackAndWhite', label: 'Noir & Blanc', icon: '◐', header: 'N&B', render: v => _isBlackAndWhiteVolume(v) ? 'Oui' : 'Non' },
 ];
 
