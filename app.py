@@ -198,6 +198,11 @@ def create_app(config_name='default'):
         from blueprints.ai.auto_tag import auto_tag_scheduler
         auto_tag_scheduler.start(app)
 
+        # Upscaling sur le serveur : reprend la file (et le tome interrompu) après un redémarrage.
+        if not app.config.get('TESTING'):
+            from blueprints.library import upscale_volume
+            upscale_volume.resume(app)
+
     # "toujours trop petit. on voit même pas que c'est un cover" - la modification était
     # bien déployée côté serveur (vérifié directement), donc un cache navigateur/proxy
     # côté mobile n'ayant pas revalidé malgré Cache-Control:no-cache est l'explication la

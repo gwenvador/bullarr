@@ -1527,3 +1527,9 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
 .import-volume-manual { flex-direction: column; }
 .import-volume-manual .import-volume-type,
 .import-volume-manual .import-volume-input { width: 100%; box-sizing: border-box; flex: none; }
+
+/* Configuration > Upscaling : seuil de basse définition */
+.upscale-threshold-text { margin: 0 0 4px; }
+.upscale-threshold-text a { color: var(--color-accent); text-decoration: none; font-weight: 500; }
+.upscale-threshold.upscale-defaults { margin-top: 10px; padding-top: 0; border-top: none; }
+@media (max-width: 700px) { .upscale-threshold.upscale-defaults { grid-template-columns: 1fr; } }

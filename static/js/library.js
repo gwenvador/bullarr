@@ -2954,7 +2954,7 @@ function _seriesUpscaleGroups(data) {
     const eligible = owned.filter(v => {
         const side = Math.max(v.page_width || 0, v.page_height || 0);
         return !v.sd_backup && !_SERIES_UPSCALE_BUSY.includes(v.upscale_status)
-            && (v.format || '').toLowerCase() === 'cbz' && side > 0 && side <= 1600;
+            && (v.format || '').toLowerCase() === 'cbz' && side > 0 && side <= _lowDefMaxSide();
     });
     const restorable = owned.filter(v => v.sd_backup && !_SERIES_UPSCALE_BUSY.includes(v.upscale_status));
     return { busy, eligible, restorable };
@@ -3534,7 +3534,7 @@ function buildVolumeActionsGearHtml(v) {
     const _upscaling = ['queued', 'running'].includes(v.upscale_status);
     const upscaleItemHtml = _upscaling
         ? `<button type="button" class="toolbar-dropdown-item" onclick="cancelVolumeUpscale(${v.id}, event)">${svgIcon('x')} Annuler l'upscaling</button>`
-        : (!v.sd_backup && (v.format || '').toLowerCase() === 'cbz' && _side > 0 && _side <= 1600)
+        : (!v.sd_backup && (v.format || '').toLowerCase() === 'cbz' && _side > 0 && _side <= _lowDefMaxSide())
             ? `<button type="button" class="toolbar-dropdown-item" onclick="upscaleVolume(${v.id}, event)">${svgIcon('sparkles')} Upscaler en HD</button>`
             : '';
     const restoreSdItemHtml = v.sd_backup && !_upscaling
@@ -3978,11 +3978,16 @@ function renderVolumeTableColumnsMenu() {
 // _compareVolumesForSort quel que soit le sens du tri.
 // Qualité d'un tome : taille réelle des pages (mesurée dans le fichier, voir page_size.py),
 // avec une étiquette tirée du plus grand côté, sinon la qualité lue dans le nom de fichier.
-// « Basse déf. » suit le seuil de l'amélioration au lecteur de l'app (≤ 1600 px).
+// « Basse déf. » suit le seuil réglable de l'upscaling (Configuration > Upscaling, 1600 px
+// par défaut), le même que le bouton HD du lecteur et la page Upscaling.
+function _lowDefMaxSide() {
+    return typeof bullarrLowDefMaxSide === 'function' ? bullarrLowDefMaxSide() : 1600;
+}
+
 function _volumeQualityTier(v) {
     const side = Math.max(v.page_width || 0, v.page_height || 0);
     if (!side) return '';
-    if (side <= 1600) return 'Basse déf.';
+    if (side <= _lowDefMaxSide()) return 'Basse déf.';
     if (side < 2500) return 'Standard';
     return 'HD';
 }

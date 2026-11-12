@@ -102,6 +102,33 @@ class UpscaleCbzTest(unittest.TestCase):
             self.assertEqual(open(book, 'rb').read(), before)
             self.assertEqual(os.listdir(tmp), ['a.cbz'])
 
+    def test_resume_reuses_pages_already_done(self):
+        """Interrompu après la 1re page : la 2e fois, seules les pages restantes sont calculées."""
+        with tempfile.TemporaryDirectory() as tmp:
+            book = os.path.join(tmp, 'a.cbz')
+            work = os.path.join(tmp, 'work')
+            _cbz(book, [(800, 1080), (800, 1080), (2000, 3000)])
+            calls = []
+
+            def counting(data, model):
+                calls.append(1)
+                return self.fake(data, model)
+            checks = iter([False, True])
+            with self.assertRaises(upscale_volume.UpscaleCancelled):
+                upscale_volume.upscale_cbz(book, 'fast', cancelled=lambda: next(checks, True),
+                                           upscale_page=counting, work_dir=work)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(os.listdir(work), ['00001.jpg'])
+            calls.clear()
+            temp, upscaled, median = upscale_volume.upscale_cbz(book, 'fast', upscale_page=counting, work_dir=work)
+            self.assertEqual(len(calls), 2)          # pages 2 et 3 seulement
+            self.assertEqual(upscaled, 2)
+            self.assertEqual(sorted(os.listdir(work)), ['00001.jpg', '00002.jpg', '00003.same'])
+            with zipfile.ZipFile(temp) as archive:
+                self.assertIn('001.jpg', archive.namelist())
+                self.assertIn('003.png', archive.namelist())
+            os.remove(temp)
+
     def test_backup_path_under_library_root(self):
         self.assertEqual(upscale_volume.backup_path_for('/BD/Blake/T1.cbz', '/BD'),
                          '/BD/.bullarr-sd-backup/Blake/T1.cbz')
@@ -164,6 +191,69 @@ class ProcessAndRestoreTest(unittest.TestCase):
                     self.assertEqual(len(upscale_volume.low_definition_volumes(app)), 1)
             finally:
                 upscale.upscale_image, upscale_volume._after_change = saved
+
+
+class QueueResumeTest(unittest.TestCase):
+    """La file notée en base est reprise au démarrage ; les pages orphelines sont nettoyées."""
+
+    def test_resume_requeues_in_order_and_cleans(self):
+        import threading
+        from flask import Flask
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, 'b.db')
+            conn = sqlite3.connect(db)
+            conn.executescript('''
+                CREATE TABLE libraries (id INTEGER PRIMARY KEY, path TEXT);
+                CREATE TABLE series (id INTEGER PRIMARY KEY, title TEXT, library_id INTEGER);
+                CREATE TABLE volumes (id INTEGER PRIMARY KEY, series_id INTEGER, filename TEXT, filepath TEXT,
+                    format TEXT, page_width INTEGER, page_height INTEGER, file_size INTEGER);''')
+            conn.commit()
+            conn.close()
+            app = Flask(__name__)
+            app.config.update(DATABASE=db, DATA_DIR=tmp)
+            upscale_volume._queue_add(app, 9, 'quality', 2.0)
+            upscale_volume._queue_add(app, 4, 'fast', 1.0)
+            upscale_volume._queue_add(app, 5, 'fast', 3.0)
+            root = os.path.join(tmp, 'upscale-work')
+            for name in ('4-fast-1-2', '8-fast-1-2', 'junk'):
+                os.makedirs(os.path.join(root, name))
+            seen = []
+
+            def fake_enqueue(app_, volume_id, model):
+                seen.append((volume_id, model))
+                return (None, 'Tome introuvable') if volume_id == 5 else ({}, None)
+            saved = upscale_volume.enqueue
+            upscale_volume.enqueue = fake_enqueue
+            try:
+                upscale_volume.resume(app, delay=0)
+                for thread in threading.enumerate():
+                    if thread.name == 'upscale-resume':
+                        thread.join(5)
+            finally:
+                upscale_volume.enqueue = saved
+            self.assertEqual(seen, [(4, 'fast'), (9, 'quality'), (5, 'fast')])
+            self.assertEqual(os.listdir(root), ['4-fast-1-2'])
+            left = [r[0] for r in sqlite3.connect(db).execute('SELECT volume_id FROM upscale_queue ORDER BY volume_id')]
+            self.assertEqual(left, [4, 9])         # le tome en erreur sort de la file
+
+
+class ThresholdConfigTest(unittest.TestCase):
+    def test_max_side_validated(self):
+        from flask import Flask
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Flask(__name__)
+            app.config.update(DATA_DIR=tmp, DATABASE=os.path.join(tmp, 'b.db'))
+            with app.app_context():
+                self.assertEqual(upscale.low_def_max_side(), 1600)
+                config = upscale.load_config()
+                config['max_side'] = 2000
+                upscale.save_config(config)
+                self.assertEqual(upscale.low_def_max_side(), 2000)
+                self.assertTrue(upscale.needs_upscale(1400, 1900))
+                self.assertFalse(upscale.needs_upscale(1400, 2100))
+                config['max_side'] = 1234
+                upscale.save_config(config)
+                self.assertEqual(upscale.low_def_max_side(), 1600)
 
 
 if __name__ == '__main__':

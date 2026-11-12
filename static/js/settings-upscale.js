@@ -22,7 +22,46 @@ function _upscaleEscape(text) {
 }
 
 async function loadUpscaleSettings() {
+    renderUpscaleThreshold();
     renderUpscaleBrowser();
+}
+
+// Seuil de basse définition : une page dont le plus grand côté ne dépasse pas cette valeur
+// est « Basse déf. » et peut être upscalée (lecteur, molettes, page Upscaling).
+const UPSCALE_THRESHOLD_HINTS = {
+    1200: 'Seulement les scans vraiment petits.',
+    1600: 'Conseillé : au-delà, un écran d\'ordinateur affiche déjà la page sans l\'agrandir.',
+    2000: 'Pour lire sur une grande tablette ou un écran 1440p.',
+    2400: 'Presque tout sauf la HD : calcul et fichiers bien plus lourds, gain souvent faible.',
+};
+
+async function renderUpscaleThreshold(saving) {
+    const box = document.getElementById('upscaleThreshold');
+    if (!box) return;
+    let data = null;
+    try { data = await (await fetch('/api/upscale/threshold')).json(); } catch (e) { /* rendu par défaut */ }
+    const current = data?.max_side || bullarrLowDefMaxSide();
+    const choices = data?.choices || [1200, 1600, 2000, 2400];
+    box.innerHTML = `
+        <p class="help-text upscale-threshold-text">Une page dont le plus grand côté ne dépasse pas ce seuil est en basse définition : l'album porte l'étiquette « Basse déf. », peut être upscalé sur le serveur (molettes, page <a href="/upscaling">Upscaling</a>) et le bouton HD du lecteur l'améliore.</p>
+        <div class="upscale-defaults upscale-threshold">
+            <div><strong>Seuil</strong><span>${_upscaleEscape(UPSCALE_THRESHOLD_HINTS[current] || '')}</span></div>
+            <div class="upscale-segmented" role="group" aria-label="Seuil de basse définition">${choices.map(value =>
+                `<button type="button" class="upscale-segment${value === current ? ' active' : ''}" onclick="setUpscaleThreshold(${value})"${saving ? ' disabled' : ''}>${value} px</button>`).join('')}</div>
+        </div>`;
+}
+
+async function setUpscaleThreshold(value) {
+    try {
+        const response = await fetch('/api/settings/upscale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ max_side: value }) });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Erreur inconnue');
+        bullarrSetLowDefMaxSide(data.max_side);
+        if (typeof showToast === 'function') showToast('upscale-threshold', `Basse définition : pages de ${data.max_side} px au plus`, { icon: 'check', autoHideMs: 2500 });
+    } catch (error) {
+        alert('❌ ' + error.message);
+    }
+    renderUpscaleThreshold();
 }
 
 async function renderUpscaleBrowser() {

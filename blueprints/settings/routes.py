@@ -98,6 +98,11 @@ def upscale_config():
         if body.get('model') in upscale.MODELS:
             config['model'] = body['model']
         try:
+            if int(body.get('max_side', 0)) in upscale.MAX_SIDE_CHOICES:
+                config['max_side'] = int(body['max_side'])
+        except (TypeError, ValueError):
+            pass
+        try:
             upscale.save_config(config)
         except OSError as e:
             return jsonify({'success': False, 'error': error_message(e, 'Erreur de sauvegarde')}), 500
@@ -108,7 +113,8 @@ def upscale_config():
                     'runtime': upscale.runtime_available(), 'models': upscale.model_status(),
                     'catalog': {key: {'label': spec['label'], 'detail': spec['detail']} for key, spec in upscale.MODELS.items()},
                     'order': list(upscale.MODELS),
-                    'max_side': upscale.LOW_DEF_MAX_SIDE,
+                    'max_side': upscale.low_def_max_side(),
+                    'max_side_choices': list(upscale.MAX_SIDE_CHOICES),
                     'backups': [{k: item.get(k) for k in ('volume_id', 'series_id', 'series_title', 'filename', 'backup_path',
                                                           'bytes', 'exists', 'model', 'created_at')} for item in backups],
                     'backup_bytes': sum(item['bytes'] for item in backups),

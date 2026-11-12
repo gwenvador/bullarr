@@ -2330,7 +2330,8 @@ def upscale_volumes_overview():
         'models': upscale.model_status(),
         'order': list(upscale.MODELS),
         'catalog': {key: {'label': spec['label'], 'detail': spec['detail']} for key, spec in upscale.MODELS.items()},
-        'max_side': upscale.LOW_DEF_MAX_SIDE,
+        'max_side': upscale.low_def_max_side(),
+        'max_side_choices': list(upscale.MAX_SIDE_CHOICES),
         'low_definition': upscale_volume.low_definition_volumes(app),
         'backups': [{k: item.get(k) for k in ('volume_id', 'series_id', 'current_series_id', 'series_title', 'filename',
                                               'bytes', 'exists', 'model', 'created_at', 'page_width', 'page_height')}
@@ -2372,6 +2373,21 @@ def upscale_preview():
     response = current_app.response_class(result, mimetype='image/jpeg')
     response.headers['Cache-Control'] = 'private, max-age=600'
     return response
+
+
+def _low_def_side():
+    """Seuil de basse définition (entier, sûr à insérer dans une requête)."""
+    from . import upscale
+    return int(upscale.low_def_max_side())
+
+
+@library_bp.route('/api/upscale/threshold', methods=['GET'])
+def upscale_threshold():
+    """Seuil de basse définition (px), lu par l'interface (étiquette « Basse déf. », molettes,
+    bouton HD du lecteur) et par l'application Android."""
+    from . import upscale
+    return jsonify({'success': True, 'max_side': upscale.low_def_max_side(),
+                    'choices': list(upscale.MAX_SIDE_CHOICES)})
 
 
 @library_bp.route('/api/upscale/jobs', methods=['GET'])
@@ -2795,7 +2811,7 @@ def get_library_series(library_id):
                    (SELECT MIN(MAX(v.page_width, v.page_height)) FROM volumes v
                      WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.page_width > 0) AS min_page_side,
                    (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL
-                     AND v.page_width > 0 AND MAX(v.page_width, v.page_height) <= 1600) AS low_def_volumes,
+                     AND v.page_width > 0 AND MAX(v.page_width, v.page_height) <= {_low_def_side()}) AS low_def_volumes,
                    s.tags, s.to_read_later, s.is_favorite,
                    s.manual_complete_override, s.bedetheque_complete, s.bedetheque_complete_reason,
                    s.filesystem_state, s.filesystem_checked_at, s.filesystem_missing_count, s.filesystem_verification_error,

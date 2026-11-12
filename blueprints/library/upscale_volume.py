@@ -6,8 +6,10 @@ L'original n'est jamais perdu : il est déplacé (même disque, donc instantané
 <bibliothèque>/.bullarr-sd-backup/<chemin du tome>, ignoré par le scan, et noté dans la
 table upscale_backups. « Restaurer la version SD » le remet en place.
 
-Un seul tome à la fois (file d'attente en mémoire, un fil de travail) : sur un petit
-serveur, une page prend de quelques secondes à plusieurs minutes selon le modèle. Le
+Un seul tome à la fois (un fil de travail) : sur un petit serveur, une page prend de
+quelques secondes à plusieurs minutes selon le modèle. La file est aussi notée en base
+(upscale_queue) et chaque page calculée est gardée dans <data>/upscale-work/ : après un
+redémarrage de Bullarr, la file repart et le tome interrompu reprend à sa dernière page. Le
 nouveau fichier est écrit à côté de l'original, vérifié (archive lisible, même nombre de
 pages), puis le remplace d'un coup ; une annulation ou une erreur laisse l'original intact.
 """
@@ -26,6 +28,7 @@ _lock = threading.Lock()
 _wake = threading.Condition(_lock)
 _jobs = OrderedDict()   # volume_id -> état (dict)
 _worker = None
+_app = None          # application Flask du fil de travail (file en base)
 _MAX_FINISHED = 20
 BACKUP_DIR_NAME = '.bullarr-sd-backup'
 
@@ -50,6 +53,116 @@ def ensure_table(conn):
         page_height INTEGER,
         model TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP)''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS upscale_queue (
+        volume_id INTEGER PRIMARY KEY,
+        model TEXT NOT NULL,
+        queued_at REAL NOT NULL)''')
+
+
+def _queue_add(app, volume_id, model, queued_at):
+    conn = _db(app)
+    try:
+        ensure_table(conn)
+        conn.execute('INSERT OR REPLACE INTO upscale_queue (volume_id, model, queued_at) VALUES (?, ?, ?)',
+                     (volume_id, model, queued_at))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _queue_remove(app, volume_id):
+    if app is None:
+        return
+    try:
+        conn = _db(app)
+        try:
+            ensure_table(conn)
+            conn.execute('DELETE FROM upscale_queue WHERE volume_id = ?', (volume_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        print(f'File d\'upscaling : tome #{volume_id} non retiré ({e})')
+
+
+def _work_root(app):
+    return os.path.join(os.path.dirname(os.path.abspath(app.config['DATABASE'])), 'upscale-work')
+
+
+def work_dir_for(app, row, model):
+    """Dossier des pages déjà calculées d'un tome. Son nom dépend du fichier (date, taille)
+    et du modèle : si l'un change, les anciennes pages ne sont pas reprises."""
+    try:
+        info = os.stat(row['filepath'])
+        key = f"{row['id']}-{model}-{int(info.st_mtime)}-{info.st_size}"
+    except OSError:
+        key = f"{row['id']}-{model}"
+    return os.path.join(_work_root(app), key)
+
+
+def _clear_work(app, volume_id, keep=None):
+    """Supprime les pages gardées d'un tome (sauf le dossier `keep`)."""
+    root = _work_root(app)
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return
+    for name in names:
+        path = os.path.join(root, name)
+        if name.split('-', 1)[0] == str(volume_id) and path != keep:
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def resume(app, delay=20):
+    """Au démarrage : remet dans la file les tomes qui y étaient avant l'arrêt de Bullarr
+    (le tome interrompu reprend à sa dernière page) et nettoie les pages orphelines."""
+    def run():
+        time.sleep(delay)
+        with app.app_context():   # enqueue lit la configuration (current_app)
+            _resume_now(app)
+    threading.Thread(target=run, name='upscale-resume', daemon=True).start()
+
+
+def _resume_now(app):
+    """Reprise immédiate (dans un contexte Flask) : voir resume()."""
+    try:
+        conn = _db(app)
+        try:
+            ensure_table(conn)
+            rows = conn.execute('SELECT volume_id, model FROM upscale_queue ORDER BY queued_at').fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        print(f'Reprise de l\'upscaling impossible : {e}')
+        return
+    queued = {row['volume_id'] for row in rows}
+    root = _work_root(app)
+    for name in (os.listdir(root) if os.path.isdir(root) else []):
+        try:
+            if int(name.split('-', 1)[0]) not in queued:
+                shutil.rmtree(os.path.join(root, name), ignore_errors=True)
+        except ValueError:
+            shutil.rmtree(os.path.join(root, name), ignore_errors=True)
+    resumed = 0
+    for row in rows:
+        volume = _volume_row(app, row['volume_id'])
+        if volume and volume['filepath']:
+            directory, name = os.path.split(volume['filepath'])
+            temp = os.path.join(directory, f'.{name}.hd-tmp')   # fichier HD à moitié écrit
+            if os.path.exists(temp):
+                try:
+                    os.remove(temp)
+                except OSError:
+                    pass
+        state, error = enqueue(app, row['volume_id'], row['model'])
+        if error:
+            print(f'Upscaling du tome #{row["volume_id"]} non repris : {error}')
+            _queue_remove(app, row['volume_id'])
+            _clear_work(app, row['volume_id'])
+        else:
+            resumed += 1
+    if resumed:
+        print(f'✓ Upscaling : {resumed} tome(s) remis dans la file après le redémarrage')
 
 
 def _volume_row(app, volume_id):
@@ -133,7 +246,7 @@ def check_volume(row):
     if (row['format'] or '').lower() != 'cbz':
         return "Seuls les tomes cbz peuvent être upscalés : convertissez-le d'abord en cbz"
     side = max(row['page_width'] or 0, row['page_height'] or 0)
-    if side and side > upscale.LOW_DEF_MAX_SIDE:
+    if side and side > upscale.low_def_max_side():
         return f'Ce tome est déjà en bonne définition (pages de {side} px)'
     return None
 
@@ -152,7 +265,7 @@ def job(volume_id):
 
 def enqueue(app, volume_id, model):
     """Ajoute un tome à la file. Renvoie (état, erreur)."""
-    global _worker
+    global _worker, _app
     if model not in upscale.MODELS:
         return None, 'Modèle inconnu'
     if not upscale.runtime_available():
@@ -181,6 +294,8 @@ def enqueue(app, volume_id, model):
             'queued_at': time.time(), 'started_at': None, 'finished_at': None,
         }
         state = dict(_jobs[volume_id])
+        _app = app
+        _queue_add(app, volume_id, model, state['queued_at'])
         if _worker is None or not _worker.is_alive():
             _worker = threading.Thread(target=_run, args=(app,), name='upscale-volumes', daemon=True)
             _worker.start()
@@ -198,7 +313,9 @@ def cancel(volume_id):
             state['finished_at'] = time.time()
         else:
             state['cancel'] = True
-        return True
+    if state['status'] == 'cancelled':
+        _queue_remove(_app, volume_id)
+    return True
 
 
 def _next_job():
@@ -243,6 +360,9 @@ def _run(app):
             _update(volume_id, status='error', error=str(e) or e.__class__.__name__, finished_at=time.time())
             print(f'Upscaling du tome #{volume_id} impossible : {e}')
             _log_failure(app, volume_id, model, e)
+        # Terminé, annulé ou en échec : il sort de la file en base et ses pages gardées partent.
+        _queue_remove(app, volume_id)
+        _clear_work(app, volume_id)
         _prune_finished()
 
 
@@ -261,10 +381,13 @@ def _log_failure(app, volume_id, model, error):
         pass
 
 
-def upscale_cbz(filepath, model, progress=None, cancelled=None, upscale_page=None):
+def upscale_cbz(filepath, model, progress=None, cancelled=None, upscale_page=None, work_dir=None):
     """Écrit la version HD de `filepath` (cbz) dans un fichier temporaire voisin et le
     renvoie avec (pages agrandies, taille médiane (w, h) des pages). Les pages de plus de
-    LOW_DEF_MAX_SIDE px et les autres fichiers (ComicInfo.xml…) sont recopiés tels quels."""
+    low_def_max_side() px et les autres fichiers (ComicInfo.xml…) sont recopiés tels quels.
+    Avec `work_dir`, chaque page calculée y est gardée (NNNNN.jpg, ou NNNNN.same si la page
+    reste telle quelle) et reprise au lieu d'être recalculée : un tome interrompu repart
+    de là où il s'était arrêté."""
     from PIL import Image
     from .reader import page_index
     upscale_page = upscale_page or upscale.upscale_image
@@ -286,7 +409,10 @@ def upscale_cbz(filepath, model, progress=None, cancelled=None, upscale_page=Non
                 if cancelled and cancelled():
                     raise UpscaleCancelled()
                 data = source.read(page)
-                result = upscale_page(data, model)
+                result = _cached_page(work_dir, index)
+                if result is False:
+                    result = upscale_page(data, model)
+                    _store_page(work_dir, index, result)
                 stem, ext = os.path.splitext(page)
                 if result is not None:
                     upscaled += 1
@@ -311,16 +437,47 @@ def upscale_cbz(filepath, model, progress=None, cancelled=None, upscale_page=Non
     return temp, upscaled, sizes[len(sizes) // 2] if sizes else None
 
 
+def _cached_page(work_dir, index):
+    """Page déjà calculée : ses octets, None (page gardée telle quelle) ou False (à faire)."""
+    if not work_dir:
+        return False
+    base = os.path.join(work_dir, f'{index:05d}')
+    if os.path.isfile(base + '.same'):
+        return None
+    try:
+        with open(base + '.jpg', 'rb') as handle:
+            data = handle.read()
+        return data or False
+    except OSError:
+        return False
+
+
+def _store_page(work_dir, index, result):
+    if not work_dir:
+        return
+    try:
+        os.makedirs(work_dir, exist_ok=True)
+        base = os.path.join(work_dir, f'{index:05d}')
+        temp = base + '.part'
+        with open(temp, 'wb') as handle:
+            handle.write(result or b'')
+        os.replace(temp, base + ('.jpg' if result is not None else '.same'))
+    except OSError as e:   # disque plein… : on continue, la page sera juste recalculée
+        print(f'Page {index} non gardée pour la reprise : {e}')
+
+
 def _process(app, volume_id, model):
     row = _volume_row(app, volume_id)
     error = check_volume(row)
     if error:
         raise ValueError(error)
     filepath = row['filepath']
+    work_dir = work_dir_for(app, row, model)
+    _clear_work(app, volume_id, keep=work_dir)   # pages d'un autre modèle ou d'un fichier modifié
     temp, upscaled, median = upscale_cbz(
         filepath, model,
         progress=lambda page, total, done: _update(volume_id, page=page, total=total, upscaled=done),
-        cancelled=lambda: _cancelled(volume_id))
+        cancelled=lambda: _cancelled(volume_id), work_dir=work_dir)
     if not upscaled:
         os.remove(temp)
         raise ValueError('Aucune page en basse définition dans ce tome')
@@ -458,7 +615,7 @@ def _remove_empty_dirs(directory):
 
 
 def low_definition_volumes(app):
-    """Tomes possédés en basse définition (côté le plus grand des pages ≤ 1600 px, comme
+    """Tomes possédés en basse définition (côté le plus grand des pages ≤ seuil réglable, 1600 px par défaut, comme
     l'étiquette « Basse déf. »), proposés à l'upscaling sur la page Upscaling."""
     from . import upscale
     conn = _db(app)
@@ -471,7 +628,7 @@ def low_definition_volumes(app):
             FROM volumes v JOIN series s ON s.id = v.series_id
             WHERE v.filepath IS NOT NULL AND v.page_width > 0
               AND MAX(v.page_width, v.page_height) <= ?
-            ORDER BY s.title COLLATE NOCASE, v.volume_number, v.filename''', (upscale.LOW_DEF_MAX_SIDE,)).fetchall()
+            ORDER BY s.title COLLATE NOCASE, v.volume_number, v.filename''', (upscale.low_def_max_side(),)).fetchall()
     finally:
         conn.close()
     items = []

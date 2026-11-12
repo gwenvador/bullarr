@@ -47,6 +47,11 @@ async function loadUpscaling() {
         if (!data.success) throw new Error(data.error || 'Erreur de chargement');
         const first = !upscalingData;
         upscalingData = data;
+        const maxSideEl = document.getElementById('upscalingMaxSide');
+        if (maxSideEl && data.max_side) {
+            maxSideEl.textContent = data.max_side;
+            if (typeof bullarrSetLowDefMaxSide === 'function') bullarrSetLowDefMaxSide(data.max_side);
+        }
         renderUpscalingModels();
         renderUpscalingLowDefinition();
         renderUpscalingBackups();

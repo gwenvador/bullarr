@@ -136,7 +136,7 @@
 
     <section id="upscaling">
       <h2><span class="guide-num">9</span> Upscaling</h2>
-      <p>Beaucoup de BD numérisées il y a longtemps ont des pages de 1600 px ou moins : elles sont floues sur un grand écran. L'upscaling les agrandit deux fois et les nettoie avec un réseau de neurones entraîné pour l'image dessinée : les traits restent nets, les aplats propres, et les artefacts JPEG disparaissent. Ces albums portent l'étiquette « Basse déf. » dans la bibliothèque.</p>
+      <p>Beaucoup de BD numérisées il y a longtemps ont des pages de 1600 px ou moins : elles sont floues sur un grand écran. L'upscaling les agrandit deux fois et les nettoie avec un réseau de neurones entraîné pour l'image dessinée : les traits restent nets, les aplats propres, et les artefacts JPEG disparaissent. Ces albums portent l'étiquette « Basse déf. » dans la bibliothèque. Le seuil (1600 px par défaut) se règle dans <em>Configuration → Upscaling</em> : 1200, 1600, 2000 ou 2400 px.</p>
       <p>Bullarr reprend les huit modèles de l'application Android, convertis au format ONNX : <a href="https://github.com/xinntao/Real-ESRGAN">Real-ESRGAN</a> (rapide, général, général avec débruitage, qualité) et <a href="https://github.com/bilibili/ailab/tree/main/Real-CUGAN">Real-CUGAN</a> (SE et Pro, avec ou sans débruitage). Real-ESRGAN rapide est un bon choix par défaut ; Real-CUGAN donne des traits plus fins sur la BD franco-belge, en plus lent.</p>
       <ul>
         <li><strong>Dans le lecteur</strong> : le bouton <em>HD</em> améliore les pages à la volée sur la carte graphique de l'appareil (WebGPU). Rien n'est modifié sur le serveur. Le modèle est téléchargé une fois par navigateur, depuis le lecteur ou <strong>Configuration</strong> → <em>Upscaling</em>.</li>

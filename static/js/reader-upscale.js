@@ -1,11 +1,12 @@
-// Amélioration des pages en basse définition (côté le plus grand ≤ 1600 px) dans le lecteur
+// Amélioration des pages en basse définition (côté le plus grand ≤ seuil réglable, 1600 px par défaut) dans le lecteur
 // intégré, calculée dans le navigateur : onnxruntime-web sur la carte graphique (WebGPU),
 // rien ne part au serveur. Mêmes modèles que l'application Android (Real-ESRGAN et
 // Real-CUGAN, convertis en ONNX), page rendue x2. Sur le serveur, l'upscaling se fait hors
 // ligne pour tout un tome (molette du tome, Vérification > Albums non HD).
 // La page d'origine s'affiche tout de suite, puis est remplacée dès que la version améliorée
 // est prête. Les pages affichées passent en premier, puis les deux suivantes (préchargement).
-const COMIC_UPSCALE_MAX_SIDE = 1600;
+// Seuil réglable (Configuration > Upscaling), partagé par nav.js ; 1600 px par défaut.
+function comicUpscaleMaxSide() { return typeof bullarrLowDefMaxSide === 'function' ? bullarrLowDefMaxSide() : 1600; }
 const COMIC_UPSCALE_TILE = 256;
 const COMIC_UPSCALE_PAD = 12;
 const COMIC_UPSCALE_PREFETCH = 2;
@@ -379,7 +380,7 @@ async function _comicUpscaleInBrowser(volumeId, number, model) {
     const bitmap = await createImageBitmap(await response.blob());
     const width = bitmap.width;
     const height = bitmap.height;
-    if (!width || !height || Math.max(width, height) > COMIC_UPSCALE_MAX_SIDE) {
+    if (!width || !height || Math.max(width, height) > comicUpscaleMaxSide()) {
         bitmap.close?.();
         return null;
     }
@@ -534,7 +535,7 @@ function comicReaderUpscaleSettingsHtml(segment, section) {
         ${segment('upscale-mode', Object.entries(COMIC_UPSCALE_MODES), comicUpscale.mode)}
         <div class="comic-reader-models"${off ? ' hidden' : ''}>${models}</div>
         ${download}
-        <p class="comic-reader-settings-note">Pages de ${COMIC_UPSCALE_MAX_SIDE} px au plus, agrandies x2 sur la carte graphique de cet appareil (WebGPU).</p>`);
+        <p class="comic-reader-settings-note">Pages de ${comicUpscaleMaxSide()} px au plus, agrandies x2 sur la carte graphique de cet appareil (WebGPU).</p>`);
 }
 
 function _renderComicUpscaleControls() {

@@ -18,7 +18,8 @@ import json
 import os
 import threading
 
-LOW_DEF_MAX_SIDE = 1600   # même seuil que l'étiquette « Basse déf. » (library.js)
+LOW_DEF_MAX_SIDE = 1600   # seuil par défaut ; réglable (Configuration > Upscaling), voir low_def_max_side()
+MAX_SIDE_CHOICES = (1200, 1600, 2000, 2400)
 OUTPUT_SCALE = 2          # facteur de la page rendue
 TILE = 256
 PAD = 12                  # débord des tuiles Real-ESRGAN
@@ -52,7 +53,7 @@ _lock = threading.Lock()
 _sessions = {}
 
 CONFIG_NAME = 'upscale_config.json'
-DEFAULT_CONFIG = {'server_enabled': True, 'model': 'fast'}
+DEFAULT_CONFIG = {'server_enabled': True, 'model': 'fast', 'max_side': LOW_DEF_MAX_SIDE}
 
 
 def _config_path():
@@ -70,7 +71,18 @@ def load_config():
         pass
     if config.get('model') not in MODELS:
         config['model'] = DEFAULT_CONFIG['model']
+    if config.get('max_side') not in MAX_SIDE_CHOICES:
+        config['max_side'] = LOW_DEF_MAX_SIDE
     return config
+
+
+def low_def_max_side():
+    """Plus grand côté (px) d'une page « en basse définition » : étiquette « Basse déf. »,
+    albums proposés à l'upscaling, bouton HD du lecteur. Réglable, 1600 par défaut."""
+    try:
+        return load_config()['max_side']
+    except Exception:  # noqa: BLE001 - hors contexte Flask (tests unitaires)
+        return LOW_DEF_MAX_SIDE
 
 
 def save_config(config):
@@ -111,7 +123,7 @@ def available():
 
 
 def needs_upscale(width, height):
-    return 0 < max(width, height) <= LOW_DEF_MAX_SIDE
+    return 0 < max(width, height) <= low_def_max_side()
 
 
 def _session(model):

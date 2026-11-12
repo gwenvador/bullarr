@@ -2474,3 +2474,20 @@ function bedethequeOriginHtml(origin, withLabel = false) {
         ? `<span class="origin-badge" data-tooltip="${escapeHtml(tooltip)}">${img} ${escapeHtml(label)} <span class="origin-badge-detail">(${escapeHtml(value)})</span></span>`
         : `<span class="origin-pill origin-pill-${kind[0]}" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(label)}"><img src="${flag}" alt="" class="origin-flag" width="15" height="10">${escapeHtml(label)}</span>`;
 }
+
+
+// Seuil de basse définition (Configuration > Upscaling, 1600 px par défaut) : étiquette
+// « Basse déf. », molettes « Upscaler en HD », bouton HD du lecteur. Lu tout de suite dans
+// localStorage, puis rafraîchi depuis le serveur.
+window.BULLARR_LOW_DEF_MAX_SIDE = (() => {
+    try { return parseInt(localStorage.getItem('bullarr-low-def-max-side'), 10) || 1600; } catch (e) { return 1600; }
+})();
+function bullarrLowDefMaxSide() { return window.BULLARR_LOW_DEF_MAX_SIDE || 1600; }
+function bullarrSetLowDefMaxSide(value) {
+    const side = parseInt(value, 10);
+    if (!side) return;
+    window.BULLARR_LOW_DEF_MAX_SIDE = side;
+    try { localStorage.setItem('bullarr-low-def-max-side', String(side)); } catch (e) { /* navigation privée */ }
+}
+fetch('/api/upscale/threshold').then(response => response.ok ? response.json() : null)
+    .then(data => { if (data && data.max_side) bullarrSetLowDefMaxSide(data.max_side); }).catch(() => {});
