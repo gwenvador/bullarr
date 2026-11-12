@@ -5301,9 +5301,6 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
 }
 
 /* En-têtes de groupe de série */
-#nouveautes-events-body tr.nouveautes-series-group-row > td {
-    background: color-mix(in srgb, var(--color-accent) 3%, var(--color-surface));
-}
 #nouveautes-events-body tr.nouveautes-series-group-row .nouveautes-series-group-name { font-size: 1.1em; font-weight: 700; }
 #nouveautes-events-body .nouveautes-group-toggle {
     display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: .85em;
