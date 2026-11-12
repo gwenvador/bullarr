@@ -5395,3 +5395,11 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
 .nouveautes-table .nouveautes-details-cell:has(> .nouveautes-matched-series.has-series:first-child) > .nouveautes-title {
     font-weight: 500; font-size: .95em; color: var(--color-text-muted);
 }
+/* « le nom des fichiers n est pas le même à chaque fois » : un seul style pour le nom du
+   fichier/de la release, quelle que soit la source (EBDZ, Telegram, RSS, VK), avec ou sans
+   série au-dessus, groupé ou non. */
+#nouveautes-events-body .nouveautes-details-cell > .nouveautes-title,
+#nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell > div.nouveautes-title:first-child {
+    font-weight: 500 !important; font-size: .95em !important; color: var(--color-text) !important; line-height: 1.4;
+}
+#nouveautes-events-body .nouveautes-details-cell > .nouveautes-title .nouveautes-rss-link { font-weight: inherit; color: inherit; }
