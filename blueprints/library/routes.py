@@ -475,6 +475,12 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
         else:
             query = 'SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND is_episode = 1 AND episode_number IS NULL'
             params = (series_id,)
+    elif volume_number is not None and parsed.get('is_bis'):
+        # Variante « N Bis » choisie explicitement (recherche depuis la fiche série) :
+        # jamais le tome N principal, qui garde son propre fichier.
+        query = ('SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND volume_number = ? '
+                 'AND COALESCE(is_bis, 0) = 1 AND LOWER(COALESCE(bis_suffix, \'\')) = LOWER(?)')
+        params = (series_id, volume_number, parsed.get('bis_suffix') or '')
     elif volume_number is not None:
         # Un fichier « tome N » doit remplir le tome principal, jamais le dernier
         # placeholder N Bis / N TL créé pour une autre édition du même numéro.
@@ -8392,8 +8398,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                             (series_id, part_number, part_name, volume_number, filename, filepath,
                              filesystem_present, filesystem_checked_at, author, year, resolution, release_group, file_size, page_count, format,
                              is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
-                             is_special, special_label, comicinfo, cover_path)
-                            VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             is_special, special_label, comicinfo, cover_path, is_bis, bis_suffix)
+                            VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             series_id, parsed.get('part_number'), parsed.get('part_name'), parsed.get('volume'),
                             os.path.basename(target_path), target_path, author_value, year_value,
@@ -8403,7 +8409,9 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                             int(bool(parsed.get('is_episode'))), parsed.get('episode_number'),
                             int(bool(parsed.get('is_special'))), parsed.get('special_label'),
                             resolved_comicinfo,
-                            volume_cover_path
+                            volume_cover_path,
+                            int(bool(parsed.get('is_bis') and parsed.get('volume') is not None)),
+                            (parsed.get('bis_suffix') or 'Bis') if parsed.get('is_bis') and parsed.get('volume') is not None else None
                         ))
                         new_volume_ids.append(cursor.lastrowid)
                         # Voir commentaire jumeau ci-dessus (branche placeholder->possédé).
@@ -8988,7 +8996,7 @@ def _fetch_volumes_for_rename(cursor, series_id, volume_id=None):
     c'était un fichier - il n'y a de toute façon rien à renommer pour un tome sans fichier."""
     query = '''
         SELECT id, filename, volume_number, is_integral, integral_number,
-               is_hs, hs_number, year, comicinfo, resolution, release_group
+               is_hs, hs_number, year, comicinfo, resolution, release_group, is_bis, bis_suffix
         FROM volumes
         WHERE series_id = ? AND filepath IS NOT NULL
     '''
@@ -9012,7 +9020,9 @@ def _fetch_volumes_for_rename(cursor, series_id, volume_id=None):
             'year': row['year'],
             'comicinfo': json.loads(row['comicinfo']) if row['comicinfo'] else {},
             'resolution': row['resolution'],
-            'release_group': row['release_group']
+            'release_group': row['release_group'],
+            'is_bis': bool(row['is_bis']),
+            'bis_suffix': row['bis_suffix'],
         })
     return volumes
 
@@ -9637,12 +9647,23 @@ def _build_active_download_destination(series_id, volume_number, tracking_id, fo
         # d'import ou déjà terminé.
         download_status = None
         tracked_client = None
+        tracked_bis_suffix = None
         if tracking_id is not None:
             status_row = cursor.execute(
-                'SELECT status, client FROM active_downloads WHERE id = ?', (tracking_id,)
+                'SELECT status, client, volume_id FROM active_downloads WHERE id = ?', (tracking_id,)
             ).fetchone()
             download_status = status_row[0] if status_row else None
             tracked_client = status_row[1] if status_row else None
+            # « en fait c'est le tome 13bis » : le volume choisi dans la recherche peut être
+            # une variante « N Bis » qui partage volume_number avec le tome N. Sans cette
+            # identité, l'import remplissait (et écrasait) le tome N principal.
+            if status_row and status_row[2] is not None and volume_number is not None:
+                bis_row = cursor.execute(
+                    'SELECT bis_suffix FROM volumes WHERE id = ? AND series_id = ? AND volume_number = ? '
+                    'AND COALESCE(is_bis, 0) = 1', (status_row[2], series_id, volume_number)
+                ).fetchone()
+                if bis_row:
+                    tracked_bis_suffix = (bis_row[0] or 'Bis').strip() or 'Bis'
         conn.close()
 
         series_id, library_id, library_path, library_name, series_title, is_oneshot, bedetheque_total_volumes = row
@@ -9673,6 +9694,8 @@ def _build_active_download_destination(series_id, volume_number, tracking_id, fo
             'hs_number': hs_number,
             'is_episode': bool(is_episode),
             'episode_number': episode_number,
+            'is_bis': bool(tracked_bis_suffix),
+            'bis_suffix': tracked_bis_suffix,
             # id de la ligne active_downloads elle-même (pas item['id'] côté /api/activity/
             # status, qui reste le hash/id CLIENT) - "editer les volumes et album dans
             # l'import meme quand c'est pas terminé": nécessaire pour que le frontend
@@ -9798,6 +9821,11 @@ def apply_tracked_volume_and_gate(parsed, destination):
         # vrai signal d'ambiguïté qui bloque encore l'import automatique).
         parsed['tracked_volume_overridden_from'] = parsed['volume']
         parsed['volume'] = tracked_volume
+
+    if (destination.get('is_bis') and tracked_volume is not None and parsed.get('volume') == tracked_volume
+            and not (parsed.get('is_integral') or parsed.get('is_hs') or parsed.get('is_episode'))):
+        parsed['is_bis'] = True
+        parsed['bis_suffix'] = destination.get('bis_suffix') or 'Bis'
 
     if parsed.get('volume') is None and not destination.get('is_oneshot') and not destination.get('is_single_album') and not _auto_import_has_self_numbering(parsed):
         return False

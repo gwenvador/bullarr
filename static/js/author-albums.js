@@ -249,8 +249,8 @@ async function _renderAuthorAlbumsTable(containerEl, titleEl, authorName, author
                         <td><a class="author-album-link" href="${escapeHtml(a.bedetheque_url)}" target="_blank" rel="noopener">${escapeHtml(a.title)}</a><a class="indispensable-source-link" href="${escapeHtml(a.bedetheque_url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">${svgIcon('external-link')}</a></td>
                         <td class="author-album-year-cell">${yearLabel(a)}</td>
                         <td class="author-album-action-cell" data-owned="${a.already_in_library ? '1' : '0'}">${a.already_in_library
-                            ? `<span class="indisp-status indisp-status-ok" data-tooltip="Déjà dans votre bibliothèque">${svgIcon('check')} En bibliothèque</span>`
-                            : '<span class="indisp-status">Absente</span>'}</td>
+                            ? (a.series_id ? enrichOpenHtml(a.series_id) : `<span class="indisp-status indisp-status-ok" data-tooltip="Déjà dans votre bibliothèque">${svgIcon('check')} En bibliothèque</span>`)
+                            : enrichAddButtonHtml(`addAuthorAlbum(${i}, this)`)}</td>
                     </tr>
                 `).join('')}
             </tbody>
@@ -318,6 +318,45 @@ function _updateAuthorAlbumsBulkActionsBar() {
 // utilisé sur /verification et les tomes d'une fiche série (voir CLAUDE.md): l'ajout
 // scrape chaque fiche Bédéthèque avec son propre délai anti-bot, les lancer en parallèle
 // depuis le client ne serait pas plus rapide, juste plus de requêtes en vol à la fois.
+// Colonne Action : « Ajouter » pour une série absente (une ligne), « Fiche » une fois ajoutée.
+async function addAuthorAlbum(index, button) {
+    const album = _authorAlbumsCache[index];
+    let libraryId = _authorAlbumsSoleLibraryId;
+    if (!libraryId) {
+        const select = document.getElementById('author-albums-library-select');
+        libraryId = select ? parseInt(select.value, 10) : null;
+    }
+    if (!album || !libraryId) {
+        showToast('author-albums-add', 'Bibliothèque requise.', { icon: 'triangle-alert', autoHideMs: 4000 });
+        return;
+    }
+    button.disabled = true;
+    button.innerHTML = `${svgIcon('loader-circle', 'icon-spin')}<span>Ajout…</span>`;
+    try {
+        const response = await fetch('/api/bedetheque/add-series', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: album.bedetheque_url, library_id: libraryId })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Ajout impossible');
+        album.already_in_library = true;
+        album.series_id = data.series_id;
+        const cell = button.closest('td');
+        const row = button.closest('tr');
+        if (cell) { cell.dataset.owned = '1'; cell.innerHTML = enrichOpenHtml(data.series_id, 'Ajoutée'); }
+        row?.classList.add('author-album-row-owned');
+        const checkbox = row?.querySelector('input[type="checkbox"]');
+        if (checkbox) { checkbox.checked = false; checkbox.disabled = true; }
+        _updateAuthorAlbumsBulkActionsBar();
+        showToast('author-albums-add', `« ${album.title} » ajoutée.`, { icon: 'check', autoHideMs: 4000, href: `/series/${data.series_id}` });
+    } catch (e) {
+        button.disabled = false;
+        button.innerHTML = `${svgIcon('plus')}<span>Ajouter</span>`;
+        showToast('author-albums-add', `❌ ${e.message}`, { icon: 'triangle-alert', autoHideMs: 5000 });
+    }
+}
+
 async function _addSelectedAuthorAlbums(soleLibraryId) {
     const checkboxes = Array.from(document.querySelectorAll('.author-album-checkbox:checked'));
     if (checkboxes.length === 0) {

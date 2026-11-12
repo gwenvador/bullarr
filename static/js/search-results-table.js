@@ -637,12 +637,9 @@ function buildSearchResultRowHtml(result) {
     // vers le serveur - mark_download_pending distingue explicitement "pas de contexte
     // série connu" (None) de 0, un id de série valide.
     const trackingSeriesId = _searchResultsContextSeriesId ?? 'null';
-    const trackingVolumeId = _searchResultsContextVolumeId ?? 'null';
-    const trackingVolumeNumber = (
-        result.volume != null
-            ? result.volume
-            : (result.is_integral || result.is_hs || result.is_episode ? null : _searchResultsContextVolumeNumber)
-    ) ?? 'null';
+    const trackingVolume = _searchResultTrackingVolume(result);
+    const trackingVolumeId = trackingVolume.volumeId ?? 'null';
+    const trackingVolumeNumber = trackingVolume.volumeNumber ?? 'null';
     // "Remplacer quand même" - littéral JS true/false (jamais 'null': contrairement aux
     // trois id ci-dessus, force_replace a toujours une valeur connue, pas de notion de
     // "contexte absent" à distinguer) - voir _searchResultsContextIsReplacement plus haut.
@@ -750,7 +747,7 @@ function buildSearchResultRowHtml(result) {
                 ${unconfirmedVolumeHtml} ${escapeHtml(displayName)}
                 ${unconfirmedReasonText ? `<div style="color:#e67e22; font-size:0.8em; margin-top:2px;">${escapeHtml(unconfirmedReasonText)}</div>` : ''}
             </td>
-            <td style="white-space:nowrap;">${result.parsed_volume ? escapeHtml(result.parsed_volume) : '—'}</td>
+            <td class="search-result-volume-cell">${_searchResultVolumeCellHtml(result)}</td>
             <td style="white-space:nowrap; text-align:center;"${_searchResultSourceLinkUrl(result) ? '' : ` data-tooltip="${escapeHtml(sourceLabel)}"`}>${_searchResultSourceIconHtml(result, sourceLabel)}</td>
             <td>${format}</td>
             <td class="search-result-black-and-white" style="white-space:nowrap; text-align:center;" data-tooltip="${isBlackAndWhite ? 'Format Noir & Blanc détecté' : 'Format couleur/non identifié'}">${isBlackAndWhite ? 'Oui' : 'Non'}</td>
@@ -817,6 +814,86 @@ let _searchTableOwnedLabels = null;
 // est-il déjà possédé", pas une comparaison étiquette par étiquette - vrai dès que le
 // tome existant du one-shot a un fichier, quel que soit le résultat de recherche.
 let _searchTableOneshotOwned = false;
+// « permet de pouvoir editer le numero du volume » / « c'est la que je veux pouvoir
+// editer » : tome choisi à la main pour un résultat (ex. « 13 deuxième partie » = 13 Bis),
+// par clé de sélection pour survivre aux re-rendus quand d'autres sources répondent.
+// Ce choix part avec le téléchargement (volume_id/volume_number suivis) et décide du tome
+// rempli à l'import - une variante Bis ne remplace donc plus le tome principal.
+let _searchTableSeriesVolumes = null;
+const _searchTableVolumeOverrides = new Map();
+
+function _searchResultVolumeOverride(result) {
+    return _searchTableVolumeOverrides.get(_searchResultSelectionKey(result)) || null;
+}
+
+function _searchResultVolumeLabel(result) {
+    const override = _searchResultVolumeOverride(result);
+    return override ? override.label : (result.parsed_volume || null);
+}
+
+function _searchResultTrackingVolume(result) {
+    const override = _searchResultVolumeOverride(result);
+    if (override) return { volumeId: override.id, volumeNumber: override.volume_number };
+    return {
+        volumeId: _searchResultsContextVolumeId ?? null,
+        volumeNumber: (result.volume != null
+            ? result.volume
+            : (result.is_integral || result.is_hs || result.is_episode ? null : _searchResultsContextVolumeNumber)) ?? null,
+    };
+}
+
+function _searchResultEditableVolumes() {
+    return (_searchTableSeriesVolumes || [])
+        .filter(v => v.volume_number != null && !v.is_integral && !v.is_hs && !v.is_episode)
+        .sort((a, b) => (a.volume_number - b.volume_number) || (Number(!!a.is_bis) - Number(!!b.is_bis)));
+}
+
+function _searchResultVolumeCellHtml(result) {
+    const override = _searchResultVolumeOverride(result);
+    const label = _searchResultVolumeLabel(result);
+    const canEdit = _searchResultsContextSeriesId && _searchResultEditableVolumes().length;
+    const tooltip = override
+        ? `Tome corrigé à la main (détecté : ${result.parsed_volume || 'aucun'}) - utilisé pour le téléchargement et l'import`
+        : 'Corriger le tome de ce fichier';
+    return `<span class="search-result-volume${override ? ' is-edited' : ''}">${label ? escapeHtml(label) : '—'}</span>${canEdit
+        ? `<button type="button" class="btn-icon-only search-result-volume-edit" data-result-action="editVolume" data-tooltip="${escapeHtml(tooltip)}" aria-label="Corriger le tome">${svgIcon('pencil')}</button>`
+        : ''}`;
+}
+
+function _openSearchResultVolumeEditor(button, result) {
+    const cell = button.closest('td');
+    if (!cell || !result) return;
+    const override = _searchResultVolumeOverride(result);
+    const owned = _searchTableOwnedLabels || new Set();
+    const options = _searchResultEditableVolumes().map(v => {
+        const label = _ownedVolumeLabel(v);
+        const selected = override && override.id === v.id ? ' selected' : '';
+        return `<option value="${v.id}"${selected}>${escapeHtml(label)}${owned.has(label) ? ' · possédé' : ''}</option>`;
+    }).join('');
+    cell.innerHTML = `<select class="search-result-volume-select" aria-label="Tome de ce fichier">
+        <option value=""${override ? '' : ' selected'}>Auto${result.parsed_volume ? ` (${escapeHtml(result.parsed_volume)})` : ''}</option>${options}</select>`;
+    const select = cell.querySelector('select');
+    let done = false;
+    const finish = apply => {
+        if (done) return;
+        done = true;
+        const key = _searchResultSelectionKey(result);
+        if (apply) {
+            const volume = _searchResultEditableVolumes().find(v => String(v.id) === select.value);
+            if (volume) {
+                _searchTableVolumeOverrides.set(key, { id: volume.id, volume_number: volume.volume_number, label: _ownedVolumeLabel(volume) });
+            } else {
+                _searchTableVolumeOverrides.delete(key);
+            }
+        }
+        _renderSearchResultsTbody();
+    };
+    select.addEventListener('change', () => finish(true));
+    select.addEventListener('blur', () => finish(false));
+    select.addEventListener('keydown', event => { if (event.key === 'Escape') finish(false); });
+    select.focus();
+    if (typeof select.showPicker === 'function') { try { select.showPicker(); } catch (e) { /* geste requis */ } }
+}
 let _ownedVolumesGeneration = 0;
 
 // Même format que _parsed_volume_label côté serveur (missing_monitor/searcher.py) - pas
@@ -827,7 +904,7 @@ function _ownedVolumeLabel(v) {
     if (v.is_integral) return v.integral_number ? `Intégrale ${v.integral_number}` : 'Intégrale';
     if (v.is_hs) return v.hs_number ? `HS ${v.hs_number}` : 'Hors-série';
     if (v.is_episode) return v.episode_number ? `Épisode ${v.episode_number}` : 'Épisode';
-    if (v.volume_number != null) return `Tome ${v.volume_number}`;
+    if (v.volume_number != null) return v.is_bis ? `Tome ${v.volume_number} ${v.bis_suffix || 'Bis'}` : `Tome ${v.volume_number}`;
     return null;
 }
 
@@ -841,6 +918,7 @@ async function _loadOwnedVolumeLabels(seriesId) {
         ]);
         if (generation !== _ownedVolumesGeneration) return; // une recherche plus récente a démarré entre-temps
         const physicallyOwned = v => !!v.filepath && v.filesystem_present !== false && v.filesystem_present !== 0;
+        _searchTableSeriesVolumes = Array.isArray(volumes) ? volumes : [];
         _searchTableOwnedLabels = new Set(
             (volumes || []).filter(physicallyOwned).map(_ownedVolumeLabel).filter(Boolean)
         );
@@ -853,7 +931,8 @@ async function _loadOwnedVolumeLabels(seriesId) {
 
 function _isResultOwned(result) {
     if (_searchTableOneshotOwned) return true;
-    return !!(_searchTableOwnedLabels && result.parsed_volume && _searchTableOwnedLabels.has(result.parsed_volume));
+    const label = _searchResultVolumeLabel(result);
+    return !!(_searchTableOwnedLabels && label && _searchTableOwnedLabels.has(label));
 }
 
 const SEARCH_SIZE_BUCKETS = [
@@ -991,10 +1070,7 @@ function _applySearchTableFilter(field, value) {
 function _searchResultTrackingArgs(result) {
     const trackingTitle = _searchResultDisplayName(result);
     const trackingSeriesId = _searchResultsContextSeriesId;
-    const trackingVolumeId = _searchResultsContextVolumeId;
-    const trackingVolumeNumber = result.volume != null
-        ? result.volume
-        : (result.is_integral || result.is_hs || result.is_episode ? null : _searchResultsContextVolumeNumber);
+    const { volumeId: trackingVolumeId, volumeNumber: trackingVolumeNumber } = _searchResultTrackingVolume(result);
     return {
         trackingTitle,
         trackingSeriesId,
@@ -1009,6 +1085,7 @@ function _runSearchResultAction(action, control, result) {
     if (action === 'toggleSelection') return _toggleSearchResultSelection(control);
     if (action === 'downloadSelectedSearchResults') return downloadSelectedSearchResults();
     if (action === 'avoidBlackAndWhite') return _setSearchAvoidBlackAndWhitePriority(control.checked);
+    if (action === 'editVolume') return _openSearchResultVolumeEditor(control, result);
     const args = _searchResultTrackingArgs(result);
     const link = result.link || result.download_url || '';
     switch (action) {
@@ -1086,7 +1163,7 @@ function _searchResultSortValue(result, column) {
     switch (column) {
         case 'owned': return _isResultOwned(result) ? 1 : 0;
         case 'filename': return _searchResultDisplayName(result).toLowerCase();
-        case 'volume': return (result.parsed_volume || '').toLowerCase();
+        case 'volume': return (_searchResultVolumeLabel(result) || '').toLowerCase();
         case 'source': return _searchResultSourceLabel(result.source).toLowerCase();
         case 'format': return detectResultFormat(result);
         case 'blackAndWhite': return _isBlackAndWhiteSearchResult(result) ? 1 : 0;
@@ -1185,6 +1262,10 @@ function buildSearchResultsTableHtml(results, volumeNumber = null, seriesId = nu
         _searchTableSelectedKeys.clear();
         _searchTableFilters = { source: '', format: '', blackAndWhite: '', size: '', volume: '', title: '', hideUnconfirmed: true, owned: '' };
         _searchTableSort = { column: null, direction: 'asc' };
+    }
+    if (!preserveState || _normalizeSeriesId(seriesId) !== _searchResultsContextSeriesId) {
+        _searchTableVolumeOverrides.clear();
+        _searchTableSeriesVolumes = null;
     }
     _searchResultsContextSeriesId = _normalizeSeriesId(seriesId);
     _searchResultsContextVolumeId = volumeId;

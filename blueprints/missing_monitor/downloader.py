@@ -248,7 +248,7 @@ def mark_download_pending(title: str, client: str, series_id: Optional[int] = No
         # On garde le volume_id fourni explicitement prioritaire.
         if volume_id is None and series_id is not None and volume_number is not None:
             resolved_volume = cursor.execute(
-                "SELECT id FROM volumes WHERE series_id = ? AND volume_number = ? "
+                "SELECT id FROM volumes WHERE series_id = ? AND volume_number = ? AND COALESCE(is_bis, 0) = 0 "
                 "ORDER BY CASE WHEN filepath IS NULL OR filepath = '' THEN 0 ELSE 1 END, id DESC LIMIT 1",
                 (series_id, volume_number)
             ).fetchone()
@@ -625,7 +625,7 @@ def update_active_download_tracking(
         volume_id = None
         if series_id is not None and volume_number is not None and not (is_integral or is_hs or is_episode):
             volume_row = conn.execute(
-                "SELECT id FROM volumes WHERE series_id = ? AND volume_number = ? "
+                "SELECT id FROM volumes WHERE series_id = ? AND volume_number = ? AND COALESCE(is_bis, 0) = 0 "
                 "ORDER BY CASE WHEN filepath IS NULL OR filepath = '' THEN 0 ELSE 1 END, id DESC LIMIT 1",
                 (series_id, volume_number)
             ).fetchone()

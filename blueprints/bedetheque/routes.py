@@ -575,13 +575,15 @@ def get_bedetheque_author_albums():
             cursor = conn.cursor()
             placeholders = ','.join('?' * len(albums))
             cursor.execute(
-                f'SELECT bedetheque_url FROM series WHERE bedetheque_url IN ({placeholders})',
+                f'SELECT bedetheque_url, id FROM series WHERE bedetheque_url IN ({placeholders})',
                 [a['bedetheque_url'] for a in albums]
             )
-            owned_urls = {row[0] for row in cursor.fetchall()}
+            owned_urls = {row[0]: row[1] for row in cursor.fetchall()}
             conn.close()
             for album in albums:
                 album['already_in_library'] = album['bedetheque_url'] in owned_urls
+                # id pour le bouton « Fiche » de la colonne Action (onglet Par auteur)
+                album['series_id'] = owned_urls.get(album['bedetheque_url'])
 
         return jsonify({'success': True, 'url': url, 'albums': albums})
     except Exception as e:

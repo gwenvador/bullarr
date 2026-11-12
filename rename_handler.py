@@ -130,6 +130,9 @@ def compute_volume_tokens(series_title: str, volume: Dict, is_series_oneshot: bo
 
     if number is not None:
         number2 = f"{prefix}{str(number).zfill(2)}"
+        # Variante « N Bis » : suffixe gardé pour ne jamais prendre le nom du tome N
+        if not prefix and volume.get('is_bis') and (volume.get('bis_suffix') or '').strip():
+            number2 = f"{number2} {volume['bis_suffix'].strip()}"
     elif prefix:
         number2 = prefix
     else:
