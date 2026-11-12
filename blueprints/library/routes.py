@@ -1982,6 +1982,7 @@ def _reader_volume(volume_id):
         row = conn.execute('''
             SELECT v.id, v.filepath, v.format, v.volume_number, v.is_integral, v.integral_number,
                    v.is_hs, v.hs_number, v.filename, v.comicinfo, v.komga_book_id,
+                   v.page_width, v.page_height,
                    s.id AS series_id, s.title AS series_title
             FROM volumes v JOIN series s ON s.id = v.series_id WHERE v.id = ?
         ''', (volume_id,)).fetchone()
@@ -2018,7 +2019,10 @@ def get_volume_reader_info(volume_id):
                     # lecture par défaut : droite à gauche pour une série d'origine Asie.
                     'previous': previous, 'next': following, 'manga': manga,
                     # Page atteinte d'après Komga (tout lecteur, tout appareil) : la reprise.
-                    'resume_page': resume_page, 'read_completed': read_completed})
+                    'resume_page': resume_page, 'read_completed': read_completed,
+                    # Plus grand côté des pages (scan de la bibliothèque) : au-dessus du seuil
+                    # basse définition, le bouton HD du lecteur est grisé (rien à améliorer).
+                    'page_side': max(row['page_width'] or 0, row['page_height'] or 0) or None})
 
 
 def _reader_komga_progress(volume_id):

@@ -1050,7 +1050,7 @@ async function openComicReader(volumeId) {
         comicReader.seriesId = data.series_id;
         comicReader.previous = data.previous || null;
         comicReader.next = data.next || null;
-        if (typeof comicReaderUpscaleOpen === 'function') comicReaderUpscaleOpen(volumeId);
+        if (typeof comicReaderUpscaleOpen === 'function') comicReaderUpscaleOpen(volumeId, data.page_side);
         // Sens manga : choix mémorisé pour la série, sinon d'office pour une origine Asie.
         const savedRtl = data.series_id ? _comicReaderPref(_comicReaderRtlKey(), null) : null;
         comicReader.rtl = savedRtl === null ? !!data.manga : savedRtl === '1';

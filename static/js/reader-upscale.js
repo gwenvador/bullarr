@@ -48,6 +48,8 @@ const comicUpscale = {
     shown: [],
     wanted: [],          // pages affichées et préchargées en ce moment
     error: '',
+    hdSide: null,         // tome déjà en haute définition : côté des pages (-1 : constaté page par page)
+    bigPages: 0,          // pages examinées trop grandes pour être améliorées
     ortPromise: null,
     sessions: {},
 };
@@ -185,11 +187,20 @@ function comicReaderUpscaleUrl(number) {
     return comicUpscale.cache.get(_comicUpscaleKey(number))?.url || null;
 }
 
-function comicReaderUpscaleOpen(volumeId) {
+function comicReaderUpscaleOpen(volumeId, pageSide) {
     _comicUpscaleClear();
     comicUpscale.volumeId = volumeId;
     comicUpscale.error = '';
+    comicUpscale.bigPages = 0;
+    // Pages déjà au-dessus du seuil (d'après le scan) : l'amélioration ne ferait rien, le
+    // bouton HD est grisé au lieu de s'allumer sans effet.
+    comicUpscale.hdSide = pageSide && pageSide > comicUpscaleMaxSide() ? pageSide : null;
     _renderComicUpscaleControls();
+}
+
+// Vrai quand le tome ouvert n'a rien à améliorer (pages déjà en haute définition).
+function comicUpscaleUseless() {
+    return !!comicUpscale.volumeId && !!comicUpscale.hdSide;
 }
 
 function comicReaderUpscaleClose() {
@@ -211,7 +222,7 @@ function _comicUpscaleClear() {
 // Appelé à chaque page affichée (mode pages et webtoon).
 function comicReaderUpscaleShown(shown) {
     comicUpscale.shown = shown.slice();
-    if (comicUpscale.mode === 'off' || !comicUpscale.volumeId || comicUpscale.error || comicUpscale.missing) {
+    if (comicUpscale.mode === 'off' || !comicUpscale.volumeId || comicUpscale.error || comicUpscale.missing || comicUpscaleUseless()) {
         _renderComicUpscaleStatus();
         return;
     }
@@ -266,6 +277,13 @@ async function _runComicUpscaleQueue() {
             // mais affiché seulement s'il correspond toujours au réglage en cours.
             comicUpscale.cache.set(key, { url });
             _trimComicUpscaleCache();
+            // Dimensions inconnues au scan : trois pages trop grandes et aucune améliorée
+            // suffisent à griser le bouton pour ce tome.
+            if (!url && ++comicUpscale.bigPages >= 3 && ![...comicUpscale.cache.values()].some(entry => entry.url)) {
+                comicUpscale.hdSide = -1;
+                comicUpscale.queue = [];
+                _renderComicUpscaleControls();
+            }
             if (url && key === _comicUpscaleKey(number)) _applyComicUpscale(number, url);
         }
         _renderComicUpscaleStatus();
@@ -487,12 +505,17 @@ function setComicReaderUpscale(mode, model) {
 
 // « U » : active ou désactive l'amélioration.
 function cycleComicReaderUpscale() {
+    if (comicUpscaleUseless()) return;
     setComicReaderUpscale(comicUpscale.mode === 'off' ? 'browser' : 'off');
 }
 
 // Bouton HD de l'en-tête : allumé, un clic revient à la version d'origine des pages ;
 // éteint, il active l'amélioration (et ouvre le choix du modèle s'il reste à télécharger).
 function comicReaderHdClick() {
+    if (comicUpscaleUseless()) {
+        toggleComicReaderSettings(true, 'hd');
+        return;
+    }
     if (comicUpscale.mode !== 'off') {
         setComicReaderUpscale('off');
         const panel = document.getElementById('comic-reader-settings');
@@ -531,6 +554,9 @@ function comicReaderUpscaleSettingsHtml(segment, section) {
             ? `<div class="comic-reader-settings-download"><div class="comic-reader-progress"><span style="width:${Math.round(pending.progress * 100)}%"></span></div><span>${Math.round(pending.progress * 100)} %</span></div>`
             : `<div class="comic-reader-settings-download"><span>${COMIC_UPSCALE_MODELS[comicUpscale.model].label} n’est pas encore dans ce navigateur.</span><button type="button" class="comic-reader-settings-action" data-setting="upscale-download" data-value="${comicUpscale.model}" data-tooltip="Télécharger le modèle">${_readerIcon('download')} ${comicUpscaleFormatSize(comicUpscaleDownloadBytes(comicUpscale.model))}</button></div>`;
     }
+    if (comicUpscaleUseless()) {
+        return section('Amélioration HD', ['U'], `<p class="comic-reader-settings-note comic-reader-settings-warn">${_comicUpscaleUselessText()}</p>`);
+    }
     return section('Amélioration HD', ['U'], `
         ${segment('upscale-mode', Object.entries(COMIC_UPSCALE_MODES), comicUpscale.mode)}
         <div class="comic-reader-models"${off ? ' hidden' : ''}>${models}</div>
@@ -538,13 +564,22 @@ function comicReaderUpscaleSettingsHtml(segment, section) {
         <p class="comic-reader-settings-note">Pages de ${comicUpscaleMaxSide()} px au plus, agrandies x2 sur la carte graphique de cet appareil (WebGPU).</p>`);
 }
 
+function _comicUpscaleUselessText() {
+    return comicUpscale.hdSide > 0
+        ? `Ce tome est déjà en haute définition (pages de ${comicUpscale.hdSide} px, au-dessus du seuil de ${comicUpscaleMaxSide()} px) : l'amélioration HD n'a rien à faire.`
+        : `Les pages de ce tome dépassent le seuil de ${comicUpscaleMaxSide()} px : l'amélioration HD n'a rien à faire.`;
+}
+
 function _renderComicUpscaleControls() {
     const button = document.getElementById('comic-reader-hd-btn');
     if (button) {
-        const on = comicUpscale.mode !== 'off';
+        const useless = comicUpscaleUseless();
+        const on = comicUpscale.mode !== 'off' && !useless;
         button.classList.toggle('active', on);
+        button.classList.toggle('unavailable', useless);
         button.setAttribute('aria-pressed', String(on));
-        button.dataset.tooltip = on
+        button.setAttribute('aria-disabled', String(useless));
+        button.dataset.tooltip = useless ? _comicUpscaleUselessText() : on
             ? `HD activée (${COMIC_UPSCALE_MODELS[comicUpscale.model].label}) : cliquer pour revenir à la version d'origine (U)`
             : 'Activer l\'amélioration HD des pages en basse définition (U)';
     }
@@ -557,7 +592,7 @@ function _renderComicUpscaleStatus() {
     if (!status) return;
     let text = '';
     let tooltip = '';
-    if (comicUpscale.mode !== 'off' && comicUpscale.volumeId) {
+    if (comicUpscale.mode !== 'off' && comicUpscale.volumeId && !comicUpscaleUseless()) {
         if (comicUpscale.missing) {
             text = 'Modèle HD à télécharger';
             tooltip = 'Ouvrez le menu HD pour télécharger le modèle';

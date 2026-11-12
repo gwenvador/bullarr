@@ -172,6 +172,12 @@ def _words_outside_parentheses(text):
     return set(re.findall(r'[^\W_]+', ''.join(kept).lower()))
 
 
+def _is_page_name(name):
+    """Une entrée d'archive est une page : image lisible par le lecteur, hors __MACOSX."""
+    from .preview_pages import IMAGE_EXTENSIONS
+    return name.lower().endswith(IMAGE_EXTENSIONS) and not name.startswith('__MACOSX') and '/__MACOSX/' not in name
+
+
 class LibraryScanner:
     def __init__(self, db_path=None):
         if db_path is None:
@@ -1023,15 +1029,14 @@ class LibraryScanner:
 
             if format_type in ['cbz', 'zip']:
                 with ZipFile(filepath, 'r') as zip_file:
-                    # Compte les images (jpg, jpeg, png, webp)
-                    image_files = [f for f in zip_file.namelist()
-                                 if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
+                    # Mêmes extensions que le lecteur (GIF et BMP compris : des albums
+                    # scannés en GIF n'affichaient que leurs 3 pages JPEG).
+                    image_files = [f for f in zip_file.namelist() if _is_page_name(f)]
                     return len(image_files)
 
             elif format_type in ['cbr', 'rar']:
                 with rarfile.RarFile(filepath) as rar_file:
-                    image_files = [f for f in rar_file.namelist()
-                                 if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
+                    image_files = [f for f in rar_file.namelist() if _is_page_name(f)]
                     return len(image_files)
 
             elif format_type == 'pdf':
