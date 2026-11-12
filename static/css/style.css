@@ -5352,3 +5352,9 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
 a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color: #16a34a; }
 [data-theme="dark"] .nouveautes-series-pill { color: #4ade80; }
 .nouveautes-table td:has(> .nouveautes-series-pill) .badge-missing { display: inline-block; margin-top: 4px; }
+.nouveautes-series-group-head .nouveautes-group-match { display: inline-flex; }
+.nouveautes-series-group-head .nouveautes-group-match .icon { width: 15px; height: 15px; }
+/* Éclair de groupe : reste visible en carte (écran étroit), à droite de l en-tête */
+@media (max-width: 900px) {
+    #nouveautes-events-body tr.nouveautes-series-group-row > td.nouveautes-group-actions { display: block; flex: 0 0 auto; margin-left: auto; }
+}

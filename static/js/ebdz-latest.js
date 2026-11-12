@@ -979,6 +979,76 @@ async function confirmTelegramMatchOverride(filename, seriesId, seriesTitle, sou
     }
 }
 
+// Rattachement d'un groupe entier (en-tête de série) : la série choisie est appliquée à
+// chaque album du groupe avec le même appel que son crayon individuel (sujet EBDZ,
+// correction RSS ou Telegram), puis la page est rechargée une seule fois.
+async function openNouveautesGroupMatchModal(indices, groupName) {
+    const events = indices.map(i => allNouveautesEvents[i]).filter(Boolean);
+    if (!events.length) return;
+    let modal = document.getElementById('telegram-match-override-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'telegram-match-override-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = '<div class="modal-content"><div class="loading"><div class="spinner"></div></div></div>';
+    modal.classList.add('active');
+    try {
+        const libs = await (await fetch('/api/libraries')).json();
+        const perLibrary = await Promise.all((Array.isArray(libs) ? libs : []).map(lib => fetch(`/api/library/${lib.id}/series`).then(r => r.json()).catch(() => [])));
+        const candidates = perLibrary.flat();
+        const first = events[0];
+        const currentSeriesId = (first.type === 'ebdz' ? first.matched_series_id : first.series_id) ?? null;
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:700px;">
+                <span class="close-modal" onclick="closeTelegramMatchOverrideModal()">×</span>
+                <h2 class="modal-title" style="margin-bottom:10px;">✏️ Matcher la série</h2>
+                <p class="modal-subtitle">Choisissez la série pour les <strong>${events.length} albums</strong> du groupe <strong>${escapeHtml(groupName)}</strong>.</p>
+                <div id="telegram-match-override-candidates"></div>
+            </div>`;
+        _renderMatchSeriesPicker('group-match', {
+            container: document.getElementById('telegram-match-override-candidates'),
+            candidates, currentSeriesId,
+            defaultNewName: _nouveautesTitleToSeriesName(groupName),
+            onChosen: seriesId => confirmNouveautesGroupMatch(events, seriesId),
+            onCancel: closeTelegramMatchOverrideModal,
+        });
+    } catch (error) {
+        modal.innerHTML = `<div class="modal-content"><span class="close-modal" onclick="closeTelegramMatchOverrideModal()">×</span><div class="no-data"><p>❌ ${escapeHtml(error.message)}</p></div></div>`;
+    }
+}
+
+async function confirmNouveautesGroupMatch(events, seriesId) {
+    const container = document.getElementById('telegram-match-override-candidates');
+    if (container) container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    const post = async (url, body) => {
+        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || 'Match impossible');
+    };
+    const errors = [];
+    const ebdzThreads = new Set();
+    for (const event of events) {
+        try {
+            if (event.type === 'ebdz') {
+                if (ebdzThreads.has(event.thread_id)) continue;
+                ebdzThreads.add(event.thread_id);
+                await post(`/api/series/${seriesId}/ebdz-match`, { thread_id: event.thread_id });
+            } else if (event.type === 'rss') {
+                await post('/api/ebdz/rss/match-override', { link: event.link || '', title: event.title || '', series_id: seriesId });
+            } else if (event.type === 'telegram') {
+                await post('/api/telegram-channels/match-override', { filename: event.filename, series_id: seriesId });
+            }
+        } catch (error) {
+            errors.push(`${event.title || event.filename || ''} : ${error.message}`);
+        }
+    }
+    closeTelegramMatchOverrideModal();
+    if (errors.length) alert(`❌ ${errors.length} album(s) non rattaché(s) :\n${errors.slice(0, 5).join('\n')}`);
+    loadNouveautesEvents(false, false);
+}
+
 // Modale de rattachement manuel d'un sujet EBDZ depuis Nouveautés. Contrairement
 // au raccourci historique vers /series/<id>, elle est également disponible quand le sujet
 // n'est associé à aucune série locale.
@@ -1469,7 +1539,7 @@ function renderNouveautesEvents(resetPage = true) {
     body.innerHTML = visible.map(e => {
         const html = e.type === 'ebdz' ? _nouveautesEbdzRowHtml(e, e._index) : e.type === 'rss' ? _nouveautesRssRowHtml(e) : _nouveautesTelegramRowHtml(e);
         const key = _nouveautesSeriesGroupKey(e);
-        return key ? html.replace(/<tr class="nouveautes-event-row/g, `<tr data-series-group="${escapeHtml(key)}" data-series-name="${escapeHtml(_nouveautesSeriesDisplayName(e))}" class="nouveautes-event-row`) : html;
+        return key ? html.replace(/<tr class="nouveautes-event-row/g, `<tr data-event-index="${e._index}" data-series-group="${escapeHtml(key)}" data-series-name="${escapeHtml(_nouveautesSeriesDisplayName(e))}" class="nouveautes-event-row`) : html;
     }).join('');
     _groupNouveautesSeriesRows(body);
     checkEmuleStatus();
@@ -1555,14 +1625,51 @@ function _groupNouveautesSeriesRows(body) {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'nouveautes-group-toggle';
-            nameRow.append(name, btn);
+            // « mets le stylo au niveau du groupe » : un seul crayon sur l'en-tête, qui
+            // rattache tous les albums du groupe à la même série ; plus de crayon par album.
+            const indices = members.map(r => Number(r.dataset.eventIndex)).filter(Number.isInteger);
+            members.forEach(r => r.querySelectorAll('.nouveautes-details-cell a[href="#"][onclick*="Match"]').forEach(a => a.remove()));
+            const pencil = document.createElement('a');
+            pencil.href = '#';
+            pencil.className = 'icon-owned nouveautes-group-match';
+            pencil.dataset.tooltip = `Choisir ou changer la série de ces ${members.length} albums`;
+            pencil.innerHTML = svgIcon('pencil');
+            pencil.addEventListener('click', ev => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                openNouveautesGroupMatchModal(indices, first.dataset.seriesName || '');
+            });
+            nameRow.append(name, pencil, btn);
             details.append(nameRow);
             header.appendChild(details);
+            // « le bouton pour tout télécharger en un coup, juste l'éclair » : l'éclair vise
+            // déjà toute la série (tous ses tomes manquants), un seul suffit sur l'en-tête ;
+            // ceux des albums du groupe sont retirés.
+            const zaps = members.flatMap(r => [...r.querySelectorAll('.nouveautes-actions-cell [onclick^="addSeriesAndDownloadNouveautes"]')]);
+            const zapArgs = zaps.length ? (zaps[0].getAttribute('onclick').match(/addSeriesAndDownloadNouveautes\((\d+), this(?:, (\d+))?\)/) || null) : null;
+            zaps.forEach(z => z.remove());
             const rest = first.cells.length - header.cells.length;
             if (rest > 0) {
                 const filler = document.createElement('td');
-                filler.colSpan = rest;
-                header.appendChild(filler);
+                filler.colSpan = zapArgs ? rest - 1 : rest;
+                if (filler.colSpan > 0) header.appendChild(filler);
+                if (zapArgs) {
+                    const actions = document.createElement('td');
+                    actions.className = 'nouveautes-actions-cell nouveautes-group-actions';
+                    actions.style.padding = '10px';
+                    const wrap = document.createElement('div');
+                    const zap = document.createElement('button');
+                    zap.type = 'button';
+                    zap.className = 'btn-icon-only';
+                    zap.setAttribute('onclick', `addSeriesAndDownloadNouveautes(${zapArgs[1]}, this${zapArgs[2] != null ? `, ${zapArgs[2]}` : ''})`);
+                    zap.dataset.tooltip = `Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants`;
+                    zap.setAttribute('aria-label', 'Ajouter la série et télécharger tous ses tomes manquants');
+                    zap.innerHTML = svgIcon('zap');
+                    zap.addEventListener('click', ev => ev.stopPropagation());
+                    wrap.appendChild(zap);
+                    actions.appendChild(wrap);
+                    header.appendChild(actions);
+                }
             }
             first.before(header);
 
