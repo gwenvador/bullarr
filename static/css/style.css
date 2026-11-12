@@ -5628,3 +5628,11 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
 .search-result-volume-edit:hover { opacity: 1; }
 .search-result-volume-select { font-size: .9em; padding: 3px 6px; border-radius: 6px; max-width: 170px; }
 @media (hover: none) { .search-result-volume-edit { opacity: .6; } }
+
+/* « garde ce degradé dans les autres parties du site » : même halo d accent en haut à
+   gauche que les étapes de Découvrir (.step), sur les cartes et fenêtres de toutes les
+   pages. Seul background-image est posé : la couleur de fond propre à chaque bloc reste. */
+:root { --surface-glow: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--color-accent) 14%, transparent) 0%, transparent 55%); }
+html body :is(.settings-card, .backup-card, .guide-card, .indisp-summary, .rq-section, .modal-content, .settings-modal-content) {
+    background-image: var(--surface-glow);
+}

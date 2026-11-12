@@ -671,6 +671,8 @@ def get_operation_details(operation_id):
             f['hs_number'] = parsed.get('hs_number')
             f['is_episode'] = parsed.get('is_episode')
             f['episode_number'] = parsed.get('episode_number')
+            f['is_bis'] = parsed.get('is_bis')
+            f['bis_suffix'] = parsed.get('bis_suffix')
 
         return {'operation': operation, 'files': files}
     except Exception as e:

@@ -478,9 +478,14 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
     elif volume_number is not None and parsed.get('is_bis'):
         # Variante « N Bis » choisie explicitement (recherche depuis la fiche série) :
         # jamais le tome N principal, qui garde son propre fichier.
+        # Suffixe exact d'abord (« Bis », « a »), sinon une variante Bédéthèque qui commence
+        # par ce suffixe suivi de chiffres (« a » -> « a1994 », jamais « b » -> « Bis »).
         query = ('SELECT id, filepath, file_size, format FROM volumes WHERE series_id = ? AND volume_number = ? '
-                 'AND COALESCE(is_bis, 0) = 1 AND LOWER(COALESCE(bis_suffix, \'\')) = LOWER(?)')
-        params = (series_id, volume_number, parsed.get('bis_suffix') or '')
+                 'AND COALESCE(is_bis, 0) = 1 AND (LOWER(COALESCE(bis_suffix, \'\')) = LOWER(?) '
+                 'OR LOWER(COALESCE(bis_suffix, \'\')) GLOB LOWER(?) || \'[0-9]*\') '
+                 'ORDER BY (LOWER(COALESCE(bis_suffix, \'\')) = LOWER(?)) DESC')
+        suffix = parsed.get('bis_suffix') or ''
+        params = (series_id, volume_number, suffix, suffix, suffix)
     elif volume_number is not None:
         # Un fichier « tome N » doit remplir le tome principal, jamais le dernier
         # placeholder N Bis / N TL créé pour une autre édition du même numéro.
@@ -518,7 +523,7 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
     if query is None:
         existing_volume = None
     else:
-        cursor.execute(query + ' ORDER BY id DESC', params)
+        cursor.execute(query + (', id DESC' if ' ORDER BY ' in query else ' ORDER BY id DESC'), params)
         candidates = cursor.fetchall()
         existing_volume = candidates[0] if candidates else None
         # Hors-série / intégrale / épisode SANS numéro: « HS - Le Rayon U » et « HS - Le Théâtre
@@ -3577,7 +3582,7 @@ def get_series_details(series_id):
                    is_special, special_label, is_bis, bis_suffix, page_width, page_height
             FROM volumes
             WHERE series_id = ?
-            ORDER BY part_number, (volume_number IS NULL), volume_number, integral_number, filename
+            ORDER BY part_number, (volume_number IS NULL), volume_number, COALESCE(is_bis, 0), LOWER(COALESCE(bis_suffix, '')), integral_number, filename
         ''', (series_id,))
 
         from .upscale_volume import ensure_table as _ensure_upscale_backups
@@ -7528,7 +7533,8 @@ def rescan_import_file_route():
 def _volume_fields_for_history(parsed):
     return {
         k: parsed.get(k) for k in
-        ('volume', 'is_integral', 'integral_number', 'is_hs', 'hs_number', 'is_episode', 'episode_number')
+        ('volume', 'is_integral', 'integral_number', 'is_hs', 'hs_number', 'is_episode', 'episode_number',
+         'is_bis', 'bis_suffix')
     }
 
 

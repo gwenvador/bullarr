@@ -99,7 +99,7 @@ function importHistoryVolumeLabel(f) {
     if (f.is_integral) return `Intégrale${f.integral_number != null ? ' ' + f.integral_number : ''}`;
     if (f.is_hs) return `Hors-série${f.hs_number != null ? ' ' + f.hs_number : ''}`;
     if (f.is_episode) return `Épisode${f.episode_number != null ? ' ' + f.episode_number : ''}`;
-    if (f.volume_number != null) return `Tome ${f.volume_number}`;
+    if (f.volume_number != null) return f.is_bis ? `Tome ${f.volume_number} ${f.bis_suffix || 'Bis'}` : `Tome ${f.volume_number}`;
     return '';
 }
 

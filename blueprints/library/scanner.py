@@ -1001,6 +1001,20 @@ class LibraryScanner:
             if resolution_match:
                 info['resolution'] = resolution_match.group(1)
 
+        # « XIII.T13Bis.2018… », « T13a », « 13b » : le numéro suivi d'un suffixe Bédéthèque
+        # (Bis/Ter/Quater, ou une lettre collée au numéro) désigne la variante N Bis / N a…,
+        # jamais le tome N principal - voir _find_existing_volume_for_import, qui remplit
+        # alors l'emplacement de cette variante.
+        if (info['volume'] is not None and not info['is_hs'] and not info['is_integral']
+                and not info['is_episode']):
+            suffix_match = re.search(
+                rf'(?<!\d)0*{info["volume"]}(?:[\s._-]?(bis|ter|quater)\b|([a-d])(?![a-z0-9]))',
+                filename, re.IGNORECASE)
+            if suffix_match:
+                info['is_bis'] = True
+                info['bis_suffix'] = (suffix_match.group(1).capitalize() if suffix_match.group(1)
+                                      else suffix_match.group(2).lower())
+
         return info
 
     @staticmethod

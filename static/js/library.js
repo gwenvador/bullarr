@@ -4133,6 +4133,15 @@ function _compareVolumesForSort(a, b, column, direction) {
         const tierA = _volumeNumberSortTier(a);
         const tierB = _volumeNumberSortTier(b);
         if (tierA !== tierB) return tierA - tierB;
+        // « 13bis ca devrait etre apres 13 » : même numéro, la variante Bis vient après.
+        if (tierA === 0 && a.volume_number !== b.volume_number) {
+            const diff = Number(a.volume_number) - Number(b.volume_number);
+            if (!Number.isNaN(diff)) return direction === 'asc' ? diff : -diff;
+        }
+        if (tierA === 0 && !!a.is_bis !== !!b.is_bis) {
+            const bisCmp = a.is_bis ? 1 : -1;
+            return direction === 'asc' ? bisCmp : -bisCmp;
+        }
 
         const la = volumeNumberLabel(a);
         const lb = volumeNumberLabel(b);
