@@ -3240,6 +3240,28 @@ function escapeForAttribute(text) {
 }
 
 // ===== BACKUP / RESTAURATION =====
+// Export CSV des BD : toutes les bibliothèques ou une seule (GET /api/export/volumes.csv).
+function exportVolumesCsv() {
+    const id = document.getElementById('csvExportLibrary')?.value;
+    window.location.href = '/api/export/volumes.csv' + (id ? `?library_id=${encodeURIComponent(id)}` : '');
+}
+
+async function loadCsvExportLibraries() {
+    const select = document.getElementById('csvExportLibrary');
+    if (!select || select.dataset.loaded) return;
+    try {
+        const libraries = await (await fetch('/api/libraries')).json();
+        (Array.isArray(libraries) ? libraries : libraries.libraries || []).forEach(lib => {
+            const option = document.createElement('option');
+            option.value = lib.id;
+            option.textContent = lib.name;
+            select.appendChild(option);
+        });
+        select.dataset.loaded = '1';
+    } catch (e) { /* liste facultative : l'export de tout reste possible */ }
+}
+document.addEventListener('DOMContentLoaded', loadCsvExportLibraries);
+
 async function restoreBackup() {
     const fileInput = document.getElementById('backupRestoreFile');
     const messageEl = document.getElementById('backupRestoreMessage');

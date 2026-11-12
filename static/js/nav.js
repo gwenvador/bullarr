@@ -540,7 +540,7 @@ function initActivityGroup() {
         id: 'activity-nav-subgroup',
         storageKey: 'activityExpanded',
         label: '📋 Suivi',
-        hrefs: ['/import', '/ebdz-nouveautes', '/history'],
+        hrefs: ['/import', '/ebdz-nouveautes', '/history', '/lectures'],
         insertAfterHref: '/discover'
     });
 }
@@ -954,9 +954,9 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
     const isReader = document.body?.dataset.role === 'reader';
     if (isReader) {
-        // Compte lecteur : seulement Bibliothèque et Demandes (le reste renverrait 403).
+        // Compte lecteur : Bibliothèque, Demandes et son historique de lecture (le reste renverrait 403).
         document.querySelectorAll('.sidebar-nav > a.nav-link').forEach(link => {
-            if (!['/', '/demandes'].includes(link.getAttribute('href'))) link.remove();
+            if (!['/', '/demandes', '/lectures'].includes(link.getAttribute('href'))) link.remove();
         });
     } else {
         // Administrateur : les demandes se traitent dans Validation, pas de page à part.
@@ -1261,6 +1261,7 @@ const SIDEBAR_ICON_MAP = {
     '↔️': 'arrow-left-right',
     '📖': 'book-open',
     '🕓': 'history',
+    '🔖': 'bookmark',
     '✅': 'check-check',
     '✨': 'wand-sparkles',
     '📊': 'activity',

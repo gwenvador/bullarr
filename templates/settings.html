@@ -30,6 +30,7 @@
             <a href="/verification" class="nav-link">✅ Vérification</a>
             <a href="/upscaling" class="nav-link">✨ Upscaling</a>
             <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/lectures" class="nav-link">🔖 Lectures</a>
             <a href="/settings" class="nav-link active">⚙️ Configuration</a>
             <div class="nav-subgroup" id="settings-nav-subgroup">
                 <!-- Pas de sous-lien pour "Vue d'ensemble" (tab-overview, voir plus bas) -
@@ -2267,6 +2268,20 @@
                         <div class="settings-card">
                             <h3 style="margin-top:0;">Créer un backup</h3>
                             <a class="btn" href="/api/settings/backup">⬇️ Télécharger un backup</a>
+                        </div>
+
+                        <div class="settings-card">
+                            <h3 style="margin-top:0;">Export CSV des BD</h3>
+                            <p class="help-text" style="display:block; margin-bottom:10px;">
+                                Toutes les BD présentes sur le disque, une ligne par fichier : bibliothèque, série,
+                                tome, année, auteur, éditeur, genre, pages, taille, définition, chemin… Le fichier
+                                s'ouvre tel quel dans Excel ou LibreOffice. L'historique de lecture s'exporte et se
+                                réimporte depuis <a href="/lectures">Suivi → Lectures</a>.
+                            </p>
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                <select id="csvExportLibrary" style="flex:0 1 260px; min-width:0;"><option value="">Toutes les bibliothèques</option></select>
+                                <button class="btn" onclick="exportVolumesCsv()">⬇️ Exporter en CSV</button>
+                            </div>
                         </div>
 
                         <div class="settings-card">

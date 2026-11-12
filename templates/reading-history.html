@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t==='system'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}var p=localStorage.getItem('palette');if(p&&p!=='atelier'){document.documentElement.setAttribute('data-palette',p);}}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
+    <title>Lectures</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <!-- .th-filterable-row/-icon/-control (filtres colonne des 5 tableaux de cette page)
+         ne vivent QUE dans style-library-search.css (voir commentaire dans style.css) -
+         cette page ne le chargeait pas du tout, filtres sans style depuis leur ajout. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-library-search.css') }}?v={{ asset_version('css/style-library-search.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/palettes.css') }}?v={{ asset_version('css/palettes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modals.css') }}?v={{ asset_version('css/modals.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-upscaling.css') }}?v={{ asset_version('css/style-upscaling.css') }}">
+</head>
+<body data-role="{{ user_role }}">
+    <div class="container">
+        <!-- Navigation verticale -->
+        <div class="sidebar-nav">
+            <div class="sidebar-brand">
+                <img src="{{ url_for('static', filename='img/bullarr-icon.png') }}" alt="" class="sidebar-brand-icon">
+                <span class="sidebar-brand-name">Bull<span class="sidebar-brand-accent">arr</span></span>
+            </div>
+            <a href="/" class="nav-link">📚 Bibliothèque</a>
+            <a href="/import" class="nav-link">📥 Activités</a>
+            <a href="/discover" class="nav-link">🎯 Recherche</a>
+            <a href="/demandes" class="nav-link">📮 Demandes</a>
+            <a href="/ebdz-nouveautes" class="nav-link">🆕 Nouveautés</a>
+            <a href="/bedetheque-enrich" class="nav-link">📖 Enrichir</a>
+            <a href="/missing-monitor" class="nav-link">📊 Surveillance</a>
+            <a href="/verification" class="nav-link">✅ Vérification</a>
+            <a href="/upscaling" class="nav-link">✨ Upscaling</a>
+            <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/lectures" class="nav-link active">🔖 Lectures</a>
+            <a href="/settings" class="nav-link">⚙️ Configuration</a>
+        </div>
+
+        <div class="main-wrapper">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1><span class="header-title-icon"><svg class="icon header-title-svg" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" /></svg></span> <span class="header-title-full">Historique de lecture</span><span class="header-title-short">Lectures</span></h1>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <div class="content">
+                    <div class="settings-section upscaling-page reading-page">
+                        <div class="section-header">
+                            <p class="section-description">Les albums que vous avez lus ou commencés, du plus récent au plus ancien, avec la page atteinte et la date. L'avancement vient de Komga (synchronisé) ou du lecteur de Bullarr. Exportez-le en CSV pour le garder, et réimportez-le pour le remettre.</p>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="reading-source" id="readingSource"><span class="upscaling-muted">Chargement…</span></div>
+                            <div class="reading-toolbar">
+                                <span class="upcmp-seg reading-seg" role="group" aria-label="Statut">
+                                    <button type="button" data-status="all" class="active" onclick="readingSetStatus('all')">Tout <span id="readingCountAll">—</span></button>
+                                    <button type="button" data-status="done" onclick="readingSetStatus('done')">Lus <span id="readingCountDone">—</span></button>
+                                    <button type="button" data-status="started" onclick="readingSetStatus('started')">En cours <span id="readingCountStarted">—</span></button>
+                                </span>
+                                <input type="search" id="readingFilter" class="upscaling-input reading-filter" placeholder="Série, tome, fichier…" oninput="readingApplyFilters()" aria-label="Filtrer">
+                                <label class="reading-library" hidden><select id="readingLibrary" class="upscaling-input" onchange="readingApplyFilters()" aria-label="Bibliothèque"></select></label>
+                                <span class="reading-spacer"></span>
+                                <a class="btn" href="/api/reading-history/export.csv" download data-tooltip="Tout l'historique (page, lu, date) en CSV">⬇️ Exporter CSV</a>
+                                <label class="btn reading-import-btn" data-tooltip="Remettre l'avancement depuis un export CSV">⬆️ Importer CSV<input type="file" accept=".csv,text/csv" hidden onchange="readingImportFile(this)"></label>
+                            </div>
+                            <div id="readingImportResult" class="message" style="display:none"></div>
+                            <div id="readingList" class="upscaling-table-wrap reading-list"><p class="upscaling-muted">Chargement…</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/icons.js') }}?v={{ asset_version('js/icons.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/reading-history.js') }}?v={{ asset_version('js/reading-history.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/nav.js') }}?v={{ asset_version('js/nav.js') }}"></script>
+</body>
+</html>

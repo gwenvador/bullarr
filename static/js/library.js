@@ -1392,6 +1392,9 @@ function updateViewSwitcherButtons() {
     });
     const columnsSection = document.getElementById('table-columns-section');
     if (columnsSection) columnsSection.style.display = seriesViewMode === 'table' ? '' : 'none';
+    // Vue tableau : export CSV de toutes les BD de la bibliothèque (reading_history.py).
+    const exportButton = document.getElementById('table-export-csv-btn');
+    if (exportButton) exportButton.style.display = seriesViewMode === 'table' ? '' : 'none';
     const posterSize = document.getElementById('poster-size-control');
     if (posterSize) posterSize.style.display = seriesViewMode === 'poster' ? '' : 'none';
     // Mode « Sélectionner » : vue affiches seulement (le tableau a ses propres cases).

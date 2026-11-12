@@ -493,9 +493,9 @@ window.addEventListener('resize', () => compareDrawZone());
 document.addEventListener('DOMContentLoaded', loadUpscaling);
 
 // ----- Comparaison original / nouvelle version (albums upscalés ou réduits) -----
-// Côte à côte ou au curseur, page par page ; un clic sur une image passe en taille réelle
-// (les deux images à la même échelle, défilement synchronisé) et inversement.
-const upCmp = { id: null, page: 1, total: 0, mode: 'side', zoom: false, split: 0.5, info: null };
+// Au curseur, page par page ; un double-clic sur l'image (ou « Taille réelle ») passe en
+// taille réelle (les deux images à la même échelle) et inversement.
+const upCmp = { id: null, page: 1, total: 0, zoom: false, split: 0.5, info: null };
 
 async function upscalingOpenCompare(volumeId) {
     let info;
@@ -522,19 +522,15 @@ async function upscalingOpenCompare(volumeId) {
                     Page <input type="number" id="upcmpPage" min="1" max="${upCmp.total}" value="1" onchange="upCmpGo(0, this.value)"> / ${upCmp.total}
                     <button type="button" class="upscale-icon-btn" onclick="upCmpGo(1)" aria-label="Page suivante">${svgIcon('chevron-right')}</button>
                 </span>
-                <span class="upcmp-seg" role="group" aria-label="Affichage">
-                    <button type="button" data-mode="side" onclick="upCmpMode('side')">Côte à côte</button>
-                    <button type="button" data-mode="slider" onclick="upCmpMode('slider')">Curseur</button>
-                </span>
                 <span class="upcmp-seg"><button type="button" id="upcmpZoomBtn" onclick="upCmpZoom()">Taille réelle</button></span>
-                <span class="upcmp-hint">${reduced ? 'Réduction' : 'Upscaling'} : ${_upEsc(_upModelLabel(info.model))} · ←/→ pour changer de page</span>
+                <span class="upcmp-hint">${reduced ? 'Réduction' : 'Upscaling'} : ${_upEsc(_upModelLabel(info.model))} · ←/→ pour changer de page · double-clic : taille réelle</span>
             </div>
             <div class="upcmp-body" id="upcmpBody"></div>
         </div>`;
     document.body.appendChild(modal);
     modal.addEventListener('click', event => { if (event.target === modal) upscalingCloseCompare(); });
     document.addEventListener('keydown', upCmpKey, true);
-    upCmpMode(upCmp.mode);
+    upCmpRender();
 }
 
 function upscalingCloseCompare() {
@@ -555,12 +551,6 @@ function upCmpGo(delta, value) {
     if (page === upCmp.page && value == null) return;
     upCmp.page = page;
     document.getElementById('upcmpPage').value = page;
-    upCmpRender();
-}
-
-function upCmpMode(mode) {
-    upCmp.mode = mode;
-    document.querySelectorAll('.upcmp-seg [data-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
     upCmpRender();
 }
 
@@ -603,9 +593,9 @@ async function _upCmpLoad(url) {
 async function upCmpRender(anchor) {
     const body = document.getElementById('upcmpBody');
     if (!body) return;
-    const token = `${upCmp.id}-${upCmp.page}-${upCmp.mode}-${upCmp.zoom}-${Math.random()}`;
+    const token = `${upCmp.id}-${upCmp.page}-${upCmp.zoom}-${Math.random()}`;
     body.dataset.token = token;
-    body.className = `upcmp-body ${upCmp.mode}${upCmp.zoom ? ' upcmp-zoom' : ''}`;
+    body.className = `upcmp-body slider${upCmp.zoom ? ' upcmp-zoom' : ''}`;
     if (!body.children.length) body.innerHTML = `<p class="upscaling-muted">${svgIcon('loader-circle', 'icon-spin')} Chargement…</p>`;
     let original, current;
     try {
@@ -622,50 +612,32 @@ async function upCmpRender(anchor) {
     const width = Math.max(original.img.naturalWidth, current.img.naturalWidth);
     const height = Math.round(width * current.img.naturalHeight / current.img.naturalWidth);
     const sized = upCmp.zoom ? ` style="width:${width}px;height:${height}px"` : '';
-    if (upCmp.mode === 'side') {
-        body.innerHTML = [['Original', original], [newLabel, current]].map(([label, item], index) => `
-            <div class="upcmp-pane">
-                <div class="upcmp-label"><strong>${label}</strong><span>${_upCmpMeta(item.img, item.bytes)}</span></div>
-                <div class="upcmp-scroll" data-pane="${index}"><img src="${item.src}" alt="${label}"${sized} onclick="upCmpImageClick(event)"></div>
-            </div>`).join('');
-        const panes = [...body.querySelectorAll('.upcmp-scroll')];
-        let syncing = false;
-        panes.forEach(pane => pane.addEventListener('scroll', () => {
-            if (syncing) return;
-            syncing = true;
-            panes.forEach(other => { if (other !== pane) { other.scrollLeft = pane.scrollLeft; other.scrollTop = pane.scrollTop; } });
-            requestAnimationFrame(() => { syncing = false; });
-        }));
-        if (!upCmp.zoom) panes.forEach(pane => _upCmpFit(pane.querySelector('img'), pane, width, height));
-        _upCmpScrollTo(panes, anchor);
-    } else {
-        body.innerHTML = `
-            <div class="upcmp-pane">
-                <div class="upcmp-label"><strong>Original ⇆ ${newLabel}</strong><span>${_upCmpMeta(original.img, original.bytes)} → ${_upCmpMeta(current.img, current.bytes)}</span></div>
-                <div class="upcmp-scroll"><div class="upcmp-stage">
-                    <img src="${current.src}" alt="${newLabel}"${sized}>
-                    <img class="upcmp-top" src="${original.src}" alt="Original">
-                    <span class="upcmp-divider"></span>
-                    <span class="upcmp-tag" style="left:8px">Original</span><span class="upcmp-tag" style="right:8px">${newLabel}</span>
-                </div></div>
-            </div>`;
-        const scroll = body.querySelector('.upcmp-scroll');
-        const stage = body.querySelector('.upcmp-stage');
-        const move = event => {
-            const rect = stage.getBoundingClientRect();
-            const x = (event.touches ? event.touches[0].clientX : event.clientX) - rect.left;
-            upCmp.split = Math.min(Math.max(x / rect.width, 0), 1);
-            _upCmpSplit(stage);
-        };
-        let dragging = false;
-        stage.addEventListener('pointerdown', event => { dragging = true; stage.setPointerCapture(event.pointerId); move(event); });
-        stage.addEventListener('pointermove', event => { if (dragging || event.pointerType === 'mouse') move(event); });
-        stage.addEventListener('pointerup', () => { dragging = false; });
-        stage.addEventListener('dblclick', event => upCmpImageClick(event));
-        if (!upCmp.zoom) _upCmpFit(stage.querySelector('img'), scroll, width, height);
+    body.innerHTML = `
+        <div class="upcmp-pane">
+            <div class="upcmp-label"><strong>Original ⇆ ${newLabel}</strong><span>${_upCmpMeta(original.img, original.bytes)} → ${_upCmpMeta(current.img, current.bytes)}</span></div>
+            <div class="upcmp-scroll"><div class="upcmp-stage">
+                <img src="${current.src}" alt="${newLabel}"${sized}>
+                <img class="upcmp-top" src="${original.src}" alt="Original">
+                <span class="upcmp-divider"></span>
+                <span class="upcmp-tag" style="left:8px">Original</span><span class="upcmp-tag" style="right:8px">${newLabel}</span>
+            </div></div>
+        </div>`;
+    const scroll = body.querySelector('.upcmp-scroll');
+    const stage = body.querySelector('.upcmp-stage');
+    const move = event => {
+        const rect = stage.getBoundingClientRect();
+        const x = (event.touches ? event.touches[0].clientX : event.clientX) - rect.left;
+        upCmp.split = Math.min(Math.max(x / rect.width, 0), 1);
         _upCmpSplit(stage);
-        _upCmpScrollTo([scroll], anchor);
-    }
+    };
+    let dragging = false;
+    stage.addEventListener('pointerdown', event => { dragging = true; stage.setPointerCapture(event.pointerId); move(event); });
+    stage.addEventListener('pointermove', event => { if (dragging || event.pointerType === 'mouse') move(event); });
+    stage.addEventListener('pointerup', () => { dragging = false; });
+    stage.addEventListener('dblclick', event => upCmpImageClick(event));
+    if (!upCmp.zoom) _upCmpFit(stage.querySelector('img'), scroll, width, height);
+    _upCmpSplit(stage);
+    _upCmpScrollTo([scroll], anchor);
 }
 
 // Image ajustée à son cadre (sans dépasser), même échelle quelle que soit sa définition.

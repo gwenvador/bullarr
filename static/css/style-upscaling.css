@@ -214,3 +214,23 @@
     .upcmp-body:not(.slider) { flex-direction: column; }
     .upcmp-hint { display: none; }
 }
+
+/* Suivi → Lectures (templates/reading-history.html, static/js/reading-history.js) */
+.reading-source { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.reading-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.reading-seg button span { opacity: .7; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.reading-filter { flex: 1 1 200px; min-width: 0; max-width: 340px; }
+.reading-spacer { flex: 1 1 auto; }
+.reading-import-btn { cursor: pointer; margin: 0; }
+.reading-list { max-height: none; }
+.reading-album { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.reading-cover { flex: 0 0 36px; width: 36px; height: 50px; border-radius: 4px; overflow: hidden; background: var(--color-border); display: inline-flex; align-items: center; justify-content: center; }
+.reading-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.reading-progress.done span { background: #16a34a; }
+.reading-more { display: flex; justify-content: center; padding: 12px; }
+#readingImportResult { margin-bottom: 12px; }
+@media (max-width: 700px) {
+    .reading-table th:nth-child(3), .reading-table td:nth-child(3) { display: none; }
+    .reading-filter { max-width: none; }
+    .reading-spacer { display: none; }
+}

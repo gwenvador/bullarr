@@ -60,6 +60,9 @@ READER_ENDPOINTS = {
     # Compte Komga personnel et son avancement de lecture
     'komga.my_komga_account': frozenset({'GET', 'PUT', 'DELETE'}),
     'komga.sync_komga_read_progress': frozenset({'POST'}), 'komga.get_keep_reading': _GET,
+    # Historique de lecture du compte (Suivi → Lectures), export et import CSV
+    'library.reading_history_page': _GET, 'library.get_reading_history': _GET,
+    'library.export_reading_history': _GET, 'library.import_reading_history': frozenset({'POST'}),
 }
 
 

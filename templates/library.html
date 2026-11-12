@@ -30,6 +30,7 @@
             <a href="/verification" class="nav-link">✅ Vérification</a>
             <a href="/upscaling" class="nav-link">✨ Upscaling</a>
             <a href="/history" class="nav-link">🕓 Historique</a>
+            <a href="/lectures" class="nav-link">🔖 Lectures</a>
             <a href="/settings" class="nav-link">⚙️ Configuration</a>
         </div>
 
@@ -165,6 +166,9 @@
                     </button>
                     <div class="toolbar-dropdown-menu toolbar-dropdown-menu-right table-display-panel" id="table-columns-menu" style="display: none;"></div>
                 </div>
+                <button class="toolbar-btn toolbar-btn-icon-only" id="table-export-csv-btn" style="display: none;" onclick="window.location.href = '/api/export/volumes.csv?library_id=' + encodeURIComponent(window.libraryId)" title="Exporter toutes les BD de cette bibliothèque en CSV" aria-label="Exporter en CSV">
+                    <span class="toolbar-btn-icon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></svg></span>
+                </button>
                 </div>
             </div>
 

@@ -8,3 +8,4 @@ library_bp = Blueprint('library', __name__)
 from . import routes
 from . import series_move
 from . import book_requests
+from . import reading_history
