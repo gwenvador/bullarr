@@ -5215,8 +5215,11 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
    ================================================================================ */
 .nouveautes-table > tbody > tr > td { vertical-align: middle; }
 #nouveautes-events-body tr.nouveautes-event-row { transition: background-color .12s; }
-#nouveautes-events-body tr.nouveautes-event-row:not(.volume-table-row-owned):not(.nouveautes-row-new):hover > td {
-    background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface));
+/* Survol : une seule couleur neutre, la même sur toutes les cellules (Actions comprise,
+   qui héritait sinon du gris de la ligne possédée par-dessus le sien), possédée ou non. */
+#nouveautes-events-body tr.nouveautes-event-row.volume-table-row-owned:hover { background: transparent; }
+#nouveautes-events-body tr.nouveautes-event-row:not(.nouveautes-row-new):hover > td {
+    background: color-mix(in srgb, var(--color-text) 4%, var(--color-surface));
 }
 .nouveautes-table .nouveautes-title {
     display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px;
@@ -5400,3 +5403,12 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
     font-weight: 500 !important; font-size: .95em !important; color: var(--color-text) !important; line-height: 1.4;
 }
 #nouveautes-events-body .nouveautes-details-cell > .nouveautes-title .nouveautes-rss-link { font-weight: inherit; color: inherit; }
+/* Couverture d'une série possédée au survol de son nom (Nouveautés) */
+.nouveautes-cover-tip {
+    position: fixed; z-index: 3000; width: 150px; padding: 6px; border-radius: 12px; pointer-events: none;
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    box-shadow: 0 12px 32px -10px rgba(0, 0, 0, .35);
+}
+.nouveautes-cover-tip[hidden] { display: none; }
+.nouveautes-cover-tip img { display: block; width: 100%; max-height: 210px; object-fit: contain; border-radius: 7px; background: var(--color-surface-alt); }
+.nouveautes-cover-tip span { display: block; margin-top: 5px; font-size: .78em; font-weight: 600; line-height: 1.3; text-align: center; color: var(--color-text); }

@@ -551,10 +551,69 @@ function _nouveautesSeriesHtml(event) {
     // Le lien et son logo restent ensemble dans Détails, y compris lorsqu'une source
     // fournit une fiche Bédéthèque avant le rattachement à une série locale.
     const label = seriesTitle || 'Bédéthèque';
+    // Série possédée : sa couverture s'affiche au survol du nom (voir _initNouveautesCoverPreview).
+    const ownedId = event.type === 'ebdz' ? event.matched_series_id : event.series_id;
+    const coverAttr = ownedId ? ` data-cover-series-id="${Number(ownedId)}"` : '';
     const content = bedethequeUrl
-        ? `<a href="${escapeHtml(bedethequeUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir la série sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="" style="width:14px; height:14px; vertical-align:-2px; margin-right:4px;">${escapeHtml(label)}</a>`
-        : escapeHtml(label);
+        ? `<a href="${escapeHtml(bedethequeUrl)}"${coverAttr} target="_blank" rel="noopener noreferrer"${ownedId ? '' : ' data-tooltip="Voir la série sur Bédéthèque"'} onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="" style="width:14px; height:14px; vertical-align:-2px; margin-right:4px;">${escapeHtml(label)}</a>`
+        : `<span${coverAttr}>${escapeHtml(label)}</span>`;
     return `<div class="nouveautes-matched-series has-series" style="display:flex; align-items:center; gap:6px;">${content}${pencilHtml}</div>`;
+}
+
+// « pour les séries que l'on possède, affiche la couverture en passant sur le nom » :
+// une vignette flottante, chargée une fois par série (GET /api/series/<id>).
+const _nouveautesCoverCache = new Map();
+
+function _nouveautesSeriesCover(seriesId) {
+    if (!_nouveautesCoverCache.has(seriesId)) {
+        _nouveautesCoverCache.set(seriesId, fetch(`/api/series/${seriesId}`)
+            .then(response => response.ok ? response.json() : null)
+            .then(data => {
+                if (!data) return null;
+                const path = data.local_cover_path
+                    || Object.values(data).find(value => value && typeof value === 'object' && value.cover_path)?.cover_path;
+                if (!path) return null;
+                return { url: /^(https?:)?\//.test(path) ? path : `/${path}`, title: data.title || '' };
+            })
+            .catch(() => null));
+    }
+    return _nouveautesCoverCache.get(seriesId);
+}
+
+function _initNouveautesCoverPreview() {
+    const body = document.getElementById('nouveautes-events-body');
+    if (!body || body._coverPreview) return;
+    body._coverPreview = true;
+    const tip = document.createElement('div');
+    tip.className = 'nouveautes-cover-tip';
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    let current = null;
+    const place = target => {
+        const rect = target.getBoundingClientRect();
+        const width = 150;
+        const left = Math.min(window.innerWidth - width - 12, rect.right + 12);
+        const top = Math.max(8, Math.min(window.innerHeight - 230, rect.top - 40));
+        tip.style.left = `${Math.max(8, left)}px`;
+        tip.style.top = `${top}px`;
+    };
+    body.addEventListener('mouseover', async event => {
+        const target = event.target.closest('[data-cover-series-id]');
+        if (!target || target === current) return;
+        current = target;
+        const cover = await _nouveautesSeriesCover(Number(target.dataset.coverSeriesId));
+        if (current !== target || !cover) return;
+        tip.innerHTML = `<img src="${escapeHtml(cover.url)}" alt="">${cover.title ? `<span>${escapeHtml(cover.title)}</span>` : ''}`;
+        place(target);
+        tip.hidden = false;
+    });
+    body.addEventListener('mouseout', event => {
+        const target = event.target.closest('[data-cover-series-id]');
+        if (!target || target.contains(event.relatedTarget)) return;
+        current = null;
+        tip.hidden = true;
+    });
+    window.addEventListener('scroll', () => { current = null; tip.hidden = true; }, { passive: true });
 }
 
 // Colonne Genre (BD / Comics / Manga) : origine de la fiche Bédéthèque de la série, lue par
@@ -1196,6 +1255,12 @@ function _nouveautesVolumeLabel(value) {
     return /^\d/.test(text) ? `Tome ${text}` : text;
 }
 
+// Tome lu dans un nom de release RSS (« … T13.2007 FR », « Tome 5 », « Vol. 2 »).
+function _nouveautesGuessVolume(title) {
+    const match = String(title || '').match(/(?:^|[\s._\-(\[])(?:T|Tome|Vol(?:ume)?\.?)\s*\.?\s*(\d{1,3})(?!\d)/i);
+    return match ? String(Number(match[1])) : '';
+}
+
 function _nouveautesMetaHtml(parts) {
     const items = parts.filter(Boolean).map(([cls, text]) => `<span class="${cls}">${escapeHtml(String(text))}</span>`);
     return items.length ? `<div class="nouveautes-meta">${items.join('')}</div>` : '';
@@ -1322,7 +1387,7 @@ function _nouveautesRssRowHtml(event) {
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
     // Release déjà possédée : ligne verte, comme les lignes EBDZ et Telegram.
     const ownedRowClass = event.already_owned === true ? 'volume-table-row-owned ' : '';
-    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div class="nouveautes-title">${title}</div>${matchedSeriesHtml}${description ? `<div class="nouveautes-desc">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
+    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div class="nouveautes-title">${title}</div>${matchedSeriesHtml}${event.vk ? '' : _nouveautesMetaHtml([_nouveautesGuessVolume(rawTitle) && ['nouveautes-meta-vol', _nouveautesVolumeLabel(_nouveautesGuessVolume(rawTitle))], event.size > 0 && ['nouveautes-meta-size', formatBytes(event.size)]])}${description ? `<div class="nouveautes-desc">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
@@ -1545,6 +1610,7 @@ function renderNouveautesEvents(resetPage = true) {
     // de groupe » : la ligne série (logo Bédéthèque + nom + crayon) passe au-dessus du titre.
     body.querySelectorAll('.nouveautes-details-cell > .nouveautes-matched-series.has-series').forEach(line => line.parentElement.prepend(line));
     _groupNouveautesSeriesRows(body);
+    _initNouveautesCoverPreview();
     checkEmuleStatus();
     fillNouveautesOriginFlags();
 
@@ -1657,11 +1723,31 @@ function _groupNouveautesSeriesRows(body) {
             // autres tomes manquants de la série, il est donc toujours proposé.
             const zapArgs = (zaps.length && zaps[0].getAttribute('onclick').match(/addSeriesAndDownloadNouveautes\((\d+), this(?:, (\d+))?\)/))
                 || (Number.isInteger(Number(first.dataset.eventIndex)) && first.dataset.eventIndex !== '' ? [null, first.dataset.eventIndex, undefined] : null);
+            // « retire Fiche et drapeau par ligne, mets-les dans l'en-tête » : Genre et
+            // Série (pastille « Fiche ») ne sont affichés qu'une fois, sur l'en-tête ; les
+            // albums gardent seulement leur mention « manquant ».
+            const genreIndex = header.cells.length;
+            if (first.cells[genreIndex]?.classList.contains('nouveautes-genre-cell') && first.cells[genreIndex + 1]) {
+                header.appendChild(first.cells[genreIndex].cloneNode(true));
+                const seriesCell = document.createElement('td');
+                seriesCell.style.cssText = 'padding:10px; text-align:center;';
+                const pill = members.map(r => r.querySelector('.nouveautes-series-pill')).find(Boolean);
+                if (pill) seriesCell.appendChild(pill.cloneNode(true));
+                header.appendChild(seriesCell);
+                members.forEach(r => {
+                    r.querySelector(':scope > td.nouveautes-genre-cell')?.replaceChildren();
+                    r.querySelectorAll('.nouveautes-series-pill').forEach(p => p.remove());
+                });
+            }
             const rest = first.cells.length - header.cells.length;
             if (rest > 0) {
-                const filler = document.createElement('td');
-                filler.colSpan = zapArgs ? rest - 1 : rest;
-                if (filler.colSpan > 0) header.appendChild(filler);
+                // colSpan = 0 vaut 1 en HTML : la cellule n'est créée que s'il reste des colonnes.
+                const fillerSpan = zapArgs ? rest - 1 : rest;
+                if (fillerSpan > 0) {
+                    const filler = document.createElement('td');
+                    filler.colSpan = fillerSpan;
+                    header.appendChild(filler);
+                }
                 if (zapArgs) {
                     const actions = document.createElement('td');
                     actions.className = 'nouveautes-actions-cell nouveautes-group-actions';

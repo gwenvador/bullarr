@@ -133,6 +133,28 @@ def _text(parent, names):
     return ''
 
 
+def _entry_size(entry):
+    """Taille annoncée par l'item (octets) : <size> (Prowlarr/Jackett), attribut torznab/newznab
+    « size », ou length de l'enclosure. 0 si absente."""
+    candidates = []
+    for node in entry.iter():
+        name = node.tag.rsplit('}', 1)[-1].lower()
+        if name == 'size':
+            candidates.append(node.text)
+        elif name == 'attr' and (node.attrib.get('name') or '').lower() == 'size':
+            candidates.append(node.attrib.get('value'))
+        elif name == 'enclosure':
+            candidates.append(node.attrib.get('length'))
+    for value in candidates:
+        try:
+            size = int(str(value or '').strip())
+        except ValueError:
+            continue
+        if size > 0:
+            return size
+    return 0
+
+
 def _is_download_link(url, label=''):
     probe = f'{url} {label}'.lower()
     return any(token in probe for token in ('torrent', 'ebdz', '.torrent', 'magnet:', 'ed2k://', '/download'))
@@ -232,7 +254,8 @@ def parse_feed(payload, source_url, validate_url=True):
                 parsed_date = None
         if parsed_date and parsed_date.tzinfo is None:
             parsed_date = parsed_date.replace(tzinfo=timezone.utc)
-        results.append({'title': title or 'Sans titre', 'link': page_link, 'page_link': page_link, 'comments_link': comments_link, 'description': raw_description, 'download_links': download_links, 'date': parsed_date.astimezone(timezone.utc).isoformat() if parsed_date else '', 'feed_title': feed_title})
+        results.append({'title': title or 'Sans titre', 'link': page_link, 'page_link': page_link, 'comments_link': comments_link, 'description': raw_description, 'download_links': download_links, 'date': parsed_date.astimezone(timezone.utc).isoformat() if parsed_date else '', 'feed_title': feed_title,
+                        **({'size': size} if (size := _entry_size(entry)) else {})})
     return results
 
 
