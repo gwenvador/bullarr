@@ -102,7 +102,7 @@ function renderSorties() {
             <tbody>
                 ${sortiesItems.map((x, i) => {
                     const titleHtml = (x.already_owned && x.series_id)
-                        ? `<a class="indispensable-series-link" href="/series/${x.series_id}">${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">↗</a>`
+                        ? `<a class="indispensable-series-link" href="/series/${x.series_id}">${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">${svgIcon('external-link')}</a>`
                         : `<a class="indispensable-series-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title)}</a>`;
                     const detail = [x.volume_label, x.subtitle].filter(Boolean).join(' · ');
                     const actionHtml = x.already_owned

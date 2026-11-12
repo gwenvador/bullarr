@@ -115,7 +115,7 @@ function renderIndispensables() {
                         ? `<img src="/${escapeHtml(x.cover_path)}" alt="" loading="lazy">`
                         : `<span class="indisp-cover-empty">${escapeHtml((x.title || '?').replace(/^(Les?|La|L'|Un|Une)\s+/i, '').slice(0, 1).toUpperCase())}</span>`;
                     const titleCellHtml = `<div class="indisp-series"><a class="indisp-cover" href="${href}"${external ? ' target="_blank" rel="noopener"' : ''} tabindex="-1">${cover}</a>
-                        <div class="indisp-series-text"><a class="indispensable-series-link" href="${href}"${external ? ' target="_blank" rel="noopener"' : ''}>${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">↗</a></div></div>`;
+                        <div class="indisp-series-text"><a class="indispensable-series-link" href="${href}"${external ? ' target="_blank" rel="noopener"' : ''}>${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">${svgIcon('external-link')}</a></div></div>`;
                     const genres = String(x.genre || '').split(/\s*,\s*/).filter(g => g && g !== '-');
                     const genreHtml = genres.length ? genres.map(g => `<span class="indisp-genre">${escapeHtml(g)}</span>`).join('') : '<span class="indisp-none">—</span>';
                     return `<tr class="series-table-row${x.already_in_library ? '' : ' indispensable-row-missing'}">

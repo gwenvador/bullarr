@@ -334,7 +334,11 @@ def match_bedetheque_volume(bd_volumes, local_volume):
         return match
     if local_volume.get('volume_number') is not None:
         matches = by_number.get(local_volume.get('volume_number')) or []
-        return _choose_ambiguous_album_match(matches, local_volume)
+        # « 13 Bis » et « 13 » partagent le même numéro : départager d'abord sur le
+        # suffixe (un tome bis vise l'album bis, un tome normal l'album sans suffixe).
+        wanted_bis = (local_volume.get('bis_suffix') or '').strip().lower() if local_volume.get('is_bis') else ''
+        same_kind = [m for m in matches if (m.get('bis_suffix') or '').strip().lower() == wanted_bis]
+        return _choose_ambiguous_album_match(same_kind or matches, local_volume)
     if bd_volumes and len(bd_volumes) == 1:
         return bd_volumes[0]
 

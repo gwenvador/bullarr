@@ -2191,7 +2191,7 @@ function volumeTypeLabel(v, emptyLabel = '') {
     if (v.is_integral) return `Intégrale${suffix(v.integral_number)}`;
     if (v.is_hs) return `Hors-série${suffix(v.hs_number)}`;
     if (v.is_episode) return `Épisode${suffix(v.episode_number)}`;
-    if (v.volume_number != null && v.volume_number !== '' && v.volume_number !== 'null') return `Tome ${v.volume_number}`;
+    if (v.volume_number != null && v.volume_number !== '' && v.volume_number !== 'null') return `Tome ${v.volume_number}${v.is_bis && v.bis_suffix ? ` ${v.bis_suffix}` : ''}`;
     return emptyLabel;
 }
 

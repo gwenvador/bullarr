@@ -490,7 +490,12 @@ async function toggleImportFiles(rowId, operationId, fullDate) {
                 </tbody>
             </table>`;
 
-        _importFilesDetailCache[operationId] = filesHtml;
+        // Pas de cache tant que l’import tourne : la ligne d’un fichier est d’abord écrite
+        // « en cours » (sans série ni message) puis complétée en place à la fin - le cache
+        // figeait sinon ce premier état (lien série manquant sur un album remplacé).
+        const finished = ["completed", "failed", "cancelled", "undone"].includes(operation.status)
+            && !files.some(f => /processing|progress|running|pending/.test(String(f.status || "")));
+        if (finished) _importFilesDetailCache[operationId] = filesHtml;
         cell.innerHTML = dateHtml + filesHtml;
     } catch (error) {
         cell.innerHTML = dateHtml + '<div style="padding:8px; color:#c0392b;">Erreur lors du chargement des fichiers</div>';

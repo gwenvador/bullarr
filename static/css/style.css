@@ -5520,3 +5520,11 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
     #indispensablesList td.indispensable-category { display: none; }
     #indispensablesList th:nth-child(4) { display: none; }
 }
+
+
+/* Enrichir : lien externe (Bédéthèque / BDGest) en icône plutôt que la flèche « ↗ ». */
+.indispensable-source-link, .indispensable-tab-link { display: inline-flex; align-items: center; vertical-align: middle; }
+.indispensable-source-link .icon { width: 13px; height: 13px; }
+.indispensable-tab-link .icon { width: 14px; height: 14px; }
+.indispensable-source-link { margin-left: 6px; font-size: 1em; }
+.indispensable-tab-link { font-size: 1em; margin-left: 4px; }

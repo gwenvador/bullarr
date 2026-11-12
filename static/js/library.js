@@ -7204,7 +7204,7 @@ function buildManualEditVolumeRenumberHtml(v, seriesId) {
     const optionsHtml = others.map(ov => {
         const type = ov.is_integral ? 'integral' : ov.is_hs ? 'hs' : ov.is_episode ? 'episode' : 'volume';
         const number = ov.is_integral ? ov.integral_number : ov.is_hs ? ov.hs_number : ov.is_episode ? ov.episode_number : ov.volume_number;
-        const value = `${type}:${number != null ? number : ''}`;
+        const value = `${type}:${number != null ? number : ''}${type === 'volume' && ov.is_bis && ov.bis_suffix ? `:${ov.bis_suffix}` : ''}`;
         const owned = hasVolumeFile(ov) ? ' (en bibliothèque)' : '';
         return `<option value="${escapeHtml(value)}">${escapeHtml(_manualEditVolumeOptionLabel(ov))}${owned}</option>`;
     }).join('');
@@ -7226,6 +7226,7 @@ function buildManualEditVolumeRenumberHtml(v, seriesId) {
                     <option value="episode">Épisode</option>
                 </select>
                 <input type="number" id="manual-vol-renumber-number-${v.id}" placeholder="Numéro (laisser vide si non numéroté)">
+                <input type="text" id="manual-vol-renumber-bis-${v.id}" placeholder="Suffixe : Bis, TL… (facultatif)" maxlength="20" style="margin-top:6px;">
             </div>
             <div class="manual-edit-actions-row" style="margin-top:6px;">
                 <button class="btn-neutral-sm" id="manual-vol-renumber-btn-${v.id}" disabled onclick="changeVolumeNumber(${v.id}, ${seriesId})">${svgIcon('tag')} Changer le numéro</button>
@@ -7240,6 +7241,22 @@ function buildManualEditVolumeRenumberHtml(v, seriesId) {
 // de renvoyer au serveur une soumission "meme numero qu'avant" (elle etait auparavant
 // rejetee avec une erreur cote backend - inutile si le dropdown ne permet plus ce choix).
 // Le bouton reste desactive tant que la selection est encore sur cette option "actuel".
+// Lit le choix du sélecteur « Numéro / type » : { type, number, bis_suffix }.
+// Valeur d'option « type:numéro[:suffixe] » (ex. volume:13:Bis) ou saisie libre.
+function _readManualVolRenumber(volumeId) {
+    const slotEl = document.getElementById(`manual-vol-renumber-slot-${volumeId}`);
+    if (slotEl.value === 'manual') {
+        const raw = document.getElementById(`manual-vol-renumber-number-${volumeId}`).value.trim();
+        const type = document.getElementById(`manual-vol-renumber-type-${volumeId}`).value;
+        const bis = (document.getElementById(`manual-vol-renumber-bis-${volumeId}`)?.value || '').trim();
+        return { type, number: raw === '' ? null : parseInt(raw, 10), bis_suffix: type === 'volume' && bis ? bis : null };
+    }
+    const [rawType, rawNumber = '', ...rest] = slotEl.value.split(':');
+    const type = rawType === 'current' ? slotEl.options[slotEl.selectedIndex].getAttribute('data-current-type') : rawType;
+    const bis = rest.join(':').trim();
+    return { type, number: rawNumber === '' ? null : parseInt(rawNumber, 10), bis_suffix: bis || null };
+}
+
 function updateManualVolRenumberFields(volumeId) {
     const slot = document.getElementById(`manual-vol-renumber-slot-${volumeId}`).value;
     document.getElementById(`manual-vol-renumber-manual-${volumeId}`).style.display = slot === 'manual' ? 'block' : 'none';
@@ -7251,26 +7268,14 @@ async function changeVolumeNumber(volumeId, seriesId) {
     const feedback = document.getElementById(`manual-vol-renumber-feedback-${volumeId}`);
     const slot = slotEl.value;
 
-    let type, number;
-    if (slot === 'manual') {
-        type = document.getElementById(`manual-vol-renumber-type-${volumeId}`).value;
-        const raw = document.getElementById(`manual-vol-renumber-number-${volumeId}`).value.trim();
-        number = raw === '' ? null : parseInt(raw, 10);
-    } else {
-        const sepIndex = slot.indexOf(':');
-        let t = sepIndex === -1 ? slot : slot.slice(0, sepIndex);
-        const n = sepIndex === -1 ? '' : slot.slice(sepIndex + 1);
-        if (t === 'current') t = slotEl.options[slotEl.selectedIndex].getAttribute('data-current-type');
-        type = t;
-        number = n === '' ? null : parseInt(n, 10);
-    }
+    const { type, number, bis_suffix } = _readManualVolRenumber(volumeId);
 
     feedback.textContent = '⏳ Enregistrement...';
     try {
         const response = await fetch(`/api/volumes/${volumeId}/renumber`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type, number })
+            body: JSON.stringify({ type, number, bis_suffix })
         });
         const data = await response.json();
 
@@ -7740,19 +7745,8 @@ async function saveManualVolumeMetadata(volumeId, buttonEl) {
         const renumberSlotEl = document.getElementById(`manual-vol-renumber-slot-${volumeId}`);
         let renumberDuplicateFilename = renumberSlotEl?.dataset.appliedDuplicateFilename || null;
         if (renumberSlotEl && !renumberSlotEl.value.startsWith('current:')) {
-            let renumberType;
-            let renumberNumber;
-            if (renumberSlotEl.value === 'manual') {
-                renumberType = document.getElementById(`manual-vol-renumber-type-${volumeId}`).value;
-                const raw = document.getElementById(`manual-vol-renumber-number-${volumeId}`).value.trim();
-                renumberNumber = raw === '' ? null : parseInt(raw, 10);
-            } else {
-                const sepIndex = renumberSlotEl.value.indexOf(':');
-                renumberType = sepIndex === -1 ? renumberSlotEl.value : renumberSlotEl.value.slice(0, sepIndex);
-                const raw = sepIndex === -1 ? '' : renumberSlotEl.value.slice(sepIndex + 1);
-                renumberNumber = raw === '' ? null : parseInt(raw, 10);
-            }
-            const renumberKey = `${renumberType}:${renumberNumber ?? ''}`;
+            const { type: renumberType, number: renumberNumber, bis_suffix: renumberBis } = _readManualVolRenumber(volumeId);
+            const renumberKey = `${renumberType}:${renumberNumber ?? ''}:${renumberBis || ''}`;
             // Une renumérotation peut réussir puis l'écriture ComicInfo échouer. Garder
             // cette réussite dans la modale afin qu'un clic Réessayer ne renvoie pas la
             // même mutation (que le backend rejetterait comme « déjà ce numéro »).
@@ -7760,7 +7754,7 @@ async function saveManualVolumeMetadata(volumeId, buttonEl) {
                 const renumberResponse = await fetch(`/api/volumes/${volumeId}/renumber`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: renumberType, number: renumberNumber })
+                    body: JSON.stringify({ type: renumberType, number: renumberNumber, bis_suffix: renumberBis })
                 });
                 const renumberData = await renumberResponse.json();
                 if (!renumberData.success) {

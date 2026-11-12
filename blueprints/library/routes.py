@@ -4303,6 +4303,8 @@ def _volume_identity_label(fields):
     if fields.get('is_episode'):
         return f"Épisode {fields['episode_number']}" if fields.get('episode_number') is not None else 'Épisode'
     if fields.get('volume_number') is not None:
+        if fields.get('is_bis') and fields.get('bis_suffix'):
+            return f"Tome {fields['volume_number']} {fields['bis_suffix']}"
         return f"Tome {fields['volume_number']}"
     if fields.get('is_integral'):
         return f"Intégrale {fields['integral_number']}" if fields.get('integral_number') is not None else 'Intégrale'
@@ -4319,7 +4321,9 @@ def _volume_row_identity(row):
     if row.get('is_episode'):
         return ('ep', row.get('episode_number'))
     if row.get('volume_number') is not None:
-        return ('vol', row.get('volume_number'))
+        # « 13 » et « 13 Bis » sont deux tomes distincts.
+        bis = (row.get('bis_suffix') or '').strip().lower() if row.get('is_bis') else ''
+        return ('vol', row.get('volume_number'), bis) if bis else ('vol', row.get('volume_number'))
     if row.get('is_integral'):
         return ('int', row.get('integral_number'))
     if row.get('is_hs'):
@@ -4407,6 +4411,11 @@ def renumber_volume(volume_id):
         new_number = int(raw_number) if raw_number not in (None, '') else None
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'Numéro invalide'}), 400
+    # Suffixe « Bis » (ou TL, CC…) : un tome N Bis garde le numéro N, seul le suffixe
+    # le distingue du tome N (voir is_bis/bis_suffix, scraper Bédéthèque).
+    bis_suffix = str(data.get('bis_suffix') or '').strip()[:20] or None
+    if bis_suffix and (new_type != 'volume' or new_number is None):
+        return jsonify({'success': False, 'error': 'Un suffixe (Bis…) demande un tome numéroté'}), 400
 
     # is_special/special_label font partie du même jeu de champs mutuellement exclusifs
     # que is_integral/is_hs/is_episode (voir CLAUDE.md "is_special") mais n'étaient pas
@@ -4418,10 +4427,13 @@ def renumber_volume(volume_id):
     new_fields = {
         'volume_number': None, 'is_integral': 0, 'integral_number': None,
         'is_hs': 0, 'hs_number': None, 'is_episode': 0, 'episode_number': None,
-        'is_special': 0, 'special_label': None,
+        'is_special': 0, 'special_label': None, 'is_bis': 0, 'bis_suffix': None,
     }
     if new_type == 'volume':
         new_fields['volume_number'] = new_number
+        if bis_suffix:
+            new_fields['is_bis'] = 1
+            new_fields['bis_suffix'] = bis_suffix
     elif new_type == 'integral':
         new_fields['is_integral'] = 1
         new_fields['integral_number'] = new_number
@@ -4449,7 +4461,9 @@ def renumber_volume(volume_id):
                 and vol['is_episode'] == new_fields['is_episode']
                 and vol['episode_number'] == new_fields['episode_number']
                 and bool(vol['is_special']) == bool(new_fields['is_special'])
-                and vol['special_label'] == new_fields['special_label']):
+                and vol['special_label'] == new_fields['special_label']
+                and bool(vol['is_bis']) == bool(new_fields['is_bis'])
+                and (vol['bis_suffix'] or None) == new_fields['bis_suffix']):
             return jsonify({'success': False, 'error': 'Ce tome a déjà ce numéro'}), 400
 
         # Un placeholder (filepath NULL) qui porte déjà ce numéro cède silencieusement la
@@ -4473,11 +4487,11 @@ def renumber_volume(volume_id):
         cursor.execute('''
             UPDATE volumes SET volume_number = ?, is_integral = ?, integral_number = ?,
                                 is_hs = ?, hs_number = ?, is_episode = ?, episode_number = ?,
-                                is_special = ?, special_label = ?
+                                is_special = ?, special_label = ?, is_bis = ?, bis_suffix = ?
             WHERE id = ?
         ''', (new_fields['volume_number'], new_fields['is_integral'], new_fields['integral_number'],
               new_fields['is_hs'], new_fields['hs_number'], new_fields['is_episode'], new_fields['episode_number'],
-              new_fields['is_special'], new_fields['special_label'],
+              new_fields['is_special'], new_fields['special_label'], new_fields['is_bis'], new_fields['bis_suffix'],
               volume_id))
         conn.commit()
     finally:

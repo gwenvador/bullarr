@@ -145,7 +145,7 @@ function renderThemeDetail() {
             <tbody>
                 ${rows.map((x, i) => {
                     const titleCellHtml = (x.already_owned && x.series_id)
-                        ? `<a class="indispensable-series-link" href="/series/${x.series_id}">${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">↗</a>`
+                        ? `<a class="indispensable-series-link" href="/series/${x.series_id}">${escapeHtml(x.title)}</a><a class="indispensable-source-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener" data-tooltip="Voir sur Bédéthèque">${svgIcon('external-link')}</a>`
                         : `<a class="indispensable-series-link" href="${escapeHtml(x.url)}" target="_blank" rel="noopener">${escapeHtml(x.title)}</a>`;
                     const actionHtml = x.already_owned
                         ? ''
