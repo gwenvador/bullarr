@@ -5336,3 +5336,19 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
 .nouveautes-table .nouveautes-title > * { vertical-align: middle; }
 .nouveautes-table .nouveautes-title .nouveautes-ext { display: inline-block; margin-left: 6px; vertical-align: 1px; }
 .nouveautes-table .nouveautes-title .icon-owned { display: inline-flex; margin-left: 4px; }
+/* Puces date/source/origine d'un album groupé qui diffèrent de l'en-tête */
+.nouveautes-meta > .nouveautes-group-diff { display: inline-flex; align-items: center; gap: 4px; }
+.nouveautes-meta > .nouveautes-group-diff-date { color: var(--color-text); font-weight: 600; }
+.nouveautes-meta > .nouveautes-group-diff-type { padding: 1px 5px; }
+.nouveautes-table .nouveautes-meta .nouveautes-source-icon { width: 14px; height: 14px; padding: 0; border: 0; background: none; border-radius: 3px; }
+/* Colonne Série : « Fiche » (série déjà dans la bibliothèque, ouvre sa fiche) au lieu du logo Bullarr */
+.nouveautes-series-pill {
+    display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 8px; border-radius: 999px;
+    font-size: .85em; font-weight: 600; white-space: nowrap; text-decoration: none;
+    color: #15803d; background: color-mix(in srgb, #16a34a 11%, transparent);
+    border: 1px solid color-mix(in srgb, #16a34a 30%, transparent);
+}
+.nouveautes-series-pill .icon, .nouveautes-series-pill svg { width: 14px; height: 14px; flex: none; }
+a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color: #16a34a; }
+[data-theme="dark"] .nouveautes-series-pill { color: #4ade80; }
+.nouveautes-table td:has(> .nouveautes-series-pill) .badge-missing { display: inline-block; margin-top: 4px; }

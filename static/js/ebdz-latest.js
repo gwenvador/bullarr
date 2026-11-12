@@ -683,8 +683,8 @@ function _nouveautesMatchedHtml(event) {
         ? `Déjà dans votre bibliothèque : ${escapeForAttribute(matchedSeriesTitle)}`
         : 'Déjà dans votre bibliothèque';
     const checkHtml = seriesId
-        ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${checkTooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${libraryIconHtml()}</a>`
-        : `<span class="icon-owned" data-tooltip="${checkTooltip}">${libraryIconHtml()}</span>`;
+        ? `<a href="/series/${seriesId}" class="nouveautes-series-pill" data-tooltip="${checkTooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${svgIcon('library')}<span>Fiche</span></a>`
+        : `<span class="nouveautes-series-pill" data-tooltip="${checkTooltip}">${svgIcon('library')}<span>En biblio</span></span>`;
     if (event.type === 'ebdz') {
         const missing = event.missing_links_count || 0;
         if (missing > 0) {
@@ -1086,8 +1086,8 @@ function _nouveautesEbdzLinkMatchedHtml(event, link) {
         ? `Déjà dans votre bibliothèque : ${escapeForAttribute(event.matched_series_title)}`
         : 'Déjà dans votre bibliothèque';
     const checkHtml = seriesId
-        ? `<a href="/series/${seriesId}" class="icon-owned" data-tooltip="${tooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${libraryIconHtml()}</a>`
-        : `<span class="icon-owned" data-tooltip="${tooltip}">${libraryIconHtml()}</span>`;
+        ? `<a href="/series/${seriesId}" class="nouveautes-series-pill" data-tooltip="${tooltip} - ouvrir la fiche" onclick="event.stopPropagation()">${svgIcon('library')}<span>Fiche</span></a>`
+        : `<span class="nouveautes-series-pill" data-tooltip="${tooltip}">${svgIcon('library')}<span>En biblio</span></span>`;
     const missingHtml = link.already_owned === false
         ? ` <span class="badge-missing" data-tooltip="Ce fichier n'est pas encore dans votre bibliothèque">manquant</span>`
         : '';
@@ -1161,7 +1161,7 @@ function _nouveautesEbdzRowHtml(event, index) {
             <td class="nouveautes-details-cell" style="padding:10px;">
                 <div class="nouveautes-title">${_nouveautesTitleHtml(filename)}</div>
                 ${_nouveautesSeriesHtml(event)}
-                ${_nouveautesMetaHtml([volumeLabel && ['nouveautes-meta-vol', _nouveautesVolumeLabel(volumeLabel)], link.filesize && ['nouveautes-meta-size', formatBytes(link.filesize)], event.title && ['nouveautes-meta-src', event.title]])}
+                ${_nouveautesMetaHtml([volumeLabel && ['nouveautes-meta-vol', _nouveautesVolumeLabel(volumeLabel)], link.filesize && ['nouveautes-meta-size', formatBytes(link.filesize)]])}
             </td>
             ${_nouveautesGenreCellHtml(event)}
             <td style="padding:10px; text-align:center;">${_nouveautesEbdzLinkMatchedHtml(event, link)}</td>
@@ -1221,16 +1221,20 @@ function _nouveautesRssDownloadLink(item, title) {
 }
 
 function _nouveautesRssRowHtml(event) {
-    const prettyTitle = _nouveautesPrettyName(event.title || 'Sans titre');
+    // VK : le nom du sujet, répété en tête de chaque fichier (« THE SMURFS (English) - … »), est retiré.
+    let rawTitle = event.title || 'Sans titre';
+    if (event.vk && event.vk_topic && rawTitle.startsWith(`${event.vk_topic} - `)) rawTitle = rawTitle.slice(event.vk_topic.length + 3);
+    const prettyTitle = _nouveautesPrettyName(rawTitle);
     const escapedTitle = escapeHtml(prettyTitle.text);
     const extHtml = prettyTitle.ext ? `<span class="nouveautes-ext">${prettyTitle.ext}</span>` : '';
     const title = event.link
         ? `<a class="nouveautes-rss-link" href="${escapeHtml(event.link)}" target="_blank" rel="noopener noreferrer" data-tooltip="${prettyTitle.changed ? `${escapeHtml(event.title)} - ` : ''}Ouvrir la page liée" onclick="event.stopPropagation()">${escapedTitle} ${svgIcon('external-link')}</a>${extHtml}`
-        : `${_nouveautesTitleHtml(event.title || 'Sans titre')}`;
+        : `${_nouveautesTitleHtml(rawTitle)}`;
     // DupeFR fournit une vignette HTML dans description ; ne pas l’afficher comme du texte brut.
-    const description = event.description
-        ? escapeHtml(event.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 240)
-        : '';
+    let rawDescription = event.description ? event.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    // VK : « Sujet · 387 Mo » → « 387 Mo » (le sujet est déjà le nom du groupe).
+    if (event.vk && event.vk_topic && rawDescription.startsWith(`${event.vk_topic} · `)) rawDescription = rawDescription.slice(event.vk_topic.length + 3);
+    const description = rawDescription ? escapeHtml(rawDescription).slice(0, 240) : '';
     const replaceOwned = event.already_owned === true && !!event.series_id;
     const addButton = event.title ? (replaceOwned
         ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesRssFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
@@ -1276,7 +1280,7 @@ function _nouveautesTelegramRowHtml(event) {
             <td class="nouveautes-details-cell" style="padding:10px;">
                 <div class="nouveautes-title">${_nouveautesTitleHtml(event.filename)}</div>
                 ${_nouveautesSeriesHtml(event)}
-                ${_nouveautesMetaHtml([event.parsed_volume && ['nouveautes-meta-vol', _nouveautesVolumeLabel(event.parsed_volume)], event.file_size && ['nouveautes-meta-size', formatBytes(event.file_size)], (event.channel_title || event.channel) && ['nouveautes-meta-src', event.channel_title || event.channel]])}
+                ${_nouveautesMetaHtml([event.parsed_volume && ['nouveautes-meta-vol', _nouveautesVolumeLabel(event.parsed_volume)], event.file_size && ['nouveautes-meta-size', formatBytes(event.file_size)]])}
             </td>
             ${_nouveautesGenreCellHtml(event)}
             <td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td>
@@ -1486,6 +1490,8 @@ function _nouveautesSeriesGroupKey(e) {
     if (seriesId) return `s:${seriesId}`;
     const bdtUrl = _nouveautesBedethequeUrl(e);
     if (bdtUrl) return `b:${bdtUrl}`;
+    // VK sans série reconnue : les fichiers d'un même sujet (« THE SMURFS (English) ») vont ensemble.
+    if (e.vk && e.vk_topic) return `vk:${navNormalizeSearch(String(e.vk_topic))}`;
     const title = e.type === 'ebdz'
         ? (e.matched_series_title || e.bedetheque_title || e.title)
         : (e.series_title || e.bedetheque_title || e.parsed_title);
@@ -1495,7 +1501,7 @@ function _nouveautesSeriesGroupKey(e) {
 
 function _nouveautesSeriesDisplayName(e) {
     const name = (e.type === 'ebdz' ? e.matched_series_title : e.series_title)
-        || e.bedetheque_title || e.parsed_title || e.title || e.filename || '';
+        || e.bedetheque_title || (e.vk && e.vk_topic) || e.parsed_title || e.title || e.filename || '';
     return String(name);
 }
 
@@ -1574,9 +1580,29 @@ function _groupNouveautesSeriesRows(body) {
                 // « j'aime pas le grand blanc » : quand Date, Type et Origine répètent tous
                 // l'en-tête, ces trois cellules vides sont fusionnées dans Détails, dont le
                 // contenu part alors un peu en retrait au lieu d'après la colonne Origine.
-                if ([0, 1, 2].every(c => r.cells[c] && r.cells[c].classList.contains('nouveautes-cell-repeat'))
+                // « ça doit être aligné » : tous les albums d'un groupe sont fusionnés de la
+                // même façon ; une date, une source ou une origine différente de l'en-tête
+                // passe en puce sous le titre au lieu de garder sa colonne.
+                if ([0, 1, 2].every(c => r.cells[c])
                         && r.cells[3] && r.cells[3].classList.contains('nouveautes-details-cell')) {
                     const details = r.cells[3];
+                    const diff = [0, 1, 2].filter(c => !r.cells[c].classList.contains('nouveautes-cell-repeat'));
+                    if (diff.length) {
+                        let meta = details.querySelector(':scope > .nouveautes-meta');
+                        if (!meta) {
+                            meta = document.createElement('div');
+                            meta.className = 'nouveautes-meta';
+                            details.appendChild(meta);
+                        }
+                        diff.slice().reverse().forEach(c => {
+                            const cell = r.cells[c];
+                            const chip = document.createElement('span');
+                            chip.className = `nouveautes-group-diff nouveautes-group-diff-${['date', 'type', 'origin'][c]}`;
+                            if (cell.dataset.tooltip) chip.dataset.tooltip = cell.dataset.tooltip;
+                            chip.append(...cell.childNodes);
+                            meta.prepend(chip);
+                        });
+                    }
                     r.cells[2].remove(); r.cells[1].remove(); r.cells[0].remove();
                     details.colSpan = 4;
                     r.classList.add('nouveautes-row-merged');
