@@ -98,6 +98,8 @@ const COMIC_READER_ICONS = {
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
     download: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+    'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+    gallery: '<path d="M2 3v18"/><rect width="12" height="18" x="6" y="3" rx="2"/><path d="M22 3v18"/>',
 };
 
 function _readerIcon(name) {
@@ -114,13 +116,13 @@ function toggleComicReaderSettings(force, scope) {
     const show = force === undefined ? (panel.hidden || switching) : !!force;
     panel.hidden = !show;
     panel.dataset.scope = scope;
-    for (const [id, own] of [['comic-reader-settings-btn', 'display'], ['comic-reader-hd-btn', 'hd']]) {
+    for (const [id, own] of [['comic-reader-settings-btn', 'display'], ['comic-reader-hd-more', 'hd']]) {
         const other = document.getElementById(id);
         if (!other) continue;
         other.classList.toggle('open', show && scope === own);
         other.setAttribute('aria-expanded', String(show && scope === own));
     }
-    const button = document.getElementById(scope === 'hd' ? 'comic-reader-hd-btn' : 'comic-reader-settings-btn');
+    const button = document.getElementById(scope === 'hd' ? 'comic-reader-hd-more' : 'comic-reader-settings-btn');
     panel.setAttribute('aria-label', scope === 'hd' ? 'Amélioration HD' : 'Affichage');
     if (show && button) {
         toggleComicReaderHelp(false);
@@ -338,13 +340,17 @@ function _buildComicReader() {
                 <button type="button" class="comic-reader-btn comic-reader-btn-ghost" data-reader-action="next-volume" id="comic-reader-next-volume" aria-label="Tome suivant" data-tooltip="Tome suivant (])" hidden>${_readerIcon('chevrons-right')}</button>
             </div>
             <div class="comic-reader-actions">
-                <button type="button" class="comic-reader-upscale-status" id="comic-reader-upscale-status" data-reader-action="hd" hidden></button>
+                <button type="button" class="comic-reader-upscale-status" id="comic-reader-upscale-status" data-reader-action="hd-menu" hidden></button>
                 <div class="comic-reader-group" id="comic-reader-zoom-group">
                     <button type="button" class="comic-reader-btn" data-reader-action="zoom-out" aria-label="Dézoomer" data-tooltip="Dézoomer (−)">${_readerIcon('minus')}</button>
                     <button type="button" class="comic-reader-btn comic-reader-zoom-label" data-reader-action="zoom-reset" id="comic-reader-zoom" aria-label="Zoom : revenir à 100 %" data-tooltip="Revenir à 100 % (0)">100 %</button>
                     <button type="button" class="comic-reader-btn" data-reader-action="zoom-in" aria-label="Zoomer" data-tooltip="Zoomer (+)">${_readerIcon('plus')}</button>
                 </div>
-                <button type="button" class="comic-reader-btn comic-reader-btn-text comic-reader-hd-btn" data-reader-action="hd" id="comic-reader-hd-btn" aria-label="Amélioration HD" aria-haspopup="true" aria-expanded="false" data-tooltip="Amélioration des pages en basse définition (U)">HD</button>
+                <div class="comic-reader-group comic-reader-hd-group">
+                    <button type="button" class="comic-reader-btn comic-reader-btn-text comic-reader-hd-btn" data-reader-action="hd" id="comic-reader-hd-btn" aria-label="Amélioration HD" aria-pressed="false" data-tooltip="Amélioration HD : désactivée (U)">HD</button>
+                    <button type="button" class="comic-reader-btn comic-reader-hd-more" data-reader-action="hd-menu" id="comic-reader-hd-more" aria-label="Choisir le modèle HD" aria-haspopup="true" aria-expanded="false" data-tooltip="Choisir le modèle HD">${_readerIcon('chevron-down')}</button>
+                </div>
+                <button type="button" class="comic-reader-btn comic-reader-btn-ghost" data-reader-action="thumbs" id="comic-reader-thumbs-btn" aria-label="Miniatures" data-tooltip="Afficher / masquer les miniatures (T)">${_readerIcon('gallery')}</button>
                 <button type="button" class="comic-reader-btn comic-reader-btn-text" data-reader-action="settings" id="comic-reader-settings-btn" aria-label="Affichage" aria-haspopup="true" aria-expanded="false" data-tooltip="Disposition, sens de lecture, ajustement, miniatures (O)">${_readerIcon('sliders')}<span class="comic-reader-btn-label">Affichage</span></button>
                 <span class="comic-reader-sep" aria-hidden="true"></span>
                 <button type="button" class="comic-reader-btn comic-reader-btn-ghost" data-reader-action="fullscreen" aria-label="Plein écran" data-tooltip="Plein écran (F)">${_readerIcon('maximize')}</button>
@@ -371,7 +377,7 @@ function _buildComicReader() {
     const settings = overlay.querySelector('#comic-reader-settings');
     settings.addEventListener('click', _onComicReaderSettingsClick);
     overlay.addEventListener('click', event => {
-        if (!settings.hidden && !settings.contains(event.target) && !event.target.closest('[data-reader-action="settings"], [data-reader-action="hd"]')) {
+        if (!settings.hidden && !settings.contains(event.target) && !event.target.closest('[data-reader-action="settings"], [data-reader-action="hd"], [data-reader-action="hd-menu"]')) {
             toggleComicReaderSettings(false);
         }
     });
@@ -390,7 +396,8 @@ function _buildComicReader() {
             else if (action === 'webtoon') toggleComicReaderWebtoon();
             else if (action === 'rtl') toggleComicReaderRtl();
             else if (action === 'settings') toggleComicReaderSettings(undefined, 'display');
-            else if (action === 'hd') toggleComicReaderSettings(undefined, 'hd');
+            else if (action === 'hd') comicReaderHdClick();
+            else if (action === 'hd-menu') toggleComicReaderSettings(undefined, 'hd');
             else if (action === 'spread') toggleComicReaderSpread();
             else if (action === 'help') toggleComicReaderHelp();
             else if (action === 'zoom-in') zoomComicReaderBy(COMIC_READER_ZOOM_STEP);

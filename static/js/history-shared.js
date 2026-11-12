@@ -17,7 +17,7 @@ const HISTORY_TYPE_ICONS = {
     import: 'package', download: 'download', rename: 'pencil', delete: 'trash-2', delete_volume: 'trash-2',
     renumber_volume: 'tag', convert: 'refresh-cw', merge: 'git-merge', move_volume: 'git-merge',
     add_series: 'plus', auto_acquire: 'radar', search: 'search', quality_upgrade: 'sparkles',
-    missing_volume_match: 'eye', ai: 'bot', request: 'book-plus', user: 'users', upscale: 'sparkles', upscale_restore: 'refresh-cw'
+    missing_volume_match: 'eye', ai: 'bot', request: 'book-plus', user: 'users', upscale: 'sparkles', upscale_restore: 'refresh-cw', upscale_backup_delete: 'trash-2'
 };
 const HISTORY_TYPE_LABELS = {
     import: 'Import', download: 'Téléchargement', rename: 'Renommage', delete: 'Suppression',
@@ -25,7 +25,7 @@ const HISTORY_TYPE_LABELS = {
     convert: 'Conversion', merge: 'Fusion', move_volume: 'Déplacement de tome',
     add_series: 'Ajout de série', auto_acquire: 'Recherche automatique', search: 'Recherche manuelle',
     quality_upgrade: 'Upgrade qualité', missing_volume_match: 'Tome manquant détecté', ai: 'IA',
-    request: 'Demande', user: 'Utilisateur', upscale: 'Upscaling HD', upscale_restore: 'Version SD remise'
+    request: 'Demande', user: 'Utilisateur', upscale: 'Upscaling HD', upscale_restore: 'Version SD remise', upscale_backup_delete: 'Sauvegarde SD supprimée'
 };
 
 const HISTORY_SOURCE_LABELS = { ebdz: 'EBDZ', prowlarr: 'Prowlarr', telegram: 'Telegram', fourtoutici: 'fourtoutici', vk: 'VK' };

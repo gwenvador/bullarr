@@ -4338,3 +4338,12 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
 .comic-reader-hd-btn { font-size: 13px; font-weight: 700; letter-spacing: .04em; padding: 0 11px; }
 .comic-reader-btn.open { background: rgba(255,255,255,0.22); }
 .comic-reader-btn.active.open { background: var(--color-accent); box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35); }
+
+/* Lecteur : HD (bascule) + flèche du choix de modèle, accolés */
+.comic-reader-hd-group { gap: 0; }
+.comic-reader-hd-group .comic-reader-hd-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.comic-reader-hd-group .comic-reader-hd-more { width: 26px; min-width: 26px; padding: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.comic-reader-hd-group .comic-reader-hd-more .comic-reader-icon { width: 15px; height: 15px; }
+.comic-reader-hd-more.open { background: rgba(255,255,255,0.18); }
+.comic-reader-hd-group .comic-reader-hd-btn { width: auto; }
+.comic-reader-hd-group .comic-reader-hd-btn.active, .comic-reader-hd-group .comic-reader-hd-btn.active:hover { background: var(--color-accent); }

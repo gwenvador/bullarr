@@ -483,6 +483,20 @@ function cycleComicReaderUpscale() {
     setComicReaderUpscale(comicUpscale.mode === 'off' ? 'browser' : 'off');
 }
 
+// Bouton HD de l'en-tête : allumé, un clic revient à la version d'origine des pages ;
+// éteint, il active l'amélioration (et ouvre le choix du modèle s'il reste à télécharger).
+function comicReaderHdClick() {
+    if (comicUpscale.mode !== 'off') {
+        setComicReaderUpscale('off');
+        const panel = document.getElementById('comic-reader-settings');
+        if (panel && !panel.hidden && panel.dataset.scope === 'hd') toggleComicReaderSettings(false);
+        return;
+    }
+    setComicReaderUpscale('browser');
+    const installed = comicUpscaleStore.installed;
+    if (comicUpscaleStorageSupported() && installed && !installed[comicUpscale.model]) toggleComicReaderSettings(true, 'hd');
+}
+
 function toggleComicReaderUpscaleMenu(force) {
     toggleComicReaderSettings(force, 'hd');
 }
@@ -522,9 +536,10 @@ function _renderComicUpscaleControls() {
     if (button) {
         const on = comicUpscale.mode !== 'off';
         button.classList.toggle('active', on);
+        button.setAttribute('aria-pressed', String(on));
         button.dataset.tooltip = on
-            ? `Amélioration HD : ${COMIC_UPSCALE_MODELS[comicUpscale.model].label} (U)`
-            : 'Amélioration HD : désactivée (U)';
+            ? `HD activée (${COMIC_UPSCALE_MODELS[comicUpscale.model].label}) : cliquer pour revenir à la version d'origine (U)`
+            : 'Activer l\'amélioration HD des pages en basse définition (U)';
     }
     if (typeof _renderComicReaderSettings === 'function') _renderComicReaderSettings();
     _renderComicUpscaleStatus();

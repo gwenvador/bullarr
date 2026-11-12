@@ -5,6 +5,7 @@
 // POST .../upscale/restore, DELETE .../upscale/backup.
 let upscalingData = null;
 let upscalingPoll = null;
+const upscalingRowModels = {};   // modèle choisi par ligne (Albums non HD), sinon celui par défaut
 const UPSCALING_BUSY = ['queued', 'running'];
 const UPSCALING_STATUS = { queued: 'En attente', running: 'En cours', done: 'Terminé', error: 'Erreur', cancelled: 'Annulé' };
 const compareState = { cx: 0.5, cy: 0.45, run: 0 };
@@ -238,6 +239,24 @@ function _upAlbumCell(item) {
     return `<div class="upscaling-album"><a href="/series/${item.series_id}">${_upEsc(item.series_title)}</a><span>${_upEsc(item.filename)}</span></div>`;
 }
 
+function _upRowModelCell(item, canSelect, busy) {
+    if (busy) return `<span class="upscaling-muted">${_upEsc(_upModelLabel(item.job.model))}</span>`;
+    if (!canSelect) return '<span class="upscaling-muted">—</span>';
+    const chosen = upscalingRowModels[item.volume_id] || '';
+    const options = [`<option value="">Par défaut (${_upEsc(_upModelLabel(upscalingData.model))})</option>`]
+        .concat(_upOrder().map(key => `<option value="${key}"${key === chosen ? ' selected' : ''}>${_upEsc(_upModelLabel(key))}</option>`));
+    return `<select class="upscaling-input upscaling-row-model${chosen ? ' custom' : ''}" onchange="upscalingSetRowModel(${item.volume_id}, this)" aria-label="Modèle pour ${_upEsc(item.filename)}">${options.join('')}</select>`;
+}
+
+function upscalingSetRowModel(volumeId, select) {
+    if (select.value) upscalingRowModels[volumeId] = select.value;
+    else delete upscalingRowModels[volumeId];
+    select.classList.toggle('custom', Boolean(select.value));
+    // Choisir un modèle pour une ligne la sélectionne
+    const checkbox = select.closest('tr')?.querySelector('.upscaling-select');
+    if (checkbox && !checkbox.checked) { checkbox.checked = true; upscalingUpdateCount(); }
+}
+
 function renderUpscalingLowDefinition() {
     const items = upscalingData.low_definition || [];
     const list = document.getElementById('upscalingLowDefinitionList');
@@ -251,7 +270,7 @@ function renderUpscalingLowDefinition() {
     }
     const enabled = upscalingData.available;
     list.innerHTML = `<table class="upscaling-table"><thead><tr>
-            <th class="upscaling-check"></th><th>Album</th><th>Définition</th><th class="upscaling-num">Pages</th><th class="upscaling-num upscaling-size">Taille</th><th class="upscaling-end"></th>
+            <th class="upscaling-check"></th><th>Album</th><th>Modèle</th><th>Définition</th><th class="upscaling-num">Pages</th><th class="upscaling-num upscaling-size">Taille</th><th class="upscaling-end"></th>
         </tr></thead><tbody>${items.map(item => {
         const busy = item.job && UPSCALING_BUSY.includes(item.job.status);
         const canSelect = enabled && item.upscalable && !busy;
@@ -259,6 +278,7 @@ function renderUpscalingLowDefinition() {
         return `<tr data-filter="${_upEsc(haystack)}">
             <td class="upscaling-check">${canSelect ? `<input type="checkbox" class="upscaling-select" data-volume-id="${item.volume_id}"${selected.has(item.volume_id) ? ' checked' : ''} onchange="upscalingUpdateCount()" aria-label="Sélectionner ${_upEsc(item.filename)}">` : ''}</td>
             <td>${_upAlbumCell(item)}</td>
+            <td>${_upRowModelCell(item, canSelect, busy)}</td>
             <td class="upscaling-nowrap">${item.page_width} × ${item.page_height}</td>
             <td class="upscaling-num">${item.page_count || '—'}</td>
             <td class="upscaling-num upscaling-size">${_upBytes(item.file_size)}</td>
@@ -290,16 +310,19 @@ function upscalingUpdateCount() {
 async function upscalingRunSelected() {
     const ids = [...document.querySelectorAll('.upscaling-select:checked')].map(cb => Number(cb.dataset.volumeId));
     if (!ids.length) return;
-    if (!confirm(`Upscaler ${ids.length} album(s) en HD avec « ${_upModelLabel(upscalingData.model)} » ?\n\nChaque fichier est remplacé par sa version HD ; l'original SD est gardé et restaurable. Le serveur traite un tome à la fois, ce qui peut prendre longtemps.`)) return;
+    const items = ids.map(id => ({ volume_id: id, model: upscalingRowModels[id] || upscalingData.model }));
+    const models = [...new Set(items.map(item => item.model))];
+    const withModel = models.length === 1 ? `avec « ${_upModelLabel(models[0])} »` : `avec le modèle choisi pour chacun (${models.map(_upModelLabel).join(', ')})`;
+    if (!confirm(`Upscaler ${ids.length} album(s) en HD ${withModel} ?\n\nChaque fichier est remplacé par sa version HD ; l'original SD est gardé et restaurable. Le serveur traite un tome à la fois, ce qui peut prendre longtemps.`)) return;
     const btn = document.getElementById('upscalingRunBtn');
     btn.disabled = true;
     try {
-        const response = await fetch('/api/upscale/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ volume_ids: ids, model: upscalingData.model }) });
+        const response = await fetch('/api/upscale/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Erreur inconnue');
         const refused = (data.errors || []).length;
         showToast('upscaling-batch', `${data.queued.length} album(s) en file d'attente${refused ? `, ${refused} refusé(s) : ${data.errors[0].error}` : ''}.`, { icon: 'sparkles', autoHideMs: 6000 });
-        document.querySelectorAll('.upscaling-select:checked').forEach(cb => { cb.checked = false; });
+        document.querySelectorAll('.upscaling-select:checked').forEach(cb => { cb.checked = false; delete upscalingRowModels[Number(cb.dataset.volumeId)]; });
         document.getElementById('upscalingSelectAll').checked = false;
         loadUpscaling();
     } catch (error) {

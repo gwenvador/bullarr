@@ -84,3 +84,8 @@
     .upscaling-filter { width: 100%; }
     .upscaling-compare-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Modèle par ligne : discret tant qu'il suit le modèle par défaut */
+.upscaling-row-model { font-size: 0.9em; padding: 5px 8px; max-width: 200px; color: var(--color-text-muted); }
+.upscaling-row-model.custom { color: var(--color-text); border-color: var(--color-accent); }
+@media (max-width: 700px) { .upscaling-row-model { max-width: 130px; } }

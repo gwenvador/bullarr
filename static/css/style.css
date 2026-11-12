@@ -5175,3 +5175,20 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
     text-overflow: ellipsis;
 }
 .volume-item .volume-meta:empty, .volume-item .volume-meta:not(:has(*)) { display: none; }
+
+/* Liens dans les textes (descriptions, aides) : couleur d'accent comme les liens des
+   tableaux, plus de bleu/violet « visité » souligné par défaut du navigateur. */
+:where(.content) :where(p, li, .help-text, .section-description) a:not([class]) {
+    color: var(--color-accent);
+    font-weight: 500;
+    text-decoration: none;
+    border-radius: 3px;
+}
+:where(.content) :where(p, li, .help-text, .section-description) a:not([class]):hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+:where(.content) :where(p, li, .help-text, .section-description) a:not([class]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}

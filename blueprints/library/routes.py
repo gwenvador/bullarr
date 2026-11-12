@@ -2280,18 +2280,25 @@ def upscale_volume_route(volume_id):
 
 @library_bp.route('/api/upscale/batch', methods=['POST'])
 def upscale_volumes_batch():
-    """Vérification > Albums non HD : met plusieurs tomes en file d'un coup."""
+    """Page Upscaling / molette d'une série : met plusieurs tomes en file d'un coup.
+    `items` = [{volume_id, model}] (un modèle par tome, sinon `model` ou celui choisi
+    dans la configuration) ; `volume_ids` reste accepté."""
     from . import upscale, upscale_volume
     body = request.get_json(silent=True) or {}
     model = body.get('model') or upscale.load_config()['model']
+    items = body.get('items')
+    if not isinstance(items, list):
+        items = [{'volume_id': volume_id} for volume_id in body.get('volume_ids') or []]
     queued, errors = [], []
     app = current_app._get_current_object()
-    for volume_id in body.get('volume_ids') or []:
+    for item in items:
+        if not isinstance(item, dict):
+            continue
         try:
-            volume_id = int(volume_id)
+            volume_id = int(item.get('volume_id'))
         except (TypeError, ValueError):
             continue
-        state, error = upscale_volume.enqueue(app, volume_id, model)
+        state, error = upscale_volume.enqueue(app, volume_id, item.get('model') or model)
         if error:
             errors.append({'volume_id': volume_id, 'error': error})
         else:

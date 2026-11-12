@@ -242,7 +242,23 @@ def _run(app):
         except Exception as e:  # noqa: BLE001 - l'erreur est montrée dans l'interface
             _update(volume_id, status='error', error=str(e) or e.__class__.__name__, finished_at=time.time())
             print(f'Upscaling du tome #{volume_id} impossible : {e}')
+            _log_failure(app, volume_id, model, e)
         _prune_finished()
+
+
+def _log_failure(app, volume_id, model, error):
+    """Un upscaling en échec apparaît aussi dans l'historique."""
+    try:
+        from .action_history import log_action
+        with app.app_context():
+            row = _volume_row(app, volume_id)
+            label = upscale.MODEL_LABELS.get(model, model)
+            name = row['filename'] if row else f'Tome #{volume_id}'
+            log_action('upscale', row['series_id'] if row else None, row['series_title'] if row else None,
+                       f'{name} : upscaling impossible ({label}), fichier inchangé',
+                       success=False, error=str(error) or error.__class__.__name__)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def upscale_cbz(filepath, model, progress=None, cancelled=None, upscale_page=None):
@@ -418,6 +434,14 @@ def delete_backup(app, volume_id):
         conn.commit()
     finally:
         conn.close()
+    try:
+        from .action_history import log_action
+        row = _volume_row(app, volume_id)
+        if row:
+            log_action('upscale_backup_delete', row['series_id'], row['series_title'],
+                       f"{row['filename']} : version SD gardée supprimée, la version HD reste")
+    except Exception:  # noqa: BLE001
+        pass
     return None
 
 

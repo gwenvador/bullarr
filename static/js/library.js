@@ -2943,6 +2943,118 @@ function _volumeReadMenuItemHtml(v) {
         : `<button type="button" class="toolbar-dropdown-item" onclick="setVolumeReadStatus(${v.id}, true)">${svgIcon('check-check')} Marquer comme lu</button>`;
 }
 
+// Upscaling hors ligne depuis la molette de la série : tous les tomes cbz en basse
+// définition d'un coup (modèle choisi dans Actions → Upscaling), annulation, et retour aux
+// versions SD gardées.
+const _SERIES_UPSCALE_BUSY = ['queued', 'running'];
+
+function _seriesUpscaleGroups(data) {
+    const owned = (data.volumes || []).filter(v => v.filepath);
+    const busy = owned.filter(v => _SERIES_UPSCALE_BUSY.includes(v.upscale_status));
+    const eligible = owned.filter(v => {
+        const side = Math.max(v.page_width || 0, v.page_height || 0);
+        return !v.sd_backup && !_SERIES_UPSCALE_BUSY.includes(v.upscale_status)
+            && (v.format || '').toLowerCase() === 'cbz' && side > 0 && side <= 1600;
+    });
+    const restorable = owned.filter(v => v.sd_backup && !_SERIES_UPSCALE_BUSY.includes(v.upscale_status));
+    return { busy, eligible, restorable };
+}
+
+function _seriesUpscaleMenuItemsHtml(data, seriesId) {
+    const { busy, eligible, restorable } = _seriesUpscaleGroups(data);
+    const count = n => (n > 1 ? ` (${n} tomes)` : '');
+    let html = '';
+    if (eligible.length) html += `<button class="toolbar-dropdown-item" onclick="upscaleSeriesVolumes(${seriesId})" title="Agrandit x2 sur le serveur les tomes en basse définition ; les originaux SD sont gardés">${svgIcon('sparkles')} Upscaler en HD${count(eligible.length)}</button>`;
+    if (busy.length) html += `<button class="toolbar-dropdown-item" onclick="cancelSeriesUpscale(${seriesId})">${svgIcon('x')} Annuler l'upscaling${count(busy.length)}</button>`;
+    if (restorable.length) html += `<button class="toolbar-dropdown-item" onclick="restoreSeriesSd(${seriesId})" title="Remet les versions SD d'origine gardées à l'upscaling">${svgIcon('undo')} Restaurer la version SD${count(restorable.length)}</button>`;
+    return html;
+}
+
+async function upscaleSeriesVolumes(seriesId) {
+    const data = currentSeriesDetail;
+    if (!data || data.id !== seriesId) return;
+    const { eligible } = _seriesUpscaleGroups(data);
+    if (!eligible.length) return;
+    if (!confirm(`Upscaler ${eligible.length > 1 ? `les ${eligible.length} tomes en basse définition` : 'ce tome'} en HD sur le serveur ?\n\nLes pages sont agrandies x2 avec le modèle choisi dans Actions → Upscaling, puis chaque fichier est remplacé par sa version HD. Les originaux sont gardés et restaurables. Le serveur traite un tome à la fois.`)) return;
+    try {
+        const response = await fetch('/api/upscale/batch', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ volume_ids: eligible.map(v => v.id) })
+        });
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || 'Erreur inconnue');
+        const refused = (result.errors || []).length;
+        showToast(`series-upscale-${seriesId}`, `${result.queued.length} tome(s) en file d'attente pour l'upscaling HD${refused ? `, ${refused} refusé(s) : ${result.errors[0].error}` : ''}.`, { icon: 'sparkles', href: '/upscaling' });
+        _pollSeriesUpscale(seriesId, result.queued);
+        await renderSeriesDetail(seriesId);
+    } catch (error) {
+        alert('❌ ' + error.message);
+    }
+}
+
+async function cancelSeriesUpscale(seriesId) {
+    const data = currentSeriesDetail;
+    if (!data || data.id !== seriesId) return;
+    const { busy } = _seriesUpscaleGroups(data);
+    await Promise.all(busy.map(v => fetch(`/api/volumes/${v.id}/upscale`, { method: 'DELETE' }).catch(() => null)));
+    showToast(`series-upscale-${seriesId}`, 'Upscaling annulé, les tomes non traités sont inchangés.', { autoHideMs: 4000 });
+    await renderSeriesDetail(seriesId);
+}
+
+async function restoreSeriesSd(seriesId) {
+    const data = currentSeriesDetail;
+    if (!data || data.id !== seriesId) return;
+    const { restorable } = _seriesUpscaleGroups(data);
+    if (!restorable.length) return;
+    if (!confirm(`Remettre la version SD d'origine de ${restorable.length > 1 ? `ces ${restorable.length} tomes` : 'ce tome'} ? Les versions HD seront supprimées.`)) return;
+    const failures = [];
+    for (const v of restorable) {
+        try {
+            const result = await (await fetch(`/api/volumes/${v.id}/upscale/restore`, { method: 'POST' })).json();
+            if (!result.success) failures.push(result.error || 'Erreur inconnue');
+        } catch (error) {
+            failures.push(error.message);
+        }
+    }
+    const done = restorable.length - failures.length;
+    showToast(`series-upscale-${seriesId}`, failures.length
+        ? `${done} tome(s) remis en SD, ${failures.length} en échec : ${failures[0]}`
+        : `${done} tome(s) remis en version SD.`, { autoHideMs: failures.length ? 8000 : 4000 });
+    await renderSeriesDetail(seriesId);
+}
+
+// Un seul toast pour toute la série : tome en cours, page, et tomes restants.
+const _seriesUpscalePolls = {};
+
+function _pollSeriesUpscale(seriesId, volumeIds) {
+    clearTimeout(_seriesUpscalePolls[seriesId]);
+    _seriesUpscalePolls[seriesId] = setTimeout(async () => {
+        let jobs = null;
+        try {
+            const data = await (await fetch('/api/upscale/jobs')).json();
+            jobs = (data.jobs || []).filter(job => volumeIds.includes(job.volume_id));
+        } catch (e) { /* nouvel essai plus tard */ }
+        const toastId = `series-upscale-${seriesId}`;
+        if (jobs === null) { _pollSeriesUpscale(seriesId, volumeIds); return; }
+        const pending = jobs.filter(job => _SERIES_UPSCALE_BUSY.includes(job.status));
+        const done = jobs.filter(job => job.status === 'done').length;
+        const failed = jobs.filter(job => job.status === 'error');
+        if (pending.length) {
+            const running = pending.find(job => job.status === 'running');
+            const position = `${done + failed.length + 1}/${volumeIds.length}`;
+            const text = running ? `Upscaling HD, tome ${position} : page ${running.page || 0}/${running.total || '?'}`
+                : `Upscaling HD : ${pending.length} tome(s) en file d'attente…`;
+            showToast(toastId, text, { icon: 'sparkles', href: '/upscaling' });
+            _pollSeriesUpscale(seriesId, volumeIds);
+            return;
+        }
+        showToast(toastId, failed.length
+            ? `${done} tome(s) remplacé(s) par leur version HD, ${failed.length} en échec : ${failed[0].error}`
+            : `${done} tome(s) remplacé(s) par leur version HD. Originaux gardés.`, { autoHideMs: failed.length ? 8000 : 6000 });
+        if (currentSeriesDetail && currentSeriesDetail.id === seriesId) renderSeriesDetail(seriesId);
+    }, 4000);
+}
+
 function _seriesReadMenuItemHtml(data) {
     const owned = (data.volumes || []).filter(v => v.filepath);
     if (!owned.length) return '';
@@ -5266,6 +5378,7 @@ async function renderSeriesDetail(seriesId) {
                             <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">${svgIcon('bookmark')} ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
                             <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">${svgIcon('heart')} ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
                             ${_seriesReadMenuItemHtml(data)}
+                            ${_seriesUpscaleMenuItemsHtml(data, seriesId)}
                             ${data.is_oneshot ? `
                             <button class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(${seriesId})" title="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé" aria-label="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé">${svgIcon('upload')} Ajouter un fichier</button>
                             ` : ''}
