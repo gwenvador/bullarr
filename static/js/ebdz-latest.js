@@ -1097,6 +1097,40 @@ function _nouveautesEbdzLinkMatchedHtml(event, link) {
 // « que ce soit rss, telegram ou ebdz je voudrais que les lignes soient identiques » - un
 // sujet EBDZ n'est plus une ligne repliable: chacun de ses fichiers a sa propre ligne, mise
 // en page comme une ligne RSS (titre, série Bédéthèque, taille/tome, actions du fichier).
+// « tu peux faire mieux ? » : les noms de release (Nestor.Burma.T02.FRENCH.cbz) sont
+// affichés lisibles - points et soulignés remplacés par des espaces (sauf entre deux
+// chiffres), extension en petite étiquette ; le nom exact reste dans l'infobulle.
+function _nouveautesPrettyName(raw) {
+    const name = String(raw || '');
+    const match = name.match(/^(.*?)\.(cbz|cbr|cb7|cbt|pdf|epub|zip|rar|7z)$/i);
+    let base = match ? match[1] : name;
+    let ext = match ? match[2].toUpperCase() : '';
+    // Suffixe de release « [CBZ]-Groupe » : le format devient l'étiquette, le groupe part dans l'infobulle.
+    const tag = base.match(/\s*[[(](cbz|cbr|cb7|pdf|epub)[\])]\s*(?:-\s*[\w.-]+)?\s*$/i);
+    if (tag && tag.index > 0) { base = base.slice(0, tag.index); ext = ext || tag[1].toUpperCase(); }
+    if (/[._]/.test(base) && (base.match(/ /g) || []).length < 3) {
+        base = base.replace(/_/g, ' ').replace(/(?<!\d)\.|\.(?!\d)/g, ' ');
+    }
+    base = base.replace(/\s+/g, ' ').trim() || name;
+    return { text: base, ext, changed: base !== name };
+}
+
+function _nouveautesTitleHtml(raw) {
+    const pretty = _nouveautesPrettyName(raw);
+    return `<span class="nouveautes-title-text"${pretty.changed ? ` data-tooltip="${escapeHtml(String(raw || ''))}"` : ''}>${escapeHtml(pretty.text)}</span>${pretty.ext ? `<span class="nouveautes-ext">${pretty.ext}</span>` : ''}`;
+}
+
+// « 12 » → « Tome 12 » ; « Tome 23 », « HS 2 », « Intégrale » restent tels quels.
+function _nouveautesVolumeLabel(value) {
+    const text = String(value).trim();
+    return /^\d/.test(text) ? `Tome ${text}` : text;
+}
+
+function _nouveautesMetaHtml(parts) {
+    const items = parts.filter(Boolean).map(([cls, text]) => `<span class="${cls}">${escapeHtml(String(text))}</span>`);
+    return items.length ? `<div class="nouveautes-meta">${items.join('')}</div>` : '';
+}
+
 function _nouveautesEbdzRowHtml(event, index) {
     const safeThreadTitle = escapeHtml(event.title || '');
     const typeIconHtml = event.url
@@ -1125,9 +1159,9 @@ function _nouveautesEbdzRowHtml(event, index) {
             <td style="padding:10px; text-align:center;">${typeIconHtml}</td>
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
-                <div style="font-weight:600; display:flex; align-items:center; gap:6px;">${escapeHtml(filename)}</div>
+                <div class="nouveautes-title">${_nouveautesTitleHtml(filename)}</div>
                 ${_nouveautesSeriesHtml(event)}
-                <div style="color:var(--color-text-muted); font-size:0.9em;">${safeThreadTitle} · ${formatBytes(link.filesize)}${volumeLabel ? ` · ${escapeHtml(volumeLabel)}` : ''}</div>
+                ${_nouveautesMetaHtml([volumeLabel && ['nouveautes-meta-vol', _nouveautesVolumeLabel(volumeLabel)], link.filesize && ['nouveautes-meta-size', formatBytes(link.filesize)], event.title && ['nouveautes-meta-src', event.title]])}
             </td>
             ${_nouveautesGenreCellHtml(event)}
             <td style="padding:10px; text-align:center;">${_nouveautesEbdzLinkMatchedHtml(event, link)}</td>
@@ -1187,10 +1221,12 @@ function _nouveautesRssDownloadLink(item, title) {
 }
 
 function _nouveautesRssRowHtml(event) {
-    const escapedTitle = escapeHtml(event.title || 'Sans titre');
+    const prettyTitle = _nouveautesPrettyName(event.title || 'Sans titre');
+    const escapedTitle = escapeHtml(prettyTitle.text);
+    const extHtml = prettyTitle.ext ? `<span class="nouveautes-ext">${prettyTitle.ext}</span>` : '';
     const title = event.link
-        ? `<a class="nouveautes-rss-link" href="${escapeHtml(event.link)}" target="_blank" rel="noopener noreferrer" data-tooltip="Ouvrir la page liée" onclick="event.stopPropagation()">${escapedTitle} ${svgIcon('external-link')}</a>`
-        : escapedTitle;
+        ? `<a class="nouveautes-rss-link" href="${escapeHtml(event.link)}" target="_blank" rel="noopener noreferrer" data-tooltip="${prettyTitle.changed ? `${escapeHtml(event.title)} - ` : ''}Ouvrir la page liée" onclick="event.stopPropagation()">${escapedTitle} ${svgIcon('external-link')}</a>${extHtml}`
+        : `${_nouveautesTitleHtml(event.title || 'Sans titre')}`;
     // DupeFR fournit une vignette HTML dans description ; ne pas l’afficher comme du texte brut.
     const description = event.description
         ? escapeHtml(event.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, 240)
@@ -1212,7 +1248,7 @@ function _nouveautesRssRowHtml(event) {
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
     // Release déjà possédée : ligne verte, comme les lignes EBDZ et Telegram.
     const ownedRowClass = event.already_owned === true ? 'volume-table-row-owned ' : '';
-    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div style="font-weight:600; display:flex; align-items:center; gap:6px;">${title}</div>${matchedSeriesHtml}${description ? `<div style="color:var(--color-text-muted); font-size:0.9em;">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
+    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div class="nouveautes-title">${title}</div>${matchedSeriesHtml}${description ? `<div class="nouveautes-desc">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
@@ -1222,8 +1258,8 @@ function _nouveautesTelegramRowHtml(event) {
         ? `https://t.me/${encodeURIComponent(String(event.channel).replace(/^@/, ''))}/${event.message_id}`
         : null;
     const telegramIconHtml = telegramPostUrl
-        ? `<a href="${escapeHtml(telegramPostUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir le post Telegram" onclick="event.stopPropagation()"><img src="/static/img/telegram-logo.svg" alt="Telegram" style="width:16px; height:16px; vertical-align:-3px;"></a>`
-        : `<span data-tooltip="Telegram"><img src="/static/img/telegram-logo.svg" alt="Telegram" style="width:16px; height:16px; vertical-align:-3px;"></span>`;
+        ? `<a href="${escapeHtml(telegramPostUrl)}" target="_blank" rel="noopener noreferrer" data-tooltip="Voir le post Telegram" onclick="event.stopPropagation()"><img src="/static/img/telegram-logo.svg" alt="Telegram" class="nouveautes-source-icon"></a>`
+        : `<span data-tooltip="Telegram"><img src="/static/img/telegram-logo.svg" alt="Telegram" class="nouveautes-source-icon"></span>`;
     const newRowClass = _nouveautesIsNew(event) ? ' nouveautes-row-new' : '';
     const addToLibraryQuery = event.parsed_title || event.filename;
     const seriesMatched = _nouveautesMatched(event);
@@ -1238,12 +1274,9 @@ function _nouveautesTelegramRowHtml(event) {
             <td style="padding:10px; white-space:nowrap; text-align:center;">${telegramIconHtml}</td>
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
-                <div style="font-weight:600;">${safeFilename}</div>
+                <div class="nouveautes-title">${_nouveautesTitleHtml(event.filename)}</div>
                 ${_nouveautesSeriesHtml(event)}
-                <div style="color:var(--color-text-muted); font-size:0.9em;">
-                    ${escapeHtml(event.channel_title || event.channel)} · ${formatBytes(event.file_size)}
-                    ${event.parsed_volume ? ` · ${escapeHtml(event.parsed_volume)}` : ''}
-                </div>
+                ${_nouveautesMetaHtml([event.parsed_volume && ['nouveautes-meta-vol', _nouveautesVolumeLabel(event.parsed_volume)], event.file_size && ['nouveautes-meta-size', formatBytes(event.file_size)], (event.channel_title || event.channel) && ['nouveautes-meta-src', event.channel_title || event.channel]])}
             </td>
             ${_nouveautesGenreCellHtml(event)}
             <td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td>

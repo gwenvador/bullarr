@@ -5205,3 +5205,138 @@ a.client-source-origin .icon { width: 13px; height: 13px; }
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
 }
+
+/* ================================================================================
+   Nouveautés — refonte visuelle (« tu peux faire mieux ? ») : titres de release
+   lisibles + étiquette d'extension, infos en puces (tome, taille, sujet/canal),
+   logo de source en pastille, origine sur deux lignes max, actions en boutons carrés
+   bordés (téléchargement principal en accent, ⚡ en ambre), en-têtes de groupe
+   de série plus marqués. Colonnes et comportements inchangés.
+   ================================================================================ */
+.nouveautes-table > tbody > tr > td { vertical-align: middle; }
+#nouveautes-events-body tr.nouveautes-event-row { transition: background-color .12s; }
+#nouveautes-events-body tr.nouveautes-event-row:not(.volume-table-row-owned):not(.nouveautes-row-new):hover > td {
+    background: color-mix(in srgb, var(--color-accent) 4%, var(--color-surface));
+}
+.nouveautes-table .nouveautes-title {
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px;
+    font-weight: 600; font-size: 1.06em; line-height: 1.35; color: var(--color-text);
+}
+.nouveautes-title-text { overflow-wrap: anywhere; }
+.nouveautes-table .nouveautes-title .nouveautes-rss-link { font-weight: 600; }
+.nouveautes-ext {
+    flex: none; align-self: center; font-size: .68em; font-weight: 700; letter-spacing: .04em;
+    padding: 1px 6px; border-radius: 5px; color: var(--color-text-muted);
+    border: 1px solid var(--color-border); background: var(--color-surface-alt);
+}
+.nouveautes-meta { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 5px; }
+.nouveautes-meta > span {
+    font-size: .86em; line-height: 1.3; padding: 2px 8px; border-radius: 999px; color: var(--color-text-muted);
+    background: var(--color-surface-alt); border: 1px solid var(--color-border); max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nouveautes-meta > .nouveautes-meta-vol {
+    color: var(--color-accent); font-weight: 600;
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+.nouveautes-desc {
+    margin-top: 4px; font-size: .88em; line-height: 1.45; color: var(--color-text-muted);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.nouveautes-table .nouveautes-matched-series { margin-top: 3px; font-size: .95em; }
+
+/* Logo de source en pastille */
+.nouveautes-table .nouveautes-source-icon {
+    box-sizing: content-box; width: 18px; height: 18px; padding: 6px; border-radius: 9px;
+    background: var(--color-surface-alt); border: 1px solid var(--color-border); vertical-align: middle;
+}
+.nouveautes-table a:hover > .nouveautes-source-icon { border-color: var(--color-accent); }
+
+/* Origine : deux lignes au plus, nom complet en infobulle native de la cellule */
+.nouveautes-table td.nouveautes-origin-cell {
+    font-size: .86em !important; line-height: 1.35;
+}
+.nouveautes-table tr.nouveautes-event-row > td.nouveautes-origin-cell {
+    display: table-cell;
+}
+.nouveautes-table td.nouveautes-origin-cell { overflow: hidden; }
+
+/* Actions : boutons carrés bordés */
+.nouveautes-actions-cell > div { gap: 5px !important; flex-wrap: wrap !important; }
+.nouveautes-actions-cell :is(.btn-icon-only, a.btn-icon-only) {
+    width: 32px; height: 32px; padding: 0 !important; display: inline-grid; place-items: center;
+    border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-surface);
+    color: var(--color-text); transition: border-color .12s, background .12s, color .12s;
+}
+.nouveautes-actions-cell :is(.btn-icon-only, a.btn-icon-only):hover:not(:disabled) {
+    border-color: var(--color-accent); color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+}
+.nouveautes-actions-cell .btn-icon-only .icon,
+.nouveautes-actions-cell .btn-icon-only svg { width: 16px; height: 16px; }
+.nouveautes-actions-cell .btn-icon-only img { width: 17px; height: 17px; }
+/* Téléchargement principal (Telegram, VK, eMule, qBittorrent) */
+.nouveautes-actions-cell .btn-icon-only:is([onclick^="downloadTelegramFile"], [onclick^="downloadVkNouveaute"], .result-action-emule, [onclick*="_addNouveautesRssTorrentToQbittorrent"]) {
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+    color: var(--color-accent);
+}
+.nouveautes-actions-cell .btn-icon-only[onclick^="downloadTelegramFile"]:hover,
+.nouveautes-actions-cell .btn-icon-only[onclick^="downloadVkNouveaute"]:hover {
+    background: var(--color-accent); color: #fff;
+}
+/* ⚡ Ajouter la série et tout télécharger */
+.nouveautes-actions-cell .btn-icon-only[onclick^="addSeriesAndDownloadNouveautes"] {
+    color: #d97706; border-color: color-mix(in srgb, #d97706 35%, var(--color-border));
+    background: color-mix(in srgb, #d97706 8%, var(--color-surface));
+}
+.nouveautes-actions-cell .btn-icon-only[onclick^="addSeriesAndDownloadNouveautes"]:hover {
+    color: #fff; background: #d97706; border-color: #d97706;
+}
+.nouveautes-actions-cell .btn-icon-only.add-button-added { width: auto; padding: 0 8px !important; display: inline-flex; gap: 4px; }
+.nouveautes-actions-cell > div > .icon-owned,
+.nouveautes-actions-cell > div > .badge-monitored {
+    width: 32px; height: 32px; padding: 0 !important; display: inline-grid; place-items: center; border-radius: 9px;
+}
+
+/* En-têtes de groupe de série */
+#nouveautes-events-body tr.nouveautes-series-group-row > td {
+    background: color-mix(in srgb, var(--color-accent) 3%, var(--color-surface));
+}
+#nouveautes-events-body tr.nouveautes-series-group-row .nouveautes-series-group-name { font-size: 1.1em; font-weight: 700; }
+#nouveautes-events-body .nouveautes-group-toggle {
+    display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: .85em;
+    padding: 3px 10px 3px 8px; border-radius: 999px;
+}
+#nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell {
+    border-left: 3px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+@media (max-width: 900px) {
+    .nouveautes-table > tbody > tr.nouveautes-event-row { padding: 8px 4px; }
+    .nouveautes-table .nouveautes-title { font-size: 1.02em; }
+    .nouveautes-actions-cell :is(.btn-icon-only, a.btn-icon-only) { width: 36px; height: 36px; }
+    #nouveautes-events-body tr.nouveautes-row-grouped > td.nouveautes-details-cell { border-left: 0; }
+}
+/* Titre RSS : l'icône de lien suit le texte au lieu de flotter à droite */
+.nouveautes-table .nouveautes-title a.nouveautes-rss-link { display: inline; }
+.nouveautes-table .nouveautes-title a.nouveautes-rss-link .icon { width: 13px; height: 13px; vertical-align: -1px; margin-left: 2px; opacity: .6; }
+/* Plus de place pour Détails : Genre et Série n'affichent qu'une pastille */
+.nouveautes-table > thead > tr > th:nth-child(5),
+.nouveautes-table > tbody > tr > td:nth-child(5) { width: 92px; }
+.nouveautes-table > thead > tr > th:nth-child(6),
+.nouveautes-table > tbody > tr > td:nth-child(6) { width: 84px; }
+@media (min-width: 1400px) {
+    .nouveautes-table > thead > tr > th:nth-child(3),
+    .nouveautes-table > tbody > tr > td:nth-child(3) { width: 140px; }
+    .nouveautes-table > thead > tr > th:nth-child(5),
+    .nouveautes-table > tbody > tr > td:nth-child(5) { width: 104px; }
+    .nouveautes-table > thead > tr > th:nth-child(6),
+    .nouveautes-table > tbody > tr > td:nth-child(6) { width: 110px; }
+}
+/* Étiquette d'extension dans le fil du titre, même quand il passe sur plusieurs lignes */
+.nouveautes-table .nouveautes-title { display: block; }
+.nouveautes-table .nouveautes-title > * { vertical-align: middle; }
+.nouveautes-table .nouveautes-title .nouveautes-ext { display: inline-block; margin-left: 6px; vertical-align: 1px; }
+.nouveautes-table .nouveautes-title .icon-owned { display: inline-flex; margin-left: 4px; }
