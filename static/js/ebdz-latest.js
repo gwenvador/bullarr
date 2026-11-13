@@ -1683,7 +1683,7 @@ function _groupNouveautesSeriesRows(body) {
         const members = rows.slice(i, j);
         if (members.length > 1) {
             const first = members[0];
-            const groupId = `${key}|${first.cells[0]?.textContent.trim() || ''}`;
+            const groupId = `${first.dataset.seriesGroup || ""}|${first.cells[0]?.textContent.trim() || ''}`;
             const expanded = _nouveautesExpandedGroups.has(groupId);
 
             const header = document.createElement('tr');
