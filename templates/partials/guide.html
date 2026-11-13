@@ -154,14 +154,24 @@
 
     <section id="upscaling">
       <h2><span class="guide-num">9</span> Upscaling</h2>
-      <p>Beaucoup de BD numérisées il y a longtemps ont des pages de 1600 px ou moins : elles sont floues sur un grand écran. L'upscaling les agrandit deux fois et les nettoie avec un réseau de neurones entraîné pour l'image dessinée : les traits restent nets, les aplats propres, et les artefacts JPEG disparaissent. Ces albums portent l'étiquette « Basse déf. » dans la bibliothèque. Le seuil (1600 px par défaut) se règle dans <em>Configuration → Upscaling</em> : 1200, 1600, 2000 ou 2400 px.</p>
-      <p>Bullarr reprend les huit modèles de l'application Android, convertis au format ONNX : <a href="https://github.com/xinntao/Real-ESRGAN">Real-ESRGAN</a> (rapide, général, général avec débruitage, qualité) et <a href="https://github.com/bilibili/ailab/tree/main/Real-CUGAN">Real-CUGAN</a> (SE et Pro, avec ou sans débruitage). Real-ESRGAN rapide est un bon choix par défaut ; Real-CUGAN donne des traits plus fins sur la BD franco-belge, en plus lent.</p>
+      <p>Les BD numérisées il y a longtemps ont souvent des pages de 1600 px ou moins, floues sur un grand écran. L'upscaling les agrandit deux fois avec un réseau de neurones fait pour le dessin : traits nets, aplats propres, artefacts JPEG effacés.</p>
+      <h3>Repérer les albums concernés</h3>
+      <p>Chaque couverture porte une pastille <strong>LD</strong>, <strong>SD</strong> ou <strong>HD</strong>, et la fiche d'une série indique combien de ses tomes sont en basse définition. Le seuil (1600 px par défaut) se règle dans <em>Configuration → Upscaling</em>.</p>
+      <h3>Améliorer un album</h3>
       <ul>
-        <li><strong>Dans le lecteur</strong> : le bouton <em>HD</em> améliore les pages à la volée sur la carte graphique de l'appareil (WebGPU). Rien n'est modifié sur le serveur. Le modèle est téléchargé une fois par navigateur, depuis le lecteur ou <strong>Configuration</strong> → <em>Upscaling</em>.</li>
-        <li><strong>Sur le serveur</strong> : depuis la molette d'un tome ou d'une série (« Upscaler en HD », qui traite alors tous ses tomes en basse définition) ou la page <strong>Upscaling</strong> du menu <em>Actions</em>, qui liste les albums non HD, en traite plusieurs d'un coup (avec un modèle différent par album si besoin) et compare les huit modèles sur un extrait d'une de vos pages avant de choisir. Le serveur agrandit chaque page, puis remplace le fichier par sa version HD. L'original SD est gardé dans le dossier caché <code>.bullarr-sd-backup</code> à la racine de la bibliothèque, et « Restaurer la version SD » le remet en place.</li>
+        <li><strong>Pour lire</strong> : le bouton <em>HD</em> du lecteur améliore les pages à la volée, dans le navigateur. Le fichier ne change pas.</li>
+        <li><strong>Pour de bon</strong> : <em>Upscaler en HD</em> dans la molette d'un tome ou d'une série, ou la page <em>Actions → Upscaling</em> pour en traiter plusieurs. Le fichier est remplacé par sa version HD ; l'original est gardé et <em>Restaurer la version SD</em> le remet en place.</li>
       </ul>
-      <p><strong>À l'inverse, réduire un fichier trop lourd</strong> : « Réduire le fichier » (molette d'un tome), « Réduire les tomes lourds » (molette d'une série) ou la carte <em>Albums trop lourds</em> de la page Upscaling (pages de plus de 3200 px ou plus de 3 Mo par page en moyenne). On choisit la définition voulue (2000 à 3200 px, toujours au-dessus du seuil de basse définition) et si l'original est gardé (restaurable, la place n'est gagnée qu'en le supprimant ensuite) ou supprimé tout de suite, une fois la version réduite vérifiée. Les pages sont réduites et réencodées en JPEG de bonne qualité ; le fichier n'est remplacé que s'il devient plus léger.</p>
-      <p>Comment ça marche : chaque page est découpée en tuiles de 256 px qui se chevauchent un peu, chaque tuile passe dans le modèle, puis les tuiles sont recollées sans couture visible. Sur le serveur le calcul se fait sur le processeur, un tome à la fois : comptez de quelques minutes à plus d'une heure par album selon le modèle.</p>
+      <p>Comptez de quelques minutes à plus d'une heure par album : le serveur calcule sur le processeur, un tome à la fois.</p>
+      <h3>Choisir le modèle</h3>
+      <p>Huit modèles, <a href="https://github.com/xinntao/Real-ESRGAN">Real-ESRGAN</a> et <a href="https://github.com/bilibili/ailab/tree/main/Real-CUGAN">Real-CUGAN</a>. <em>Real-ESRGAN rapide</em> convient presque toujours ; Real-CUGAN affine les traits de la BD franco-belge, en plus lent. Sur la page Upscaling, <em>Modèle et comparaison</em> les essaie tous sur un extrait de vos pages.</p>
+      <h3>Réduire un album trop lourd</h3>
+      <p>L'inverse : un album aux pages énormes (plus de 3200 px, ou plus de 3 Mo par page) peut être allégé avec <em>Réduire le fichier</em> (molette d'un tome), <em>Réduire les tomes lourds</em> (molette d'une série) ou la carte <em>Albums trop lourds</em> de la page Upscaling.</p>
+      <ul>
+        <li>Choisissez la taille voulue, de 2000 à 3200 px.</li>
+        <li>Gardez l'original pour pouvoir revenir en arrière, ou supprimez-le pour gagner la place tout de suite.</li>
+        <li>Le fichier n'est remplacé que si la version réduite est plus légère.</li>
+      </ul>
     </section>
 
     <section id="securite">
