@@ -170,8 +170,6 @@
 .series-detail-chip-read-later { --chip-color: #3b82f6; }
 .series-detail-chip-favorite { --chip-color: #e5486b; }
 .series-detail-chip-lowdef { --chip-color: #d97706; }
-.series-detail-chip-upscaled { --chip-color: #7c3aed; }
-[data-theme="dark"] .series-detail-chip-upscaled { --chip-color: #b794f6; }
 [data-theme="dark"] .series-detail-chip-complete { --chip-color: #5fd08f; }
 [data-theme="dark"] .series-detail-chip-incomplete { --chip-color: #f0b44c; }
 [data-theme="dark"] .series-detail-chip-read-later { --chip-color: #7aa7ff; }
@@ -3595,6 +3593,14 @@ body.comic-reader-open { overflow: hidden; }
     font-size: 0.78em; font-weight: 600; line-height: 1.6; white-space: nowrap; vertical-align: 1px;
     background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent);
 }
+.volume-upscaled-badge {
+    display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0 7px; border-radius: 999px;
+    font-size: 0.78em; font-weight: 600; line-height: 1.6; white-space: nowrap; vertical-align: 1px;
+    background: color-mix(in srgb, #7c3aed 14%, transparent); color: #7c3aed;
+}
+.volume-upscaled-badge svg { width: 12px; height: 12px; }
+.volume-upscaled-badge-icon { margin: 0 6px 0 0; padding: 0 5px; }
+[data-theme="dark"] .volume-upscaled-badge { color: #b794f6; background: color-mix(in srgb, #b794f6 18%, transparent); }
 .volume-reading-badge-done {
     background: color-mix(in srgb, var(--color-success, #2e7d32) 14%, transparent);
     color: var(--color-success, #2e7d32);
@@ -3628,13 +3634,6 @@ body.comic-reader-open { overflow: hidden; }
     display: grid; place-items: center; font-size: 14px; font-weight: 700; color: #fff;
     background: var(--color-success, #2e7d32); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
-/* Tome upscalé : étincelles en haut à gauche de la couverture. */
-.volume-cover-upscaled {
-    position: absolute; top: 6px; left: 6px; width: 24px; height: 24px; border-radius: 50%;
-    display: grid; place-items: center; color: #fff; background: #7c3aed;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-}
-.volume-cover-upscaled svg { width: 14px; height: 14px; }
 /* Sous la couverture, centrée. */
 .volume-cover-quality {
     position: static; width: max-content; margin: 5px auto 0; min-width: 40px; overflow: hidden;

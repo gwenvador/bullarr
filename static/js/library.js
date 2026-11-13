@@ -3443,7 +3443,6 @@ function buildVolumeCreditsHtml(v) {
     if (ci.publisher) fields.push(['Éditeur', ci.publisher]);
     if (ci.genre) fields.push(['Genre', ci.genre]);
     if (_volumeQualityLabel(v)) fields.push(['Qualité', _volumeQualityLabel(v)]);
-    if (v.upscaled) fields.push(['Upscaling', _volumeUpscaledText(v)]);
     if (v.release_group) fields.push(['Release', String(v.release_group)]);
     if (!fields.length) return '';
     return `<dl class="volume-credits">${fields.map(([k, val]) => `<div><dt>${escapeHtml(k)}</dt><dd title="${escapeHtml(val)}">${escapeHtml(val)}</dd></div>`).join('')}</dl>`;
@@ -3932,13 +3931,12 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
                 <div class="volume-cover-frame">
                     ${coverHtml}
                     ${buildVolumeCoverReadingHtml(v)}
-                    ${buildVolumeCoverUpscaledHtml(v)}
                 </div>
                 ${buildVolumeCoverQualityHtml(v)}
             </div>
             <div class="volume-details">
                 <div class="volume-filename-row">
-                    <div class="volume-filename">${escapeHtml(_displayVolumeTitle(v) || v.filename)}${buildVolumeReadingBadgeHtml(v)}</div>
+                    <div class="volume-filename">${escapeHtml(_displayVolumeTitle(v) || v.filename)}${buildVolumeUpscaledBadgeHtml(v)}${buildVolumeReadingBadgeHtml(v)}</div>
                     ${buildVolumeActionIconsHtml(v)}
                 </div>
                 ${ci.title ? `<div class="volume-file-detail volume-file-name" title="${escapeHtml(v.filename)}">${escapeHtml(v.filename)}</div>` : ''}
@@ -4107,9 +4105,8 @@ function _volumeQualityTier(v) {
 }
 
 function _volumeQualityLabel(v) {
-    const upscaled = v.upscaled ? ' · upscalé' : '';
-    if (v.page_width && v.page_height) return `${v.page_width}×${v.page_height} · ${_volumeQualityTier(v)}${upscaled}`;
-    return v.resolution ? String(v.resolution) + upscaled : '';
+    if (v.page_width && v.page_height) return `${v.page_width}×${v.page_height} · ${_volumeQualityTier(v)}`;
+    return v.resolution ? String(v.resolution) : '';
 }
 
 // Tome passé en HD sur le serveur : « Real-ESRGAN rapide, le 13/11/2026 ».
@@ -4120,9 +4117,13 @@ function _volumeUpscaledText(v) {
     return ['Upscalé', v.upscaled.model ? `avec ${v.upscaled.model}` : '', when].filter(Boolean).join(' ');
 }
 
-function buildVolumeCoverUpscaledHtml(v) {
+// « je veux voir les albums qui ont été upscalés dans la liste, aperçu et tableau » :
+// étiquette à côté du titre du tome, modèle et date en infobulle.
+function buildVolumeUpscaledBadgeHtml(v, iconOnly = false) {
     if (!v.upscaled) return '';
-    return `<span class="volume-cover-upscaled" data-tooltip="${escapeHtml(_volumeUpscaledText(v))}" aria-label="Upscalé">${svgIcon('sparkles')}</span>`;
+    // Tableau : icône devant le nom, qui est coupé par « … » quand il est long.
+    if (iconOnly) return `<span class="volume-upscaled-badge volume-upscaled-badge-icon" data-tooltip="${escapeHtml(_volumeUpscaledText(v))}" aria-label="Upscalé">${svgIcon('sparkles')}</span>`;
+    return ` <span class="volume-upscaled-badge" data-tooltip="${escapeHtml(_volumeUpscaledText(v))}">${svgIcon('sparkles')} Upscalé</span>`;
 }
 
 function _volumeTableSortValue(v, column) {
@@ -4223,16 +4224,6 @@ function _seriesDetailLowDefChipHtml(data) {
     return `<span class="series-detail-chip series-detail-chip-lowdef" data-tooltip="${low.length} album${low.length > 1 ? 's' : ''} en basse définition (pages de ${minSide} px au plus)">${svgIcon('image')} Basse déf.${count}</span>`;
 }
 
-// « ✨ Upscalé 3/12 » à côté du titre de la fiche : tomes passés en HD sur le serveur.
-function _seriesDetailUpscaledChipHtml(data) {
-    const owned = (data.volumes || []).filter(hasVolumeFile);
-    const done = owned.filter(v => v.upscaled);
-    if (!done.length) return '';
-    const count = owned.length > 1 ? ` ${done.length}/${owned.length}` : '';
-    const tip = owned.length > 1 ? `${done.length} album${done.length > 1 ? 's' : ''} sur ${owned.length} upscalé${done.length > 1 ? 's' : ''} en HD` : 'Album upscalé en HD';
-    return `<span class="series-detail-chip series-detail-chip-upscaled" data-tooltip="${escapeHtml(tip)}">${svgIcon('sparkles')} Upscalé${count}</span>`;
-}
-
 // Définition des pages sur la couverture (vue Aperçu des albums), façon « 1080p / FULL HD » :
 // plus grand côté des pages en haut, catégorie dans le bandeau coloré.
 function buildVolumeCoverQualityHtml(v) {
@@ -4318,7 +4309,7 @@ function buildVolumeTableRowHtml(v, isOneshot) {
         <tr class="volume-table-row${isPlaceholder ? ' volume-table-row-placeholder' : ' volume-table-row-owned'}" data-group="${groupKey}"${groupHiddenStyle}>
             ${selectCellHtml}
             <td${v.is_special ? ` data-tooltip="${escapeHtml(_volumeNumberBadgeTooltip(v))}"` : ''}>${numberLabel}</td>
-            <td class="volume-table-name" data-tooltip="${escapeHtml(name)}">${escapeHtml(name)}${buildVolumeReadingBadgeHtml(v)}</td>
+            <td class="volume-table-name" data-tooltip="${escapeHtml(name)}">${buildVolumeUpscaledBadgeHtml(v, true)}${escapeHtml(name)}${buildVolumeReadingBadgeHtml(v)}</td>
             <td style="white-space:nowrap;"${_volumeDateTooltipAttr(v)}>${escapeHtml(String(_volumeDateLabel(v)))}</td>
             <td>${isPlaceholder ? '—' : escapeHtml((v.format || '?').toUpperCase())}</td>
             <td style="white-space:nowrap;" data-raw-size="${v.file_size || 0}">${isPlaceholder ? '—' : formatBytes(v.file_size)}</td>
@@ -5478,7 +5469,6 @@ async function renderSeriesDetail(seriesId, { silent = false } = {}) {
                             <h2 class="series-detail-title">${escapeHtml(data.title)}</h2>
                             ${completenessIconHtml}
                             ${_seriesDetailLowDefChipHtml(data)}
-                            ${_seriesDetailUpscaledChipHtml(data)}
                             ${data.to_read_later ? `<span class="series-detail-chip series-detail-chip-read-later" data-tooltip="Dans ta liste à lire">${svgIcon('bookmark')} À lire</span>` : ''}
                             ${data.is_favorite ? `<span class="series-detail-chip series-detail-chip-favorite" data-tooltip="Dans tes favoris">${svgIcon('heart')} Favori</span>` : ''}
                         </div>
