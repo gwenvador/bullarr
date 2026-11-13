@@ -5526,7 +5526,7 @@ async function renderSeriesDetail(seriesId) {
                         </button>
                         <div class="toolbar-dropdown-menu toolbar-dropdown-menu-autoclose" id="series-actions-menu-${seriesId}" style="display: none;">
                             <button class="toolbar-dropdown-item" onclick="scanSeries(${seriesId})" title="Scan rapide: ne retraite que les fichiers nouveaux/modifiés" aria-label="Scan rapide: ne retraite que les fichiers nouveaux/modifiés">${svgIcon('refresh-cw')} Actualiser</button>
-                            <button class="toolbar-dropdown-item" onclick="updateSeriesOnlyMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit uniquement les infos de la série (résumé, couverture, statut, titre...) sans toucher aux fichiers des tomes" aria-label="Rafraîchit uniquement les infos de la série (résumé, couverture, statut, titre...) sans toucher aux fichiers des tomes">${svgIcon('tag')} MAJ métadonnées (série uniquement)</button>
+                            <button class="toolbar-dropdown-item" onclick="reloadSeriesAlbumsFromBedetheque(${seriesId}, this)" title="Relit la liste des albums sur Bédéthèque et ajoute ceux qui manquent, sans rien changer d'autre" aria-label="Relit la liste des albums sur Bédéthèque et ajoute ceux qui manquent, sans rien changer d'autre">${svgIcon('refresh-cw')} Recharger les albums</button>
                             <button class="toolbar-dropdown-item" onclick="updateSeriesMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)" aria-label="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)">${svgIcon('tag')} MAJ métadonnées (série + tomes)</button>
                             <button class="toolbar-dropdown-item" onclick="openMergeSeriesModal(${seriesId})" title="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)" aria-label="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)">${svgIcon('git-merge')} Fusionner</button>
                             <button class="toolbar-dropdown-item" onclick="openManualEditModal(${seriesId})" title="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque" aria-label="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque">${svgIcon('pencil')} Éditer manuellement</button>
@@ -5717,6 +5717,12 @@ function updateSeriesOnlyMetadataFromBedetheque(seriesId, buttonEl) {
     return _updateSeriesMetadataFromBedetheque(seriesId, buttonEl, 'series');
 }
 
+// « Recharger les albums » : relit la liste des albums de la fiche Bédéthèque et ajoute
+// les nouveaux comme tomes manquants ; rien n'est modifié s'il n'y en a pas.
+function reloadSeriesAlbumsFromBedetheque(seriesId, buttonEl) {
+    return _updateSeriesMetadataFromBedetheque(seriesId, buttonEl, 'albums');
+}
+
 async function _updateSeriesMetadataFromBedetheque(seriesId, buttonEl, scope) {
     const button = buttonEl;
     const originalHtml = button.innerHTML;
@@ -5724,7 +5730,7 @@ async function _updateSeriesMetadataFromBedetheque(seriesId, buttonEl, scope) {
     button.innerHTML = '<span class="toolbar-btn-icon">⏳</span><span class="toolbar-btn-label">En cours...</span>';
     setSeriesActionsGearBusy(seriesId, true);
     const toastId = `metadata-series-${seriesId}`;
-    showToast(toastId, 'Mise à jour des métadonnées...');
+    showToast(toastId, scope === 'albums' ? 'Lecture des albums sur Bédéthèque...' : 'Mise à jour des métadonnées...');
     let keepToastAlive = false;
 
     try {
@@ -5735,7 +5741,17 @@ async function _updateSeriesMetadataFromBedetheque(seriesId, buttonEl, scope) {
         });
         const data = await response.json();
 
-        if (data.success && data.already_running) {
+        if (data.success && Array.isArray(data.new_albums)) {
+            const added = data.new_albums;
+            keepToastAlive = true;
+            showToast(toastId, added.length
+                ? `${added.length} album${added.length > 1 ? 's' : ''} ajouté${added.length > 1 ? 's' : ''} : ${added.join(', ')}`
+                : 'Aucun nouvel album sur Bédéthèque', { icon: added.length ? 'check' : 'info', autoHideMs: 6000 });
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+            setSeriesActionsGearBusy(seriesId, false);
+            if (added.length && currentSeriesDetail && currentSeriesDetail.id === seriesId) await renderSeriesDetail(seriesId);
+        } else if (data.success && data.already_running) {
             // Une écriture était déjà en cours pour cette série (voir la garde dans
             // _align_title_and_start_metadata_write): pas de nouveau thread lancé pour
             // éviter une double écriture concurrente des mêmes cbz, on se contente de

@@ -7,7 +7,7 @@ from . import bedetheque_bp
 from .parsers import (
     parse_indispensables, parse_pantheon, parse_theme_groups, parse_theme_tiles, parse_theme_page,
 )
-from .scraper import BedethequeScraper, BedethequeDatabase, match_bedetheque_volume, _parse_int_hs_prefix, _parse_special_prefix, _numbered_special_label, _safe_bedetheque_url
+from .scraper import BedethequeScraper, BedethequeDatabase, _main_album_total, match_bedetheque_volume, _parse_int_hs_prefix, _parse_special_prefix, _numbered_special_label, _safe_bedetheque_url
 from .comicinfo_writer import build_comicinfo_fields, apply_volume_comicinfo, UnsupportedFormatError
 from .cbr_converter import convert_cbr_to_cbz, CbrConversionError
 import sqlite3
@@ -1524,6 +1524,61 @@ def _align_title_and_start_metadata_write(series_id, series_title, info, write_v
     return series_title, total_volumes, already_running
 
 
+def _album_key(album):
+    return str(album.get('id') or album.get('url') or '')
+
+
+def _album_label(album):
+    number = album.get('number')
+    title = (album.get('title') or '').strip()
+    if number is None:
+        return title or 'Album'
+    number = int(number) if float(number).is_integer() else number
+    return f'T{number}' + (f' - {title}' if title else '')
+
+
+def reload_series_albums(series_id):
+    """« Recharger les albums » : relit la liste des albums de la fiche Bédéthèque déjà
+    rattachée. Rien n'est écrit si elle n'a pas de nouvel album ; sinon seuls la liste
+    des albums et le nombre de tomes sont mis à jour, et les nouveaux albums deviennent
+    des tomes manquants (placeholders). Résumé, couverture, statut, titre et fichiers ne
+    bougent pas. Renvoie (réponse, code HTTP)."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute('SELECT title, bedetheque_url, bedetheque_albums FROM series WHERE id = ?',
+                           (series_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return {'error': 'Série non trouvée'}, 404
+    if not row['bedetheque_url']:
+        return {'success': False, 'error': _series_not_found_error()}, 404
+    scraper = BedethequeScraper()
+    info = scraper.get_series_info(row['bedetheque_url'])
+    if not info or not info.get('volumes'):
+        return {'success': False, 'error': 'Fiche Bédéthèque illisible pour le moment, réessayez plus tard'}, 502
+    try:
+        known = {_album_key(a) for a in json.loads(row['bedetheque_albums'] or '[]')}
+    except (TypeError, ValueError):
+        known = set()
+    new_albums = [a for a in info['volumes'] if _album_key(a) and _album_key(a) not in known]
+    if not new_albums:
+        return {'success': True, 'new_albums': []}, 200
+    conn = get_db_connection()
+    try:
+        conn.execute('''UPDATE series SET bedetheque_albums = ?, bedetheque_total_volumes = ?,
+                        bedetheque_updated_at = CURRENT_TIMESTAMP WHERE id = ?''',
+                     (json.dumps(info['volumes']), _main_album_total(info), series_id))
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        _sync_bedetheque_placeholder_volumes(series_id, info, scraper)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Échec synchronisation des tomes placeholder pour la série #{series_id}: {e}")
+    return {'success': True, 'new_albums': [_album_label(a) for a in new_albums]}, 200
+
+
 @bedetheque_bp.route('/update-metadata/series/<int:series_id>', methods=['POST'])
 def update_metadata_series(series_id):
     """
@@ -1560,6 +1615,10 @@ def update_metadata_series(series_id):
             LibraryScanner(current_app.config['DATABASE']).scan_single_series(series_id)
         except Exception as e:
             logger.warning(f"Rescan préalable à la MAJ métadonnées ignoré pour la série #{series_id}: {e}")
+
+        if data.get('scope') == 'albums':
+            payload, status = reload_series_albums(series_id)
+            return jsonify(payload), status
 
         conn = get_db_connection()
         cursor = conn.cursor()
