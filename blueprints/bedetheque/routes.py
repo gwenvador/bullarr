@@ -2583,6 +2583,10 @@ def add_series_from_bedetheque():
 
         _sync_bedetheque_placeholder_volumes(series_id, info, scraper)
 
+        # Fiche Bédéthèque en base : tags IA tout de suite plutôt qu'après 3 à 5 minutes.
+        from blueprints.ai.auto_tag import tag_soon
+        tag_soon(current_app._get_current_object(), [series_id])
+
         # Récupère en tâche de fond le résumé de CHAQUE album (une requête par album,
         # trop lent pour cette requête HTTP - voir _write_series_volumes_metadata_async)
         # et le met en cache dans series.bedetheque_albums + le ComicInfo des tomes

@@ -302,7 +302,7 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
     if imported_count <= 0:
         return
     try:
-        from notifications import notification_wanted, send_notification
+        from notifications import notification_wanted, send_notification, bullarr_link
         if not notification_wanted('import_completed'):
             return
         relevant_entries = [
@@ -312,7 +312,6 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
 
         conn = get_db_connection()
         bedetheque_url_by_series = {}
-        komga_url_by_series = {}
         blocks = []
         for entry in relevant_entries:
             # volume_id: posé juste après l'INSERT/UPDATE de la ligne volumes (voir
@@ -330,18 +329,18 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
 
             series_id = entry.get('series_id')
             bedetheque_url = ''
-            komga_url = ''
+            bullarr_url = ''
             if series_id:
                 if series_id not in bedetheque_url_by_series:
                     srow = conn.execute(
-                        'SELECT bedetheque_url, komga_url FROM series WHERE id = ?', (series_id,)
+                        'SELECT bedetheque_url FROM series WHERE id = ?', (series_id,)
                     ).fetchone()
                     bedetheque_url_by_series[series_id] = (srow['bedetheque_url'] if srow else None) or ''
-                    komga_url_by_series[series_id] = (srow['komga_url'] if srow else None) or ''
                 bedetheque_url = bedetheque_url_by_series[series_id]
-                komga_url = komga_url_by_series[series_id]
+                # "retire le lien komga et remplace par le lien bullar"
+                bullarr_url = bullarr_link(f'/series/{series_id}')
 
-            links = '\n'.join(url for url in (bedetheque_url, komga_url) if url)
+            links = '\n'.join(url for url in (bedetheque_url, bullarr_url) if url)
             blocks.append(f"{display_name}\n{links}" if links else display_name)
         conn.close()
 
@@ -357,9 +356,11 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
         from notifications import series_cover_path
         series_ids = {entry['series_id'] for entry in relevant_entries if entry.get('series_id')}
         photo_path = series_cover_path(next(iter(series_ids))) if len(series_ids) == 1 else None
+        click = bullarr_link(f'/series/{next(iter(series_ids))}') if len(series_ids) == 1 else None
 
         success, errors = send_notification(
-            message, kind='import_completed', title='BD Importé :', tags=['books'], photo_path=photo_path)
+            message, kind='import_completed', title='BD Importé :', tags=['books'],
+            click=click or None, photo_path=photo_path)
         if errors:
             print(f"Erreur notification (import terminé): {'; '.join(errors)}")
     except Exception as e:

@@ -40,6 +40,58 @@ _PUSH_KINDS = {'monitor': 'monitor_found', 'download_added': 'import_available',
                'book_request': 'monitor_found'}
 
 
+_PUBLIC_URL_FILE = 'public_url.txt'
+_public_url_cache = {}
+
+
+def remember_public_url(url_root):
+    """Mémorise l'adresse publique de Bullarr vue par le navigateur (request.url_root,
+    correct derrière le proxy grâce à ProxyFix) pour mettre un lien Bullarr dans les
+    notifications, sans adresse codée en dur. Ignore localhost et les adresses IP locales
+    (appels internes, tests), n'écrit le fichier que si l'adresse change."""
+    try:
+        import os
+        from urllib.parse import urlparse
+        from flask import current_app
+        base = (url_root or '').rstrip('/')
+        host = (urlparse(base).hostname or '').lower()
+        if not host or host in ('localhost', '127.0.0.1', '::1') or host.endswith('.localhost'):
+            return
+        if all(part.isdigit() for part in host.split('.')):
+            return
+        path = os.path.join(current_app.config['DATA_DIR'], _PUBLIC_URL_FILE)
+        if _public_url_cache.get(path) == base:
+            return
+        current = public_url()
+        _public_url_cache[path] = base
+        if current != base:
+            with open(path, 'w') as f:
+                f.write(base)
+    except Exception:
+        pass
+
+
+def public_url():
+    """Adresse publique de Bullarr mémorisée (sans / final), ou '' si inconnue."""
+    try:
+        import os
+        from flask import current_app
+        path = os.path.join(current_app.config['DATA_DIR'], _PUBLIC_URL_FILE)
+        if path in _public_url_cache:
+            return _public_url_cache[path]
+        with open(path) as f:
+            value = f.read().strip().rstrip('/')
+        _public_url_cache[path] = value
+        return value
+    except Exception:
+        return ''
+
+
+def bullarr_link(path):
+    base = public_url()
+    return f"{base}{path}" if base else ''
+
+
 def channel_config(channel):
     if channel == 'telegram':
         from blueprints.telegram.routes import load_telegram_config

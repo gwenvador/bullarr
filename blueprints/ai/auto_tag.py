@@ -47,6 +47,44 @@ def queue_new_series(cursor, series_ids):
         print(f'⚠️ IA : série non mise en attente pour les tags automatiques : {exc}')
 
 
+def tag_soon(app, series_ids):
+    """« pourquoi ajouter une nouvelle serie ca n'ajoute pas les tags » : une série ajoutée
+    depuis Bédéthèque a déjà sa fiche en base, inutile d'attendre AUTO_TAG_DELAY puis le
+    passage suivant du planificateur (3 à 5 minutes). Rend la série prête tout de suite et
+    lance un passage dans un fil. Si un traitement IA tourne déjà, le planificateur
+    reprendra la série à son prochain passage. N'échoue jamais."""
+    try:
+        import sqlite3
+        import threading
+        ids = [int(series_id) for series_id in series_ids if series_id]
+        if not ids:
+            return
+        conn = sqlite3.connect(app.config['DATABASE'], timeout=30)
+        try:
+            ensure_table(conn)
+            marks = ','.join('?' * len(ids))
+            updated = conn.execute(f'UPDATE ai_autotag_queue SET queued_at = ? WHERE series_id IN ({marks})',
+                                   [time.time() - AUTO_TAG_DELAY, *ids]).rowcount
+            conn.commit()
+        finally:
+            conn.close()
+        if not updated:
+            return  # option désactivée : rien n'a été mis en file
+
+        def kick():
+            time.sleep(2)
+            with app.app_context():
+                try:
+                    from .routes import run_auto_tag_tick
+                    run_auto_tag_tick()
+                except Exception as exc:  # noqa: BLE001
+                    print(f'⚠️ IA : tags immédiats non lancés : {exc}')
+
+        threading.Thread(target=kick, daemon=True).start()
+    except Exception as exc:  # noqa: BLE001
+        print(f'⚠️ IA : tags immédiats non lancés : {exc}')
+
+
 def pending_count(conn):
     ensure_table(conn)
     return conn.execute('SELECT COUNT(*) FROM ai_autotag_queue').fetchone()[0]

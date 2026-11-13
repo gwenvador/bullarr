@@ -96,6 +96,15 @@ def create_app(config_name='default'):
     app.register_blueprint(shelfmark_bp)
     app.register_blueprint(bdgest_bp, url_prefix='/api/bdgest')
     app.register_blueprint(mcp_bp)
+
+    # "remplace par le lien bullar": adresse publique apprise des pages ouvertes dans un
+    # navigateur, pour les liens des notifications (voir notifications.remember_public_url).
+    @app.before_request
+    def _remember_public_url():
+        from flask import request
+        if request.method == 'GET' and 'text/html' in (request.headers.get('Accept') or ''):
+            from notifications import remember_public_url
+            remember_public_url(request.url_root)
     
     # Initialiser le scheduler EBDZ
     from blueprints.ebdz.scheduler import ebdz_scheduler
