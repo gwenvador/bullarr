@@ -444,7 +444,12 @@ function initNavGroup({ id, storageKey, label, hrefs, insertAfterHref }) {
     // en plus le groupe pour de bon (une fois sur la page, les autres liens du groupe
     // restent visibles juste en dessous au lieu de rester repliés) plutôt que l'ancien
     // comportement replie/déplie qui ne naviguait jamais nulle part.
-    parent.addEventListener('click', () => {
+    parent.addEventListener('click', (event) => {
+        // Sur mobile (tiroir, pas de survol), un groupe replié se déplie au premier appui
+        // pour montrer ses pages ; un 2e appui ouvre sa première page.
+        if (window.matchMedia('(max-width: 768px)').matches && subgroup.classList.contains('nav-subgroup-collapsed')) {
+            event.preventDefault();
+        }
         subgroup.classList.remove('nav-subgroup-collapsed');
         _collapseOtherNavGroups(id);
         try {

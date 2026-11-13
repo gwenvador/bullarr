@@ -498,7 +498,7 @@ img, table, pre {
        marchait" aussi - alors que .nav-subgroup/a/.nav-badge retombaient silencieusement
        sur leur version "réduit" (display: none...) une fois servis. !important partout
        ici retire toute dépendance fragile à l'ordre des règles dans le fichier. */
-    .sidebar-nav.collapsed .nav-subgroup {
+    .sidebar-nav.collapsed .nav-subgroup:not(.nav-subgroup-collapsed) {
         display: flex !important;
     }
 
@@ -514,8 +514,11 @@ img, table, pre {
         min-width: 18px !important;
     }
 
+    /* "dans le mobile j'ai a la fois suivi et actions qui sont ouverts en meme temps" :
+       les sous-menus suivent l'accordéon comme sur ordinateur (un seul ouvert). Au
+       toucher, le premier appui sur Suivi/Actions déplie le groupe (voir initNavGroup). */
     .nav-subgroup-collapsed {
-        display: flex !important;
+        display: none !important;
     }
 }
 
