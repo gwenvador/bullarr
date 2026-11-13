@@ -55,7 +55,7 @@ class UpdateStatusTest(unittest.TestCase):
 class AppVersionTest(unittest.TestCase):
     def test_app_version_is_the_current_release(self):
         from config import Config
-        self.assertEqual(Config.APP_VERSION, '12.2')
+        self.assertEqual(Config.APP_VERSION, '13.0')
 
 
 class AboutCardTest(unittest.TestCase):
