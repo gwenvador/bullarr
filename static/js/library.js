@@ -5218,8 +5218,11 @@ async function loadSeriesPreviewPages(seriesId) {
     }
 }
 
-async function renderSeriesDetail(seriesId) {
+async function renderSeriesDetail(seriesId, { silent = false } = {}) {
     const modalBody = document.getElementById('modal-body');
+    // silent : mise à jour sur place (« Recharger les albums ») - pas de spinner qui vide
+    // la fiche, et la position de défilement est gardée.
+    const keepScroll = silent ? { win: window.scrollY, body: modalBody ? modalBody.scrollTop : 0 } : null;
 
     // Donnée préchargée depuis la fiche précédente (voir prefetchAdjacentSeries) - si
     // présente et fraîche, on saute complètement le fetch ET le spinner: la navigation
@@ -5231,7 +5234,7 @@ async function renderSeriesDetail(seriesId) {
     if (prefetched) {
         data = prefetched;
     } else {
-        modalBody.innerHTML = '<div class="loading"><div class="spinner"></div><p>Chargement des détails...</p></div>';
+        if (!silent) modalBody.innerHTML = '<div class="loading"><div class="spinner"></div><p>Chargement des détails...</p></div>';
 
         try {
             const response = await fetch(`/api/series/${seriesId}`);
@@ -5679,6 +5682,11 @@ async function renderSeriesDetail(seriesId) {
             });
         });
 
+        if (keepScroll) {
+            if (modalBody) modalBody.scrollTop = keepScroll.body;
+            window.scrollTo({ top: keepScroll.win, behavior: 'instant' });
+        }
+
         // La file de validation manuelle ouvre directement la même recherche que depuis
         // la fiche série, via ?review_volume=...; le contrôle reste entièrement manuel.
         const reviewParams = new URLSearchParams(window.location.search);
@@ -5750,7 +5758,7 @@ async function _updateSeriesMetadataFromBedetheque(seriesId, buttonEl, scope) {
             button.innerHTML = originalHtml;
             button.disabled = false;
             setSeriesActionsGearBusy(seriesId, false);
-            if (added.length && currentSeriesDetail && currentSeriesDetail.id === seriesId) await renderSeriesDetail(seriesId);
+            if (added.length && currentSeriesDetail && currentSeriesDetail.id === seriesId) await renderSeriesDetail(seriesId, { silent: true });
         } else if (data.success && data.already_running) {
             // Une écriture était déjà en cours pour cette série (voir la garde dans
             // _align_title_and_start_metadata_write): pas de nouveau thread lancé pour
