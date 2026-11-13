@@ -1604,7 +1604,7 @@ function renderNouveautesEvents(resetPage = true) {
     body.innerHTML = visible.map(e => {
         const html = e.type === 'ebdz' ? _nouveautesEbdzRowHtml(e, e._index) : e.type === 'rss' ? _nouveautesRssRowHtml(e) : _nouveautesTelegramRowHtml(e);
         const key = _nouveautesSeriesGroupKey(e);
-        return key ? html.replace(/<tr class="nouveautes-event-row/g, `<tr data-event-index="${e._index}" data-series-group="${escapeHtml(key)}" data-series-name="${escapeHtml(_nouveautesSeriesDisplayName(e))}" class="nouveautes-event-row`) : html;
+        return key ? html.replace(/<tr class="nouveautes-event-row/g, `<tr data-event-index="${e._index}" data-series-group="${escapeHtml(key)}" data-series-name="${escapeHtml(_nouveautesSeriesDisplayName(e))}" data-series-compact="${escapeHtml(_nouveautesCompactName(_nouveautesSeriesDisplayName(e)))}" class="nouveautes-event-row`) : html;
     }).join('');
     // « mets le nom de la série en premier et le nom du torrent en dessous, comme l'en-tête
     // de groupe » : la ligne série (logo Bédéthèque + nom + crayon) passe au-dessus du titre.
@@ -1648,6 +1648,21 @@ function _nouveautesGuessSeriesTitle(raw) {
     return name.length >= 2 ? name : '';
 }
 
+// « pourquoi sur le web ca a 32 albums » : un album rattaché à sa fiche Bédéthèque
+// (« Dragon Ball (Perfect Edition) ») et ses voisins au nom deviné (« Dragonball Perfect
+// Edition T05 ») ont des clés différentes. Même nom sans espaces ni ponctuation = même série.
+function _nouveautesCompactName(name) {
+    const compact = navNormalizeSearch(String(name || '')).replace(/[^a-z0-9]/g, '');
+    return compact.length >= 4 ? compact : '';
+}
+
+function _nouveautesSameSeriesRow(a, b) {
+    const key = a.dataset.seriesGroup;
+    if (key && b.dataset.seriesGroup === key) return true;
+    const compact = a.dataset.seriesCompact;
+    return !!compact && b.dataset.seriesCompact === compact;
+}
+
 function _nouveautesSeriesDisplayName(e) {
     const name = (e.type === 'ebdz' ? e.matched_series_title : e.series_title)
         || e.bedetheque_title || (e.vk && e.vk_topic) || e.parsed_title
@@ -1663,9 +1678,8 @@ function _groupNouveautesSeriesRows(body) {
     const rows = [...body.querySelectorAll(':scope > tr.nouveautes-event-row')];
     let i = 0;
     while (i < rows.length) {
-        const key = rows[i].dataset.seriesGroup;
         let j = i + 1;
-        while (key && j < rows.length && rows[j].dataset.seriesGroup === key) j++;
+        while (j < rows.length && _nouveautesSameSeriesRow(rows[j - 1], rows[j])) j++;
         const members = rows.slice(i, j);
         if (members.length > 1) {
             const first = members[0];
