@@ -378,17 +378,6 @@ aussi déclencher une passe d'acquisition immédiate pour tous ses tomes manquan
 
 ---
 
-### Technologies utilisées
-
-- **Back-end** : Flask 3.1.3, gunicorn 23, APScheduler 3.10.4 (tâches planifiées), Authlib 1.6.12 (OIDC)
-- **Base de données** : SQLite3 (WAL)
-- **Front-end** : HTML5, CSS3, JavaScript vanilla (pas de framework/build step)
-- **Scraping** : requests 2.33.0, BeautifulSoup 4.12.2, defusedxml 0.7.1
-- **Images/archives** : Pillow 12.3.0, PyMuPDF 1.26.7, rarfile 4.1, pypdf 6.19.0
-- **Telegram** : Telethon 1.36.0
-- **Chiffrement** : cryptography 50.0.0 (Fernet)
-- **Conteneurisation** : Docker
-
 ## 📊 Formats de fichiers supportés
 
 - ✅ `.cbz`, `.cbr`, `.zip`, `.rar`, `.pdf`
@@ -411,3 +400,18 @@ Exemples reconnus :
 Le renommage final (fichiers et dossiers) suit ensuite les templates configurables de
 l'onglet `Format`, générés à partir des métadonnées Bédéthèque plutôt que du nom
 d'origine.
+
+---
+
+## 🛠️ Technologies utilisées
+
+- **Back-end** : Flask 3.1.3, gunicorn 23, APScheduler 3.10.4 (tâches planifiées), Authlib 1.9.1 (OIDC)
+- **Base de données** : SQLite3 (WAL)
+- **Front-end** : HTML5, CSS3, JavaScript vanilla (pas de framework/build step)
+- **Scraping** : requests 2.33.0, BeautifulSoup 4.12.2, defusedxml 0.7.1
+- **Images/archives** : Pillow 13.0.0, PyMuPDF 1.26.7, rarfile 4.1, pypdf 6.21.4
+- **Upscaling** : ONNX Runtime 1.x et NumPy 2 (modèles Real-ESRGAN et Real-CUGAN au format ONNX)
+- **Tags par IA** : SDK Anthropic 2.5.0 (Claude) ; les autres fournisseurs passent par leur API HTTP
+- **Telegram** : Telethon 1.36.0
+- **Chiffrement** : cryptography 50.0.0 (Fernet)
+- **Conteneurisation** : Docker
