@@ -801,9 +801,41 @@ function _channelStateLabel(state) {
     return state.enabled ? 'activé' : 'désactivé';
 }
 
+async function loadNotificationSiteUrl() {
+    const input = document.getElementById('notificationSiteUrl');
+    if (!input) return;
+    try {
+        const data = await (await fetch('/api/notifications/site-url')).json();
+        input.value = data.site_url || '';
+        input.placeholder = data.learned || window.location.origin;
+    } catch (error) {
+        console.error('Erreur chargement adresse des liens:', error);
+    }
+}
+
+async function saveNotificationSiteUrl() {
+    const input = document.getElementById('notificationSiteUrl');
+    try {
+        const response = await fetch('/api/notifications/site-url', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({site_url: input.value.trim()}),
+        });
+        const data = await response.json();
+        if (data.success) {
+            input.value = data.site_url || '';
+            showMessage('notificationSiteUrlMessage', '✅ Adresse enregistrée', 'success');
+        } else {
+            showMessage('notificationSiteUrlMessage', '❌ ' + data.error, 'error');
+        }
+    } catch (error) {
+        showMessage('notificationSiteUrlMessage', '❌ Erreur lors de la sauvegarde', 'error');
+    }
+}
+
 async function loadNotificationEvents() {
     const body = document.getElementById('notificationEventsBody');
     if (!body) return;
+    loadNotificationSiteUrl();
     try {
         const data = await (await fetch('/api/notifications/events')).json();
         if (!data.success) throw new Error(data.error || 'Erreur');
@@ -880,7 +912,6 @@ function _ntfyFormValues() {
         username: document.getElementById('ntfyUsername').value.trim(),
         password: document.getElementById('ntfyPassword').value,
         priority: Number(document.getElementById('ntfyPriority').value) || 3,
-        site_url: document.getElementById('ntfySiteUrl').value.trim(),
     };
 }
 
@@ -895,9 +926,6 @@ async function loadNtfySettings() {
         document.getElementById('ntfyUsername').value = config.username || '';
         document.getElementById('ntfyPassword').value = config.password || '';
         document.getElementById('ntfyPriority').value = String(config.priority || 3);
-        const siteInput = document.getElementById('ntfySiteUrl');
-        siteInput.value = config.site_url || '';
-        siteInput.placeholder = config.site_url_learned || window.location.origin;
         updateNtfyAuthFields();
     } catch (error) {
         showMessage('ntfyMessage', '❌ Erreur lors du chargement de la configuration ntfy', 'error');

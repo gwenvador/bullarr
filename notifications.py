@@ -74,14 +74,46 @@ def remember_public_url(url_root):
 def public_url():
     """Adresse de Bullarr pour les liens des notifications (sans / final) : celle saisie
     dans Configuration → Notifications → ntfy, sinon celle apprise du navigateur, sinon ''."""
+    return configured_public_url() or learned_public_url()
+
+
+_SITE_URL_FILE = 'notifications_config.json'
+
+
+def _site_url_path():
+    import os
+    from flask import current_app
+    return os.path.join(current_app.config['DATA_DIR'], _SITE_URL_FILE)
+
+
+def configured_public_url():
+    """Adresse saisie dans Configuration → Notifications → Liens, ou ''. Reprend une fois
+    l'ancien champ de la carte ntfy (site_url) s'il avait été rempli."""
+    import json, os
     try:
-        from blueprints.ntfy.routes import load_ntfy_config
-        configured = (load_ntfy_config().get('site_url') or '').strip().rstrip('/')
-        if configured:
-            return configured
+        path = _site_url_path()
+        if os.path.exists(path):
+            with open(path, encoding='utf-8') as f:
+                return (json.load(f).get('site_url') or '').strip().rstrip('/')
+        from blueprints.ntfy.routes import load_ntfy_config, save_ntfy_config
+        cfg = load_ntfy_config()
+        legacy = (cfg.pop('site_url', '') or '').strip().rstrip('/')
+        if save_configured_public_url(legacy) and legacy:
+            save_ntfy_config(cfg)
+        return legacy
     except Exception:
-        pass
-    return learned_public_url()
+        return ''
+
+
+def save_configured_public_url(value):
+    import json
+    try:
+        with open(_site_url_path(), 'w', encoding='utf-8') as f:
+            json.dump({'site_url': value or ''}, f, indent=4)
+        return True
+    except OSError as exc:
+        print(f"Erreur sauvegarde adresse des liens : {exc}")
+        return False
 
 
 def learned_public_url():

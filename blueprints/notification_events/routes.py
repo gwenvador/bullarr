@@ -54,3 +54,20 @@ def save_notification_events():
     from blueprints.library.scheduler import sync_auto_import_schedule
     sync_auto_import_schedule()
     return jsonify({'success': True})
+
+
+@notification_events_bp.route('/site-url', methods=['GET', 'POST'])
+def notification_site_url():
+    """Adresse de Bullarr utilisée pour les liens des notifications (tous les canaux)."""
+    from notifications import configured_public_url, learned_public_url, save_configured_public_url
+    if request.method == 'GET':
+        return jsonify({'success': True, 'site_url': configured_public_url(), 'learned': learned_public_url()})
+    from blueprints.ntfy.routes import normalize_server_url
+    value = ((request.get_json(silent=True) or {}).get('site_url') or '').strip()
+    if value:
+        value = normalize_server_url(value)
+        if not value:
+            return jsonify({'success': False, 'error': 'Adresse invalide (http:// ou https://)'}), 400
+    if not save_configured_public_url(value):
+        return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
+    return jsonify({'success': True, 'site_url': value})

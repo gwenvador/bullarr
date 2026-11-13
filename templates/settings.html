@@ -1609,6 +1609,23 @@
                         <!-- Une ligne par type de notification, une case par canal (voir
                              blueprints/notification_events et notifications.EVENTS). Chaque
                              changement est enregistré aussitôt. -->
+                        <!-- "si c'est pour les 2 alors met la config ailleurs que dans ntfy" :
+                             réglage commun à tous les canaux (notifications.public_url). -->
+                        <div class="settings-card" id="notificationLinksCard">
+                            <h3 class="notification-channel-title">Liens</h3>
+                            <div class="form-group">
+                                <label for="notificationSiteUrl">Adresse de Bullarr</label>
+                                <input type="url" id="notificationSiteUrl" placeholder="https://bullarr.example.com" autocomplete="off">
+                                <small class="help-text">Pour le lien vers la fiche de la série dans les notifications, sur tous les canaux. Vide : l'adresse vue par votre navigateur.</small>
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn" onclick="saveNotificationSiteUrl()">
+                                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></svg> Sauvegarder
+                                </button>
+                            </div>
+                            <div id="notificationSiteUrlMessage" class="message"></div>
+                        </div>
+
                         <div class="settings-card" id="notificationEventsCard">
                             <h3 class="notification-channel-title">Événements</h3>
                             <p class="help-text" style="margin:0 0 14px;">Choisissez ce que chaque canal reçoit. Un canal se configure et s'active dans sa carte, plus bas.</p>
@@ -1692,12 +1709,6 @@
                                     <input type="text" id="ntfyTopic" placeholder="ex: bullarr-7f3k9q" maxlength="64" autocomplete="off">
                                     <small class="help-text">Sur ntfy.sh, un topic est public : choisissez un nom difficile à deviner</small>
                                 </div>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="ntfySiteUrl">Adresse de Bullarr</label>
-                                <input type="url" id="ntfySiteUrl" placeholder="https://bullarr.example.com" autocomplete="off">
-                                <small class="help-text" id="ntfySiteUrlHelp">Utilisée pour le lien vers la fiche de la série dans les notifications (ntfy et Telegram). Vide : l'adresse vue par votre navigateur.</small>
                             </div>
 
                             <div class="form-row">
