@@ -174,9 +174,9 @@ function compareVolumeChanged() {
 }
 
 function compareLoadPage() {
-    const volumeId = document.getElementById('compareVolume').value;
-    if (!volumeId) return;
-    const page = Math.max(1, Number(document.getElementById('comparePage').value) || 1);
+    const volumeId = Number.parseInt(document.getElementById('compareVolume').value, 10);
+    if (!Number.isInteger(volumeId) || volumeId <= 0) return;
+    const page = Math.max(1, Math.trunc(Number(document.getElementById('comparePage').value)) || 1);
     document.getElementById('compareZone').hidden = true;
     document.getElementById('compareImage').src = `/api/volumes/${volumeId}/reader/page/${page}`;
     document.getElementById('compareGrid').innerHTML = '<p class="upscaling-muted">Placez la zone sur la page puis cliquez sur « Comparer ».</p>';
@@ -204,9 +204,9 @@ function compareMoveZone(event) {
 }
 
 async function compareRun() {
-    const volumeId = document.getElementById('compareVolume').value;
-    if (!volumeId) return;
-    const page = Math.max(1, Number(document.getElementById('comparePage').value) || 1);
+    const volumeId = Number.parseInt(document.getElementById('compareVolume').value, 10);
+    if (!Number.isInteger(volumeId) || volumeId <= 0) return;
+    const page = Math.max(1, Math.trunc(Number(document.getElementById('comparePage').value)) || 1);
     const run = ++compareState.run;
     const models = ['original', ..._upOrder().filter(key => upscalingData.models?.[key]?.present !== false)];
     const grid = document.getElementById('compareGrid');

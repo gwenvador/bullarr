@@ -2469,7 +2469,7 @@ def upscale_preview():
         crop = upscale.preview_crop(data, cx, cy)
         result = upscale.preview((volume_id, number, round(cx, 3), round(cy, 3), os.path.getmtime(row['filepath'])), crop, model)
     except IndexError as e:
-        return jsonify({'success': False, 'error': str(e)}), 404
+        return jsonify({'success': False, 'error': error_message(e, 'Page introuvable')}), 404
     except Exception as e:  # noqa: BLE001 - montré à côté de l'aperçu
         return jsonify({'success': False, 'error': error_message(e, 'Aperçu impossible')}), 500
     response = current_app.response_class(result, mimetype='image/jpeg')

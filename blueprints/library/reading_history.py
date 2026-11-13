@@ -379,7 +379,7 @@ def import_reading_history():
     try:
         rows = parse_csv(upload.read())
     except (csv.Error, UnicodeError) as e:
-        return jsonify({'success': False, 'error': f'CSV illisible : {e}'}), 400
+        return jsonify({'success': False, 'error': error_message(e, 'CSV illisible')}), 400
     if rows and 'serie' not in rows[0] and 'komga_book_id' not in rows[0]:
         return jsonify({'success': False, 'error': "Colonnes attendues : celles d'un export de l'historique (serie, fichier, page, lu…)"}), 400
     source, user_key = _request_source()
