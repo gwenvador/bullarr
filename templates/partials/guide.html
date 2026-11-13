@@ -11,11 +11,11 @@
       <li><a href="#fonctions">Fonctions</a></li>
       <li><a href="#tags-listes">Tags et listes</a></li>
       <li><a href="#import">Import automatique</a></li>
-      <li><a href="#ai">Bullarr et IA (MCP)</a></li>
+      <li><a href="#ai">Bullarr et IA (tags, MCP)</a></li>
       <li><a href="#api">API</a></li>
       <li><a href="#android">Application Android</a></li>
       <li><a href="#upscaling">Upscaling</a></li>
-      <li><a href="#securite">Sécurité</a></li>
+      <li><a href="#securite">Sécurité, comptes et thèmes</a></li>
     </ol>
   </nav>
 
@@ -76,6 +76,14 @@
           <h3>🕓 Historique</h3>
           <p>Imports et actions (renommage, suppression, déplacement) sont journalisés.</p>
         </div>
+        <div class="guide-card">
+          <h3>✨ Upscaling</h3>
+          <p>Pastille LD / SD / HD et filtre Qualité dans la bibliothèque. <em>Actions → Upscaling</em> améliore les tomes en basse définition sur le serveur, le bouton HD du lecteur le fait à la volée. Détails dans la section <a href="#upscaling">Upscaling</a>.</p>
+        </div>
+        <div class="guide-card">
+          <h3>📑 Lectures</h3>
+          <p><em>Suivi → Lectures</em> liste l'historique de lecture du compte, avec export et import CSV. Un tome ou une série se marque comme lu depuis la bibliothèque.</p>
+        </div>
       </div>
     </section>
 
@@ -95,7 +103,17 @@
     </section>
 
     <section id="ai">
-      <h2><span class="guide-num">6</span> Bullarr et IA (serveur MCP)</h2>
+      <h2><span class="guide-num">6</span> Bullarr et IA</h2>
+      <h3>Tags par IA</h3>
+      <p>Dans <strong>Configuration → IA</strong>, choisissez un fournisseur. aiautotagging.com, proposé par défaut, est gratuit et ne demande ni clé ni compte. Vous pouvez aussi utiliser Claude (Anthropic), Gemini (Google), ChatGPT (OpenAI), OpenRouter (modèles gratuits compris), Groq ou un LLM local (Ollama, LM Studio, llama.cpp, vLLM) : collez votre clé API ou l'adresse du serveur local, puis « Tester ». La clé est chiffrée sur le disque de votre serveur ; ↻ lit la liste des modèles disponibles. Cochez des IA de secours : quand un fournisseur échoue (quota, panne, clé refusée), le suivant prend le relais. Les consignes envoyées à l'IA sont modifiables.</p>
+      <ul>
+        <li><strong>Créer les tags</strong> : pour les séries sans tags (leur nombre est affiché) ou pour toutes. L'IA lit le titre, les auteurs, le genre et le résumé et réutilise le vocabulaire existant. Les tags proposés s'ajoutent, rien n'est retiré.</li>
+        <li><strong>Normaliser les tags</strong> : l'IA regroupe les tags qui veulent dire la même chose et propose un tag commun. Rien ne change avant votre validation.</li>
+        <li><strong>Nouvelles séries</strong> : une option tague automatiquement chaque série ajoutée (Bédéthèque, import ou scan), dès son arrivée.</li>
+        <li><strong>Historique</strong> : chaque traitement est journalisé avec les séries modifiées et les tags ajoutés.</li>
+      </ul>
+      <div class="guide-note">Les appels sont facturés par le fournisseur choisi, sur votre clé. Seuls le titre, les auteurs, le genre, l’année, l’origine, le résumé et les tags sont envoyés, jamais les fichiers.</div>
+      <h3>Serveur MCP</h3>
       <p>Bullarr expose un serveur <a href="https://modelcontextprotocol.io">MCP</a> à l'adresse <code>/mcp</code> de votre instance. Il permet à Claude, ou à un autre assistant compatible, de chercher dans votre bibliothèque, de lire une fiche, de lister les tags et de les modifier, et de gérer les listes.</p>
       <div class="guide-table">
         <table>
@@ -109,7 +127,7 @@
           </tbody>
         </table>
       </div>
-      <h3>Activer le serveur</h3>
+      <h4>Activer le serveur</h4>
       <ol class="guide-steps">
         <li>Dans le <code>.env</code> de Bullarr, définissez <code>BULLARR_MCP_TOKEN</code> avec une chaîne aléatoire, puis redémarrez. Sans ce jeton, <code>/mcp</code> répond <code>503</code>.</li>
         <li>Ajoutez le serveur dans Claude Code :</li>
@@ -127,9 +145,9 @@
 
     <section id="android">
       <h2><span class="guide-num">8</span> Application Android</h2>
-      <p>L'application pilote Bullarr depuis le téléphone : bibliothèque, fiches, recherche, téléchargements, import et réglages. Elle lit vos albums en plein écran (mode webtoon compris) et peut les copier sur le téléphone pour les lire hors ligne, même sans réseau.</p>
+      <p>L'application pilote Bullarr depuis le téléphone : bibliothèque, fiches, recherche, téléchargements, import et réglages. Elle lit vos albums en plein écran (webtoon, sens manga, double page en paysage, tome suivant), les copie sur le téléphone pour les lire hors ligne, et peut recevoir des notifications instantanées (imports, validations, tomes surveillés) via l'app ntfy.</p>
       <ol class="guide-steps">
-        <li>Installez-la depuis le <a href="https://gwenvador.github.io/bullarr-android/repo/">dépôt F-Droid</a>, ou téléchargez l'<a href="https://github.com/gwenvador/bullarr-android/releases/latest">APK</a>.</li>
+        <li>Installez-la depuis le <a href="https://gwenvador.github.io/bullarr-android/repo/">dépôt F-Droid</a>, avec <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/gwenvador/bullarr-android">Obtainium</a> (ajoutez <code>https://github.com/gwenvador/bullarr-android</code> : l'APK vient des releases GitHub et les mises à jour sont signalées), ou téléchargez l'<a href="https://github.com/gwenvador/bullarr-android/releases/latest">APK</a>.</li>
         <li>Au premier lancement, indiquez l'adresse de votre serveur (par exemple <code>http://192.168.1.10:4000</code>) et votre clé API, puis « Tester » et « Enregistrer ».</li>
       </ol>
     </section>
@@ -150,9 +168,21 @@
       <h2><span class="guide-num">10</span> Sécurité et authentification</h2>
       <ul>
         <li>Les secrets (mots de passe, clés API) sont chiffrés sur disque.</li>
-        <li>L'authentification est facultative et désactivée par défaut. Vous pouvez activer un identifiant et un mot de passe, un SSO OIDC, ou les deux, dans <strong>Configuration</strong> → <em>Login</em>.</li>
+        <li>L'authentification est facultative et désactivée par défaut. Activez-la dans <strong>Configuration</strong> → <em>Login</em> : comptes locaux (identifiant et mot de passe), avec en option un bouton SSO OIDC.</li>
         <li>Le serveur MCP et l'API utilisent chacun leur propre jeton ou clé, distincts de la session du navigateur.</li>
       </ul>
+      <h3>Comptes, demandes et contrôle parental</h3>
+      <ul>
+        <li><strong>Utilisateurs et rôles</strong> (Configuration → Login) : comptes locaux à créer, modifier ou supprimer ; comptes OIDC avec un rôle par groupe (<code>admin_group</code>) ou forcé par compte.</li>
+        <li><strong>Lecteurs</strong> : ils parcourent, lisent et téléchargent, ont leurs propres listes « À lire plus tard » et Favoris, et demandent des BD depuis la page <em>Demandes</em>. Les menus d'administration leur sont masqués.</li>
+        <li><strong>Demandes de BD</strong> : elles attendent votre validation dans la page <em>Validation</em> (bibliothèque au choix, refus avec motif), ou sont validées automatiquement si vous cochez l'option. Une fois validée, la série est ajoutée et sa recherche lancée.</li>
+        <li><strong>Inscription ouverte</strong> (option) : un lien « Créer un compte » sur la page de connexion ; le compte reste en attente jusqu'à ce qu'un admin le valide.</li>
+        <li><strong>Contrôle parental</strong> : bibliothèques visibles et genres masqués par lecteur, avec un préréglage « Enfant ».</li>
+        <li><strong>Mon profil</strong> : nom, e-mail, mot de passe, avatar (photo ou avatar proposé) et compte Komga personnel. Bullarr crée une clé API Komga à votre nom et ne garde jamais le mot de passe ; sans compte Komga, votre avancement de lecture est gardé par Bullarr.</li>
+        <li><strong>Historique</strong> : onglets Utilisateurs (connexions, comptes, rôles, accès) et Demandes.</li>
+      </ul>
+      <h3>Thèmes</h3>
+      <p><strong>Configuration → Thème</strong> propose cinq palettes, Atelier, Ardoise, Sauge, Océan et Prune, chacune en clair, en sombre ou en mode <em>Système</em>, qui suit le réglage clair ou sombre de l'appareil et change en direct. Le choix est gardé dans le navigateur. L'application Android a les mêmes palettes dans ses réglages.</p>
     </section>
   </article>
 </div>

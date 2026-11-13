@@ -30,6 +30,13 @@ Règles :
 - **Gestion de la clé :** la clé ne peut pas se lire, se régénérer ni se supprimer elle-même. Ces actions (`GET`, `POST` et `DELETE` `/api/auth/api-key`) demandent une session ouverte dans le navigateur.
 - **Stockage :** la clé est chiffrée sur le disque, dans `data/oidc_config.json`. La régénérer coupe immédiatement l'ancienne.
 
+### Clé personnelle d'un compte
+
+Chaque compte peut aussi avoir sa propre clé, créée dans **Mon profil**. Elle agit avec les droits de ce compte (rôle lecteur, bibliothèques visibles, genres masqués) au lieu des droits complets de la clé générale.
+
+- `GET`, `POST` et `DELETE` `/api/auth/profile/api-key` : lire, créer (ou remplacer) et supprimer la clé du compte connecté. Comme pour la clé générale, ces routes demandent une session ouverte dans le navigateur.
+- `POST /api/auth/token` avec `{"username": "...", "password": "..."}` : un compte local obtient sa clé personnelle (créée au besoin) avec son identifiant et son mot de passe. C'est ce qu'utilise l'extension Mihon / Tachiyomi. Réponses : `400` si la connexion par mot de passe n'est pas activée, `401` si les identifiants sont faux, `403` si le compte attend sa validation, `429` après trop d'échecs.
+
 ### Connexion SSO d'une application (sans clé API)
 
 Pour une application mobile qui doit passer par le SSO du navigateur (passkeys) :
@@ -107,6 +114,7 @@ Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà
 | `GET /api/libraries` | Bibliothèques, avec `series_count` et `volumes_count`. |
 | `GET /api/library/<library_id>/series` | Séries d'une bibliothèque (liste), avec `total_size` (octets des fichiers) et `total_votes` (somme des votes Bédéthèque de leurs tomes, pour trier par popularité). |
 | `GET /api/library/<library_id>/stats` | Statistiques. |
+| `GET /api/catalog/series` | Catalogue léger et paginé des séries qui ont au moins un tome sur le disque, pour les clients externes. Paramètres : `q` (titre ou auteur, sans accents), `sort` (`title`, `added`, `updated`), `page` (à partir de 1), `size` (1 à 100), `library_id` (facultatif). |
 | `GET /api/series/<series_id>` | Détail d'une série, avec les données Bédéthèque. |
 | `GET /api/series/<series_id>/volumes` | Tomes : fichier, format, numéro, métadonnées. |
 | `PUT /api/series/<series_id>/tags` | Remplace les tags d'une série (`{"tags": ["famille", "satire"]}`). |
@@ -127,6 +135,25 @@ Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà
 2. `POST /api/bedetheque/add-series` avec `{"url": "<url Bédéthèque>", "library_id": 2}` l'ajoute.
 
 > Si « Recherche automatique à l'ajout » est activée dans les réglages, l'ajout lance aussi la recherche et le téléchargement des tomes manquants. Ajoutez `"skip_auto_acquire": true` pour l'éviter.
+
+### Historique de lecture
+
+| Route | Rôle |
+|---|---|
+| `GET /api/reading-history` | Tomes lus ou commencés par le compte courant, du plus récent au plus ancien (`page`, `pages_count`, `completed`, `read_at`). `library_id` facultatif. |
+| `GET /api/reading-history/export.csv` | Export CSV de cet historique. |
+| `POST /api/reading-history/import` | Import d'un CSV au même format. |
+| `GET /api/reading-history/users` | Administrateur : comptes dont on peut afficher l'historique (`?user=` sur les routes ci-dessus). |
+
+### Upscaling
+
+| Route | Rôle |
+|---|---|
+| `POST /api/volumes/<volume_id>/upscale` | Met un tome en file d'upscaling sur le serveur (`{"model": "quality"}`, facultatif). Le CBZ est remplacé par la version HD, l'original est gardé de côté. |
+| `DELETE /api/volumes/<volume_id>/upscale` | Annule l'upscaling en attente ou en cours. |
+| `POST /api/upscale/batch` | Plusieurs tomes d'un coup : `items` = `[{"volume_id": 12, "model": "quality"}]`, ou `volume_ids` avec `model`. `downscale` = `{"target": ..., "keep": ...}` pour réduire des tomes trop lourds. |
+| `GET /api/volumes/<volume_id>/upscale/backup/info` | Original gardé de côté (pour comparer). |
+| `GET /api/volumes/<volume_id>/upscale/backup/page/<n>` | Page `n` de l'original. |
 
 ## Recherche de fichiers
 

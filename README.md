@@ -19,7 +19,8 @@ tomes manquants.
   dans les archives, badge de complétude par série
 - 📥 **Import automatique** : surveillance de dossiers (aMule, torrents, Telegram, sources web),
   détection de série/tome, conversion cbr/rar/pdf/zip → cbz, remplacement par format
-  préféré (cbz > cbr/rar > pdf), choix déplacement ou hardlink, historique + annulation
+  préféré (cbz > cbr/rar > pdf), choix déplacement ou hardlink, historique + annulation.
+  Les tomes Bis, Ter, a, b (« T13Bis », « 13 ter ») ont leur propre emplacement, après le tome N
 - 🔍 **Recherche multi-sources** : forum [EBDZ.net](https://ebdz.net) (liens ed2k),
   [Prowlarr](https://prowlarr.com/), canaux Telegram dédiés et sources web :
   [fourtoutici.cc](https://fourtoutici.cc), Anna's Archive (via Shelfmark) et le forum VK
@@ -39,7 +40,14 @@ tomes manquants.
   compte Komga depuis son profil ; sans Komga, l'avancement de lecture est gardé par Bullarr
 - 📖 **Lecteur de BD intégré** : lecture des CBZ, CBR et PDF directement dans Bullarr, une ou
   deux pages côte à côte, zoom, ajustement (page, largeur, hauteur), bande de miniatures, plein
-  écran ; la touche `?` affiche les raccourcis
+  écran ; la touche `?` affiche les raccourcis. Bouton **HD** pour améliorer les pages à la
+  volée dans le navigateur
+- 🔖 **Historique de lecture** : Suivi → Lectures, tomes lus par compte, export et import CSV ;
+  un tome ou une série se marque comme lu depuis la bibliothèque
+- ✨ **Upscaling** : définition réelle des pages mesurée (pastille LD / SD / HD, filtre
+  Qualité) ; Actions → Upscaling améliore les tomes en basse définition sur le serveur
+  (8 modèles Real-ESRGAN / Real-CUGAN, par album ou par série), réduit les tomes trop lourds
+  et compare l'original et la nouvelle version page par page
 - ✏️ **Renommage configurable** : templates de nommage fichiers/dossiers à partir des
   métadonnées Bédéthèque
 - ✅ **Vérification de bibliothèque** : détection des séries sans métadonnées, noms non
@@ -65,13 +73,15 @@ tomes manquants.
   taguer automatiquement chaque nouvelle série (Configuration → IA)
 - 🖼️ **Vue Affiches** : grille de couvertures avec statut, sélection multiple, filtres Statut,
   Origine (BD, Comics, Manga) et Listes, et « Continuer la lecture » synchronisé avec Komga
-- 🔔 **Notifications** : ntfy et notifications instantanées pour l'application Android
-  (UnifiedPush), par événement
+- 🔔 **Notifications** : Telegram, ntfy et notifications instantanées pour l'application
+  Android (UnifiedPush), par événement, avec un lien vers la fiche Bullarr de la BD
 - 🤖 **Claude et ChatGPT (serveur MCP)** : chercher dans la bibliothèque, lire une fiche, créer
   des tags et gérer les listes, voir [🤖 Serveur MCP](#-serveur-mcp-claude-et-chatgpt)
 - 🐳 **100 % Docker**, base SQLite (aucune base externe à gérer)
 - 🔌 **API** : toutes les fonctions de l'interface pilotables par une application externe
-  avec une clé API — voir [📖 la documentation de l'API](docs/API.md)
+  avec une clé API (générale ou propre à chaque compte) — voir
+  [📖 la documentation de l'API](docs/API.md). Extension **Mihon / Tachiyomi** téléchargeable
+  depuis Configuration → À propos
 - 📱 **Application Android** : bibliothèque, recherche, téléchargements, import et réglages
   depuis le téléphone — voir [Application Android](#-application-android)
 
@@ -190,7 +200,7 @@ est optionnelle et désactivée tant qu'elle n'est pas explicitement activée.
 | 🔌 Indexeurs | Sources de recherche et de Nouveautés : Prowlarr, EBDZ.net, Telegram (canaux), Flux RSS, Web Archive (fourtoutici.cc, Anna's Archive, forum VK) |
 | 💻 Clients | Clients de téléchargement : aMule/eMule, qBittorrent, rTorrent, Deluge, Shelfmark |
 | 🧩 Intégrations | Komga : rescan après import, envoi de la page lue |
-| 📱 Notifications | Notifications Telegram (bot) |
+| 📱 Notifications | Telegram (bot) et ntfy, par événement. Carte **Liens** : adresse publique de Bullarr utilisée dans les liens des notifications (vide : l'adresse vue par le navigateur) |
 | 🔐 Login | Authentification : comptes locaux, avec SSO OIDC en option (désactivée par défaut). Carte **Utilisateurs et rôles** : comptes, rôles, inscription, demandes de BD, contrôle parental. La page de connexion affiche le formulaire et/ou un bouton SSO ; la redirection automatique vers le SSO est une option, désactivée par défaut. Carte **Accès API** : clé pour les applications externes |
 | 📊 Surveillance | Détection et acquisition automatique des tomes manquants |
 | 📥 Imports | Activation et règles de l'import automatique de fichiers |
@@ -300,8 +310,10 @@ inutile de forcer un scan manuel côté Komga.
 ### 🔌 API
 
 Bullarr se pilote aussi par une API HTTP/JSON (application mobile, scripts, domotique) :
-générez une clé dans **Configuration** → `Login` → **Accès API**, puis envoyez-la dans
-l'en-tête `X-Api-Key`.
+générez une clé dans **Configuration** → `Login` → **Accès API** (clé générale) ou dans
+**Mon profil** (clé propre au compte, avec ses droits), puis envoyez-la dans l'en-tête
+`X-Api-Key`. Un compte local peut aussi obtenir sa clé avec son identifiant et son mot de
+passe (`POST /api/auth/token`), comme le fait l'extension Mihon / Tachiyomi.
 
 - 📖 [Documentation de l'API](docs/API.md) : authentification, conventions, téléchargements,
   import, bibliothèque, recherche, Nouveautés, exemples `curl` et Python
@@ -315,13 +327,13 @@ recherche sur toutes les sources avec envoi au bon client, suivi des télécharg
 (pause, reprise, « en premier »), import, Nouveautés, Enrichir, surveillance, vérification
 et réglages.
 
-- **APK** : `bullarr-android-<version>.apk`, joint aux
-  [releases](https://github.com/gwenvador/bullarr/releases) (actuellement
-  [bullarr-android-1.0.apk](https://github.com/gwenvador/bullarr/releases/download/v8.0/bullarr-android-1.0.apk),
-  dans la release v8.0). Android 8 ou plus récent ; autorisez l'installation
-  d'applications inconnues, ou `adb install -r bullarr-android-1.0.apk`.
-- **Premier lancement** : adresse du serveur (par exemple `http://192.168.1.10:4000`) et
-  clé API (**Configuration** → `Login` → **Accès API**), puis « Tester » et « Enregistrer ».
+- **Installation** : dépôt F-Droid `https://gwenvador.github.io/bullarr-android/repo/`,
+  [Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/gwenvador/bullarr-android),
+  ou l'APK `bullarr-android-<version>.apk` de la
+  [dernière release](https://github.com/gwenvador/bullarr-android/releases/latest).
+  Android 8 ou plus récent ; les mises à jour se proposent dans l'application.
+- **Premier lancement** : adresse du serveur (par exemple `http://192.168.1.10:4000`), puis
+  connexion par identifiant, SSO ou clé API, « Tester » et « Enregistrer ».
   L'adresse et la clé sont chiffrées sur le téléphone.
 - **Code source** : [github.com/gwenvador/bullarr-android](https://github.com/gwenvador/bullarr-android)
   (Kotlin, Jetpack Compose ; identifiant `io.github.gwenvador.bullarr`).
