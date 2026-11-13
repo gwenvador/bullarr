@@ -127,6 +127,8 @@ Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà
 | `GET /api/volumes/<volume_id>/reader` | Lecteur : titre et nombre de pages d'un tome (CBZ, CBR ou PDF). |
 | `GET /api/volumes/<volume_id>/reader/page/<n>` | Lecteur : image de la page `n` (à partir de 1). |
 | `GET /api/volumes/<volume_id>/reader/thumb/<n>` | Lecteur : miniature de la page `n`. |
+| `POST /api/volumes/<volume_id>/read-status` | Marque un tome comme lu ou non lu (`{"read": true}`). |
+| `GET /api/export/volumes.csv` | Export CSV de toutes les BD présentes sur le disque, avec les données de l'album et de sa série (`?library_id=` facultatif). |
 | `POST /api/volumes/<volume_id>/reader/progress` | Envoie à Komga la page lue (`{"page": 12, "completed": false}`). Répond `synced: false` si Komga est désactivé, si l'envoi est coupé ou si le tome n'y est pas rattaché. |
 
 ### Ajouter une série
@@ -152,8 +154,30 @@ Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà
 | `POST /api/volumes/<volume_id>/upscale` | Met un tome en file d'upscaling sur le serveur (`{"model": "quality"}`, facultatif). Le CBZ est remplacé par la version HD, l'original est gardé de côté. |
 | `DELETE /api/volumes/<volume_id>/upscale` | Annule l'upscaling en attente ou en cours. |
 | `POST /api/upscale/batch` | Plusieurs tomes d'un coup : `items` = `[{"volume_id": 12, "model": "quality"}]`, ou `volume_ids` avec `model`. `downscale` = `{"target": ..., "keep": ...}` pour réduire des tomes trop lourds. |
+| `POST /api/volumes/<volume_id>/downscale` | Réduit un tome trop lourd (`{"target": 2400, "keep": true}`) : pages ramenées à `target` px et réencodées en JPEG ; `keep: false` supprime l'original une fois la version réduite vérifiée. Même file que l'upscaling. |
+| `POST /api/volumes/<volume_id>/upscale/restore` | Remet la version SD gardée à la place de la version HD. |
+| `GET /api/upscale/jobs` | File d'attente : en attente, en cours, récemment terminés. |
+| `GET /api/upscale/volumes` | Tomes en basse définition, versions SD gardées et file (données de la page Upscaling). |
 | `GET /api/volumes/<volume_id>/upscale/backup/info` | Original gardé de côté (pour comparer). |
 | `GET /api/volumes/<volume_id>/upscale/backup/page/<n>` | Page `n` de l'original. |
+
+### Demandes de BD
+
+Un lecteur demande une série, un administrateur la valide ou la refuse.
+
+| Route | Rôle |
+|---|---|
+| `GET /api/requests` | Demandes, filtrables par `?status=` (par exemple `pending` ou `rejected`). Un lecteur ne voit que les siennes. |
+| `POST /api/requests` | Nouvelle demande : `{"url": "<adresse de la série sur bedetheque.com>", "title": "..."}`. |
+| `POST /api/requests/lookup` | Pour des résultats Bédéthèque (`{"urls": [...]}`) : déjà dans la bibliothèque, déjà demandé. |
+| `POST /api/requests/<request_id>/approve` | Administrateur : valide et ajoute la série (`{"library_id": 2}` facultatif). |
+| `POST /api/requests/<request_id>/reject` | Administrateur : refuse (`{"reason": "..."}` facultatif). |
+| `DELETE /api/requests/<request_id>` | Annule une demande encore en attente. |
+| `GET /api/requests/pending-count` | Demandes de BD et de compte à valider (cloche de l'en-tête). |
+
+### Version
+
+`GET /api/updates` : version installée et dernières versions publiées de Bullarr et de l'application Android.
 
 ## Recherche de fichiers
 

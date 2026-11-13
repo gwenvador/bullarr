@@ -1,6 +1,4 @@
-<p align="center"><img src="static/img/bullarr-icon.png" alt="Bullarr" width="160"></p>
-
-<h1 align="center">Bullarr</h1>
+<h1><img src="static/img/bullarr-icon.png" alt="" height="72" align="center"> Bullarr</h1>
 
 > **Gestionnaire self-hosted de bibliothèque BD : métadonnées Bédéthèque, intégration Komga, recherche multi-sources et acquisition automatique façon Sonarr/Radarr**
 
