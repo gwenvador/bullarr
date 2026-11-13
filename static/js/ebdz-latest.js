@@ -1632,15 +1632,26 @@ function _nouveautesSeriesGroupKey(e) {
     // VK sans série reconnue : les fichiers d'un même sujet (« THE SMURFS (English) ») vont ensemble.
     if (e.vk && e.vk_topic) return `vk:${navNormalizeSearch(String(e.vk_topic))}`;
     const title = e.type === 'ebdz'
-        ? (e.matched_series_title || e.bedetheque_title || e.title)
-        : (e.series_title || e.bedetheque_title || e.parsed_title);
+        ? (e.matched_series_title || e.bedetheque_title || _nouveautesGuessSeriesTitle(e.title) || e.title)
+        : (e.series_title || e.bedetheque_title || e.parsed_title || _nouveautesGuessSeriesTitle(e.title || e.filename));
     const norm = title ? navNormalizeSearch(String(title)) : '';
     return norm ? `t:${norm}` : null;
 }
 
+// « pourquoi c'est pas ensemble? » : une release RSS sans série reconnue (« Dragonball
+// Perfect Edition T21-mep ») n'a ni série ni titre analysé ; le nom de série est alors ce
+// qui précède le numéro de tome, pour regrouper « … T21-mep », « … T24 », « … T01-MEP ».
+function _nouveautesGuessSeriesTitle(raw) {
+    const text = _nouveautesPrettyName(raw).text;
+    const match = text.match(/^(.*?)(?:^|[\s._\-(\[])(?:T|Tome|Vol(?:ume)?\.?)\s*\.?\s*\d{1,3}(?!\d)/i);
+    const name = match ? match[1].replace(/[\s._\-(\[]+$/, '').trim() : '';
+    return name.length >= 2 ? name : '';
+}
+
 function _nouveautesSeriesDisplayName(e) {
     const name = (e.type === 'ebdz' ? e.matched_series_title : e.series_title)
-        || e.bedetheque_title || (e.vk && e.vk_topic) || e.parsed_title || e.title || e.filename || '';
+        || e.bedetheque_title || (e.vk && e.vk_topic) || e.parsed_title
+        || _nouveautesGuessSeriesTitle(e.title || e.filename) || e.title || e.filename || '';
     return String(name);
 }
 
