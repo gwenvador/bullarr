@@ -208,7 +208,7 @@
   </nav>
 
   <article class="guide">
-    <p class="guide-intro">Bullarr est un Sonarr pour les BD et les comics : il surveille les nouveautés, télécharge les albums qui manquent à vos séries et tient vos métadonnées à jour grâce à Bédéthèque. Cette page couvre l'installation, la configuration, les fonctions, le serveur MCP et l'application Android.</p>
+    <p class="guide-intro">Bullarr est un Sonarr pour les BD et les comics : il surveille les nouveautés, télécharge les albums qui manquent à vos séries et tient vos fiches à jour grâce à Bédéthèque.</p>
 
     <section id="installation">
       <h2><span class="guide-num">1</span> Installation</h2>
@@ -217,10 +217,10 @@
         <li>Clonez le dépôt : <code>git clone https://github.com/gwenvador/bullarr.git</code></li>
         <li>Copiez le modèle : <code>cp docker-compose.example.yml docker-compose.yml</code></li>
         <li>Adaptez les volumes : le dossier de votre bibliothèque (<code>/BD</code>) et vos dossiers d'import.</li>
-        <li>Créez le fichier <code>.env</code> avec une clé secrète : <code>SECRET_KEY=...</code> (une chaîne aléatoire longue, générée par exemple avec la commande ci-dessous).</li>
+        <li>Créez le fichier <code>.env</code> avec une clé secrète, une longue chaîne aléatoire :
+          <pre><code>echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" &gt; .env</code></pre></li>
         <li>Démarrez : <code>docker compose up -d</code>, puis ouvrez <code>http://localhost:4000</code>.</li>
       </ol>
-      <pre><code>python3 -c "import secrets; print(secrets.token_urlsafe(48))"</code></pre>
     </section>
 
     <section id="premier-demarrage">
@@ -228,8 +228,8 @@
       <ol class="guide-steps">
         <li>Dans <strong>Configuration</strong>, ajoutez une bibliothèque en indiquant son dossier racine.</li>
         <li>Lancez le scan : Bullarr relève les séries et les tomes présents sur le disque.</li>
-        <li>Rattachez chaque série à sa fiche <strong>Bédéthèque</strong> : résumé, auteur, éditeur, couverture et tomes attendus.</li>
-        <li>La vérification de bibliothèque signale les séries sans métadonnées et les noms non standard.</li>
+        <li>Rattachez chaque série à sa fiche <strong>Bédéthèque</strong> : résumé, auteurs, éditeur, couverture et liste des tomes parus.</li>
+        <li>La page <strong>Vérification</strong> liste ensuite les séries sans fiche et les fichiers mal nommés.</li>
       </ol>
     </section>
 
@@ -239,38 +239,38 @@
         <div class="guide-card">
           <h3>📚 Bibliothèque</h3>
           <ul>
-            <li>Trois vues : affiches, aperçu (une ligne par série) et tableau, avec tri et colonnes optionnelles.</li>
-            <li>Recherche du haut de page : titre, puis tags correspondants.</li>
-            <li>Fiche série : volumes possédés et manquants, badge de complétude, liens externes.</li>
+            <li>Trois vues : affiches, aperçu (une ligne par série) et tableau.</li>
+            <li>La recherche du haut de page trouve les titres et les tags.</li>
+            <li>La fiche d'une série montre les tomes possédés et manquants.</li>
           </ul>
         </div>
         <div class="guide-card">
           <h3>📡 Surveillance</h3>
-          <p>Bullarr surveille les flux RSS et les nouveautés EBDZ et Telegram, reconnaît les nouveaux albums de vos séries et télécharge automatiquement ceux qui vous manquent.</p>
+          <p>Bullarr lit les flux RSS, EBDZ et Telegram, repère les nouveaux albums de vos séries et télécharge ceux qui vous manquent.</p>
         </div>
         <div class="guide-card">
           <h3>🧭 Enrichir</h3>
-          <p>Pour compléter votre collection : les indispensables, le Panthéon, les thèmes, le Top 100 et les sorties BDGest, ou toute la bibliographie d'un auteur.</p>
+          <p>Des idées pour compléter la collection : indispensables, Panthéon, thèmes, Top 100, sorties BDGest, ou tous les albums d'un auteur.</p>
         </div>
         <div class="guide-card">
           <h3>📖 Lecteur de BD</h3>
-          <p>Lecture des CBZ, CBR et PDF dans le navigateur : deux pages côte à côte, zoom, ajustement, bande de miniatures, plein écran. La touche <kbd>?</kbd> affiche les raccourcis.</p>
+          <p>CBZ, CBR et PDF dans le navigateur : double page, zoom, miniatures, plein écran. <kbd>?</kbd> affiche les raccourcis.</p>
         </div>
         <div class="guide-card">
           <h3>✏️ Renommage et métadonnées</h3>
-          <p>Templates de nommage des fichiers et dossiers à partir des métadonnées Bédéthèque. Écriture du ComicInfo.xml dans les archives.</p>
+          <p>Fichiers et dossiers renommés selon un modèle, à partir de la fiche Bédéthèque. Le ComicInfo.xml est écrit dans chaque archive.</p>
         </div>
         <div class="guide-card">
-          <h3>🕓 Historique</h3>
-          <p>Imports et actions (renommage, suppression, déplacement) sont journalisés.</p>
+          <h3>🔔 Notifications</h3>
+          <p>Telegram ou ntfy à chaque import, validation ou tome surveillé (<em>Configuration → Notifications</em>). Le message renvoie vers la fiche de la BD.</p>
         </div>
         <div class="guide-card">
           <h3>✨ Upscaling</h3>
-          <p>Pastille LD / SD / HD et filtre Qualité dans la bibliothèque. <em>Actions → Upscaling</em> améliore les tomes en basse définition sur le serveur, le bouton HD du lecteur le fait à la volée. Détails dans la section <a href="#upscaling">Upscaling</a>.</p>
+          <p>Repère les tomes en basse définition et les passe en HD, sur le serveur ou à la volée dans le lecteur. Voir <a href="#upscaling">Upscaling</a>.</p>
         </div>
         <div class="guide-card">
           <h3>📑 Lectures</h3>
-          <p><em>Suivi → Lectures</em> liste l'historique de lecture du compte, avec export et import CSV. Un tome ou une série se marque comme lu depuis la bibliothèque.</p>
+          <p><em>Suivi → Lectures</em> : ce que vous avez lu, avec export et import CSV. Imports et actions sont, eux, dans <em>Suivi → Historique</em>.</p>
         </div>
       </div>
     </section>
@@ -278,31 +278,35 @@
     <section id="tags-listes">
       <h2><span class="guide-num">4</span> Tags et listes</h2>
       <ul>
-        <li><strong>Tags</strong> : chaque série peut avoir des tags (thèmes, lieux, époques, noms). Ouvrez la fenêtre <em>Tags</em> de la fiche : <kbd>+</kbd> pour ajouter, <kbd>×</kbd> pour retirer.</li>
-        <li>La colonne <strong>Tags</strong> de la vue tableau affiche tous les tags, avec un filtre texte.</li>
-        <li>La recherche du haut de page trouve les séries par tag ; un clic sur un tag ouvre la bibliothèque filtrée sur ce tag.</li>
-        <li><strong>Listes</strong> : « À lire plus tard » et « Favori » par série, depuis le menu <em>Actions</em> de la fiche. Un marque-page et un cœur apparaissent à côté du titre, et le menu <em>Listes</em> de la bibliothèque filtre sur l'une ou l'autre.</li>
+        <li><strong>Tags</strong> (thèmes, lieux, époques…) : fenêtre <em>Tags</em> de la fiche, <kbd>+</kbd> pour ajouter, <kbd>×</kbd> pour retirer. L'IA peut les créer pour vous (section suivante).</li>
+        <li>Un clic sur un tag affiche toutes les séries qui le portent. La vue tableau a une colonne Tags filtrable.</li>
+        <li><strong>Listes</strong> « À lire plus tard » et « Favori » : menu <em>Actions</em> de la fiche. Le menu <em>Listes</em> de la bibliothèque les affiche.</li>
       </ul>
     </section>
 
     <section id="import">
       <h2><span class="guide-num">5</span> Import automatique</h2>
-      <p>Bullarr surveille des dossiers de téléchargement : aMule, torrents, Telegram, sources web. Il reconnaît la série et le tome et convertit en CBZ si besoin. La page <strong>Import</strong> affiche les téléchargements en cours, avec leur progression, et permet de les mettre en pause ou en premier.</p>
+      <p>Bullarr surveille vos dossiers de téléchargement (aMule, torrents, Telegram, web). Chaque fichier qui arrive est reconnu (série, tome), converti en CBZ si besoin et rangé dans la bonne série. La page <strong>Activités</strong> suit les téléchargements en cours (pause, passage en premier) et liste les fichiers que Bullarr n'a pas su ranger seul.</p>
     </section>
 
     <section id="ai">
       <h2><span class="guide-num">6</span> Bullarr et IA</h2>
       <h3>Tags par IA</h3>
-      <p>Dans <strong>Configuration → IA</strong>, choisissez un fournisseur. aiautotagging.com, proposé par défaut, est gratuit et ne demande ni clé ni compte. Vous pouvez aussi utiliser Claude (Anthropic), Gemini (Google), ChatGPT (OpenAI), OpenRouter (modèles gratuits compris), Groq ou un LLM local (Ollama, LM Studio, llama.cpp, vLLM) : collez votre clé API ou l'adresse du serveur local, puis « Tester ». La clé est chiffrée sur le disque de votre serveur ; ↻ lit la liste des modèles disponibles. Cochez des IA de secours : quand un fournisseur échoue (quota, panne, clé refusée), le suivant prend le relais. Les consignes envoyées à l'IA sont modifiables.</p>
+      <p>Choisissez un fournisseur dans <strong>Configuration → IA</strong> :</p>
       <ul>
-        <li><strong>Créer les tags</strong> : pour les séries sans tags (leur nombre est affiché) ou pour toutes. L'IA lit le titre, les auteurs, le genre et le résumé et réutilise le vocabulaire existant. Les tags proposés s'ajoutent, rien n'est retiré.</li>
-        <li><strong>Normaliser les tags</strong> : l'IA regroupe les tags qui veulent dire la même chose et propose un tag commun. Rien ne change avant votre validation.</li>
-        <li><strong>Nouvelles séries</strong> : une option tague automatiquement chaque série ajoutée (Bédéthèque, import ou scan), dès son arrivée.</li>
-        <li><strong>Historique</strong> : chaque traitement est journalisé avec les séries modifiées et les tags ajoutés.</li>
+        <li><strong>aiautotagging.com</strong> (par défaut) : gratuit, sans clé ni compte.</li>
+        <li><strong>Claude, Gemini, ChatGPT, OpenRouter, Groq</strong> : collez votre clé API, puis « Tester ». ↻ charge la liste des modèles.</li>
+        <li><strong>LLM local</strong> (Ollama, LM Studio, llama.cpp, vLLM) : indiquez l'adresse du serveur.</li>
       </ul>
-      <div class="guide-note">Les appels sont facturés par le fournisseur choisi, sur votre clé. Seuls le titre, les auteurs, le genre, l’année, l’origine, le résumé et les tags sont envoyés, jamais les fichiers.</div>
+      <p>Cochez des IA de secours : si un fournisseur échoue (quota, panne), le suivant prend le relais. Les consignes envoyées à l'IA sont modifiables. Ensuite :</p>
+      <ul>
+        <li><strong>Créer les tags</strong> : pour les séries sans tags, ou pour toutes. L'IA lit la fiche et réutilise vos tags existants. Elle ajoute, ne retire rien.</li>
+        <li><strong>Normaliser les tags</strong> : l'IA propose de fusionner les doublons (« ww2 », « seconde-guerre-mondiale »). Rien ne change avant votre validation.</li>
+        <li><strong>Nouvelles séries</strong> : une option tague chaque série dès son ajout.</li>
+      </ul>
+      <div class="guide-note">Seuls le titre, les auteurs, le genre, l’année, l’origine, le résumé et les tags sont envoyés, jamais les fichiers. Avec votre propre clé, les appels sont facturés par le fournisseur. Chaque traitement est visible dans l'historique.</div>
       <h3>Serveur MCP</h3>
-      <p>Bullarr expose un serveur <a href="https://modelcontextprotocol.io">MCP</a> à l'adresse <code>/mcp</code> de votre instance. Il permet à Claude, ou à un autre assistant compatible, de chercher dans votre bibliothèque, de lire une fiche, de lister les tags et de les modifier, et de gérer les listes.</p>
+      <p>Le serveur <a href="https://modelcontextprotocol.io">MCP</a> (adresse <code>/mcp</code> de votre instance) permet à Claude ou à un autre assistant de fouiller votre bibliothèque : « J'ai un polar noir avec des animaux ? ». Il peut aussi changer les tags et les listes.</p>
       <div class="guide-table">
         <table>
           <thead><tr><th>Outil</th><th>Rôle</th></tr></thead>
@@ -317,26 +321,31 @@
       </div>
       <h4>Activer le serveur</h4>
       <ol class="guide-steps">
-        <li>Dans le <code>.env</code> de Bullarr, définissez <code>BULLARR_MCP_TOKEN</code> avec une chaîne aléatoire, puis redémarrez. Sans ce jeton, <code>/mcp</code> répond <code>503</code>.</li>
-        <li>Ajoutez le serveur dans Claude Code :</li>
+        <li>Ajoutez <code>BULLARR_MCP_TOKEN=</code> suivi d'une chaîne aléatoire dans le <code>.env</code>, puis redémarrez. Sans ce jeton, le serveur MCP est désactivé.</li>
+        <li>Déclarez le serveur dans votre assistant, par exemple Claude Code :</li>
       </ol>
       <pre><code>claude mcp add --transport http bullarr https://&lt;votre-bullarr&gt;/mcp \
   --header "Authorization: Bearer &lt;BULLARR_MCP_TOKEN&gt;"</code></pre>
-      <p>Pour ChatGPT ou un autre client, indiquez la même adresse et le même en-tête <code>Authorization: Bearer</code>, si le client le permet.</p>
-      <div class="guide-note"><strong>Important :</strong> le serveur ne supprime rien et ne modifie aucun fichier. Il peut en revanche changer les tags et les listes. Ne partagez pas le jeton. L'adresse doit être joignable depuis le client : un assistant qui tourne sur internet ne peut pas atteindre une instance qui n'est accessible que sur votre réseau local.</div>
+      <p>Les autres clients prennent la même adresse et le même en-tête <code>Authorization: Bearer</code>.</p>
+      <div class="guide-note">Le serveur ne supprime rien et ne touche à aucun fichier. Gardez le jeton pour vous. Un assistant hébergé sur internet (ChatGPT, claude.ai) ne joint votre Bullarr que s'il est accessible depuis internet.</div>
     </section>
 
     <section id="api">
       <h2><span class="guide-num">7</span> API</h2>
-      <p>Toutes les fonctions de l'interface sont accessibles par une API HTTP/JSON, avec une clé API envoyée dans l'en-tête <code>X-Api-Key</code>. La clé se crée dans <strong>Configuration</strong>, section <em>Accès API</em>. La liste de toutes les routes est sur la page <code>/api/docs</code> de votre instance. La documentation détaillée, avec des exemples <code>curl</code> et Python, est dans <a href="https://github.com/gwenvador/bullarr/blob/main/docs/API.md">docs/API.md</a>.</p>
+      <p>Tout ce que fait l'interface passe par une API HTTP/JSON. Envoyez une clé dans l'en-tête <code>X-Api-Key</code> :</p>
+      <ul>
+        <li><strong>clé d'administration</strong> : <em>Configuration → Login → Accès API</em>, tous les droits ;</li>
+        <li><strong>clé personnelle</strong> : <em>Mon profil</em>, limitée aux droits du compte.</li>
+      </ul>
+      <p>La page <code>/api/docs</code> de votre instance liste les routes ; <a href="https://github.com/gwenvador/bullarr/blob/main/docs/API.md">docs/API.md</a> les détaille avec des exemples <code>curl</code> et Python.</p>
     </section>
 
     <section id="android">
       <h2><span class="guide-num">8</span> Application Android</h2>
-      <p>L'application pilote Bullarr depuis le téléphone : bibliothèque, fiches, recherche, téléchargements, import et réglages. Elle lit vos albums en plein écran (webtoon, sens manga, double page en paysage, tome suivant), les copie sur le téléphone pour les lire hors ligne, et peut recevoir des notifications instantanées (imports, validations, tomes surveillés) via l'app ntfy.</p>
+      <p>Bullarr dans la poche : bibliothèque, recherche, téléchargements, import et réglages. Elle lit vos albums (webtoon, sens manga, double page en paysage), les garde sur le téléphone pour lire hors ligne et reçoit les notifications par ntfy.</p>
       <ol class="guide-steps">
-        <li>Installez-la depuis le <a href="https://gwenvador.github.io/bullarr-android/repo/">dépôt F-Droid</a>, avec <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/gwenvador/bullarr-android">Obtainium</a> (ajoutez <code>https://github.com/gwenvador/bullarr-android</code> : l'APK vient des releases GitHub et les mises à jour sont signalées), ou téléchargez l'<a href="https://github.com/gwenvador/bullarr-android/releases/latest">APK</a>.</li>
-        <li>Au premier lancement, indiquez l'adresse de votre serveur (par exemple <code>http://192.168.1.10:4000</code>) et votre clé API, puis « Tester » et « Enregistrer ».</li>
+        <li>Installez-la au choix : <a href="https://gwenvador.github.io/bullarr-android/repo/">dépôt F-Droid</a>, <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/gwenvador/bullarr-android">Obtainium</a> (mises à jour signalées) ou <a href="https://github.com/gwenvador/bullarr-android/releases/latest">APK</a> direct.</li>
+        <li>Indiquez l'adresse du serveur (par exemple <code>http://192.168.1.10:4000</code>), puis connectez-vous : identifiant et mot de passe, SSO ou clé API.</li>
       </ol>
     </section>
 
@@ -363,24 +372,23 @@
     </section>
 
     <section id="securite">
-      <h2><span class="guide-num">10</span> Sécurité et authentification</h2>
+      <h2><span class="guide-num">10</span> Sécurité, comptes et thèmes</h2>
+      <h3>Connexion</h3>
+      <p>Sans réglage, Bullarr est ouvert à tous sur votre réseau. Activez la connexion dans <em>Configuration → Login</em> : comptes locaux (identifiant et mot de passe) et, en option, un bouton SSO (OIDC). Les mots de passe et clés enregistrés sont chiffrés sur le disque.</p>
+      <h3>Comptes et rôles</h3>
       <ul>
-        <li>Les secrets (mots de passe, clés API) sont chiffrés sur disque.</li>
-        <li>L'authentification est facultative et désactivée par défaut. Activez-la dans <strong>Configuration</strong> → <em>Login</em> : comptes locaux (identifiant et mot de passe), avec en option un bouton SSO OIDC.</li>
-        <li>Le serveur MCP et l'API utilisent chacun leur propre jeton ou clé, distincts de la session du navigateur.</li>
+        <li><strong>Admin</strong> : accès à tout.</li>
+        <li><strong>Lecteur</strong> : parcourt, lit, télécharge, tient ses propres listes et demande des BD. Il ne voit pas les menus d'administration.</li>
+        <li>Les comptes SSO prennent leur rôle de leur groupe (<code>admin_group</code>) ; « Modifier » le force.</li>
+        <li><strong>Inscription ouverte</strong> (option) : un lien « Créer un compte » apparaît sur la page de connexion, et l'admin valide chaque nouveau compte.</li>
+        <li><strong>Contrôle parental</strong> : par lecteur, bibliothèques visibles et genres masqués, avec un préréglage « Enfant ».</li>
       </ul>
-      <h3>Comptes, demandes et contrôle parental</h3>
-      <ul>
-        <li><strong>Utilisateurs et rôles</strong> (Configuration → Login) : comptes locaux à créer, modifier ou supprimer ; comptes OIDC avec un rôle par groupe (<code>admin_group</code>) ou forcé par compte.</li>
-        <li><strong>Lecteurs</strong> : ils parcourent, lisent et téléchargent, ont leurs propres listes « À lire plus tard » et Favoris, et demandent des BD depuis la page <em>Demandes</em>. Les menus d'administration leur sont masqués.</li>
-        <li><strong>Demandes de BD</strong> : elles attendent votre validation dans la page <em>Validation</em> (bibliothèque au choix, refus avec motif), ou sont validées automatiquement si vous cochez l'option. Une fois validée, la série est ajoutée et sa recherche lancée.</li>
-        <li><strong>Inscription ouverte</strong> (option) : un lien « Créer un compte » sur la page de connexion ; le compte reste en attente jusqu'à ce qu'un admin le valide.</li>
-        <li><strong>Contrôle parental</strong> : bibliothèques visibles et genres masqués par lecteur, avec un préréglage « Enfant ».</li>
-        <li><strong>Mon profil</strong> : nom, e-mail, mot de passe, avatar (photo ou avatar proposé) et compte Komga personnel. Bullarr crée une clé API Komga à votre nom et ne garde jamais le mot de passe ; sans compte Komga, votre avancement de lecture est gardé par Bullarr.</li>
-        <li><strong>Historique</strong> : onglets Utilisateurs (connexions, comptes, rôles, accès) et Demandes.</li>
-      </ul>
+      <h3>Demandes de BD</h3>
+      <p>Un lecteur demande une série depuis la page <em>Demandes</em>. L'admin l'accepte (en choisissant la bibliothèque) ou la refuse avec un motif dans <em>Validation</em> ; une option accepte tout automatiquement. Une demande acceptée ajoute la série et lance sa recherche.</p>
+      <h3>Mon profil</h3>
+      <p>Nom, e-mail, mot de passe, avatar, clé API personnelle et compte Komga. Pour Komga, Bullarr crée une clé à votre nom et ne garde pas le mot de passe ; sans Komga, Bullarr retient lui-même où vous en êtes. Connexions et changements de comptes sont dans <em>Suivi → Historique</em>.</p>
       <h3>Thèmes</h3>
-      <p><strong>Configuration → Thème</strong> propose cinq palettes, Atelier, Ardoise, Sauge, Océan et Prune, chacune en clair, en sombre ou en mode <em>Système</em>, qui suit le réglage clair ou sombre de l'appareil et change en direct. Le choix est gardé dans le navigateur. L'application Android a les mêmes palettes dans ses réglages.</p>
+      <p><em>Configuration → Thème</em> : cinq palettes (Atelier, Ardoise, Sauge, Océan, Prune), en clair, en sombre ou en <em>Système</em> qui suit l'appareil. Le choix est propre à chaque navigateur. L'application Android a les mêmes palettes.</p>
     </section>
   </article>
 </div>
