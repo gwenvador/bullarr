@@ -146,6 +146,41 @@ def ensure_table(conn):
         volume_id INTEGER PRIMARY KEY,
         model TEXT NOT NULL,
         queued_at REAL NOT NULL)''')
+    # « ajoute une option pour dire les albums qui ont été upscalés » : trace durable d'un
+    # tome passé en HD, gardée quand la sauvegarde SD est supprimée, effacée par « Restaurer
+    # la version SD ». file_size = taille du fichier HD : un fichier remplacé depuis (nouvelle
+    # version importée) ne compte plus comme upscalé.
+    conn.execute('''CREATE TABLE IF NOT EXISTS upscaled_volumes (
+        volume_id INTEGER PRIMARY KEY,
+        model TEXT,
+        file_size INTEGER,
+        upscaled_at TEXT DEFAULT CURRENT_TIMESTAMP)''')
+    global _upscaled_backfilled
+    if not _upscaled_backfilled:
+        # Tomes upscalés avant cette table : ceux dont l'original SD est encore gardé.
+        conn.execute('''INSERT OR IGNORE INTO upscaled_volumes (volume_id, model, file_size, upscaled_at)
+            SELECT b.volume_id, b.model, v.file_size, b.created_at
+              FROM upscale_backups b JOIN volumes v ON v.id = b.volume_id
+             WHERE COALESCE(b.model, '') NOT LIKE 'downscale:%' ''')
+        conn.commit()
+        _upscaled_backfilled = True
+
+
+_upscaled_backfilled = False
+
+
+def upscaled_map(conn, series_id=None):
+    """{volume_id: {'model': libellé, 'at': date}} des tomes upscalés dont le fichier n'a pas changé."""
+    ensure_table(conn)
+    sql = '''SELECT u.volume_id, u.model, u.upscaled_at FROM upscaled_volumes u
+               JOIN volumes v ON v.id = u.volume_id
+              WHERE (u.file_size IS NULL OR v.file_size = u.file_size)'''
+    args = ()
+    if series_id is not None:
+        sql += ' AND v.series_id = ?'
+        args = (series_id,)
+    return {r[0]: {'model': job_label(r[1]) if r[1] else None, 'at': r[2]}
+            for r in conn.execute(sql, args).fetchall()}
 
 
 def _queue_add(app, volume_id, model, queued_at):
@@ -748,6 +783,9 @@ def _process(app, volume_id, model):
             (volume_id, series_id, backup_path, original_size, page_width, page_height, model)
             VALUES (?, ?, ?, ?, ?, ?, ?)''', (volume_id, row['series_id'], backup, original_size,
                                            row['page_width'], row['page_height'], model))
+        if not spec:
+            conn.execute('INSERT OR REPLACE INTO upscaled_volumes (volume_id, model, file_size) VALUES (?, ?, ?)',
+                         (volume_id, model, size))
         conn.execute('UPDATE volumes SET file_size = ?, page_width = ?, page_height = ?, page_size_file_size = ? WHERE id = ?',
                      (size, median[0] if median else None, median[1] if median else None, size, volume_id))
         conn.commit()
@@ -833,6 +871,8 @@ def restore(app, volume_id):
         conn.execute('UPDATE volumes SET file_size = ?, page_width = ?, page_height = ?, page_size_file_size = ? WHERE id = ?',
                      (size, backup['page_width'], backup['page_height'], size, volume_id))
         conn.execute('DELETE FROM upscale_backups WHERE volume_id = ?', (volume_id,))
+        ensure_table(conn)
+        conn.execute('DELETE FROM upscaled_volumes WHERE volume_id = ?', (volume_id,))
         conn.commit()
     finally:
         conn.close()

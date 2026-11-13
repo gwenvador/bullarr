@@ -1848,6 +1848,7 @@ function seriesMatchesFilterKey(s, key) {
     if (key.startsWith('year:')) return (s.year || '') === key.slice('year:'.length);
     if (key.startsWith('status:')) return _seriesStatusLabel(s) === key.slice('status:'.length);
     if (key.startsWith('origin:')) return _seriesOriginLabel(s) === key.slice('origin:'.length);
+    if (key === UPSCALED_FILTER_KEY) return (s.upscaled_volumes || 0) > 0;
     if (key.startsWith('quality:')) return _seriesQualityLabel(s) === key.slice('quality:'.length);
     if (key.startsWith('tag:')) {
         const wanted = normalizeForSearch(key.slice('tag:'.length)).replace(/-/g, ' ');
@@ -2102,6 +2103,18 @@ function _qualityFilterIcon() {
     return `<span class="filter-item-icon">${svgIcon('image')}</span>`;
 }
 
+// « ajoute une option pour dire les albums qui ont été upscalés » : entrée « Upscalées » du
+// menu Qualité (séries dont au moins un tome a été passé en HD sur le serveur).
+const UPSCALED_FILTER_KEY = 'quality:Upscalées';
+function _appendUpscaledFilterItem() {
+    const menu = document.getElementById('quality-filter-menu');
+    if (!menu) return;
+    const count = seriesData.filter(s => seriesHasAlbums(s) && (s.upscaled_volumes || 0) > 0).length;
+    if (!count) return;
+    menu.querySelector('.toolbar-dropdown-empty')?.remove();
+    menu.insertAdjacentHTML('beforeend', `<button class="toolbar-dropdown-item" data-filter="${escapeHtml(UPSCALED_FILTER_KEY)}" onclick="toggleSeriesFilter(this.dataset.filter)"><span class="filter-item-icon">${svgIcon('sparkles')}</span><span>Upscalées</span><span class="filter-count">${count}</span></button>`);
+}
+
 function seriesLowDefBadgeHtml(s) {
     if (!s.low_def_volumes) return '';
     const owned = [s.owned_tomes, s.owned_integrals, s.owned_hs, s.owned_episodes, s.owned_specials]
@@ -2131,6 +2144,7 @@ function populateStatusLanguageFilters() {
     _fillCountFilterMenu('status-filter-menu', 'status:', _seriesStatusLabel, _STATUS_FILTER_ORDER, _statusFilterIcon);
     _fillCountFilterMenu('origin-filter-menu', 'origin:', _seriesOriginLabel, _ORIGIN_FILTER_ORDER, _originFilterIcon);
     _fillCountFilterMenu('quality-filter-menu', 'quality:', _seriesQualityLabel, _QUALITY_FILTER_ORDER, _qualityFilterIcon);
+    _appendUpscaledFilterItem();
     _fillGenreFilterMenu();
 }
 
@@ -3429,6 +3443,7 @@ function buildVolumeCreditsHtml(v) {
     if (ci.publisher) fields.push(['Éditeur', ci.publisher]);
     if (ci.genre) fields.push(['Genre', ci.genre]);
     if (_volumeQualityLabel(v)) fields.push(['Qualité', _volumeQualityLabel(v)]);
+    if (v.upscaled) fields.push(['Upscaling', _volumeUpscaledText(v)]);
     if (v.release_group) fields.push(['Release', String(v.release_group)]);
     if (!fields.length) return '';
     return `<dl class="volume-credits">${fields.map(([k, val]) => `<div><dt>${escapeHtml(k)}</dt><dd title="${escapeHtml(val)}">${escapeHtml(val)}</dd></div>`).join('')}</dl>`;
@@ -3917,6 +3932,7 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
                 <div class="volume-cover-frame">
                     ${coverHtml}
                     ${buildVolumeCoverReadingHtml(v)}
+                    ${buildVolumeCoverUpscaledHtml(v)}
                 </div>
                 ${buildVolumeCoverQualityHtml(v)}
             </div>
@@ -4091,8 +4107,22 @@ function _volumeQualityTier(v) {
 }
 
 function _volumeQualityLabel(v) {
-    if (v.page_width && v.page_height) return `${v.page_width}×${v.page_height} · ${_volumeQualityTier(v)}`;
-    return v.resolution ? String(v.resolution) : '';
+    const upscaled = v.upscaled ? ' · upscalé' : '';
+    if (v.page_width && v.page_height) return `${v.page_width}×${v.page_height} · ${_volumeQualityTier(v)}${upscaled}`;
+    return v.resolution ? String(v.resolution) + upscaled : '';
+}
+
+// Tome passé en HD sur le serveur : « Real-ESRGAN rapide, le 13/11/2026 ».
+function _volumeUpscaledText(v) {
+    if (!v.upscaled) return '';
+    const date = v.upscaled.at ? new Date(String(v.upscaled.at).replace(' ', 'T') + (String(v.upscaled.at).includes('Z') ? '' : 'Z')) : null;
+    const when = date && !isNaN(date) ? `le ${date.toLocaleDateString('fr-FR')}` : '';
+    return ['Upscalé', v.upscaled.model ? `avec ${v.upscaled.model}` : '', when].filter(Boolean).join(' ');
+}
+
+function buildVolumeCoverUpscaledHtml(v) {
+    if (!v.upscaled) return '';
+    return `<span class="volume-cover-upscaled" data-tooltip="${escapeHtml(_volumeUpscaledText(v))}" aria-label="Upscalé">${svgIcon('sparkles')}</span>`;
 }
 
 function _volumeTableSortValue(v, column) {
@@ -4191,6 +4221,16 @@ function _seriesDetailLowDefChipHtml(data) {
     const minSide = Math.min(...low.map(v => Math.max(v.page_width, v.page_height)));
     const count = owned.length > 1 ? ` ${low.length}/${owned.length}` : '';
     return `<span class="series-detail-chip series-detail-chip-lowdef" data-tooltip="${low.length} album${low.length > 1 ? 's' : ''} en basse définition (pages de ${minSide} px au plus)">${svgIcon('image')} Basse déf.${count}</span>`;
+}
+
+// « ✨ Upscalé 3/12 » à côté du titre de la fiche : tomes passés en HD sur le serveur.
+function _seriesDetailUpscaledChipHtml(data) {
+    const owned = (data.volumes || []).filter(hasVolumeFile);
+    const done = owned.filter(v => v.upscaled);
+    if (!done.length) return '';
+    const count = owned.length > 1 ? ` ${done.length}/${owned.length}` : '';
+    const tip = owned.length > 1 ? `${done.length} album${done.length > 1 ? 's' : ''} sur ${owned.length} upscalé${done.length > 1 ? 's' : ''} en HD` : 'Album upscalé en HD';
+    return `<span class="series-detail-chip series-detail-chip-upscaled" data-tooltip="${escapeHtml(tip)}">${svgIcon('sparkles')} Upscalé${count}</span>`;
 }
 
 // Définition des pages sur la couverture (vue Aperçu des albums), façon « 1080p / FULL HD » :
@@ -5435,6 +5475,7 @@ async function renderSeriesDetail(seriesId) {
                             <h2 class="series-detail-title">${escapeHtml(data.title)}</h2>
                             ${completenessIconHtml}
                             ${_seriesDetailLowDefChipHtml(data)}
+                            ${_seriesDetailUpscaledChipHtml(data)}
                             ${data.to_read_later ? `<span class="series-detail-chip series-detail-chip-read-later" data-tooltip="Dans ta liste à lire">${svgIcon('bookmark')} À lire</span>` : ''}
                             ${data.is_favorite ? `<span class="series-detail-chip series-detail-chip-favorite" data-tooltip="Dans tes favoris">${svgIcon('heart')} Favori</span>` : ''}
                         </div>

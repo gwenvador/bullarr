@@ -2869,6 +2869,8 @@ def get_library_series(library_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        from .upscale_volume import ensure_table as _ensure_upscale_tables
+        _ensure_upscale_tables(conn)   # table upscaled_volumes lue par la requête des séries
 
         if request.args.get('view') == 'import':
             # Import n'utilise que ces champs pour les listes de séries et le lien
@@ -2916,6 +2918,9 @@ def get_library_series(library_id):
                      WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.page_width > 0) AS min_page_side,
                    (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL
                      AND v.page_width > 0 AND MAX(v.page_width, v.page_height) <= {_low_def_side()}) AS low_def_volumes,
+                   (SELECT COUNT(*) FROM upscaled_volumes u JOIN volumes v ON v.id = u.volume_id
+                     WHERE v.series_id = s.id AND v.filepath IS NOT NULL
+                       AND (u.file_size IS NULL OR v.file_size = u.file_size)) AS upscaled_volumes,
                    s.tags, s.to_read_later, s.is_favorite,
                    s.manual_complete_override, s.bedetheque_complete, s.bedetheque_complete_reason,
                    s.filesystem_state, s.filesystem_checked_at, s.filesystem_missing_count, s.filesystem_verification_error,
@@ -3005,6 +3010,7 @@ def get_library_series(library_id):
                 'volumes_without_metadata': row['volumes_without_metadata'],
                 'min_page_side': row['min_page_side'],
                 'low_def_volumes': row['low_def_volumes'],
+                'upscaled_volumes': row['upscaled_volumes'],
                 'tags': tags,
                 'to_read_later': bool(row['to_read_later']),
                 'is_favorite': bool(row['is_favorite']),
@@ -3591,7 +3597,8 @@ def get_series_details(series_id):
         sd_backups = {r[0]: r[1] for r in conn.execute(
             'SELECT b.volume_id, b.model FROM upscale_backups b JOIN volumes v ON v.id = b.volume_id WHERE v.series_id = ?',
             (series_id,)).fetchall()}
-        from .upscale_volume import job as _upscale_job
+        from .upscale_volume import job as _upscale_job, upscaled_map as _upscaled_map
+        upscaled = _upscaled_map(conn, series_id)
 
         volumes = []
         for vol in cursor.fetchall():
@@ -3602,6 +3609,7 @@ def get_series_details(series_id):
                 # 'downscale' : l'original gardé est celui d'une réduction (« Restaurer l'original »)
                 'backup_kind': ('downscale' if str(sd_backups.get(vol['id']) or '').startswith('downscale:') else 'upscale')
                                if vol['id'] in sd_backups else None,
+                'upscaled': upscaled.get(vol['id']),
                 'upscale_status': upscale_state['status'] if upscale_state else None,
                 'upscale_model': upscale_state['model'] if upscale_state else None,
                 'part_number': vol['part_number'],

@@ -180,6 +180,9 @@ class ProcessAndRestoreTest(unittest.TestCase):
                     row = sqlite3.connect(db).execute('SELECT page_width, page_height FROM volumes WHERE id = 7').fetchone()
                     self.assertEqual(row, (1600, 2160))
                     self.assertTrue(upscale_volume.has_backup(app, 7))
+                    # Marqué upscalé pour la fiche série, et plus après « Restaurer la version SD ».
+                    marked = upscale_volume.upscaled_map(sqlite3.connect(db), 1)
+                    self.assertEqual(list(marked), [7])
                     # Déjà upscalé : refusé tant que la version SD est gardée.
                     self.assertIsNotNone(upscale_volume.check_volume(upscale_volume._volume_row(app, 7)))
                     self.assertIsNone(upscale_volume.restore(app, 7))
@@ -189,6 +192,7 @@ class ProcessAndRestoreTest(unittest.TestCase):
                     self.assertEqual(row, (800, 1080))
                     self.assertFalse(upscale_volume.has_backup(app, 7))
                     self.assertEqual(len(upscale_volume.low_definition_volumes(app)), 1)
+                    self.assertEqual(upscale_volume.upscaled_map(sqlite3.connect(db), 1), {})
             finally:
                 upscale.upscale_image, upscale_volume._after_change = saved
 
