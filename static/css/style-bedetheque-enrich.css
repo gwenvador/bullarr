@@ -377,3 +377,66 @@
     outline: none;
     border-color: var(--color-accent);
 }
+
+/* "enrichissement en mobile l'interface est moche. ameliore ca depasse partout" :
+   sur téléphone, les tableaux de la page Enrichir deviennent des cartes (une par ligne)
+   au lieu de déborder à droite. Ligne 1 : case, rang, couverture, titre ; ligne 2 :
+   les autres colonnes en petit, statut et action calés à droite. */
+@media (max-width: 600px) {
+    .tab-content .indisp-summary { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px 14px; }
+    .tab-content .indisp-summary-main { flex-wrap: wrap; white-space: normal; row-gap: 2px; }
+    .tab-content .indisp-summary-filters { display: flex; flex-wrap: wrap; max-width: 100%; }
+    .tab-content .indisp-summary-filters button { flex: 1 1 auto; padding: 6px 8px; }
+    .tab-content .table-scroll-top { display: none; }
+    .tab-content .series-table-wrapper { overflow-x: visible; }
+
+    .tab-content table.series-table-compact,
+    .tab-content table.series-table-compact thead,
+    .tab-content table.series-table-compact tbody { display: block; width: 100% !important; min-width: 0 !important; }
+    .tab-content table.series-table-compact { border-radius: 14px; overflow: hidden; }
+
+    /* En-tête : seulement les tris et les filtres, en puces qui passent à la ligne. */
+    .tab-content table.series-table-compact thead tr {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px;
+    }
+    .tab-content table.series-table-compact thead th {
+        display: flex; align-items: center; width: auto !important; min-width: 0 !important; max-width: none !important;
+        padding: 0 !important; border: 0 !important; position: static; background: none;
+    }
+    .tab-content table.series-table-compact thead th:not(.volume-table-sortable):not(:has(input, select, [class*="sort"])) { display: none; }
+    .tab-content table.series-table-compact thead th:has(input[type="text"], input[type="search"]) { flex: 1 1 100%; order: 5; }
+    .tab-content table.series-table-compact thead th:has(input[type="text"], input[type="search"]) .th-filterable-row,
+    .tab-content table.series-table-compact thead th:has(input[type="text"], input[type="search"]) input[type="text"],
+    .tab-content table.series-table-compact thead th:has(input[type="text"], input[type="search"]) input[type="search"] { width: 100%; }
+    .tab-content table.series-table-compact thead .th-filterable-row { display: flex; flex-direction: row; align-items: center; gap: 6px; flex-wrap: nowrap; }
+    .tab-content table.series-table-compact thead .th-filterable-label { white-space: nowrap; }
+    .tab-content table.series-table-compact thead .th-filterable-filter { flex: 1 1 auto; min-width: 0; }
+    .tab-content table.series-table-compact .col-resize-handle { display: none; }
+
+    /* Lignes en cartes. */
+    .tab-content table.series-table-compact tbody tr {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+        padding: 10px 12px; border-bottom: 1px solid var(--color-border);
+    }
+    .tab-content table.series-table-compact tbody tr:last-child { border-bottom: 0; }
+    .tab-content table.series-table-compact tbody td {
+        display: block; order: 3; width: auto !important; min-width: 0 !important; max-width: none !important;
+        padding: 0 !important; border: 0 !important; background: none !important;
+        font-size: .85em; color: var(--color-text-muted);
+    }
+    .tab-content table.series-table-compact tbody tr::after { content: ''; order: 2; flex-basis: 100%; height: 0; }
+    .tab-content table.series-table-compact tbody td.volume-table-select-cell,
+    .tab-content table.series-table-compact tbody td.indispensable-rank,
+    .tab-content table.series-table-compact tbody td.theme-cover-cell,
+    .tab-content table.series-table-compact tbody td.enrich-date-cell { order: 1; }
+    .tab-content table.series-table-compact tbody td[class] + td:not([class]) {
+        order: 1; flex: 1 1 0; font-size: .95em; color: var(--color-text); overflow-wrap: anywhere;
+    }
+    .tab-content table.series-table-compact tbody td.indispensable-owned,
+    .tab-content table.series-table-compact tbody td.author-album-action-cell { margin-left: auto; }
+    .tab-content table.series-table-compact tbody td.pantheon-works-cell { flex-basis: 100%; }
+    .tab-content table.series-table-compact tbody td:empty,
+    .tab-content table.series-table-compact tbody td:has(> .indisp-none:only-child) { display: none; }
+    .tab-content table.series-table-compact tbody td.theme-cover-cell img { width: 44px; height: auto; }
+    .tab-content table.series-table-compact tbody td .theme-summary { display: none; }
+}
