@@ -62,7 +62,7 @@ def remember_public_url(url_root):
         path = os.path.join(current_app.config['DATA_DIR'], _PUBLIC_URL_FILE)
         if _public_url_cache.get(path) == base:
             return
-        current = public_url()
+        current = learned_public_url()
         _public_url_cache[path] = base
         if current != base:
             with open(path, 'w') as f:
@@ -72,7 +72,20 @@ def remember_public_url(url_root):
 
 
 def public_url():
-    """Adresse publique de Bullarr mémorisée (sans / final), ou '' si inconnue."""
+    """Adresse de Bullarr pour les liens des notifications (sans / final) : celle saisie
+    dans Configuration → Notifications → ntfy, sinon celle apprise du navigateur, sinon ''."""
+    try:
+        from blueprints.ntfy.routes import load_ntfy_config
+        configured = (load_ntfy_config().get('site_url') or '').strip().rstrip('/')
+        if configured:
+            return configured
+    except Exception:
+        pass
+    return learned_public_url()
+
+
+def learned_public_url():
+    """Adresse publique apprise des pages ouvertes dans un navigateur, ou ''."""
     try:
         import os
         from flask import current_app

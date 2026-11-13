@@ -880,6 +880,7 @@ function _ntfyFormValues() {
         username: document.getElementById('ntfyUsername').value.trim(),
         password: document.getElementById('ntfyPassword').value,
         priority: Number(document.getElementById('ntfyPriority').value) || 3,
+        site_url: document.getElementById('ntfySiteUrl').value.trim(),
     };
 }
 
@@ -894,6 +895,9 @@ async function loadNtfySettings() {
         document.getElementById('ntfyUsername').value = config.username || '';
         document.getElementById('ntfyPassword').value = config.password || '';
         document.getElementById('ntfyPriority').value = String(config.priority || 3);
+        const siteInput = document.getElementById('ntfySiteUrl');
+        siteInput.value = config.site_url || '';
+        siteInput.placeholder = config.site_url_learned || window.location.origin;
         updateNtfyAuthFields();
     } catch (error) {
         showMessage('ntfyMessage', '❌ Erreur lors du chargement de la configuration ntfy', 'error');

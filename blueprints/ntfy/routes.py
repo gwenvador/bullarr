@@ -179,7 +179,14 @@ def _public_config(cfg):
         'token': MASK if cfg.get('token') else '',
         'password': MASK if cfg.get('password') else '',
         'priority': _priority(cfg),
+        'site_url': cfg.get('site_url') or '',
+        'site_url_learned': _learned_site_url(),
     }
+
+
+def _learned_site_url():
+    from notifications import learned_public_url
+    return learned_public_url()
 
 
 def _merge_form(cfg, data):
@@ -191,6 +198,15 @@ def _merge_form(cfg, data):
     if (data.get('enabled') or topic) and not valid_topic(topic):
         return 'Topic invalide : lettres, chiffres, - et _ uniquement (64 caractères maximum)'
     auth = data.get('auth') if data.get('auth') in ('none', 'token', 'basic') else 'none'
+    # "dans configuration ntfy met l'addresse du site pour le lien": adresse de Bullarr
+    # des liens des notifications (vide = adresse apprise du navigateur).
+    site_url = (data.get('site_url') or '').strip()
+    if site_url:
+        site_url = normalize_server_url(site_url)
+        if not site_url:
+            return "Adresse de Bullarr invalide (http:// ou https://)"
+    elif 'site_url' not in data:
+        site_url = cfg.get('site_url') or ''
     cfg.update({
         'enabled': bool(data.get('enabled')),
         'server_url': server,
@@ -198,6 +214,7 @@ def _merge_form(cfg, data):
         'auth': auth,
         'username': (data.get('username') or '').strip(),
         'priority': _priority({'priority': data.get('priority', 3)}),
+        'site_url': site_url,
     })
     # Cases par type : réglées dans le tableau « Événements », changées seulement si envoyées.
     for key, value in data.items():
