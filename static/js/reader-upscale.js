@@ -50,6 +50,7 @@ const comicUpscale = {
     error: '',
     hdSide: null,         // tome déjà en haute définition : côté des pages (-1 : constaté page par page)
     bigPages: 0,          // pages examinées trop grandes pour être améliorées
+    forced: false,        // appui long sur HD : améliore aussi les pages au-dessus du seuil
     ortPromise: null,
     sessions: {},
 };
@@ -178,7 +179,7 @@ function _saveComicUpscalePref(key, value) {
 }
 
 function _comicUpscaleKey(number) {
-    return `${comicUpscale.volumeId}:${number}:${comicUpscale.mode}:${comicUpscale.model}`;
+    return `${comicUpscale.volumeId}:${number}:${comicUpscale.mode}:${comicUpscale.model}${comicUpscale.forced ? ':forced' : ''}`;
 }
 
 // Adresse à afficher pour une page : la version améliorée si elle est déjà prête.
@@ -192,6 +193,7 @@ function comicReaderUpscaleOpen(volumeId, pageSide) {
     comicUpscale.volumeId = volumeId;
     comicUpscale.error = '';
     comicUpscale.bigPages = 0;
+    comicUpscale.forced = false;
     // Pages déjà au-dessus du seuil (d'après le scan) : l'amélioration ne ferait rien, le
     // bouton HD est grisé au lieu de s'allumer sans effet.
     comicUpscale.hdSide = pageSide && pageSide > comicUpscaleMaxSide() ? pageSide : null;
@@ -200,7 +202,7 @@ function comicReaderUpscaleOpen(volumeId, pageSide) {
 
 // Vrai quand le tome ouvert n'a rien à améliorer (pages déjà en haute définition).
 function comicUpscaleUseless() {
-    return !!comicUpscale.volumeId && !!comicUpscale.hdSide;
+    return !comicUpscale.forced && !!comicUpscale.volumeId && !!comicUpscale.hdSide;
 }
 
 function comicReaderUpscaleClose() {
@@ -279,7 +281,7 @@ async function _runComicUpscaleQueue() {
             _trimComicUpscaleCache();
             // Dimensions inconnues au scan : trois pages trop grandes et aucune améliorée
             // suffisent à griser le bouton pour ce tome.
-            if (!url && ++comicUpscale.bigPages >= 3 && ![...comicUpscale.cache.values()].some(entry => entry.url)) {
+            if (!url && !comicUpscale.forced && ++comicUpscale.bigPages >= 3 && ![...comicUpscale.cache.values()].some(entry => entry.url)) {
                 comicUpscale.hdSide = -1;
                 comicUpscale.queue = [];
                 _renderComicUpscaleControls();
@@ -398,7 +400,7 @@ async function _comicUpscaleInBrowser(volumeId, number, model) {
     const bitmap = await createImageBitmap(await response.blob());
     const width = bitmap.width;
     const height = bitmap.height;
-    if (!width || !height || Math.max(width, height) > comicUpscaleMaxSide()) {
+    if (!width || !height || (!comicUpscale.forced && Math.max(width, height) > comicUpscaleMaxSide())) {
         bitmap.close?.();
         return null;
     }
@@ -485,6 +487,7 @@ async function _comicUpscaleInBrowser(volumeId, number, model) {
 
 // ----- Bouton et menu du lecteur -----
 function setComicReaderUpscale(mode, model) {
+    if (mode === "off") comicUpscale.forced = false;   // éteindre HD met fin au mode forcé
     const changed = (mode && mode !== comicUpscale.mode) || (model && model !== comicUpscale.model);
     if (mode in COMIC_UPSCALE_MODES) { comicUpscale.mode = mode; _saveComicUpscalePref('comic-reader-upscale-mode', mode); }
     if (model in COMIC_UPSCALE_MODELS) { comicUpscale.model = model; _saveComicUpscalePref('comic-reader-upscale-model', model); }
@@ -512,6 +515,15 @@ function cycleComicReaderUpscale() {
 // Bouton HD de l'en-tête : allumé, un clic revient à la version d'origine des pages ;
 // éteint, il active l'amélioration (et ouvre le choix du modèle s'il reste à télécharger).
 function comicReaderHdClick() {
+    // Le clic qui suit un appui long ne doit pas annuler ce que l'appui vient de faire.
+    if (Date.now() - _comicHdLongPressAt < 800) return;
+    if (comicUpscale.forced) {
+        comicUpscale.forced = false;
+        setComicReaderUpscale('off');
+        _restoreComicUpscaleOriginals();
+        _renderComicUpscaleControls();
+        return;
+    }
     if (comicUpscaleUseless()) {
         toggleComicReaderSettings(true, 'hd');
         return;
@@ -526,6 +538,49 @@ function comicReaderHdClick() {
     const installed = comicUpscaleStore.installed;
     if (comicUpscaleStorageSupported() && installed && !installed[comicUpscale.model]) toggleComicReaderSettings(true, 'hd');
 }
+
+// « forcer le upscale en appuyant longtemps sur HD, même si la résolution est plus grande » :
+// un appui long (0,6 s) active l'amélioration de toutes les pages, seuil de basse
+// définition ignoré, jusqu'au prochain clic sur HD ou au changement de tome.
+let _comicHdLongPressAt = 0;
+let _comicHdPressTimer = null;
+
+function forceComicReaderUpscale() {
+    comicUpscale.forced = true;
+    comicUpscale.hdSide = comicUpscale.hdSide && comicUpscale.hdSide > 0 ? comicUpscale.hdSide : null;
+    comicUpscale.bigPages = 0;
+    comicUpscale.error = '';
+    _restoreComicUpscaleOriginals();
+    comicUpscale.queue = [];
+    comicUpscale.missing = null;
+    comicUpscale.mode = 'browser';
+    _saveComicUpscalePref('comic-reader-upscale-mode', 'browser');
+    if (comicReader.count) comicReaderUpscaleShown(_comicReaderSpreadPages(comicReader.page, comicReader.count, _comicReaderSpread()));
+    _renderComicUpscaleControls();
+    const installed = comicUpscaleStore.installed;
+    if (comicUpscaleStorageSupported() && installed && !installed[comicUpscale.model]) toggleComicReaderSettings(true, 'hd');
+    if (typeof showToast === 'function') showToast('comic-hd-forced', 'HD forcée sur toutes les pages', { icon: 'sparkles', autoHideMs: 2500 });
+}
+
+document.addEventListener('pointerdown', event => {
+    if (!event.target.closest?.('#comic-reader-hd-btn') || event.button > 0) return;
+    clearTimeout(_comicHdPressTimer);
+    _comicHdPressTimer = setTimeout(() => {
+        _comicHdPressTimer = null;
+        _comicHdLongPressAt = Date.now();
+        forceComicReaderUpscale();
+    }, 600);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(type => document.addEventListener(type, event => {
+    if (_comicHdPressTimer && (type !== 'pointerleave' || event.target.closest?.('#comic-reader-hd-btn'))) {
+        clearTimeout(_comicHdPressTimer);
+        _comicHdPressTimer = null;
+    }
+}, true));
+// Pas de menu contextuel (appui long sur téléphone) sur le bouton HD.
+document.addEventListener('contextmenu', event => {
+    if (event.target.closest?.('#comic-reader-hd-btn')) event.preventDefault();
+});
 
 function toggleComicReaderUpscaleMenu(force) {
     toggleComicReaderSettings(force, 'hd');
@@ -579,9 +634,12 @@ function _renderComicUpscaleControls() {
         button.classList.toggle('unavailable', useless);
         button.setAttribute('aria-pressed', String(on));
         button.setAttribute('aria-disabled', String(useless));
-        button.dataset.tooltip = useless ? _comicUpscaleUselessText() : on
+        button.classList.toggle('forced', on && comicUpscale.forced);
+        button.dataset.tooltip = useless ? `${_comicUpscaleUselessText()} Appui long : forcer quand même.` : on && comicUpscale.forced
+            ? `HD forcée sur toutes les pages (${COMIC_UPSCALE_MODELS[comicUpscale.model].label}) : cliquer pour revenir à la version d'origine`
+            : on
             ? `HD activée (${COMIC_UPSCALE_MODELS[comicUpscale.model].label}) : cliquer pour revenir à la version d'origine (U)`
-            : 'Activer l\'amélioration HD des pages en basse définition (U)';
+            : 'Activer l\'amélioration HD des pages en basse définition (U) ; appui long : toutes les pages, même en haute définition';
     }
     if (typeof _renderComicReaderSettings === 'function') _renderComicReaderSettings();
     _renderComicUpscaleStatus();
