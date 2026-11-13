@@ -5197,7 +5197,7 @@ def _zip_is_single_packaged_comic(archive_path):
     explicite demandée par l'utilisateur."""
     try:
         with zipfile.ZipFile(archive_path) as zf:
-            names = [n for n in zf.namelist() if not n.endswith('/')]
+            names = _archive_page_files([n for n in zf.namelist() if not n.endswith('/')])
             if not names:
                 return False
             if not all(os.path.splitext(n)[1].lower() in _ZIP_IMAGE_EXTENSIONS for n in names):
@@ -5563,10 +5563,29 @@ def _archive_files_cached(filepath):
     return files
 
 
+# Fichiers annexes glissés dans les archives de pages par les groupes de release
+# (contrôle .sfv, .nfo, vignettes Windows/macOS, ComicInfo.xml...) : ils ne font pas
+# d'une archive d'images un pack. Une RAR de 51 pages + 1 .sfv restait « À examiner ».
+_ARCHIVE_EXTRA_EXTENSIONS = {'.sfv', '.nfo', '.txt', '.md5', '.sha1', '.url', '.db', '.ini', '.xml', '.diz'}
+
+
+def _archive_page_files(files):
+    """Fichiers d'une archive sans ses annexes (voir _ARCHIVE_EXTRA_EXTENSIONS)."""
+    kept = []
+    for name in files or []:
+        base = os.path.basename(name)
+        if name.startswith('__MACOSX/') or base.startswith('._') or base.lower() == '.ds_store':
+            continue
+        if os.path.splitext(base)[1].lower() in _ARCHIVE_EXTRA_EXTENSIONS:
+            continue
+        kept.append(name)
+    return kept
+
+
 def _archive_is_single_album(filepath):
     """True pour une archive (ZIP, RAR, TAR...) qui ne contient que les pages d'un seul album:
     uniquement des images, toutes dans le même dossier. Illisible ou vide: False."""
-    files = _archive_files_cached(filepath)
+    files = _archive_page_files(_archive_files_cached(filepath))
     if not files:
         return False
     if not all(os.path.splitext(name)[1].lower() in _ZIP_IMAGE_EXTENSIONS for name in files):
@@ -5576,7 +5595,7 @@ def _archive_is_single_album(filepath):
 
 def _archive_contains_only_images(filepath):
     """True pour une archive de pages (un ou plusieurs dossiers d'images, aucun fichier BD)."""
-    files = _archive_files_cached(filepath)
+    files = _archive_page_files(_archive_files_cached(filepath))
     return bool(files) and all(os.path.splitext(n)[1].lower() in _ZIP_IMAGE_EXTENSIONS for n in files)
 
 

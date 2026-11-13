@@ -5636,6 +5636,7 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
    gauche que les étapes de Découvrir (.step), sur les cartes et fenêtres de toutes les
    pages. Seul background-image est posé : la couleur de fond propre à chaque bloc reste. */
 :root { --surface-glow: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--color-accent) 14%, transparent) 0%, transparent 55%); }
-html body :is(.settings-card, .backup-card, .guide-card, .indisp-summary, .rq-section, .modal-content, .settings-modal-content) {
+/* « le degrade c'est moche dans les tableaux. garde le uniquement dans les settings » */
+html body:has(#settings-nav-subgroup) :is(.settings-card, .backup-card, .guide-card, .settings-modal-content) {
     background-image: var(--surface-glow);
 }

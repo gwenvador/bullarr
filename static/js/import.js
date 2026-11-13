@@ -2582,6 +2582,9 @@ function _archiveInlineHtml(file) {
     const keyAttr = escapeForAttribute(key);
     return `
         <div class="archive-inline" data-archive-key="${escapeHtml(key)}" style="margin-top:6px;">
+            <div style="font-size:0.88em; margin-bottom:6px; padding:8px 10px; border-radius:8px; background:var(--color-surface); border:1px solid var(--color-border);">${entry.data.format === 'zip'
+                ? `<strong>Que faire ?</strong> Cochez le dossier de chaque album ci-dessous, puis « Empaqueter » : chaque dossier devient un fichier CBZ, qui apparaît ensuite sous « Volumes empaquetés » pour être importé.`
+                : `<strong>Que faire ?</strong> Bullarr ne sait découper que les archives ZIP. Extrayez cette archive ${escapeHtml(entry.data.format.toUpperCase())} dans le dossier surveillé : ses albums apparaîtront ici pour être importés. Ensuite, validez le pack comme terminé (${svgIcon('check-check')}) ou supprimez-le.`}</div>
             <div style="color:var(--color-text-muted); font-size:0.85em; margin-bottom:4px;">${escapeHtml(entry.data.format.toUpperCase())} · ${entry.data.total_count} entrée(s)${entry.data.truncated ? ' · liste plafonnée' : ''}</div>
             ${entry.data.format === 'zip' ? `<button type="button" class="btn btn-sm archive-inline-package" ${selected.size ? '' : 'disabled'} data-import-root="${escapeHtml(file.import_root)}" data-relative-path="${escapeHtml(file.relative_path)}" onclick="packageInlineArchive(this)">📦 Empaqueter les dossiers cochés (${selected.size})</button> <span class="archive-inline-message"></span>` : ''}
             <div style="margin-top:4px; max-height:320px; overflow:auto;">${_archiveInlineTreeHtml(entry.data.entries, selected, key)}</div>
@@ -2696,7 +2699,7 @@ function _pendingPackGroupRowHtml({ pending, fileMatches: allFileMatches, folder
                                 <td colspan="8" style="padding:8px 4px; border-bottom:1px solid var(--color-border, #eee);">
                                     ${svgIcon('package')} <span style="font-weight:600; overflow-wrap:anywhere;">${escapeHtml(file.filename)}</span>
                                     <span style="color:var(--color-text-muted);">(${formatBytes(file.file_size)})</span>
-                                    <span style="color:var(--color-text-muted); font-size:0.85em; margin-left:6px;">Archive non importable telle quelle : cochez ses dossiers et empaquetez-les, les volumes s'affichent ci-dessous.</span>
+                                    <div style="color:var(--color-text-muted); font-size:0.85em; margin-top:2px;">Cette archive contient plusieurs albums : elle ne s'importe pas d'un bloc.</div>
                                     ${isExpanded || archiveContentCache.has(_archiveKey(file)) ? _archiveInlineHtml(file) : ''}
                                 </td>
                             </tr>`;
