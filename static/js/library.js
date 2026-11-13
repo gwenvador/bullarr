@@ -8534,7 +8534,16 @@ function _addButtonStateHtml(originalHtml, word) {
     if (probe.textContent.trim()) {
         return `${svgIcon(word === 'Ajouté' ? 'check' : 'x')} ${word}`;
     }
-    return `${originalHtml} <span style="font-size:0.85em;">${word}</span>`;
+    // Icône seule : pas de mot ajouté, la cellule Actions du tableau est trop étroite.
+    return `<span title="${word}" aria-label="${word}">${svgIcon(word === 'Ajouté' ? 'check' : 'x')}</span>`;
+}
+
+// Pendant l'envoi : « ⏳ Envoi... » pour un bouton avec texte, un sablier seul pour un
+// bouton icône (sinon le mot déborde du bouton dans le tableau des sources).
+function _addButtonBusyHtml(originalHtml) {
+    const probe = document.createElement('span');
+    probe.innerHTML = originalHtml;
+    return probe.textContent.trim() ? '⏳ Envoi...' : svgIcon('loader-circle', 'icon-spin');
 }
 
 async function addToEmule(link, button, title, seriesId = null, volumeId = null, volumeNumber = null, source = 'ebdz', sourceLink = null, forceReplace = false) {
@@ -8542,7 +8551,7 @@ async function addToEmule(link, button, title, seriesId = null, volumeId = null,
     if (forceReplace === null) return;
 
     const originalHtml = button.innerHTML;
-    button.innerHTML = '⏳ Envoi...';
+    button.innerHTML = _addButtonBusyHtml(originalHtml);
     button.disabled = true;
 
     try {
@@ -8661,7 +8670,7 @@ async function addTorrentToQbittorrent(torrentUrl, button, title, seriesId = nul
     if (forceReplace === null) return;
 
     const originalHtml = button.innerHTML;
-    button.innerHTML = '⏳ Envoi...';
+    button.innerHTML = _addButtonBusyHtml(originalHtml);
     button.disabled = true;
 
     try {
@@ -8723,7 +8732,7 @@ async function addTorrentToClient(clientName, clientLabel, torrentUrl, button, t
     if (forceReplace === null) return;
 
     const originalHtml = button.innerHTML;
-    button.innerHTML = '⏳ Envoi...';
+    button.innerHTML = _addButtonBusyHtml(originalHtml);
     button.disabled = true;
 
     try {
