@@ -354,7 +354,7 @@ def _check_volume_file_validity(filepath, fmt):
                 if len(pdf.pages) == 0:
                     return 'PDF sans pages'
     except Exception as e:
-        return f"Fichier corrompu ou illisible ({e})"
+        return error_message(e, "Fichier corrompu ou illisible")
 
     return None
 
