@@ -201,6 +201,39 @@
     html { scroll-behavior: auto; }
     .slide, .btn, .grid .card, .dots button { transition: none; }
   }
+
+  /* Comparaison avant / après de l'upscaling */
+  .compare-block { margin-top: 44px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px; align-items: center; }
+  .compare-block h3 { margin: 0 0 8px; font-size: 1.3rem; }
+  .compare-block p { margin: 0 0 10px; color: var(--muted); }
+  .compare-block .note { font-size: .85rem; }
+  .compare {
+    position: relative; overflow: hidden; border-radius: 14px; border: 1px solid var(--line);
+    box-shadow: var(--shadow); background: var(--card); aspect-ratio: 4 / 3; --pos: 50%;
+    user-select: none; -webkit-user-select: none; touch-action: pan-y;
+  }
+  .compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .compare .after { clip-path: inset(0 0 0 var(--pos)); }
+  .compare .divider {
+    position: absolute; top: 0; bottom: 0; left: var(--pos); width: 3px; margin-left: -1.5px;
+    background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25); pointer-events: none;
+  }
+  .compare .divider::after {
+    content: '‹ ›'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #fff;
+    display: grid; place-items: center; font-weight: 700; font-size: 1.1rem; letter-spacing: 2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  }
+  .compare .tag {
+    position: absolute; top: 12px; padding: 4px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600;
+    background: rgba(29,29,31,.72); color: #fff; pointer-events: none;
+  }
+  .compare .tag.l { left: 12px; } .compare .tag.r { right: 12px; }
+  .compare input[type=range] {
+    position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize;
+  }
+  .compare:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 760px) { .compare-block { grid-template-columns: 1fr; gap: 18px; } }
 </style>
 </head>
 <body>
@@ -220,7 +253,7 @@
 
 <div class="wrap hero">
   <img class="logo" src="logo-transparent.png" alt="Bullarr — gestionnaire de bibliothèque BD" width="715" height="312">
-  <a class="pill" href="https://github.com/gwenvador/bullarr/releases/tag/v12.2"><b>v12.2</b> Thème Système, nouveautés groupées par série →</a>
+  <a class="pill" href="https://github.com/gwenvador/bullarr/releases/tag/v13.0"><b>v13.0</b> Upscaling des tomes, historique de lecture, Enrichir sur mobile →</a>
   <h1>Votre bibliothèque de BD, <em>à jour et complète.</em></h1>
   <p class="tagline">Chercher les tomes, les télécharger, les ranger, compléter leurs métadonnées : avant, c'était l'enfer. Maintenant, Bullarr s'en occupe.</p>
   <div class="cta">
@@ -343,6 +376,37 @@
         <h3>Thèmes</h3>
         <p>Cinq palettes, Atelier, Ardoise, Sauge, Océan et Prune, chacune en clair, en sombre ou selon le réglage de l'appareil, sur le site comme dans l'application Android.</p>
       </div>
+      <div class="card">
+        <div class="icon">✨</div>
+        <h3>Upscaling</h3>
+        <p>Les tomes en basse définition sont repérés (pastille LD / SD / HD) et améliorés sur le serveur avec 8 modèles Real-ESRGAN et Real-CUGAN, avec comparaison page par page. Le lecteur peut aussi passer en HD à la volée.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📖</div>
+        <h3>Historique de lecture</h3>
+        <p>Toutes les lectures de chaque compte dans Suivi → Lectures, avec export et import CSV. Un tome ou une série se marque comme lu en un clic.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔑</div>
+        <h3>Clés API et Mihon</h3>
+        <p>Une clé API par compte, un catalogue paginé pour les clients externes et une extension Mihon / Tachiyomi qui se connecte avec l'identifiant Bullarr.</p>
+      </div>
+    </div>
+
+    <div class="compare-block" id="upscaling">
+      <div>
+        <h3>✨ L'upscaling, avant / après</h3>
+        <p>Une case en basse définition, simplement agrandie (à gauche), puis passée dans le modèle Real-ESRGAN de Bullarr (à droite) : traits nets, aplats propres, hachures retrouvées et texte lisible.</p>
+        <p>Faites glisser la poignée pour comparer.</p>
+        <p class="note">Dessin original réduit à 300 × 225 px et recompressé en JPEG, puis agrandi ×4. Résultat réel du modèle « Qualité ».</p>
+      </div>
+      <div class="compare">
+        <img src="upscale-avant.jpg" alt="Case agrandie sans upscaling : image floue et pixelisée" width="1200" height="900" loading="lazy">
+        <img class="after" src="upscale-apres.jpg" alt="La même case après upscaling Real-ESRGAN : traits nets" width="1200" height="900" loading="lazy">
+        <span class="tag l">Avant</span><span class="tag r">Après · Real-ESRGAN</span>
+        <span class="divider" aria-hidden="true"></span>
+        <input type="range" min="0" max="100" value="50" step="1" aria-label="Position de la comparaison avant / après">
+      </div>
     </div>
   </div>
 </section>
@@ -438,7 +502,7 @@ docker compose up -d</code></pre>
       <a href="https://github.com/gwenvador/bullarr/releases">Versions</a>
       <a href="https://github.com/gwenvador/bullarr">GitHub</a>
     </div>
-    <small>Bullarr est un projet personnel, auto-hébergé. Images de démonstration : domaine public ou CC0, via <a href="https://commons.wikimedia.org">Wikimedia Commons</a>. Badge F-Droid : © F-Droid, CC BY-SA 3.0. Badge Obtainium : © Obtainium (ImranR98), GPL-3.0.</small>
+    <small>Bullarr est un projet personnel, auto-hébergé. Images de démonstration : domaine public ou CC0, via <a href="https://commons.wikimedia.org">Wikimedia Commons</a>. Comparaison d'upscaling : dessin original. Badge F-Droid : © F-Droid, CC BY-SA 3.0. Badge Obtainium : © Obtainium (ImranR98), GPL-3.0.</small>
   </div>
 </footer>
 
@@ -487,6 +551,13 @@ docker compose up -d</code></pre>
       if (Math.abs(dx) > 40) { show(current + (dx < 0 ? 1 : -1)); restart(); }
     });
     show(0); restart();
+
+    // Comparaison avant / après : la poignée suit le curseur (souris, doigt, clavier)
+    document.querySelectorAll('.compare').forEach(box => {
+      const range = box.querySelector('input[type=range]');
+      const set = () => box.style.setProperty('--pos', range.value + '%');
+      range.addEventListener('input', set); set();
+    });
 
     // Bouton Copier du bloc d'installation
     document.querySelectorAll('.copy').forEach(btn => btn.addEventListener('click', async () => {
