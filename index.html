@@ -188,6 +188,11 @@
   .grid.grid-3 { grid-template-columns: repeat(3, 1fr); margin-bottom: 36px; }
   @media (max-width: 960px) { .grid.grid-3 { grid-template-columns: 1fr; } }
   .ai-sub { margin: 0 0 14px; font-size: 1.15rem; }
+  .ai .card p { margin: 0 0 12px; }
+  .ai .card p:last-child { margin-bottom: 0; }
+  .ai-ex { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--ink) !important; }
+  .tg { display: inline-block; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: .85rem; font-weight: 600; }
+  .tg.old { background: transparent; border: 1px dashed var(--line); color: var(--muted); text-decoration: line-through; font-weight: 500; }
   .note { margin-top: 16px; padding: 12px 16px; border-radius: 12px; background: var(--accent-soft); color: #6b4310; font-size: .93rem; }
 
   footer { padding: 32px 0 44px; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); }
@@ -203,9 +208,11 @@
   }
 
   /* Comparaison avant / après de l'upscaling */
-  .compare-block { margin-top: 44px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px; align-items: center; }
+  .compare-block { margin-top: 44px; padding: 28px; border-radius: 18px; background: linear-gradient(135deg, #2a2320, #3b2a1c); color: #f6efe6; box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 32px; align-items: center; }
   .compare-block h3 { margin: 0 0 8px; font-size: 1.3rem; }
-  .compare-block p { margin: 0 0 10px; color: var(--muted); }
+  .compare-block p { margin: 0 0 10px; color: #d9cdbf; }
+  .compare-block .note { background: rgba(255,255,255,.08); color: #d9cdbf; border-color: rgba(255,255,255,.12); }
+  .compare-block h3 { color: #fff; }
   .compare-block .note { font-size: .85rem; }
   .compare {
     position: relative; overflow: hidden; border-radius: 14px; border: 1px solid var(--line);
@@ -233,7 +240,7 @@
     position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize;
   }
   .compare:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
-  @media (max-width: 760px) { .compare-block { grid-template-columns: 1fr; gap: 18px; } }
+  @media (max-width: 760px) { .compare-block { grid-template-columns: 1fr; gap: 18px; padding: 18px; } }
 </style>
 </head>
 <body>
@@ -304,92 +311,42 @@
       <div class="card">
         <div class="icon">🏷️</div>
         <h3>Matching Bédéthèque</h3>
-        <p>Chaque série est rapprochée de sa fiche Bédéthèque. Bullarr télécharge et met à jour ses métadonnées et couvertures : résumé, auteurs, éditeur, et écriture du ComicInfo.xml dans les archives.</p>
+        <p>Chaque série rapprochée de sa fiche Bédéthèque : résumé, auteurs, couvertures et ComicInfo.xml.</p>
       </div>
       <div class="card">
         <div class="icon">📥</div>
         <h3>Import automatique</h3>
-        <p>Surveillance des dossiers aMule, torrents, Telegram et sources web. Détection de la série et du tome, conversion en CBZ. Un fichier encore en cours de copie attend la fin du transfert avant d'être importé.</p>
+        <p>Dossiers surveillés, série et tome reconnus, conversion en CBZ, Bis et Ter compris.</p>
       </div>
       <div class="card">
         <div class="icon">📊</div>
         <h3>Surveillance</h3>
-        <p>Un suivi façon Sonarr : Bullarr surveille les flux RSS et les nouveautés EBDZ et Telegram, reconnaît les nouveaux albums de vos séries et télécharge tout seul ceux qui vous manquent. Les albums d'une même série sont regroupés sur une ligne.</p>
+        <p>Comme Sonarr : les tomes qui vous manquent sont repérés et téléchargés tout seuls.</p>
       </div>
       <div class="card">
         <div class="icon">🔎</div>
         <h3>Recherche et téléchargement</h3>
-        <p>Recherche de tomes sur EBDZ, Telegram et les torrents, et téléchargement direct depuis les sources web. Les tomes trouvés arrivent dans la file d'import.</p>
+        <p>EBDZ, Telegram, torrents et sources web, en une seule recherche.</p>
       </div>
       <div class="card">
         <div class="icon">🧭</div>
         <h3>Enrichir</h3>
-        <p>Pour compléter votre collection : les indispensables, le Panthéon, les thèmes, le Top 100 et les sorties BDGest, ou toute la bibliographie d'un auteur.</p>
+        <p>Indispensables, Panthéon, Top 100, sorties : ce qui manque à votre collection.</p>
       </div>
       <div class="card">
         <div class="icon">📖</div>
         <h3>Lecteur intégré</h3>
-        <p>CBZ, CBR et PDF lus dans le navigateur : deux pages, webtoon, sens manga, zoom, miniatures, plein écran et raccourcis clavier.</p>
+        <p>CBZ, CBR et PDF dans le navigateur, avec historique de lecture et bouton HD.</p>
       </div>
       <div class="card">
         <div class="icon">📱</div>
         <h3>Application Android</h3>
-        <p>Votre bibliothèque dans la poche : lecture plein écran, webtoon, sens manga et double page, « Continuer la lecture », albums hors ligne et notifications instantanées (imports, validations) via ntfy. Installation et mises à jour par F-Droid ou Obtainium.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🔒</div>
-        <h3>Auto-hébergé</h3>
-        <p>Docker et SQLite, sans base externe. Secrets chiffrés sur disque, authentification facultative par comptes locaux, SSO OIDC ou les deux.</p>
-      </div>
-      <div class="card">
-        <div class="icon">✨</div>
-        <h3>Tags par IA</h3>
-        <p>aiautotagging.com (gratuit, sans clé), Claude, Gemini, ChatGPT, OpenRouter, Groq ou un LLM local proposent les tags de vos séries, regroupent les doublons et taguent les nouvelles séries, avec des IA de secours.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🖼️</div>
-        <h3>Vue Affiches</h3>
-        <p>Toute la bibliothèque en couvertures, avec statut, filtres Statut, Origine (BD, Comics, Manga) et Listes, et sélection multiple pour agir sur plusieurs séries.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🔖</div>
-        <h3>Lecture synchronisée</h3>
-        <p>« Continuer la lecture » et l'avancement de chaque album, synchronisés avec le compte Komga de chacun, ou gardés par Bullarr sans Komga : vous reprenez à la bonne page, sur le site comme sur le téléphone.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🔔</div>
-        <h3>Notifications</h3>
-        <p>ntfy et notifications instantanées sur Android (UnifiedPush), réglables événement par événement : imports, téléchargements, nouvelles versions.</p>
+        <p>Lecture hors ligne, notifications, F-Droid. Extension Mihon fournie.</p>
       </div>
       <div class="card">
         <div class="icon">👥</div>
-        <h3>Comptes et demandes</h3>
-        <p>Comptes administrateur et lecteur, inscription validée par un admin. Les lecteurs lisent, gardent leurs listes et demandent une BD ; vous validez la demande et Bullarr la cherche.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🧸</div>
-        <h3>Contrôle parental</h3>
-        <p>Pour chaque lecteur, les bibliothèques visibles et les genres masqués, avec un préréglage « Enfant ». Un journal garde la trace des connexions et des changements de compte.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🎨</div>
-        <h3>Thèmes</h3>
-        <p>Cinq palettes, Atelier, Ardoise, Sauge, Océan et Prune, chacune en clair, en sombre ou selon le réglage de l'appareil, sur le site comme dans l'application Android.</p>
-      </div>
-      <div class="card">
-        <div class="icon">✨</div>
-        <h3>Upscaling</h3>
-        <p>Les tomes en basse définition sont repérés (pastille LD / SD / HD) et améliorés sur le serveur avec 8 modèles Real-ESRGAN et Real-CUGAN, avec comparaison page par page. Le lecteur peut aussi passer en HD à la volée.</p>
-      </div>
-      <div class="card">
-        <div class="icon">📖</div>
-        <h3>Historique de lecture</h3>
-        <p>Toutes les lectures de chaque compte dans Suivi → Lectures, avec export et import CSV. Un tome ou une série se marque comme lu en un clic.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🔑</div>
-        <h3>Clés API et Mihon</h3>
-        <p>Une clé API par compte, un catalogue paginé pour les clients externes et une extension Mihon / Tachiyomi qui se connecte avec l'identifiant Bullarr.</p>
+        <h3>Comptes et contrôle parental</h3>
+        <p>Comptes lecteurs, demandes de BD, SSO OIDC et préréglage « Enfant ».</p>
       </div>
     </div>
 
@@ -451,44 +408,22 @@ docker compose up -d</code></pre>
 <section id="ia" class="band">
   <div class="wrap">
     <span class="eyebrow">Bullarr et IA</span>
-    <h2>Des tags créés par l'IA, une bibliothèque qui répond</h2>
-    <p class="lead">Utilisez aiautotagging.com sans clé, ou branchez Claude, Gemini, ChatGPT, OpenRouter, Groq ou un LLM local pour taguer vos séries, et interrogez votre bibliothèque en langage naturel grâce au serveur MCP.</p>
-    <h3 class="ai-sub">Tags automatiques</h3>
-    <div class="grid grid-3">
-      <div class="card">
-        <div class="icon">🏷️</div>
-        <h3>Créer les tags</h3>
-        <p>Pour toutes les séries ou seulement celles qui n'en ont pas : l'IA lit le titre, les auteurs, le genre et le résumé, et réutilise vos tags existants. Rien n'est retiré.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🧹</div>
-        <h3>Normaliser</h3>
-        <p>« de-gaulle », « charles-de-gaulle », « général de gaulle » : l'IA repère les tags qui veulent dire la même chose et propose un tag commun, appliqué seulement après votre validation.</p>
-      </div>
-      <div class="card">
-        <div class="icon">⚡</div>
-        <h3>Nouvelles séries</h3>
-        <p>Option pour taguer automatiquement chaque série ajoutée, depuis Bédéthèque, l'import ou un scan. Un historique garde la trace de chaque traitement.</p>
-      </div>
-    </div>
-    <h3 class="ai-sub">Serveur MCP</h3>
+    <h2>L'IA range, vous lisez</h2>
+    <p class="lead">Des tags posés pour vous, et une bibliothèque qu'on interroge en français depuis Claude ou ChatGPT.</p>
     <div class="ai">
-      <div class="card chat" aria-label="Exemple de conversation">
-        <div class="bubble me">Une BD des années 70 sur les chats ?</div>
-        <div class="bubble bot">Je cherche dans ta bibliothèque avec <code>search_series</code>…</div>
-        <div class="bubble me">Quelles séries parlent de Nietzsche ?</div>
-        <div class="bubble me">Tague cette série « philosophie ».</div>
-        <div class="bubble bot">C'est fait, via <code>set_series_tags</code>.</div>
+      <div class="card">
+        <h3 class="ai-sub">🏷️ Tags automatiques</h3>
+        <p class="ai-ex"><b>Blacksad</b> → <span class="tg">polar</span><span class="tg">animaux-anthropomorphes</span><span class="tg">new-york</span><span class="tg">années-50</span></p>
+        <p class="ai-ex"><span class="tg old">ww2</span><span class="tg old">2nde-guerre-mondiale</span> → <span class="tg">seconde-guerre-mondiale</span></p>
+        <p>Chaque nouvelle série est taguée dès son ajout, et les doublons sont fusionnés après votre accord. aiautotagging.com sans clé, ou Claude, Gemini, ChatGPT, OpenRouter, Groq, un LLM local.</p>
       </div>
-      <div>
-        <ul class="tools">
-          <li><code>search_series</code><span>Chercher par mots, tags et année.</span></li>
-          <li><code>get_series</code><span>Lire la fiche d'une série.</span></li>
-          <li><code>list_tags</code><span>Lister les tags et leur nombre de séries.</span></li>
-          <li><code>set_series_tags</code><span>Remplacer les tags d'une série.</span></li>
-          <li><code>set_reading_lists</code><span>Gérer « à lire plus tard » et les favoris.</span></li>
-        </ul>
-        <p class="note">Il ne supprime rien et ne modifie aucun fichier. L'accès se fait par un jeton dédié, à configurer dans votre instance — voir la <a href="docs.html#ai">documentation</a>. Les tags par IA se règlent dans Configuration → IA ; la clé API reste chiffrée sur votre serveur.</p>
+      <div class="card chat" aria-label="Exemple de conversation avec le serveur MCP">
+        <h3 class="ai-sub">💬 Serveur MCP</h3>
+        <div class="bubble me">J'ai un polar dans l'Amérique des années 50 ?</div>
+        <div class="bubble bot">Oui : <b>Blacksad</b>, 6 tomes, tagué polar, new-york, années-50.</div>
+        <div class="bubble me">Mets-le dans « à lire plus tard ».</div>
+        <div class="bubble bot">C'est fait ✓</div>
+        <p class="note">Lecture des fiches, tags et listes uniquement : aucun fichier n'est touché. Voir la <a href="docs.html#ai">documentation</a>.</p>
       </div>
     </div>
   </div>

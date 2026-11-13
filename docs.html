@@ -202,6 +202,7 @@
       <li><a href="#ai">Bullarr et IA (tags, MCP)</a></li>
       <li><a href="#api">API</a></li>
       <li><a href="#android">Application Android</a></li>
+      <li><a href="#upscaling">Upscaling</a></li>
       <li><a href="#securite">Sécurité, comptes et thèmes</a></li>
     </ol>
   </nav>
@@ -265,7 +266,7 @@
         </div>
         <div class="guide-card">
           <h3>✨ Upscaling</h3>
-          <p>La définition réelle des pages est mesurée (pastille LD / SD / HD, filtre Qualité). <em>Actions → Upscaling</em> améliore les tomes en basse définition sur le serveur (8 modèles Real-ESRGAN / Real-CUGAN, choix par album ou par série), réduit les tomes trop lourds et compare l'original et la nouvelle version page par page. Le bouton HD du lecteur améliore les pages à la volée.</p>
+          <p>Pastille LD / SD / HD et filtre Qualité dans la bibliothèque. <em>Actions → Upscaling</em> améliore les tomes en basse définition sur le serveur, le bouton HD du lecteur le fait à la volée. Détails dans la section <a href="#upscaling">Upscaling</a>.</p>
         </div>
         <div class="guide-card">
           <h3>📑 Lectures</h3>
@@ -280,7 +281,7 @@
         <li><strong>Tags</strong> : chaque série peut avoir des tags (thèmes, lieux, époques, noms). Ouvrez la fenêtre <em>Tags</em> de la fiche : <kbd>+</kbd> pour ajouter, <kbd>×</kbd> pour retirer.</li>
         <li>La colonne <strong>Tags</strong> de la vue tableau affiche tous les tags, avec un filtre texte.</li>
         <li>La recherche du haut de page trouve les séries par tag ; un clic sur un tag ouvre la bibliothèque filtrée sur ce tag.</li>
-        <li><strong>Listes</strong> : « À lire plus tard » et « Favori » par série, depuis le menu <em>Actions</em> de la fiche. Les icônes 📚 et ⭐ apparaissent à côté du titre, et le menu <em>Listes</em> de la bibliothèque filtre sur l'une ou l'autre.</li>
+        <li><strong>Listes</strong> : « À lire plus tard » et « Favori » par série, depuis le menu <em>Actions</em> de la fiche. Un marque-page et un cœur apparaissent à côté du titre, et le menu <em>Listes</em> de la bibliothèque filtre sur l'une ou l'autre.</li>
       </ul>
     </section>
 
@@ -296,7 +297,7 @@
       <ul>
         <li><strong>Créer les tags</strong> : pour les séries sans tags (leur nombre est affiché) ou pour toutes. L'IA lit le titre, les auteurs, le genre et le résumé et réutilise le vocabulaire existant. Les tags proposés s'ajoutent, rien n'est retiré.</li>
         <li><strong>Normaliser les tags</strong> : l'IA regroupe les tags qui veulent dire la même chose et propose un tag commun. Rien ne change avant votre validation.</li>
-        <li><strong>Nouvelles séries</strong> : une option tague automatiquement chaque série ajoutée (Bédéthèque, import ou scan), quelques minutes après son arrivée.</li>
+        <li><strong>Nouvelles séries</strong> : une option tague automatiquement chaque série ajoutée (Bédéthèque, import ou scan), dès son arrivée.</li>
         <li><strong>Historique</strong> : chaque traitement est journalisé avec les séries modifiées et les tags ajoutés.</li>
       </ul>
       <div class="guide-note">Les appels sont facturés par le fournisseur choisi, sur votre clé. Seuls le titre, les auteurs, le genre, l’année, l’origine, le résumé et les tags sont envoyés, jamais les fichiers.</div>
@@ -339,8 +340,20 @@
       </ol>
     </section>
 
+    <section id="upscaling">
+      <h2><span class="guide-num">9</span> Upscaling</h2>
+      <p>Beaucoup de BD numérisées il y a longtemps ont des pages de 1600 px ou moins : elles sont floues sur un grand écran. L'upscaling les agrandit deux fois et les nettoie avec un réseau de neurones entraîné pour l'image dessinée : les traits restent nets, les aplats propres, et les artefacts JPEG disparaissent. Ces albums portent l'étiquette « Basse déf. » dans la bibliothèque. Le seuil (1600 px par défaut) se règle dans <em>Configuration → Upscaling</em> : 1200, 1600, 2000 ou 2400 px.</p>
+      <p>Bullarr reprend les huit modèles de l'application Android, convertis au format ONNX : <a href="https://github.com/xinntao/Real-ESRGAN">Real-ESRGAN</a> (rapide, général, général avec débruitage, qualité) et <a href="https://github.com/bilibili/ailab/tree/main/Real-CUGAN">Real-CUGAN</a> (SE et Pro, avec ou sans débruitage). Real-ESRGAN rapide est un bon choix par défaut ; Real-CUGAN donne des traits plus fins sur la BD franco-belge, en plus lent.</p>
+      <ul>
+        <li><strong>Dans le lecteur</strong> : le bouton <em>HD</em> améliore les pages à la volée sur la carte graphique de l'appareil (WebGPU). Rien n'est modifié sur le serveur. Le modèle est téléchargé une fois par navigateur, depuis le lecteur ou <strong>Configuration</strong> → <em>Upscaling</em>.</li>
+        <li><strong>Sur le serveur</strong> : depuis la molette d'un tome ou d'une série (« Upscaler en HD », qui traite alors tous ses tomes en basse définition) ou la page <strong>Upscaling</strong> du menu <em>Actions</em>, qui liste les albums non HD, en traite plusieurs d'un coup (avec un modèle différent par album si besoin) et compare les huit modèles sur un extrait d'une de vos pages avant de choisir. Le serveur agrandit chaque page, puis remplace le fichier par sa version HD. L'original SD est gardé dans le dossier caché <code>.bullarr-sd-backup</code> à la racine de la bibliothèque, et « Restaurer la version SD » le remet en place.</li>
+      </ul>
+      <p><strong>À l'inverse, réduire un fichier trop lourd</strong> : « Réduire le fichier » (molette d'un tome), « Réduire les tomes lourds » (molette d'une série) ou la carte <em>Albums trop lourds</em> de la page Upscaling (pages de plus de 3200 px ou plus de 3 Mo par page en moyenne). On choisit la définition voulue (2000 à 3200 px, toujours au-dessus du seuil de basse définition) et si l'original est gardé (restaurable, la place n'est gagnée qu'en le supprimant ensuite) ou supprimé tout de suite, une fois la version réduite vérifiée. Les pages sont réduites et réencodées en JPEG de bonne qualité ; le fichier n'est remplacé que s'il devient plus léger.</p>
+      <p>Comment ça marche : chaque page est découpée en tuiles de 256 px qui se chevauchent un peu, chaque tuile passe dans le modèle, puis les tuiles sont recollées sans couture visible. Sur le serveur le calcul se fait sur le processeur, un tome à la fois : comptez de quelques minutes à plus d'une heure par album selon le modèle.</p>
+    </section>
+
     <section id="securite">
-      <h2><span class="guide-num">9</span> Sécurité et authentification</h2>
+      <h2><span class="guide-num">10</span> Sécurité et authentification</h2>
       <ul>
         <li>Les secrets (mots de passe, clés API) sont chiffrés sur disque.</li>
         <li>L'authentification est facultative et désactivée par défaut. Activez-la dans <strong>Configuration</strong> → <em>Login</em> : comptes locaux (identifiant et mot de passe), avec en option un bouton SSO OIDC.</li>
