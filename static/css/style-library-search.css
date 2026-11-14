@@ -4388,3 +4388,17 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
 /* Molette d'un tome : action visible mais impossible (raison en info-bulle). */
 .toolbar-dropdown-item.is-disabled { opacity: .45; cursor: not-allowed; }
 .toolbar-dropdown-item.is-disabled:hover { background: transparent; }
+
+/* Filtres de colonnes du tableau rappelés dans les vues Affiches et Aperçu (library.js,
+   _renderSeriesColumnFiltersBar). */
+.series-column-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.series-column-filter-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 999px;
+    font-size: .85em; font-weight: 600; color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+    border: 1px solid color-mix(in srgb, var(--color-accent) 28%, transparent); }
+.series-column-filter-chip .icon { width: 13px; height: 13px; }
+.series-column-filter-chip button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+    padding: 0; border: none; border-radius: 50%; background: transparent; color: inherit; font-size: 1.1em; line-height: 1; cursor: pointer; }
+.series-column-filter-chip button:hover { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.series-column-filter-clear { border: none; background: none; padding: 4px 6px; font: inherit; font-size: .85em;
+    color: var(--color-text-muted); text-decoration: underline; cursor: pointer; }

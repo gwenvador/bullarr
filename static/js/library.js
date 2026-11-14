@@ -1189,6 +1189,82 @@ function _tableFilterColumns(series) {
 // jamais mot pour mot, il faut la chercher parmi les valeurs découpées. Sous-chaîne
 // insensible à la casse pour un filtre "text". Pas besoin de retoucher filterSeries()/
 // activeFilters pour ça, la vue tableau est la seule à avoir un filtre par colonne.
+// « si je filtre dans le tableau, ça doit rester dans les autres vues » : les filtres de
+// colonnes (Auteur, Genre...) sont gardés ici, par clé de colonne, pour toute la session.
+// Le tableau les applique en masquant ses lignes (pas de re-rendu pendant la frappe) ;
+// les vues Affiches et Aperçu les appliquent aux données (filterSeries) et les rappellent
+// dans une barre de puces au-dessus de la grille, avec ✕ pour les retirer.
+const SERIES_COLUMN_FILTERS_KEY = 'seriesColumnFilters';
+const seriesColumnFilters = new Map((() => {
+    try { return Object.entries(JSON.parse(sessionStorage.getItem(SERIES_COLUMN_FILTERS_KEY) || '{}')); } catch (e) { return []; }
+})());
+
+function _saveSeriesColumnFilters() {
+    try { sessionStorage.setItem(SERIES_COLUMN_FILTERS_KEY, JSON.stringify(Object.fromEntries(seriesColumnFilters))); } catch (e) { /* stockage indisponible */ }
+}
+
+function setSeriesColumnFilter(column, el) {
+    const value = el.value.trim();
+    if (value) seriesColumnFilters.set(column, value); else seriesColumnFilters.delete(column);
+    _saveSeriesColumnFilters();
+    _syncFilterControlActive(el);
+    filterSeriesTableRows();
+}
+
+function clearSeriesColumnFilter(column) {
+    if (column) seriesColumnFilters.delete(column); else seriesColumnFilters.clear();
+    _saveSeriesColumnFilters();
+    filterSeries();
+}
+
+// Même valeur que la cellule du tableau, par clé de colonne (voir buildTableRowHtml).
+function _seriesColumnFilterSpecs() {
+    const specs = {
+        title: { label: 'Titre', type: 'text', getValue: s => s.title || '' },
+        volumes: { label: 'Tomes', type: 'text', getValue: buildVolumeCountLabel },
+        status: { label: 'Statut', type: 'select', getValue: _seriesStatusLabel },
+        year: { label: 'Année', type: 'select', getValue: s => s.year || '—' },
+        genre: { label: 'Genre', type: 'select', getValue: s => seriesGenre(s) || '—', multi: true },
+        type: { label: 'Type', type: 'select', getValue: s => bedethequeOriginLabel(s.bedetheque_origin) },
+    };
+    for (const col of _availableTableOptionalColumns()) {
+        specs[col.key] = {
+            label: col.header,
+            type: _TEXT_FILTER_TABLE_COLUMN_LABELS.has(col.header) ? 'text' : (col.filterType || 'select'),
+            multi: !!col.multi,
+            getValue: col.render,
+        };
+    }
+    return specs;
+}
+
+function _seriesMatchesColumnFilters(s, specs) {
+    for (const [column, value] of seriesColumnFilters) {
+        const spec = specs[column];
+        if (!spec) continue;
+        const text = String(spec.getValue(s) ?? '').trim();
+        if (spec.type === 'select') {
+            if (spec.multi ? !splitMultiValue(text).includes(value) : text !== value) return false;
+        } else if (!normalizeForSearch(text).includes(normalizeForSearch(value))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function _seriesColumnFiltersBarHtml() {
+    if (!seriesColumnFilters.size) return '';
+    const specs = _seriesColumnFilterSpecs();
+    const chips = [...seriesColumnFilters].map(([column, value]) => {
+        const label = specs[column]?.label || column;
+        return `<span class="series-column-filter-chip">${svgIcon('filter')} ${escapeHtml(label)} : ${escapeHtml(value)}
+            <button type="button" onclick="clearSeriesColumnFilter('${escapeForAttribute(column)}')" aria-label="Retirer le filtre ${escapeHtml(label)}" data-tooltip="Retirer ce filtre">×</button></span>`;
+    }).join('');
+    const clearAll = seriesColumnFilters.size > 1
+        ? `<button type="button" class="series-column-filter-clear" onclick="clearSeriesColumnFilter()">Tout retirer</button>` : '';
+    return `${chips}${clearAll}`;
+}
+
 function filterSeriesTableRows() {
     const controls = document.querySelectorAll('.series-table-filter-input, .series-table-filter-select');
     const active = [...controls]
@@ -1274,18 +1350,19 @@ function setSeriesTableSort(column) {
 }
 
 function _seriesTableHeaderHtml(column, label, filterCol, colIndex) {
+    const current = seriesColumnFilters.get(column) || '';
     const active = seriesTableSort.column === column;
     const arrow = active ? (seriesTableSort.direction === 'asc' ? ' ↑' : ' ↓') : ' ↕';
     const filterHtml = filterCol ? `
         <span class="th-filterable-filter" onclick="event.stopPropagation()">
             <span class="th-filterable-icon" onclick="this.nextElementSibling.focus()">${svgIcon('filter')}</span>
             ${filterCol.type === 'select'
-                ? `<select id="series-table-filter-${column}" aria-label="Filtrer par ${escapeHtml(label)}" class="series-table-filter-select th-filterable-control" data-col-index="${colIndex}" data-multi="${filterCol.multi ? '1' : ''}" onchange="_syncFilterControlActive(this); filterSeriesTableRows()">
+                ? `<select id="series-table-filter-${column}" aria-label="Filtrer par ${escapeHtml(label)}" class="series-table-filter-select th-filterable-control${current ? ' has-value' : ''}" data-col-index="${colIndex}" data-multi="${filterCol.multi ? '1' : ''}" onchange="setSeriesColumnFilter('${column}', this)">
                        <option value="">Tous</option>
-                       ${filterCol.values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('')}
+                       ${[...new Set([...filterCol.values, ...(current ? [current] : [])])].map(v => `<option value="${escapeHtml(v)}"${String(v) === current ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('')}
                    </select>`
-                : `<input type="text" id="series-table-filter-${column}" aria-label="Filtrer par ${escapeHtml(label)}" class="series-table-filter-input th-filterable-control" data-col-index="${colIndex}"
-                           placeholder="Filtrer..." oninput="_syncFilterControlActive(this); filterSeriesTableRows()">`}
+                : `<input type="text" id="series-table-filter-${column}" aria-label="Filtrer par ${escapeHtml(label)}" class="series-table-filter-input th-filterable-control${current ? ' has-value' : ''}" data-col-index="${colIndex}"
+                           placeholder="Filtrer..." value="${escapeHtml(current)}" oninput="setSeriesColumnFilter('${column}', this)">`}
         </span>
     ` : '';
     return `
@@ -1407,8 +1484,24 @@ function updateViewSwitcherButtons() {
     if (sortSection) sortSection.style.display = seriesViewMode === 'table' ? 'none' : '';
 }
 
+function _renderSeriesColumnFiltersBar() {
+    const grid = document.getElementById('series-grid');
+    if (!grid) return;
+    let bar = document.getElementById('series-column-filters');
+    const html = seriesViewMode === 'table' ? '' : _seriesColumnFiltersBarHtml();
+    if (!html) { bar?.remove(); return; }
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'series-column-filters';
+        bar.className = 'series-column-filters';
+        grid.parentElement.insertBefore(bar, grid);
+    }
+    bar.innerHTML = html;
+}
+
 function displaySeries(series) {
     const grid = document.getElementById('series-grid');
+    _renderSeriesColumnFiltersBar();
 
     if (series.length === 0) {
         grid.className = 'series-grid';
@@ -1419,6 +1512,7 @@ function displaySeries(series) {
     if (seriesViewMode === 'table') {
         grid.className = 'series-list series-table-wrapper';
         grid.innerHTML = buildSeriesTableHtml(series);
+        if (seriesColumnFilters.size) filterSeriesTableRows();
     } else if (seriesViewMode === 'overview') {
         grid.className = 'series-list overview-list';
         grid.innerHTML = series.map(buildOverviewRowHtml).join('');
@@ -1889,6 +1983,13 @@ function filterSeries() {
             }
             return true;
         });
+    }
+
+    // Filtres de colonnes du tableau : appliqués aux données dans les autres vues ; le
+    // tableau, lui, masque ses lignes (filterSeriesTableRows) pour garder toutes les options.
+    if (seriesColumnFilters.size && seriesViewMode !== 'table') {
+        const specs = _seriesColumnFilterSpecs();
+        filtered = filtered.filter(s => _seriesMatchesColumnFilters(s, specs));
     }
 
     filtered = sortSeriesList(filtered);
