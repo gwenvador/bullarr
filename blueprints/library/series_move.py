@@ -91,11 +91,11 @@ def _rewrite_series_paths(conn, series_id, library_id, old_path, new_path):
     has_history = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'import_history_files'").fetchone()
     if has_history:
-        for entry in conn.execute('SELECT rowid, destination_path FROM import_history_files '
+        for entry in conn.execute('SELECT rowid AS rid, destination_path FROM import_history_files '
                                   'WHERE destination_path = ? OR destination_path LIKE ?',
                                   (old_path, old_path.rstrip('/') + '/%')).fetchall():
             conn.execute('UPDATE import_history_files SET destination_path = ? WHERE rowid = ?',
-                         (_replace_prefix(entry['destination_path'], old_path, new_path), entry['rowid']))
+                         (_replace_prefix(entry['destination_path'], old_path, new_path), entry["rid"]))
     conn.commit()
 
 

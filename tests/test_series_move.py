@@ -82,6 +82,24 @@ class SeriesMoveTest(unittest.TestCase):
         # Série sans dossier sur le disque : seule la base change.
         self.assertEqual(self.db('SELECT library_id FROM series WHERE id = 2'), [(2,)])
 
+    def test_rewrites_import_history_paths(self):
+        # « No item with that key » : import_history_files a un id INTEGER PRIMARY KEY, donc
+        # « SELECT rowid » renvoie une colonne nommée id - le déplacement échouait dès qu'une
+        # série avait de l'historique d'import.
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("""CREATE TABLE IF NOT EXISTS import_history_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, operation_id TEXT, filename TEXT,
+            source_path TEXT, destination_path TEXT, series_id INTEGER)""")
+        conn.execute("INSERT INTO import_history_files (filename, destination_path, series_id) VALUES ('T01.cbz', ?, 1)",
+                     (os.path.join(self.series_path, 'T01.cbz'),))
+        conn.commit()
+        conn.close()
+        job = self.move([1])
+        self.assertTrue(job['results'][0]['success'], job)
+        self.check_moved()
+        new_path = os.path.join(self.comics, 'Marvel', 'Spider-Man', 'T01.cbz')
+        self.assertEqual(self.db('SELECT destination_path FROM import_history_files'), [(new_path,)])
+
     def test_copies_across_mounts(self):
         real_rename = os.rename
         calls = []
