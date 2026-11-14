@@ -2,19 +2,22 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <script>(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t==='system'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();</script>
+    <script>(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t==='system'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}var p=localStorage.getItem('palette');if(p&&p!=='atelier'){document.documentElement.setAttribute('data-palette',p);}}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
     <title>Login</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ asset_version('css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-settings.css') }}?v={{ asset_version('css/style-settings.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/palettes.css') }}?v={{ asset_version('css/palettes.css') }}">
     <style>
-        :root { --login-bg:#f4f6fb; --login-card:#fff; --login-text:#182033; --login-muted:#68738a; --login-border:#e3e8f1; --login-accent:#6366f1; }
-        body { min-height:100vh; margin:0; display:flex; align-items:center; justify-content:center; background:radial-gradient(circle at 20% 10%, rgba(99,102,241,.14), transparent 36%), var(--login-bg); color:var(--login-text); }
-        .login-container { width:min(430px, calc(100% - 32px)); box-sizing:border-box; padding:38px; background:var(--login-card); border:1px solid rgba(226,231,240,.9); border-radius:24px; box-shadow:0 24px 70px rgba(31,41,71,.14); text-align:left; }
+        :root { --login-bg:var(--color-bg); --login-card:var(--color-surface); --login-text:var(--color-text); --login-muted:var(--color-text-muted); --login-border:var(--color-border); --login-accent:var(--color-accent); }
+        /* « le thème de la page d'accueil devrait être le même que le site » : mêmes
+           couleurs que le reste de Bullarr (palette choisie et mode sombre, lus dans localStorage). */
+        body { min-height:100vh; margin:0; display:flex; align-items:center; justify-content:center; background:var(--login-bg); color:var(--login-text); }
+        .login-container { width:min(430px, calc(100% - 32px)); box-sizing:border-box; padding:38px; background:var(--login-card); border:1px solid var(--login-border); border-radius:24px; box-shadow:0 24px 70px rgba(0,0,0,.12); text-align:left; }
         .login-brand { display:flex; align-items:center; gap:12px; margin-bottom:30px; }
-        .login-brand img { width:42px; height:42px; border-radius:12px; box-shadow:0 5px 14px rgba(99,102,241,.25); }
+        .login-brand img { width:42px; height:42px; border-radius:12px; box-shadow:0 5px 14px color-mix(in srgb, var(--login-accent) 25%, transparent); }
         .login-brand-copy { display:flex; flex-direction:column; gap:2px; }
         .login-brand-name { font-size:1.18rem; font-weight:750; letter-spacing:-.02em; }
         .login-brand-label { color:var(--login-muted); font-size:.82rem; }
@@ -22,12 +25,15 @@
         .login-subtitle { margin:0 0 26px; color:var(--login-muted); line-height:1.5; }
         .login-form { display:flex; flex-direction:column; gap:17px; }
         .login-field { display:flex; flex-direction:column; gap:7px; }
-        .login-field label { font-size:.84rem; font-weight:650; color:#35405a; }
+        .login-field label { font-size:.84rem; font-weight:650; color:var(--login-text); }
         .login-input-wrap { position:relative; }
-        .login-input-wrap svg { position:absolute; left:14px; top:50%; transform:translateY(-50%); color:#8a94a8; pointer-events:none; }
-        .login-field input { width:100%; box-sizing:border-box; padding:13px 14px 13px 42px; border:1px solid var(--login-border); border-radius:12px; background:#fbfcfe; color:var(--login-text); font:inherit; transition:border-color .18s, box-shadow .18s, background .18s; }
-        .login-field input:focus { outline:none; background:#fff; border-color:var(--login-accent); box-shadow:0 0 0 4px rgba(99,102,241,.13); }
+        .login-input-wrap svg { position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--login-muted); pointer-events:none; }
+        .login-field input { width:100%; box-sizing:border-box; padding:13px 14px 13px 42px; border:1px solid var(--login-border); border-radius:12px; background:var(--color-surface-alt); color:var(--login-text); font:inherit; transition:border-color .18s, box-shadow .18s, background .18s; }
+        .login-field input:focus { outline:none; background:var(--login-card); border-color:var(--login-accent); box-shadow:0 0 0 4px color-mix(in srgb, var(--login-accent) 15%, transparent); }
         .login-container .btn { width:100%; min-height:46px; margin-top:3px; border-radius:12px; font-weight:700; }
+        .login-container .btn-login { background:var(--login-accent); color:#fff; border:1px solid var(--login-accent); }
+        .login-container .btn-login:hover { background:var(--color-accent-hover); border-color:var(--color-accent-hover); }
+        [data-theme="dark"] .login-container .btn-login { color:var(--color-bg); }
         .login-error { display:flex; gap:9px; align-items:flex-start; margin-bottom:18px; padding:12px 13px; border:1px solid #fecaca; border-radius:12px; background:#fff1f2; color:#b42318; font-size:.9rem; line-height:1.35; }
         .login-notice { display:flex; gap:9px; align-items:flex-start; margin-bottom:18px; padding:12px 13px; border:1px solid #bbf7d0; border-radius:12px; background:#f0fdf4; color:#166534; font-size:.9rem; line-height:1.4; }
         .login-switch { margin:18px 0 0; text-align:center; font-size:.9rem; color:var(--login-muted); }
@@ -37,17 +43,11 @@
         .login-footnote { margin:22px 0 0; text-align:center; color:var(--login-muted); font-size:.78rem; }
         .login-container .login-sso { display:flex; align-items:center; justify-content:center; gap:9px; box-sizing:border-box; text-decoration:none; }
         .login-container .login-sso-secondary { background:transparent; color:var(--login-text); border:1px solid var(--login-border); box-shadow:none; }
-        .login-container .login-sso-secondary:hover { border-color:var(--login-accent); background:rgba(99,102,241,.06); }
+        .login-container .login-sso-secondary:hover { border-color:var(--login-accent); background:color-mix(in srgb, var(--login-accent) 6%, transparent); }
         .login-divider { display:flex; align-items:center; gap:12px; margin:20px 0 4px; color:var(--login-muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; }
         .login-divider::before, .login-divider::after { content:""; flex:1; height:1px; background:var(--login-border); }
         @media (max-width:520px) { .login-container { padding:28px 22px; border-radius:20px; } }
-        /* Mode sombre (même préférence que le reste de Bullarr, lue dans localStorage). */
-        [data-theme="dark"] { --login-bg:#161a24; --login-card:#1f2431; --login-text:#e6e9f2; --login-muted:#9aa3b8; --login-border:#343b4d; --login-accent:#818cf8; }
-        [data-theme="dark"] .login-container { border-color:var(--login-border); box-shadow:0 24px 70px rgba(0,0,0,.45); }
-        [data-theme="dark"] .login-field label { color:#c3c9d8; }
-        [data-theme="dark"] .login-input-wrap svg { color:#7d869b; }
-        [data-theme="dark"] .login-field input { background:#181c27; }
-        [data-theme="dark"] .login-field input:focus { background:#1b2030; box-shadow:0 0 0 4px rgba(129,140,248,.2); }
+        /* Mode sombre : seuls les messages d'erreur et d'avis ont des teintes propres. */
         [data-theme="dark"] .login-error { background:rgba(229,83,83,.12); border-color:rgba(229,83,83,.4); color:#f3a5a5; }
         [data-theme="dark"] .login-notice { background:rgba(76,194,104,.12); border-color:rgba(76,194,104,.4); color:#8fdca3; }
     </style>
@@ -68,7 +68,7 @@
             <div class="login-field"><label for="signup-email">E-mail <small>(facultatif)</small></label><div class="login-input-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><input id="signup-email" type="email" name="email" value="{{ form.email or '' }}" maxlength="200" autocomplete="email"></div></div>
             <div class="login-field"><label for="signup-password">Mot de passe <small>(8 caractères min.)</small></label><div class="login-input-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input id="signup-password" type="password" name="password" minlength="8" autocomplete="new-password" required></div></div>
             <div class="login-field"><label for="signup-password2">Confirmer le mot de passe</label><div class="login-input-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input id="signup-password2" type="password" name="password_confirm" minlength="8" autocomplete="new-password" required></div></div>
-            <button type="submit" class="btn btn-success">Envoyer la demande</button>
+            <button type="submit" class="btn btn-login">Envoyer la demande</button>
         </form>
         <p class="login-switch">Déjà un compte ? <a href="/login?noauto=1">Se connecter</a></p>
         {% else %}
@@ -80,12 +80,12 @@
         <form class="login-form" method="post" action="/login/password">
             <div class="login-field"><label for="login-username">Identifiant</label><div class="login-input-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><input id="login-username" type="text" name="username" autocomplete="username" required autofocus></div></div>
             <div class="login-field"><label for="login-password">Mot de passe</label><div class="login-input-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input id="login-password" type="password" name="password" autocomplete="current-password" required></div></div>
-            <button type="submit" class="btn btn-success">Se connecter</button>
+            <button type="submit" class="btn btn-login">Se connecter</button>
         </form>
         {% endif %}
         {% if password_enabled and oidc_enabled %}<div class="login-divider"><span>ou</span></div>{% endif %}
         {% if oidc_enabled %}
-        <a class="btn login-sso {% if password_enabled %}login-sso-secondary{% else %}btn-success{% endif %}" href="/login/redirect"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Se connecter avec le SSO</a>
+        <a class="btn login-sso {% if password_enabled %}login-sso-secondary{% else %}btn-login{% endif %}" href="/login/redirect"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Se connecter avec le SSO</a>
         {% endif %}
         {% if signup_enabled %}<p class="login-switch">Pas encore de compte ? <a href="/signup">Créer un compte</a></p>{% endif %}
         {% endif %}

@@ -1584,6 +1584,12 @@ function renderNouveautesEvents(resetPage = true) {
     if (nouveautesSort.column) {
         filtered = [...filtered].sort((a, b) => _compareNouveautesEvents(a, b, nouveautesSort.column, nouveautesSort.direction));
     }
+    // « si les mêmes albums apparaissent dans les 2 dernières heures, concatène-les » : les
+    // albums d'une même série publiés à moins de 2 h d'écart sont rapprochés (même s'ils
+    // sont entrecoupés d'autres séries) pour que _groupNouveautesSeriesRows les replie ensemble.
+    if (!nouveautesSort.column || nouveautesSort.column === 'date') {
+        filtered = _nouveautesGatherRecentSeries(filtered);
+    }
 
     if (resetPage) nouveautesDisplayedCount = Math.min(NOUVEAUTES_PAGE_SIZE, filtered.length);
 
@@ -1661,6 +1667,34 @@ function _nouveautesSameSeriesRow(a, b) {
     if (key && b.dataset.seriesGroup === key) return true;
     const compact = a.dataset.seriesCompact;
     return !!compact && b.dataset.seriesCompact === compact;
+}
+
+const NOUVEAUTES_GATHER_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+// Liste triée par date (dans un sens ou l'autre) : chaque album entraîne juste derrière lui
+// les albums suivants de la même série (même clé ou même nom compact) publiés à moins de
+// 2 h de lui. L'ordre relatif du reste ne change pas.
+function _nouveautesGatherRecentSeries(list) {
+    const times = list.map(e => _nouveautesSortValue(e, 'date'));
+    const keys = list.map(e => [_nouveautesSeriesGroupKey(e), _nouveautesCompactName(_nouveautesSeriesDisplayName(e))]);
+    const used = new Array(list.length).fill(false);
+    const out = [];
+    for (let i = 0; i < list.length; i++) {
+        if (used[i]) continue;
+        used[i] = true;
+        out.push(list[i]);
+        const [key, compact] = keys[i];
+        if ((!key && !compact) || !times[i]) continue;
+        for (let j = i + 1; j < list.length; j++) {
+            if (!times[j] || Math.abs(times[i] - times[j]) > NOUVEAUTES_GATHER_WINDOW_MS) break;
+            if (used[j]) continue;
+            if ((key && keys[j][0] === key) || (compact && keys[j][1] === compact)) {
+                used[j] = true;
+                out.push(list[j]);
+            }
+        }
+    }
+    return out;
 }
 
 function _nouveautesSeriesDisplayName(e) {
