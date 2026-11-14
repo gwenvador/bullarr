@@ -362,6 +362,8 @@ s'y connecter pour chercher dans la bibliothèque, lire une fiche, créer des ta
 | `set_series_monitor` | Active ou coupe la surveillance d'une série. |
 | `search_missing_volumes` | Lance la recherche automatique des tomes manquants (série entière ou un tome). |
 | `update_series_metadata` | Corrige résumé, genre, statut, auteur, années ou univers d'une série. |
+| `find_series_on_bedetheque` | Cherche une série sur Bédéthèque et dit si elle est déjà en bibliothèque. |
+| `add_series` | Ajoute une série depuis sa fiche Bédéthèque (surveillée ; recherche des tomes en option). |
 
 Il n'expose rien d'irréversible : ni suppression, ni déplacement, fusion ou renommage sur le disque,
 ni réglages ou comptes. Les appels agissent comme l'administrateur.

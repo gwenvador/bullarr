@@ -150,7 +150,8 @@ class McpEndpointTest(unittest.TestCase):
         names = {tool['name'] for tool in response.get_json()['result']['tools']}
         for name in ('get_series_volumes', 'list_recent_additions', 'get_reading_history', 'list_libraries',
                      'list_universes', 'list_requests', 'list_downloads', 'set_read_status',
-                     'set_series_monitor', 'search_missing_volumes', 'update_series_metadata'):
+                     'set_series_monitor', 'search_missing_volumes', 'update_series_metadata',
+                     'find_series_on_bedetheque', 'add_series'):
             self.assertIn(name, names)
         self.assertFalse({n for n in names if 'delete' in n or 'move' in n or 'rename' in n})
 
@@ -184,6 +185,22 @@ class McpEndpointTest(unittest.TestCase):
         self.assertIn('déjà', data)
         err, data = self._call_tool('update_series_metadata', {'series_id': sid})
         self.assertTrue(err)
+
+    def test_add_series_guards(self):
+        _lib, sid, _o, _m = self._fixture()
+        import sqlite3
+        conn = sqlite3.connect(self.app.config['DATABASE'])
+        conn.execute("UPDATE series SET bedetheque_url = 'https://www.bedetheque.com/serie-1-BD-Test.html' WHERE id = ?", (sid,))
+        conn.commit()
+        conn.close()
+        err, data = self._call_tool('add_series', {'url': 'https://www.bedetheque.com/serie-1-BD-Test.html/'})
+        self.assertFalse(err, data)
+        self.assertEqual(data, {'already_in_library': True, 'series_id': sid, 'title': 'Série MCP'})
+        err, data = self._call_tool('add_series', {'url': 'https://exemple.org/serie'})
+        self.assertTrue(err)
+        err, data = self._call_tool('add_series', {'url': 'https://www.bedetheque.com/serie-2-BD-X.html', 'library_id': 99999})
+        self.assertTrue(err)
+        self.assertIn('Bibliothèque', data)
 
 
 if __name__ == '__main__':

@@ -439,6 +439,68 @@ def tool_search_missing_volumes(args):
                        'avec confiance seront téléchargés puis importés.'}
 
 
+def _bedetheque_key(url):
+    return re.sub(r'^https?://(www\.)?', '', str(url or '').strip().lower()).rstrip('/')
+
+
+def _series_by_bedetheque_url():
+    conn = _db()
+    try:
+        rows = conn.execute("SELECT id, title, library_id, bedetheque_url FROM series "
+                            "WHERE bedetheque_url IS NOT NULL AND bedetheque_url != ''").fetchall()
+    finally:
+        conn.close()
+    return {_bedetheque_key(r['bedetheque_url']): r for r in rows}
+
+
+def tool_find_series_on_bedetheque(args):
+    query = str(args.get('query') or '').strip()
+    if not query:
+        raise McpError('Indiquez un titre (ou une adresse bedetheque.com)')
+    data = _call('GET', '/api/bedetheque/search', query={'q': query})
+    known = _series_by_bedetheque_url()
+    results = []
+    for item in (data.get('results') or [])[:_limit(args, 10, 20)]:
+        match = known.get(_bedetheque_key(item.get('url')))
+        results.append({'title': item.get('title'), 'url': item.get('url'), 'genre': item.get('genre'),
+                        'in_library': bool(match), 'series_id': match['id'] if match else None})
+    return {'query': query, 'results': results}
+
+
+def tool_add_series(args):
+    url = str(args.get('url') or '').strip()
+    if not url.startswith('https://www.bedetheque.com/'):
+        raise McpError("Donnez l'adresse bedetheque.com exacte d'un résultat de find_series_on_bedetheque")
+    match = _series_by_bedetheque_url().get(_bedetheque_key(url))
+    if match:
+        return {'already_in_library': True, 'series_id': match['id'], 'title': match['title']}
+    conn = _db()
+    try:
+        if args.get('library_id') is not None:
+            library = conn.execute('SELECT id FROM libraries WHERE id = ?', (int(args['library_id']),)).fetchone()
+            if library is None:
+                raise McpError('Bibliothèque introuvable (voir list_libraries)')
+        else:
+            library = conn.execute('SELECT id FROM libraries ORDER BY is_default DESC, id LIMIT 1').fetchone()
+            if library is None:
+                raise McpError('Aucune bibliothèque')
+    finally:
+        conn.close()
+    search_now = bool(args.get('search_now', False))
+    data = _call('POST', '/api/bedetheque/add-series', {
+        'url': url, 'library_id': library['id'],
+        'skip_auto_acquire': not search_now, 'force_auto_acquire': search_now})
+    series_id = data.get('series_id')
+    if data.get('already_exists'):
+        return {'already_in_library': True, 'series_id': series_id}
+    monitored = bool(args.get('monitor', True))
+    if not monitored and series_id:
+        _call('POST', f'/api/missing-monitor/series/{series_id}/monitor', {'enabled': False})
+    return {'added': True, 'series_id': series_id, 'title': data.get('title'), 'library_id': library['id'],
+            'missing_volumes': len(data.get('missing_volumes') or []), 'monitored': monitored,
+            'search_started': bool(data.get('auto_acquire_started'))}
+
+
 _METADATA_FIELDS = ('summary', 'genre', 'status', 'author', 'year_start', 'year_end', 'universe_id')
 
 
@@ -583,6 +645,29 @@ TOOLS = {
             'year_start': {'type': 'string'}, 'year_end': {'type': 'string'},
             'universe_id': {'type': ['integer', 'null'], 'description': 'Voir list_universes ; null retire l\'univers'}},
             'required': ['series_id']},
+    },
+
+    'find_series_on_bedetheque': {
+        'handler': tool_find_series_on_bedetheque,
+        'description': ('Cherche une série sur Bédéthèque par titre (ou adresse bedetheque.com) avant de l\'ajouter. '
+                        'Indique pour chaque résultat si elle est déjà dans la bibliothèque. Plusieurs séries peuvent '
+                        'porter le même nom : montrez les résultats à l\'utilisateur en cas de doute.'),
+        'schema': {'type': 'object', 'properties': {
+            'query': {'type': 'string'}, 'limit': {'type': 'integer', 'description': '1 à 20, 10 par défaut'}},
+            'required': ['query']},
+    },
+    'add_series': {
+        'handler': tool_add_series,
+        'description': ('Ajoute une série à la bibliothèque depuis sa fiche Bédéthèque (adresse exacte donnée par '
+                        'find_series_on_bedetheque) : fiche, albums suivis comme tomes manquants, dossier. Ne fait rien '
+                        'si elle est déjà présente. Surveillée par défaut ; search_now lance aussi la recherche '
+                        'automatique des tomes.'),
+        'schema': {'type': 'object', 'properties': {
+            'url': {'type': 'string', 'description': 'Adresse https://www.bedetheque.com/serie-…'},
+            'library_id': {'type': 'integer', 'description': 'Voir list_libraries ; bibliothèque par défaut sinon'},
+            'monitor': {'type': 'boolean', 'description': 'Surveiller la série (true par défaut)'},
+            'search_now': {'type': 'boolean', 'description': 'Chercher et télécharger les tomes tout de suite (false par défaut)'}},
+            'required': ['url']},
     },
 }
 
