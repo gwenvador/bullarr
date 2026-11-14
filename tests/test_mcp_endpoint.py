@@ -65,6 +65,37 @@ class McpEndpointTest(unittest.TestCase):
                                                  'Authorization': 'Bearer ' + self.token})
         self.assertEqual(response.status_code, 400)
 
+    def test_token_in_url_for_connectors(self):
+        body = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18'}}
+        with mock.patch.dict(os.environ, {'BULLARR_MCP_TOKEN': self.token}):
+            ok = self.client.post('/mcp/' + self.token, data=json.dumps(body),
+                                  headers={'Content-Type': 'application/json'})
+            bad = self.client.post('/mcp/mauvais', data=json.dumps(body),
+                                   headers={'Content-Type': 'application/json'})
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.get_json()['result']['protocolVersion'], '2025-06-18')
+        self.assertEqual(bad.status_code, 401)
+        self.assertIn('Bearer', bad.headers.get('WWW-Authenticate', ''))
+
+    def test_unknown_protocol_version_falls_back(self):
+        response = self._post({'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
+                               'params': {'protocolVersion': '1999-01-01'}}, token=self.token)
+        self.assertEqual(response.get_json()['result']['protocolVersion'], '2024-11-05')
+
+    def test_info_for_the_settings_tab(self):
+        # Sans authentification configurée (tests), l'appli entière est ouverte, comme le reste
+        # de la Configuration ; avec une connexion, la route n'est pas publique.
+        with mock.patch.dict(os.environ, {'BULLARR_MCP_TOKEN': self.token}):
+            data = self.client.get('/api/mcp/info').get_json()
+        self.assertTrue(data['enabled'])
+        self.assertEqual(data['token'], self.token)
+        with mock.patch.dict(os.environ, {'BULLARR_MCP_TOKEN': ''}):
+            data = self.client.get('/api/mcp/info').get_json()
+        self.assertFalse(data['enabled'])
+        self.assertIsNone(data['token'])
+        from blueprints.auth.routes import _PUBLIC_ENDPOINTS
+        self.assertNotIn('mcp.mcp_info', _PUBLIC_ENDPOINTS)
+
 
 if __name__ == '__main__':
     unittest.main()

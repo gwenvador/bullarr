@@ -359,7 +359,11 @@ Il n'expose ni suppression, ni modification des fichiers.
 1. Dans le fichier `.env` de Bullarr, définissez `BULLARR_MCP_TOKEN` avec une longue chaîne
    aléatoire (par exemple `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`), puis
    redémarrez Bullarr. Sans ce jeton, `/mcp` répond `503`.
-2. Ajoutez le serveur à Claude Code :
+2. Configuration → IA → **Serveur MCP** affiche l'adresse du connecteur, `https://<votre-bullarr>/mcp/<BULLARR_MCP_TOKEN>`,
+   avec les étapes pour chaque assistant. Claude (claude.ai, appli de bureau ou mobile : Paramètres → Connecteurs →
+   Ajouter un connecteur personnalisé, sans OAuth) et ChatGPT (mode développeur, authentification « aucune ») ne prennent
+   qu'une adresse : le jeton y est donc inclus. L'instance doit être joignable depuis Internet, sans SSO devant `/mcp`.
+3. Pour Claude Code, le jeton passe plutôt dans l'en-tête :
 
    ```bash
    claude mcp add --transport http bullarr https://<votre-bullarr>/mcp \

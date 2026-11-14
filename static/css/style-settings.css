@@ -1850,3 +1850,13 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
     #tab-overview .overview-card-desc { padding-right: 0; }
     #tab-overview .overview-card-status { position: relative; top: auto; right: auto; grid-column: 2; justify-self: start; max-width: 100%; }
 }
+
+/* Carte « Serveur MCP » de l'onglet IA */
+.mcp-status { margin: 4px 0 12px; font-weight: 600; }
+.mcp-howto { margin: 8px 0; border: 1px solid var(--color-border); border-radius: 8px; padding: 8px 12px; }
+.mcp-howto summary { cursor: pointer; font-weight: 600; }
+.mcp-howto ol { margin: 8px 0 4px; padding-left: 20px; }
+.mcp-howto li { margin: 4px 0; }
+.mcp-command { white-space: pre-wrap; word-break: break-all; background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: 6px; padding: 8px; font-size: 0.85em; margin: 6px 0; }
+#mcpCard .password-input-group .btn-toggle-password + .btn-toggle-password { margin-left: 4px; }

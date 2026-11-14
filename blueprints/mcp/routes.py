@@ -2,8 +2,10 @@
 
 Outils : recherche de séries (mots, tags, année), fiche, liste des tags, tags d'une série,
 listes « à lire plus tard » et favoris. Aucune suppression, aucun changement de fichier.
-Authentification : jeton dédié BULLARR_MCP_TOKEN (en-tête Authorization: Bearer ...), distinct
-de la clé API. Sans ce jeton configuré, l'endpoint répond 503.
+Authentification : jeton dédié BULLARR_MCP_TOKEN, distinct de la clé API, soit dans l'en-tête
+Authorization: Bearer ... (Claude Code), soit dans l'adresse /mcp/<jeton> pour les connecteurs
+qui ne prennent qu'une URL (claude.ai et l'appli Claude, ChatGPT). Sans ce jeton configuré,
+l'endpoint répond 503.
 """
 from error_utils import error_message
 import hmac
@@ -18,6 +20,8 @@ from flask import Blueprint, current_app, jsonify, request
 mcp_bp = Blueprint('mcp', __name__)
 
 PROTOCOL_VERSION = '2024-11-05'
+# Versions acceptées : on répond dans celle du client si on la connaît (réponses JSON seules).
+SUPPORTED_PROTOCOL_VERSIONS = ('2024-11-05', '2025-03-26', '2025-06-18')
 MAX_BODY = 1_000_000
 # Champs trop volumineux ou sans intérêt pour un assistant (fiche complète sans les listes externes)
 _FICHE_EXCLUDED = {'bedetheque_albums', 'bedetheque_author_links', 'bedetheque_read_also'}
@@ -271,8 +275,9 @@ def process(message):
     if request_id is None:
         return None  # notification, ex. notifications/initialized
     if method == 'initialize':
+        requested = (message.get('params') or {}).get('protocolVersion')
         result = {
-            'protocolVersion': PROTOCOL_VERSION,
+            'protocolVersion': requested if requested in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION,
             'capabilities': {'tools': {}},
             'serverInfo': {'name': 'bullarr', 'version': current_app.config.get('APP_VERSION', '')},
         }
@@ -299,18 +304,33 @@ def process(message):
     return {'jsonrpc': '2.0', 'id': request_id, 'result': result}
 
 
+def _token_ok(supplied, expected):
+    return bool(supplied) and hmac.compare_digest(supplied.encode('utf-8'), expected.encode('utf-8'))
+
+
+@mcp_bp.route('/api/mcp/info', methods=['GET'])
+def mcp_info():
+    """Onglet IA de la Configuration (administrateurs) : état du serveur MCP et jeton à copier."""
+    token = os.environ.get('BULLARR_MCP_TOKEN', '')
+    return jsonify({'success': True, 'enabled': bool(token), 'token': token or None, 'tools': list(TOOLS)})
+
+
 @mcp_bp.route('/mcp', methods=['GET', 'POST'])
-def mcp_endpoint():
-    """Endpoint MCP (Streamable HTTP, réponses JSON seulement). Accès par jeton dédié."""
+@mcp_bp.route('/mcp/<path:url_token>', methods=['GET', 'POST'])
+def mcp_endpoint(url_token=None):
+    """Endpoint MCP (Streamable HTTP, réponses JSON seulement). Accès par jeton dédié, dans
+    l'en-tête Authorization ou dans l'adresse (/mcp/<jeton>)."""
     expected = os.environ.get('BULLARR_MCP_TOKEN', '')
     if not expected:
         return jsonify({'success': False, 'error': 'Serveur MCP désactivé : BULLARR_MCP_TOKEN non configuré'}), 503
     if request.method == 'GET':
         # Pas de flux SSE côté serveur : les clients utilisent uniquement POST
         return jsonify({'success': False, 'error': 'Utilisez POST'}), 405
-    supplied = (request.headers.get('Authorization') or '').encode('utf-8')
-    if not hmac.compare_digest(supplied, ('Bearer ' + expected).encode('utf-8')):
-        return jsonify({'success': False, 'error': 'Jeton MCP absent ou invalide'}), 401
+    header = request.headers.get('Authorization') or ''
+    supplied = header[7:] if header.startswith('Bearer ') else ''
+    if not (_token_ok(supplied, expected) or _token_ok(url_token or '', expected)):
+        return (jsonify({'success': False, 'error': 'Jeton MCP absent ou invalide'}), 401,
+                {'WWW-Authenticate': 'Bearer realm="bullarr-mcp"'})
     if (request.content_length or 0) > MAX_BODY:
         return jsonify({'success': False, 'error': 'Requête trop volumineuse'}), 413
     message = request.get_json(silent=True)

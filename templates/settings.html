@@ -2531,6 +2531,62 @@
                             <progress id="aiJobProgress" class="ai-job-progress" max="1" value="0" hidden></progress>
                             <p class="ai-job-fallback" id="aiJobFallback" hidden></p>
                         </div>
+                        <div class="settings-card" id="mcpCard">
+                            <h3>Serveur MCP (Claude, ChatGPT)</h3>
+                            <p class="help-text" style="display:block;">
+                                Un assistant IA (Claude, ChatGPT, Claude Code) peut chercher dans la bibliothèque, lire une série,
+                                et poser des tags ou des listes de lecture. Il se branche avec l'adresse ci-dessous, qui contient
+                                le jeton <code>BULLARR_MCP_TOKEN</code> du fichier <code>.env</code> : gardez-la secrète.
+                            </p>
+                            <p class="mcp-status" id="mcpStatus">Chargement…</p>
+                            <div id="mcpEnabled" hidden>
+                                <div class="form-group">
+                                    <label for="mcpUrl">Adresse du connecteur</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="mcpUrl" readonly spellcheck="false" autocomplete="off">
+                                        <button type="button" class="btn-toggle-password" onclick="toggleMcpUrl(this)">Afficher</button>
+                                        <button type="button" class="btn-toggle-password" onclick="copyMcpUrl()">Copier</button>
+                                    </div>
+                                </div>
+                                <div id="mcpMessage" class="message"></div>
+                                <details class="mcp-howto" open>
+                                    <summary>Claude (claude.ai, appli de bureau ou mobile)</summary>
+                                    <ol>
+                                        <li>Paramètres → <strong>Connecteurs</strong> → <strong>Ajouter un connecteur personnalisé</strong>.</li>
+                                        <li>Nom : <code>Bullarr</code>. URL : collez l'adresse ci-dessus.</li>
+                                        <li>Laissez vides les champs OAuth (identifiant et secret client), puis Ajouter.</li>
+                                        <li>Dans une conversation, activez Bullarr depuis le menu des outils (bouton « + » ou curseurs).</li>
+                                    </ol>
+                                </details>
+                                <details class="mcp-howto">
+                                    <summary>ChatGPT</summary>
+                                    <ol>
+                                        <li>Paramètres → Applications et connecteurs → Paramètres avancés : activez le <strong>mode développeur</strong>.</li>
+                                        <li>Créer un connecteur : URL du serveur MCP = l'adresse ci-dessus, authentification <strong>aucune</strong>.</li>
+                                        <li>Dans une conversation, choisissez le mode développeur et cochez Bullarr.</li>
+                                    </ol>
+                                </details>
+                                <details class="mcp-howto">
+                                    <summary>Claude Code (terminal)</summary>
+                                    <p class="help-text" style="display:block;">Le jeton passe dans l'en-tête plutôt que dans l'adresse :</p>
+                                    <pre class="mcp-command" id="mcpCliCommand"></pre>
+                                    <button type="button" class="btn btn-secondary btn-small" onclick="copyMcpCli()">Copier la commande</button>
+                                </details>
+                                <p class="help-text" style="display:block; margin-top:10px;">
+                                    Outils : <span id="mcpTools"></span>. Si le connecteur échoue, vérifiez que l'adresse est joignable
+                                    depuis Internet (Claude et ChatGPT appellent depuis leurs serveurs, pas depuis votre réseau) et
+                                    qu'aucune authentification du proxy (SSO) ne protège <code>/mcp</code>. Changer le jeton dans
+                                    <code>.env</code> (puis redémarrer) coupe les connecteurs existants.
+                                </p>
+                            </div>
+                            <div id="mcpDisabled" hidden>
+                                <p class="help-text" style="display:block;">
+                                    Pour l'activer, ajoutez dans le <code>.env</code> une ligne
+                                    <code>BULLARR_MCP_TOKEN=</code> suivie d'une longue valeur aléatoire
+                                    (par exemple le résultat de <code>openssl rand -hex 32</code>), puis redémarrez Bullarr.
+                                </p>
+                            </div>
+                        </div>
                         <div class="settings-card">
                             <div class="ai-history-header">
                                 <h3 style="margin:0;">Historique</h3>

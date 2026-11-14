@@ -1835,6 +1835,7 @@ function switchTab(tabName) {
         // Rien à charger: la carte "Créer un backup" est un simple lien de téléchargement
     } else if (tabName === 'ai') {
         loadAiSettings();
+        loadMcpInfo();
     }
 }
 
@@ -3745,6 +3746,54 @@ async function saveAiPrompts() {
     } catch (error) {
         showMessage('aiPromptMessage', '❌ ' + error.message, 'error');
     }
+}
+
+// Carte « Serveur MCP » de l'onglet IA : adresse du connecteur (jeton dans l'URL) et commande Claude Code.
+let mcpToken = null;
+
+async function loadMcpInfo() {
+    const status = document.getElementById('mcpStatus');
+    if (!status) return;
+    try {
+        const data = await (await fetch('/api/mcp/info')).json();
+        mcpToken = data.token || null;
+        document.getElementById('mcpEnabled').hidden = !data.enabled;
+        document.getElementById('mcpDisabled').hidden = !!data.enabled;
+        status.textContent = data.enabled ? '✅ Activé' : '⚪ Désactivé : aucun jeton BULLARR_MCP_TOKEN';
+        if (!data.enabled) return;
+        document.getElementById('mcpUrl').value = location.origin + '/mcp/' + mcpToken;
+        document.getElementById('mcpCliCommand').textContent =
+            `claude mcp add --transport http bullarr ${location.origin}/mcp --header "Authorization: Bearer ${mcpToken}"`;
+        document.getElementById('mcpTools').textContent = (data.tools || []).join(', ');
+    } catch (error) {
+        status.textContent = 'État du serveur MCP indisponible';
+    }
+}
+
+function toggleMcpUrl(button) {
+    const input = document.getElementById('mcpUrl');
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    button.textContent = show ? 'Masquer' : 'Afficher';
+}
+
+async function _copyMcp(text, label) {
+    try {
+        await navigator.clipboard.writeText(text);
+        showMessage('mcpMessage', `📋 ${label} copiée`, 'success');
+    } catch (error) {
+        showMessage('mcpMessage', 'Copie impossible : affichez le texte et copiez-le à la main', 'warning');
+    }
+}
+
+function copyMcpUrl() {
+    const value = document.getElementById('mcpUrl').value;
+    if (value) _copyMcp(value, 'Adresse');
+}
+
+function copyMcpCli() {
+    const value = document.getElementById('mcpCliCommand').textContent;
+    if (value) _copyMcp(value, 'Commande');
 }
 
 async function loadAiSettings() {
