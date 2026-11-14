@@ -1209,6 +1209,33 @@ function setSeriesColumnFilter(column, el) {
     _saveSeriesColumnFilters();
     _syncFilterControlActive(el);
     filterSeriesTableRows();
+    _refreshSeriesTableFilterOptions();
+}
+
+// « ça devrait changer quand un filtre est changé » : chaque liste déroulante du tableau
+// ne propose que les valeurs encore possibles avec les AUTRES filtres de colonnes (ex.
+// Genre ne liste que les genres des séries de l'auteur choisi). La valeur choisie reste
+// toujours dans sa propre liste.
+let _seriesTableSource = [];
+
+function _refreshSeriesTableFilterOptions() {
+    const selects = document.querySelectorAll('.series-table-filter-select');
+    if (!selects.length) return;
+    const specs = _seriesColumnFilterSpecs();
+    selects.forEach(select => {
+        const column = select.id.replace('series-table-filter-', '');
+        const spec = specs[column];
+        if (!spec) return;
+        const current = select.value;
+        const raw = _seriesTableSource
+            .filter(s => _seriesMatchesColumnFilters(s, specs, column))
+            .map(s => String(spec.getValue(s) ?? '').trim());
+        const values = [...new Set(spec.multi ? raw.flatMap(splitMultiValue) : raw)];
+        if (current && !values.includes(current)) values.push(current);
+        values.sort((a, b) => a.localeCompare(b, 'fr'));
+        select.innerHTML = `<option value="">Tous</option>` + values
+            .map(v => `<option value="${escapeHtml(v)}"${v === current ? ' selected' : ''}>${escapeHtml(v)}</option>`).join('');
+    });
 }
 
 function clearSeriesColumnFilter(column) {
@@ -1238,8 +1265,9 @@ function _seriesColumnFilterSpecs() {
     return specs;
 }
 
-function _seriesMatchesColumnFilters(s, specs) {
+function _seriesMatchesColumnFilters(s, specs, except = null) {
     for (const [column, value] of seriesColumnFilters) {
+        if (column === except) continue;
         const spec = specs[column];
         if (!spec) continue;
         const text = String(spec.getValue(s) ?? '').trim();
@@ -1376,6 +1404,7 @@ function _seriesTableHeaderHtml(column, label, filterCol, colIndex) {
 }
 
 function buildSeriesTableHtml(series) {
+    _seriesTableSource = series;
     const filterCols = _tableFilterColumns(series);
     const fixedColumns = TABLE_FIXED_COLUMNS
         .filter(col => _isTableColumnVisible(col.key))
@@ -1512,7 +1541,10 @@ function displaySeries(series) {
     if (seriesViewMode === 'table') {
         grid.className = 'series-list series-table-wrapper';
         grid.innerHTML = buildSeriesTableHtml(series);
-        if (seriesColumnFilters.size) filterSeriesTableRows();
+        if (seriesColumnFilters.size) {
+            filterSeriesTableRows();
+            _refreshSeriesTableFilterOptions();
+        }
     } else if (seriesViewMode === 'overview') {
         grid.className = 'series-list overview-list';
         grid.innerHTML = series.map(buildOverviewRowHtml).join('');
