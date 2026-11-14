@@ -1673,7 +1673,8 @@ const NOUVEAUTES_GATHER_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 // Liste triée par date (dans un sens ou l'autre) : chaque album entraîne juste derrière lui
 // les albums suivants de la même série (même clé ou même nom compact) publiés à moins de
-// 2 h de lui. L'ordre relatif du reste ne change pas.
+// 2 h du DERNIER album entraîné (fenêtre glissante, comme l'APK : T9 20:03, T8 19:01,
+// T7 17:20 restent ensemble). L'ordre relatif du reste ne change pas.
 function _nouveautesGatherRecentSeries(list) {
     const times = list.map(e => _nouveautesSortValue(e, 'date'));
     const keys = list.map(e => [_nouveautesSeriesGroupKey(e), _nouveautesCompactName(_nouveautesSeriesDisplayName(e))]);
@@ -1685,12 +1686,14 @@ function _nouveautesGatherRecentSeries(list) {
         out.push(list[i]);
         const [key, compact] = keys[i];
         if ((!key && !compact) || !times[i]) continue;
+        let lastTime = times[i];
         for (let j = i + 1; j < list.length; j++) {
-            if (!times[j] || Math.abs(times[i] - times[j]) > NOUVEAUTES_GATHER_WINDOW_MS) break;
+            if (!times[j] || Math.abs(lastTime - times[j]) > NOUVEAUTES_GATHER_WINDOW_MS) break;
             if (used[j]) continue;
             if ((key && keys[j][0] === key) || (compact && keys[j][1] === compact)) {
                 used[j] = true;
                 out.push(list[j]);
+                lastTime = times[j];
             }
         }
     }
