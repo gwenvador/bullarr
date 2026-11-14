@@ -55,6 +55,46 @@ MAX_PAGES = 3
 MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024
 
 
+# « la recherche envoie souvent des trucs complètement inutiles » : l'API du site fait une
+# recherche floue (un seul mot commun suffit), « Les vieux fourneaux » renvoyait surtout
+# des romans (« Les vieux de la vieille », Perry Rhodan...). Les noms suivent le schéma
+# « BD <Série> NN <Titre> – <Auteurs>.ext » : on écarte les catégories non BD (préfixe
+# EBOOK, MAGAZINE...) et les fichiers dont la partie titre ne contient pas les mots
+# significatifs de la recherche.
+_NON_BD_PREFIXES = {'ebook', 'ebooks', 'roman', 'romans', 'journal', 'journaux', 'magazine',
+                    'magazines', 'audio', 'livre', 'livres', 'autres', 'autre'}
+_STOPWORDS = {'le', 'la', 'les', 'l', 'de', 'des', 'du', 'd', 'un', 'une', 'et', 'en',
+              'a', 'au', 'aux', 'the', 'of', 'and', 'tome', 't'}
+
+
+def _norm_words(text):
+    import unicodedata
+    text = (text or '').replace('œ', 'oe').replace('Œ', 'OE').replace('æ', 'ae').replace('Æ', 'AE')
+    text = ''.join(c for c in unicodedata.normalize('NFKD', text) if not unicodedata.combining(c))
+    return re.findall(r'[a-z0-9]+', text.lower())
+
+
+def _looks_relevant(query, filename):
+    """Vrai si le nom de fichier ressemble à la recherche (voir commentaire ci-dessus).
+    Volontairement tolérant : tous les mots significatifs doivent apparaître dans la partie
+    titre (un seul peut manquer à partir de 4 mots), ou la recherche entière collée
+    (« Arctic-Nation » / « arctic nation »)."""
+    name = os.path.splitext(filename or '')[0]
+    title_part = re.split(r'\s[–—-]\s', name)[0] if re.search(r'\s[–—-]\s', name) else name
+    words = _norm_words(title_part)
+    if words and words[0] in _NON_BD_PREFIXES:
+        return False
+    q_words = _norm_words(query)
+    significant = [w for w in q_words if w not in _STOPWORDS] or q_words
+    if not significant:
+        return True
+    if ''.join(q_words) in ''.join(words):
+        return True
+    word_set = set(words)
+    missing = sum(1 for w in significant if w not in word_set)
+    return missing == 0 or (len(significant) >= 4 and missing <= 1)
+
+
 def search_fourtoutici_raw(query, limit=30):
     """Interroge l'API de recherche de fourtoutici (pas de forum/HTML à parser: une API
     JSON existe déjà, découverte via assets/js/app.js du site - `GET
@@ -111,6 +151,8 @@ def search_fourtoutici_raw(query, limit=30):
         for f in data.get('files', []):
             ext = ('.' + (f.get('extension') or '').lstrip('.')).lower()
             if ext not in SUPPORTED_EXTENSIONS:
+                continue
+            if not _looks_relevant(query, f.get('original_name') or f.get('file_name') or ''):
                 continue
             f['download_url'] = f"{download_url}?file_id={f.get('file_id', '')}"
             results.append(f)
