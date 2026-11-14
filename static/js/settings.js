@@ -3764,6 +3764,9 @@ async function loadMcpInfo() {
         document.getElementById('mcpUrl').value = location.origin + '/mcp/' + mcpToken;
         document.getElementById('mcpCliCommand').textContent =
             `claude mcp add --transport http bullarr ${location.origin}/mcp --header "Authorization: Bearer ${mcpToken}"`;
+        document.getElementById('mcpDesktopConfig').textContent = JSON.stringify({
+            mcpServers: { bullarr: { command: 'npx', args: ['-y', 'mcp-remote', `${location.origin}/mcp/${mcpToken}`] } }
+        }, null, 2);
         document.getElementById('mcpTools').textContent = (data.tools || []).join(', ');
     } catch (error) {
         status.textContent = 'État du serveur MCP indisponible';
@@ -3789,6 +3792,11 @@ async function _copyMcp(text, label) {
 function copyMcpUrl() {
     const value = document.getElementById('mcpUrl').value;
     if (value) _copyMcp(value, 'Adresse');
+}
+
+function copyMcpDesktop() {
+    const value = document.getElementById('mcpDesktopConfig').textContent;
+    if (value) _copyMcp(value, 'Configuration');
 }
 
 function copyMcpCli() {

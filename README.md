@@ -363,6 +363,9 @@ Il n'expose ni suppression, ni modification des fichiers.
    avec les étapes pour chaque assistant. Claude (claude.ai, appli de bureau ou mobile : Paramètres → Connecteurs →
    Ajouter un connecteur personnalisé, sans OAuth) et ChatGPT (mode développeur, authentification « aucune ») ne prennent
    qu'une adresse : le jeton y est donc inclus. L'instance doit être joignable depuis Internet, sans SSO devant `/mcp`.
+   Instance accessible seulement sur le réseau local : l'appli Claude de bureau peut lancer le
+   serveur en local avec `npx -y mcp-remote https://<votre-bullarr>/mcp/<BULLARR_MCP_TOKEN>`
+   (bloc `mcpServers` de `claude_desktop_config.json`, donné tout prêt dans la même carte).
 3. Pour Claude Code, le jeton passe plutôt dans l'en-tête :
 
    ```bash

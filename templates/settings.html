@@ -2549,8 +2549,24 @@
                                     </div>
                                 </div>
                                 <div id="mcpMessage" class="message"></div>
+                                <p class="help-text" style="display:block;">
+                                    <strong>Bullarr seulement sur le réseau local ?</strong> Les connecteurs de claude.ai et de ChatGPT
+                                    partent de leurs serveurs, sur Internet : ils répondent « Couldn't reach » si l'adresse n'est pas
+                                    publique. Utilisez alors l'appli Claude de bureau en serveur local, ou Claude Code.
+                                </p>
                                 <details class="mcp-howto" open>
-                                    <summary>Claude (claude.ai, appli de bureau ou mobile)</summary>
+                                    <summary>Appli Claude de bureau, serveur local (marche sans exposer Bullarr)</summary>
+                                    <ol>
+                                        <li>Installez Node.js sur l'ordinateur (pour <code>npx</code>).</li>
+                                        <li>Claude → Paramètres → Développeur → Modifier la configuration, puis ajoutez ce bloc dans
+                                            <code>claude_desktop_config.json</code> (fusionnez avec un <code>mcpServers</code> existant).</li>
+                                        <li>Quittez et relancez l'appli : Bullarr apparaît dans le menu des outils.</li>
+                                    </ol>
+                                    <pre class="mcp-command" id="mcpDesktopConfig"></pre>
+                                    <button type="button" class="btn btn-secondary btn-small" onclick="copyMcpDesktop()">Copier la configuration</button>
+                                </details>
+                                <details class="mcp-howto">
+                                    <summary>Claude (claude.ai, connecteur personnalisé : adresse publique requise)</summary>
                                     <ol>
                                         <li>Paramètres → <strong>Connecteurs</strong> → <strong>Ajouter un connecteur personnalisé</strong>.</li>
                                         <li>Nom : <code>Bullarr</code>. URL : collez l'adresse ci-dessus.</li>
@@ -2559,7 +2575,7 @@
                                     </ol>
                                 </details>
                                 <details class="mcp-howto">
-                                    <summary>ChatGPT</summary>
+                                    <summary>ChatGPT (adresse publique requise)</summary>
                                     <ol>
                                         <li>Paramètres → Applications et connecteurs → Paramètres avancés : activez le <strong>mode développeur</strong>.</li>
                                         <li>Créer un connecteur : URL du serveur MCP = l'adresse ci-dessus, authentification <strong>aucune</strong>.</li>
