@@ -2567,6 +2567,10 @@
                                         <li>Installez Node.js sur l'ordinateur (pour <code>npx</code>).</li>
                                         <li>Claude → Paramètres → Développeur → Modifier la configuration, puis ajoutez ce bloc dans
                                             <code>claude_desktop_config.json</code> (fusionnez avec un <code>mcpServers</code> existant).</li>
+                                        <li>Le bloc va <em>dans</em> l'objet principal du fichier, pas à la suite de sa dernière accolade.
+                                            Sur Mac, l'appli ne connaît pas toujours le chemin de <code>npx</code> : remplacez
+                                            <code>npx</code> par le chemin complet donné par <code>which npx</code>
+                                            (par exemple <code>/opt/homebrew/bin/npx</code>).</li>
                                         <li>Quittez et relancez l'appli : Bullarr apparaît dans le menu des outils.</li>
                                     </ol>
                                     <pre class="mcp-command" id="mcpDesktopConfig"></pre>
