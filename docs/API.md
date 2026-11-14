@@ -163,14 +163,14 @@ Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà
 
 ### Demandes de BD
 
-Un lecteur demande une série, un administrateur la valide ou la refuse.
+Un lecteur demande une série, ou un tome manquant d'une série déjà dans la bibliothèque ; un administrateur valide ou refuse.
 
 | Route | Rôle |
 |---|---|
 | `GET /api/requests` | Demandes, filtrables par `?status=` (par exemple `pending` ou `rejected`). Un lecteur ne voit que les siennes. |
-| `POST /api/requests` | Nouvelle demande : `{"url": "<adresse de la série sur bedetheque.com>", "title": "..."}`. |
+| `POST /api/requests` | Nouvelle demande de série : `{"url": "<adresse de la série sur bedetheque.com>", "title": "..."}`. Demande d'un tome manquant : `{"series_id": 10, "volume_id": 200}` (un tome sans fichier de la fiche série). Réponse : `status` (`pending`, `searching` = recherche lancée, `already` = tome déjà là), `volume_label`, `duplicate` si déjà demandé. Dans `GET /api/series/<id>`, chaque tome porte `requested` (`pending`, `searching`, `rejected` ou `null`) pour le compte connecté ; dans `GET /api/requests`, une demande de tome a `kind: "volume"`, `volume_id` et `volume_label`, et passe à `added` quand le fichier arrive. |
 | `POST /api/requests/lookup` | Pour des résultats Bédéthèque (`{"urls": [...]}`) : déjà dans la bibliothèque, déjà demandé. |
-| `POST /api/requests/<request_id>/approve` | Administrateur : valide et ajoute la série (`{"library_id": 2}` facultatif). |
+| `POST /api/requests/<request_id>/approve` | Administrateur : valide et ajoute la série (`{"library_id": 2}` facultatif) ; pour une demande de tome, lance la recherche automatique de ce tome. |
 | `POST /api/requests/<request_id>/reject` | Administrateur : refuse (`{"reason": "..."}` facultatif). |
 | `DELETE /api/requests/<request_id>` | Annule une demande encore en attente. |
 | `GET /api/requests/pending-count` | Demandes de BD et de compte à valider (cloche de l'en-tête). |

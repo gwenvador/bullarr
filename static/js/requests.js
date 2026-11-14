@@ -10,6 +10,7 @@ function reqEscape(value) {
 const REQUEST_STATES = {
     pending:   {label: 'En attente de validation', icon: 'clock', tone: 'wait'},
     adding:    {label: 'Ajout en cours', icon: 'loader-circle', tone: 'wait'},
+    searching: {label: 'Recherche lancée', icon: 'search', tone: 'ok'},
     added:     {label: 'Ajoutée', icon: 'check', tone: 'ok'},
     already:   {label: 'Déjà disponible', icon: 'library', tone: 'ok'},
     rejected:  {label: 'Refusée', icon: 'circle-x', tone: 'no'},
@@ -174,16 +175,18 @@ function reqToast(message, error = false) {
 // ----- Mes demandes -----
 function requestMatches(item) {
     if (reqFilter === 'all') return true;
-    if (reqFilter === 'done') return item.status === 'added' || item.status === 'already';
+    if (reqFilter === 'done') return item.status === 'added' || item.status === 'already' || item.status === 'searching';
     if (reqFilter === 'rejected') return item.status === 'rejected' || item.status === 'error';
     if (reqFilter === 'pending') return item.status === 'pending' || item.status === 'adding';
     return item.status === reqFilter;
 }
 
 function requestRow(item) {
-    const title = item.series_id
+    // Demande d'un tome (depuis la fiche d'une série de la bibliothèque) : « Série · Tome 23 ».
+    const volume = item.volume_label ? ` <span class="rq-volume">· ${reqEscape(item.volume_label)}</span>` : '';
+    const title = (item.series_id
         ? `<a href="/series/${item.series_id}">${reqEscape(item.title)}</a>`
-        : reqEscape(item.title || item.url);
+        : reqEscape(item.title || item.url)) + volume;
     const note = item.status === 'pending' && item.error ? `<div class="rq-note">${svgIcon('triangle-alert')}${reqEscape(item.error)}</div>`
         : item.status === 'rejected' && item.error ? `<div class="rq-note">${svgIcon('info')}${reqEscape(item.error)}</div>`
         : item.status === 'error' && item.error ? `<div class="rq-note">${svgIcon('triangle-alert')}${reqEscape(item.error)}</div>` : '';
@@ -198,7 +201,7 @@ function requestRow(item) {
             <div class="rq-row-body">
                 <div class="rq-row-top"><h3>${title}</h3>${reqChip(item.status)}</div>
                 <div class="rq-row-meta">${svgIcon('calendar')}${reqEscape(when)}${item.library_name && item.series_id ? ` · ${svgIcon('library')}${reqEscape(item.library_name)}` : ''}</div>
-                ${item.series_id ? reqProgress(item.owned, item.total) : ''}
+                ${item.series_id && !item.volume_id ? reqProgress(item.owned, item.total) : ''}
                 ${note}
             </div>
             <div class="rq-row-action">${cancel}</div>

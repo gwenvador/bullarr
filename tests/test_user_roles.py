@@ -197,6 +197,75 @@ class UserRolesTest(unittest.TestCase):
         self.assertIn('request_created', actions)
         self.assertIn('request_approved', actions)
 
+    # ----- Demande d'un tome manquant -----
+    def _fake_search(self, seen):
+        def fake_run():
+            from flask import jsonify, request
+            seen.append(request.get_json())
+            return jsonify({'success': True, 'started': True, 'count': 1})
+        return fake_run
+
+    def _missing_volume(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("INSERT INTO volumes (id, series_id, volume_number, filename, filepath) VALUES (200, 10, 23, 'T23', NULL)")
+        conn.commit()
+        conn.close()
+
+    def test_reader_requests_a_missing_volume(self):
+        self._missing_volume()
+        self.login('bob')
+        seen = []
+        with mock.patch('blueprints.bedetheque.routes.run_auto_acquire_now', side_effect=self._fake_search(seen)), \
+                mock.patch('notifications.send_notification') as notify:
+            response = self.send('POST', '/api/requests', json={'series_id': 10, 'volume_id': 200})
+            again = self.send('POST', '/api/requests', json={'series_id': 10, 'volume_id': 200})
+            owned = self.send('POST', '/api/requests', json={'series_id': 11, 'volume_id': 100})
+            wrong = self.send('POST', '/api/requests', json={'series_id': 11, 'volume_id': 200})
+        body = response.get_json()
+        self.assertEqual((response.status_code, body['status'], body['volume_label']), (200, 'pending', 'Tome 23'))
+        self.assertTrue(again.get_json()['duplicate'])
+        self.assertEqual(owned.get_json()['status'], 'already')
+        self.assertEqual(wrong.status_code, 404)
+        self.assertEqual(seen, [])
+        self.assertEqual(notify.call_count, 1)
+        detail = self.client.get('/api/series/10').get_json()
+        self.assertEqual([v.get('requested') for v in detail['volumes'] if v['id'] == 200], ['pending'])
+        row = self.client.get('/api/requests').get_json()['requests'][0]
+        self.assertEqual((row['kind'], row['volume_id'], row['volume_label']), ('volume', 200, 'Tome 23'))
+
+        self.login('alice', ['bullarr-admins'])
+        request_id = row['id']
+        with mock.patch('blueprints.bedetheque.routes.run_auto_acquire_now', side_effect=self._fake_search(seen)):
+            approved = self.send('POST', f'/api/requests/{request_id}/approve', json={})
+        self.assertEqual(approved.status_code, 200, approved.get_json())
+        self.assertEqual(approved.get_json()['status'], 'searching')
+        self.assertEqual(seen, [{'series_id': 10, 'volume_number': 23}])
+        self.assertEqual(self.db('SELECT status, decided_by FROM book_requests'), [('searching', 'Alice')])
+        # Le fichier arrive : la demande s'affiche « added ».
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("UPDATE volumes SET filepath = '/BD/Asterix/t23.cbz' WHERE id = 200")
+        conn.commit()
+        conn.close()
+        self.login('bob')
+        self.assertEqual(self.client.get('/api/requests').get_json()['requests'][0]['status'], 'added')
+
+    def test_volume_request_does_not_touch_series_requests(self):
+        self._missing_volume()
+        self.login('bob')
+        with mock.patch('notifications.send_notification'):
+            self.send('POST', '/api/requests', json={'volume_id': 200})
+        lookup = self.send('POST', '/api/requests/lookup', json={'urls': ['https://www.bedetheque.com/serie-59-BD-Asterix.html']})
+        self.assertEqual(lookup.get_json()['items']['https://www.bedetheque.com/serie-59-BD-Asterix.html']['state'], 'library')
+
+    def test_admin_volume_request_searches_at_once(self):
+        self._missing_volume()
+        self.login('alice', ['bullarr-admins'])
+        seen = []
+        with mock.patch('blueprints.bedetheque.routes.run_auto_acquire_now', side_effect=self._fake_search(seen)):
+            response = self.send('POST', '/api/requests', json={'series_id': 10, 'volume_id': 200})
+        self.assertEqual(response.get_json()['status'], 'searching')
+        self.assertEqual(len(seen), 1)
+
     def test_failed_approval_keeps_the_request_pending(self):
         self.login('bob')
         with mock.patch('notifications.send_notification'):

@@ -12,6 +12,11 @@ Statuts : pending (à valider), adding (validée, ajout Bédéthèque en cours e
 added, already (déjà dans la bibliothèque), error, rejected (refusée, motif dans error),
 cancelled (annulée par le lecteur).
 
+Demande d'un tome : POST /api/requests {series_id, volume_id} pour un tome manquant (ligne
+sans fichier) d'une série déjà dans la bibliothèque. volume_id / volume_label sont alors
+renseignés. Validée, elle lance la recherche automatique de ce tome (comme « Rechercher »
+sur la fiche) et passe à « searching » ; elle s'affiche « added » une fois le fichier arrivé.
+
 La validation rend la main tout de suite : la lecture de la fiche Bédéthèque (plusieurs
 secondes, parfois plus d'une minute) se fait dans un fil à part. En cas d'échec la demande
 revient « à valider » avec le message d'erreur, l'administrateur peut réessayer."""
@@ -27,6 +32,7 @@ from . import library_bp
 
 STATUS_PENDING = 'pending'
 STATUS_ADDING = 'adding'
+STATUS_SEARCHING = 'searching'
 MAX_PENDING_PER_USER = 30
 BEDETHEQUE_PREFIX = 'https://www.bedetheque.com/'
 
@@ -107,11 +113,12 @@ def _finish_adding(url, library_id, library_name, actor_key, actor_name, request
     try:
         if status == 'error':
             conn.execute('UPDATE book_requests SET status = ?, error = ?, decided_at = NULL, decided_by = NULL '
-                         'WHERE bedetheque_url = ? AND status = ?',
+                         'WHERE bedetheque_url = ? AND status = ? AND volume_id IS NULL',
                          (STATUS_PENDING, f"Échec de l'ajout : {error}", url, STATUS_ADDING))
         else:
             conn.execute('UPDATE book_requests SET status = ?, series_id = ?, error = NULL, title = COALESCE(?, title) '
-                         'WHERE bedetheque_url = ? AND status = ?', (status, series_id, title, url, STATUS_ADDING))
+                         'WHERE bedetheque_url = ? AND status = ? AND volume_id IS NULL',
+                         (status, series_id, title, url, STATUS_ADDING))
         conn.commit()
     finally:
         conn.close()
@@ -153,11 +160,17 @@ def requests_page():
 
 
 def _request_dict(row):
+    status = row['status']
+    # Tome demandé puis recherché : « ajouté » dès que son fichier est là.
+    if row['volume_id'] and status == STATUS_SEARCHING and row['volume_filepath']:
+        status = 'added'
     return {
+        'kind': 'volume' if row['volume_id'] else 'series',
+        'volume_id': row['volume_id'], 'volume_label': row['volume_label'],
         'id': row['id'], 'user_name': row['user_name'], 'url': row['bedetheque_url'],
         'title': row['series_title'] or row['title'],
         'series_id': row['series_id'] if row['series_title'] else None,
-        'status': row['status'], 'error': row['error'], 'created_at': row['created_at'],
+        'status': status, 'error': row['error'], 'created_at': row['created_at'],
         'decided_at': row['decided_at'], 'decided_by': row['decided_by'],
         'library_id': row['library_id'], 'library_name': row['library_name'],
         # Même compte que la fiche série : tomes attendus moins tomes manquants.
@@ -168,9 +181,10 @@ def _request_dict(row):
 
 _LIST_SQL = ('SELECT r.*, s.title AS series_title, s.total_volumes AS total, s.missing_volumes AS missing_json, '
              f'{_COVER_COLUMNS}, '
-             'l.name AS library_name '
+             'l.name AS library_name, v.filepath AS volume_filepath '
              'FROM book_requests r LEFT JOIN series s ON s.id = r.series_id '
-             'LEFT JOIN libraries l ON l.id = r.library_id ')
+             'LEFT JOIN libraries l ON l.id = r.library_id '
+             'LEFT JOIN volumes v ON v.id = r.volume_id ')
 
 
 @library_bp.route('/api/requests', methods=['GET'])
@@ -209,7 +223,7 @@ def lookup_requests():
             items[row['bedetheque_url']] = {'state': 'library', 'series_id': row['id'], 'cover_url': _cover_url(row),
                                             'owned': _owned(row['total_volumes'], row['missing_volumes']),
                                             'total': row['total_volumes']}
-        for row in conn.execute(f'SELECT bedetheque_url, status FROM book_requests WHERE user_key = ? '
+        for row in conn.execute(f'SELECT bedetheque_url, status FROM book_requests WHERE user_key = ? AND volume_id IS NULL '
                                 f"AND status IN ('pending', 'adding', 'rejected') AND bedetheque_url IN ({marks}) "
                                 f'ORDER BY id', (current_user_key(), *urls)):
             if items.get(row['bedetheque_url'], {}).get('state') != 'library':
@@ -219,9 +233,113 @@ def lookup_requests():
     return jsonify({'success': True, 'items': items})
 
 
+def _volume_label(vol):
+    if vol['is_integral']:
+        label = f"Intégrale {vol['integral_number'] or ''}".strip()
+    elif vol['is_hs']:
+        label = f"HS {vol['hs_number'] or ''}".strip()
+    elif vol['is_episode']:
+        label = f"Épisode {vol['episode_number'] or ''}".strip()
+    elif vol['is_special'] and vol['special_label']:
+        label = vol['special_label']
+    elif vol['volume_number'] is not None:
+        number = vol['volume_number']
+        number = int(number) if float(number).is_integer() else number
+        label = f"Tome {number}" + (f" {vol['bis_suffix']}" if vol['is_bis'] and vol['bis_suffix'] else '')
+    else:
+        label = 'One-shot'
+    return label
+
+
+_VOLUME_SQL = ('SELECT v.id, v.series_id, v.filepath, v.volume_number, v.is_integral, v.integral_number, v.is_hs, '
+               'v.hs_number, v.is_episode, v.episode_number, v.is_special, v.special_label, v.is_bis, v.bis_suffix, '
+               's.title AS series_title, s.bedetheque_url, s.library_id, s.is_oneshot '
+               'FROM volumes v JOIN series s ON s.id = v.series_id WHERE v.id = ?')
+
+
+def _start_volume_search(vol):
+    """Recherche automatique de ce seul tome, comme « Rechercher » sur la fiche série."""
+    from blueprints.bedetheque.routes import run_auto_acquire_now
+    payload = {'series_id': vol['series_id']}
+    if vol['is_integral']:
+        payload.update(volume_number=vol['integral_number'], is_integral=True)
+    elif vol['is_hs']:
+        payload.update(volume_number=vol['hs_number'], is_hs=True)
+    elif vol['is_episode']:
+        payload.update(volume_number=vol['episode_number'], is_episode=True)
+    elif vol['volume_number'] is not None:
+        payload['volume_number'] = vol['volume_number']
+    else:
+        payload['oneshot'] = True
+    with current_app.test_request_context(json=payload):
+        response = run_auto_acquire_now()
+    if isinstance(response, tuple):
+        response = response[0]
+    result = response.get_json() or {}
+    return bool(result.get('success')), result.get('error')
+
+
+def _create_volume_request(data):
+    from blueprints.auth.roles import library_visible
+    try:
+        volume_id = int(data.get('volume_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'volume_id invalide'}), 400
+    key, name = _session_user()
+    conn = _connect()
+    try:
+        vol = conn.execute(_VOLUME_SQL, (volume_id,)).fetchone()
+        if vol is None or (data.get('series_id') and str(vol['series_id']) != str(data.get('series_id'))) \
+                or not library_visible(vol['library_id']):
+            return jsonify({'success': False, 'error': 'Tome introuvable'}), 404
+        label = _volume_label(vol)
+        base = {'success': True, 'series_id': vol['series_id'], 'volume_id': volume_id, 'volume_label': label,
+                'title': vol['series_title']}
+        if vol['filepath']:
+            return jsonify({**base, 'status': 'already'})
+        duplicate = conn.execute('SELECT id, status FROM book_requests WHERE volume_id = ? AND user_key IS ? '
+                                 'AND status IN (?, ?)', (volume_id, key, STATUS_PENDING, STATUS_SEARCHING)).fetchone()
+        if duplicate:
+            return jsonify({**base, 'status': duplicate['status'], 'id': duplicate['id'], 'duplicate': True})
+        pending_mine = conn.execute('SELECT COUNT(*) FROM book_requests WHERE user_key IS ? AND status = ?',
+                                    (key, STATUS_PENDING)).fetchone()[0]
+    finally:
+        conn.close()
+
+    immediate = (not is_reader()) or auto_approve_enabled()
+    if not immediate and pending_mine >= MAX_PENDING_PER_USER:
+        return jsonify({'success': False, 'error': 'Trop de demandes en attente : patientez qu’elles soient traitées'}), 429
+    status, error = STATUS_PENDING, None
+    if immediate:
+        ok, error = _start_volume_search(vol)
+        status = STATUS_SEARCHING if ok else STATUS_PENDING
+        error = None if ok else f"Échec de la recherche : {error or 'erreur inconnue'}"
+    conn = _connect()
+    try:
+        cursor = conn.execute(
+            'INSERT INTO book_requests (user_key, user_name, bedetheque_url, title, series_id, status, error, library_id, '
+            'volume_id, volume_label, decided_at, decided_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+            "CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END, ?)",
+            (key, name, vol['bedetheque_url'] or '', vol['series_title'], vol['series_id'], status, error,
+             vol['library_id'], volume_id, label, status,
+             None if status == STATUS_PENDING else ('auto' if is_reader() else name)))
+        request_id = cursor.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+    full_title = f"{vol['series_title']} — {label}"
+    log_activity('request_created', target_name=full_title, series_id=vol['series_id'],
+                 detail='Recherche du tome lancée' if status == STATUS_SEARCHING else 'En attente de validation')
+    if status == STATUS_PENDING and not error:
+        _notify_pending(name, full_title, vol['bedetheque_url'])
+    return jsonify({**base, 'status': status, 'id': request_id, 'error': error})
+
+
 @library_bp.route('/api/requests', methods=['POST'])
 def create_request():
     data = request.get_json(silent=True) or {}
+    if data.get('volume_id') is not None:
+        return _create_volume_request(data)
     url = (data.get('url') or '').strip()
     title = (data.get('title') or '').strip()[:300] or None
     if not url.startswith(BEDETHEQUE_PREFIX):
@@ -232,7 +350,8 @@ def create_request():
     try:
         existing = conn.execute('SELECT id, title FROM series WHERE bedetheque_url = ? LIMIT 1', (url,)).fetchone()
         library = _target_library(conn)
-        duplicate = conn.execute('SELECT id FROM book_requests WHERE bedetheque_url = ? AND user_key IS ? AND status = ?',
+        duplicate = conn.execute('SELECT id FROM book_requests WHERE bedetheque_url = ? AND user_key IS ? AND status = ? '
+                                 'AND volume_id IS NULL',
                                  (url, key, STATUS_PENDING)).fetchone()
         pending_mine = conn.execute('SELECT COUNT(*) FROM book_requests WHERE user_key IS ? AND status = ?',
                                     (key, STATUS_PENDING)).fetchone()[0]
@@ -308,6 +427,8 @@ def approve_request(request_id):
         return jsonify({'success': False, 'error': 'Demande introuvable'}), 404
     if row['status'] != STATUS_PENDING:
         return jsonify({'success': False, 'error': 'Cette demande a déjà été traitée'}), 409
+    if row['volume_id']:
+        return _approve_volume_request(row)
     if library is None:
         return jsonify({'success': False, 'error': 'Aucune bibliothèque'}), 400
 
@@ -317,7 +438,8 @@ def approve_request(request_id):
         # Toutes les demandes en attente de la même série sont satisfaites ensemble ; la demande
         # quitte Validation tout de suite, l'ajout Bédéthèque se fait en arrière-plan.
         claimed = conn.execute('UPDATE book_requests SET status = ?, error = NULL, library_id = ?, '
-                               'decided_at = CURRENT_TIMESTAMP, decided_by = ? WHERE bedetheque_url = ? AND status = ?',
+                               'decided_at = CURRENT_TIMESTAMP, decided_by = ? WHERE bedetheque_url = ? AND status = ? '
+                               'AND volume_id IS NULL',
                                (STATUS_ADDING, library['id'], name, row['bedetheque_url'], STATUS_PENDING)).rowcount
         conn.commit()
     finally:
@@ -327,6 +449,54 @@ def approve_request(request_id):
     _in_background(_finish_adding, row['bedetheque_url'], library['id'], library['name'], key, name,
                    row['user_key'], row['user_name'], row['title'] or row['bedetheque_url'])
     return jsonify({'success': True, 'status': STATUS_ADDING, 'title': row['title'], 'library': library['name']})
+
+
+def _approve_volume_request(row):
+    """Demande de tome validée : recherche automatique de ce tome ; toutes les demandes en
+    attente du même tome sont satisfaites ensemble."""
+    key, name = _session_user()
+    conn = _connect()
+    try:
+        vol = conn.execute(_VOLUME_SQL, (row['volume_id'],)).fetchone()
+    finally:
+        conn.close()
+    if vol is None:
+        return jsonify({'success': False, 'error': 'Ce tome n’existe plus dans la bibliothèque'}), 404
+    label = row['volume_label'] or _volume_label(vol)
+    if vol['filepath']:
+        status, error = 'already', None
+    else:
+        ok, error = _start_volume_search(vol)
+        if not ok:
+            return jsonify({'success': False, 'error': f"Échec de la recherche : {error or 'erreur inconnue'}"}), 502
+        status = STATUS_SEARCHING
+    conn = _connect()
+    try:
+        conn.execute('UPDATE book_requests SET status = ?, error = NULL, decided_at = CURRENT_TIMESTAMP, decided_by = ? '
+                     'WHERE volume_id = ? AND status = ?', (status, name, row['volume_id'], STATUS_PENDING))
+        conn.commit()
+    finally:
+        conn.close()
+    log_activity('request_approved', target_key=row['user_key'], target_name=f"{vol['series_title']} — {label}",
+                 series_id=vol['series_id'], detail=f"Demandé par {row['user_name'] or '?'}"
+                 + (' · déjà disponible' if status == 'already' else ' · recherche lancée'),
+                 actor_key=key, actor_name=name)
+    return jsonify({'success': True, 'status': status, 'title': vol['series_title'], 'volume_label': label,
+                    'series_id': vol['series_id']})
+
+
+def volume_request_states(conn, series_id, user_key):
+    """{volume_id: statut} de la dernière demande de tome de ce compte pour cette série
+    (pending, searching, rejected) - affiché « Demandé » sur la fiche."""
+    states = {}
+    try:
+        for row in conn.execute("SELECT volume_id, status FROM book_requests WHERE series_id = ? AND user_key IS ? "
+                                "AND volume_id IS NOT NULL AND status IN ('pending', 'searching', 'rejected') "
+                                'ORDER BY id', (series_id, user_key)):
+            states[row[0]] = row[1]
+    except sqlite3.OperationalError:
+        pass
+    return states
 
 
 @library_bp.route('/api/requests/<int:request_id>/reject', methods=['POST'])

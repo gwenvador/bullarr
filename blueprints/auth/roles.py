@@ -111,7 +111,9 @@ def init_tables(cursor):
             cursor.execute(f'ALTER TABLE users ADD COLUMN {column} TEXT')
     # Demande à valider : bibliothèque visée au moment de la demande, décision (qui, quand).
     request_columns = {row[1] for row in cursor.execute('PRAGMA table_info(book_requests)').fetchall()}
-    for column, kind in (('library_id', 'INTEGER'), ('decided_at', 'TIMESTAMP'), ('decided_by', 'TEXT')):
+    # volume_id / volume_label : demande d'UN tome manquant d'une série déjà dans la bibliothèque.
+    for column, kind in (('library_id', 'INTEGER'), ('decided_at', 'TIMESTAMP'), ('decided_by', 'TEXT'),
+                         ('volume_id', 'INTEGER'), ('volume_label', 'TEXT')):
         if column not in request_columns:
             cursor.execute(f'ALTER TABLE book_requests ADD COLUMN {column} {kind}')
     cursor.execute("UPDATE book_requests SET status = 'pending', decided_at = NULL, decided_by = NULL, "

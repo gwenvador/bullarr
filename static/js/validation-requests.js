@@ -40,23 +40,25 @@ async function vrJson(url, options) {
 }
 
 function vrBookCard(item) {
-    const libs = vrLibraries.length > 1
+    // Demande d'un tome manquant : la série est déjà là, pas de bibliothèque à choisir.
+    const isVolume = !!item.volume_id;
+    const libs = !isVolume && vrLibraries.length > 1
         ? `<label class="vr-lib" data-tooltip="Bibliothèque où ajouter la série">${svgIcon('library')}
                <select data-vr-library>${vrLibraries.map(lib => `<option value="${lib.id}"${lib.id === item.library_id ? ' selected' : ''}>${vrEscape(lib.name)}</option>`).join('')}</select>
            </label>`
         : '';
     return `
-        <article class="vr-card" data-vr-book="${item.id}">
+        <article class="vr-card" data-vr-book="${item.id}"${isVolume ? ' data-vr-volume="1"' : ''}>
             <div class="vr-thumb" style="--vr-hue:${vrHue(item.title)}">${vrEscape(vrInitials(item.title))}</div>
             <div class="vr-body">
                 <div class="vr-title-row">
-                    <h3>${vrEscape(item.title || item.url)}</h3>
-                    <a class="vr-ext" href="${vrEscape(item.url)}" target="_blank" rel="noopener" data-tooltip="Voir la fiche Bédéthèque">${svgIcon('external-link')}</a>
+                    <h3>${isVolume && item.series_id ? `<a href="/series/${item.series_id}">${vrEscape(item.title)}</a>` : vrEscape(item.title || item.url)}${isVolume ? ` <span class="vr-chip">${svgIcon('book-open')} ${vrEscape(item.volume_label || 'Tome')}</span>` : ''}</h3>
+                    ${item.url ? `<a class="vr-ext" href="${vrEscape(item.url)}" target="_blank" rel="noopener" data-tooltip="Voir la fiche Bédéthèque">${svgIcon('external-link')}</a>` : ''}
                 </div>
                 <div class="vr-meta">${svgIcon('circle-user')} ${vrEscape(item.user_name || 'Lecteur')} <span class="vr-dot">·</span> ${svgIcon('clock')} ${vrEscape(vrDate(item.created_at))}</div>
                 <div class="vr-actions">
                     ${libs}
-                    <button type="button" class="vr-btn vr-btn-ok" data-vr-approve>${svgIcon('check')}<span>Ajouter</span></button>
+                    <button type="button" class="vr-btn vr-btn-ok" data-vr-approve>${svgIcon(isVolume ? 'search' : 'check')}<span>${isVolume ? 'Rechercher ce tome' : 'Ajouter'}</span></button>
                     <button type="button" class="vr-btn vr-btn-no" data-vr-reject>${svgIcon('x')}<span>Refuser</span></button>
                 </div>
                 <div class="vr-reject-box" hidden>
@@ -135,7 +137,9 @@ function vrBind(section) {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(select ? {library_id: Number(select.value)} : {}),
                     });
-                    vrDone(card, `Validée : ajout dans ${vrEscape(data.library || 'la bibliothèque')} en arrière-plan, puis recherche des tomes`);
+                    vrDone(card, card.dataset.vrVolume
+                        ? (data.status === 'already' ? 'Ce tome est déjà dans la bibliothèque' : `Validée : recherche de ${vrEscape(data.volume_label || 'ce tome')} lancée`)
+                        : `Validée : ajout dans ${vrEscape(data.library || 'la bibliothèque')} en arrière-plan, puis recherche des tomes`);
                 } else {
                     await vrJson('/api/auth/users/approve', {
                         method: 'POST', headers: {'Content-Type': 'application/json'},

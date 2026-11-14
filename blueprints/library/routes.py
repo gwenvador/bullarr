@@ -3599,6 +3599,9 @@ def get_series_details(series_id):
             (series_id,)).fetchall()}
         from .upscale_volume import job as _upscale_job, upscaled_map as _upscaled_map
         upscaled = _upscaled_map(conn, series_id)
+        from blueprints.auth.roles import current_user_key as _current_user_key
+        from .book_requests import volume_request_states as _volume_request_states
+        requested = _volume_request_states(conn, series_id, _current_user_key())
 
         volumes = []
         for vol in cursor.fetchall():
@@ -3610,6 +3613,8 @@ def get_series_details(series_id):
                 'backup_kind': ('downscale' if str(sd_backups.get(vol['id']) or '').startswith('downscale:') else 'upscale')
                                if vol['id'] in sd_backups else None,
                 'upscaled': upscaled.get(vol['id']),
+                # Demande de ce tome par le compte connecté : pending / searching / rejected.
+                'requested': requested.get(vol['id']) if not vol['filepath'] else None,
                 'upscale_status': upscale_state['status'] if upscale_state else None,
                 'upscale_model': upscale_state['model'] if upscale_state else None,
                 'part_number': vol['part_number'],
