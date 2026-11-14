@@ -560,6 +560,10 @@ function _buildComicReader() {
         image.addEventListener('load', () => {
             document.getElementById('comic-reader-status').textContent = '';
             _layoutComicReaderPages();
+            // Taille d'origine (pas une version améliorée, servie en blob:) : HD grisé si inutile.
+            if (typeof comicReaderUpscalePageSize === 'function' && !image.src.startsWith('blob:')) {
+                comicReaderUpscalePageSize(image.dataset.page, image.naturalWidth, image.naturalHeight);
+            }
         });
         image.addEventListener('error', () => {
             document.getElementById('comic-reader-status').textContent = `Page ${image.dataset.page || comicReader.page} illisible`;
