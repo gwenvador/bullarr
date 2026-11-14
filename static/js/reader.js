@@ -1,6 +1,7 @@
 // Lecteur de BD intégré (fiche série) : lit un tome page par page directement dans son
 // fichier (GET /api/volumes/<id>/reader, /reader/page/<n> et /reader/thumb/<n>, CBZ, CBR ou PDF).
-// Clic sur la moitié droite : page suivante ; moitié gauche : page précédente. Molette,
+// Clic sur le tiers droit : page suivante ; tiers gauche : page précédente ; milieu :
+// barre et miniatures affichées / masquées. Molette,
 // touches ← → / Espace / Origine / Fin, glissement du doigt, curseur de position, plein
 // écran (bouton ou touche F). Ajustement de l'image (bouton ou touche Z) : page entière,
 // largeur de l'écran ou hauteur de l'écran. Bande de miniatures de toutes les pages
@@ -220,6 +221,7 @@ const COMIC_READER_SHORTCUTS = [
         [['0'], 'Revenir à 100 %'],
         ['Ctrl / ⌘ + molette', 'Zoomer autour du pointeur'],
         ['Clic droite / gauche', 'Page suivante / précédente'],
+        ['Clic au milieu', 'Afficher / masquer la barre et les miniatures'],
         ['Glisser un doigt', 'Page suivante / précédente'],
     ]],
 ];
@@ -413,10 +415,13 @@ function _buildComicReader() {
         // Un glissement pour déplacer l'image agrandie ne tourne pas la page ; image
         // agrandie, un simple clic non plus (on revient à 100 % avec 0 ou le bouton).
         if (comicReader.suppressClick) { comicReader.suppressClick = false; return; }
-        if (comicReader.zoom > 1 || comicReader.webtoon) return;  // webtoon : on fait défiler
+        // « si je clique au milieu, affiche / cache le header et les miniatures » : le tiers
+        // central bascule la barre du haut et le pied (comme M), même agrandi ou en webtoon.
         const rect = stage.getBoundingClientRect();
-        const left = event.clientX - rect.left < rect.width / 2;
-        stepComicReader(left === !_comicReaderRtl() ? -1 : 1);
+        const x = (event.clientX - rect.left) / rect.width;
+        if (x > 1 / 3 && x < 2 / 3) { toggleComicReaderChrome(); return; }
+        if (comicReader.zoom > 1 || comicReader.webtoon) return;  // webtoon : on fait défiler
+        stepComicReader((x < 0.5) === !_comicReaderRtl() ? -1 : 1);
     });
     // Webtoon : la page en cours est celle qui occupe le milieu de l'écran.
     stage.addEventListener('scroll', () => {
