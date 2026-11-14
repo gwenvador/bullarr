@@ -289,6 +289,10 @@ def mark_download_pending(title: str, client: str, series_id: Optional[int] = No
             "VALUES (?, ?, ?, NULL, NULL, ?, CURRENT_TIMESTAMP)",
             (title, volume_number, client, download_id)
         )
+        # Ce téléchargement a sa ligne d'historique : pas de doublon générique
+        # (voir blueprints/library/history_fallback.py).
+        from blueprints.library.history_fallback import mark_logged
+        mark_logged()
 
         conn.commit()
         conn.close()

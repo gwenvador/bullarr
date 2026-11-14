@@ -71,6 +71,9 @@ def create_app(config_name='default'):
     from blueprints.bdgest import bdgest_bp
 
     app.register_blueprint(library_bp)
+    # « toutes les actions doivent être dans l'historique » : voir history_fallback.py
+    from blueprints.library.history_fallback import init_app as init_history_fallback
+    init_history_fallback(app)
     app.register_blueprint(search_bp)
     app.register_blueprint(emule_bp, url_prefix='/api/emule')
     app.register_blueprint(ebdz_bp, url_prefix='/api/ebdz')

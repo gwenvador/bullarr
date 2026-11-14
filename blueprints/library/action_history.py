@@ -63,6 +63,8 @@ def log_action(action_type, series_id, series_title, detail, success=True, error
         ''', (action_type, series_id, series_title, detail, 1 if success else 0, error, files_json))
         conn.commit()
         conn.close()
+        from .history_fallback import mark_logged
+        mark_logged()
     except Exception as e:
         print(f"Erreur lors de la journalisation de l'action '{action_type}' (série #{series_id}): {e}")
 
