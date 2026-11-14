@@ -3711,9 +3711,11 @@ function buildVolumeMissingActionsGearHtml(v) {
             <button type="button" class="volume-link-icon" id="volume-missing-actions-gear-${v.id}" onclick="toggleToolbarDropdown('${menuId}', this)" title="Actions sur ce tome" aria-label="Actions sur ce tome">${svgIcon('settings')}</button>
             <div class="toolbar-dropdown-menu toolbar-dropdown-menu-autoclose" id="${menuId}" style="display: none;">
                 ${updateMetadataItemHtml}
+                <div class="toolbar-dropdown-separator" role="separator"></div>
                 ${searchItemHtml}
                 ${autoAcquireItemHtml}
                 ${uploadFileItemHtml}
+                <div class="toolbar-dropdown-separator" role="separator"></div>
                 ${deleteItemHtml}
             </div>
         </div>
@@ -3823,17 +3825,22 @@ function buildVolumeActionsGearHtml(v) {
             <button type="button" class="volume-link-icon" id="volume-actions-gear-${v.id}" onclick="toggleToolbarDropdown('${menuId}', this)" title="Actions sur ce tome" aria-label="Actions sur ce tome">${svgIcon('settings')}</button>
             <div class="toolbar-dropdown-menu toolbar-dropdown-menu-autoclose" id="${menuId}" style="display: none;">
                 ${markReadItemHtml}
+                <div class="toolbar-dropdown-separator" role="separator"></div>
                 ${updateMetadataItemHtml}
+                ${refreshItemHtml}
+                ${editManuallyItemHtml}
+                <div class="toolbar-dropdown-separator" role="separator"></div>
                 ${convertCbrItemHtml}
                 ${upscaleItemHtml}
                 ${downscaleItemHtml}
                 ${restoreSdItemHtml}
-                ${editManuallyItemHtml}
+                <div class="toolbar-dropdown-separator" role="separator"></div>
                 ${searchAgainItemHtml}
                 ${autoAcquireAgainItemHtml}
                 ${uploadFileItemHtml}
+                <div class="toolbar-dropdown-separator" role="separator"></div>
                 ${downloadItemHtml}
-                ${refreshItemHtml}
+                <div class="toolbar-dropdown-separator" role="separator"></div>
                 ${deleteItemHtml}
             </div>
         </div>
@@ -5656,20 +5663,26 @@ ${(data.bedetheque && data.bedetheque.url && !data.is_oneshot) ? `
                             <button class="toolbar-dropdown-item" onclick="reloadSeriesAlbumsFromBedetheque(${seriesId}, this)" title="Relit la liste des albums sur Bédéthèque et ajoute ceux qui manquent, sans rien changer d'autre" aria-label="Relit la liste des albums sur Bédéthèque et ajoute ceux qui manquent, sans rien changer d'autre">${svgIcon('refresh-cw')} Recharger les albums</button>
                             ` : ''}
                             <button class="toolbar-dropdown-item" onclick="updateSeriesMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)" aria-label="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)">${svgIcon('tag')} MAJ métadonnées (série + tomes)</button>
-                            <button class="toolbar-dropdown-item" onclick="openMergeSeriesModal(${seriesId})" title="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)" aria-label="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)">${svgIcon('git-merge')} Fusionner</button>
-                            <button class="toolbar-dropdown-item" onclick="openMoveSeriesDialog([{id: ${seriesId}, title: currentSeriesDetail.title, library_id: currentSeriesDetail.library_id}])" title="Déplace le dossier de la série sur le disque vers une autre bibliothèque">${svgIcon('folder-input')} Déplacer vers une autre bibliothèque</button>
+                            <div class="toolbar-dropdown-separator" role="separator"></div>
                             <button class="toolbar-dropdown-item" onclick="openManualEditModal(${seriesId})" title="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque" aria-label="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque">${svgIcon('pencil')} Éditer manuellement</button>
-                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">${svgIcon('bookmark')} ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
-                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">${svgIcon('heart')} ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
-                            ${_seriesReadMenuItemHtml(data)}
-                            ${_seriesUpscaleMenuItemsHtml(data, seriesId)}
                             ${oneshotDropdownItemHtml}
                             ${!data.is_oneshot ? `
                             <button class="toolbar-dropdown-item" onclick="toggleSeriesCompleteOverride(${seriesId})" title="${data.manual_complete_override ? 'Le calcul automatique (Terminé/Incomplet/En cours) reprendra la main' : 'Force le statut \'Terminé\' quel que soit le calcul automatique - utile si un mix d\'intégrales/albums le trompe'}">${data.manual_complete_override ? svgIcon('x') : svgIcon('check')} ${data.manual_complete_override ? 'Retirer la déclaration "complète"' : 'Déclarer cette série complète'}</button>
                             ` : ''}
+                            <div class="toolbar-dropdown-separator" role="separator"></div>
+                            <button class="toolbar-dropdown-item" onclick="openMergeSeriesModal(${seriesId})" title="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)" aria-label="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)">${svgIcon('git-merge')} Fusionner</button>
+                            <button class="toolbar-dropdown-item" onclick="openMoveSeriesDialog([{id: ${seriesId}, title: currentSeriesDetail.title, library_id: currentSeriesDetail.library_id}])" title="Déplace le dossier de la série sur le disque vers une autre bibliothèque">${svgIcon('folder-input')} Déplacer vers une autre bibliothèque</button>
+                            <div class="toolbar-dropdown-separator" role="separator"></div>
+                            ${_seriesReadMenuItemHtml(data)}
+                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">${svgIcon('bookmark')} ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
+                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">${svgIcon('heart')} ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
+                            <div class="toolbar-dropdown-separator" role="separator"></div>
+                            ${_seriesUpscaleMenuItemsHtml(data, seriesId)}
+                            <div class="toolbar-dropdown-separator" role="separator"></div>
                             ${(data.total_volumes > 1 && !data.is_oneshot) ? `
                             <button class="toolbar-dropdown-item" onclick="downloadSeriesZip(${seriesId})" title="Télécharge tous les tomes possédés de cette série dans une seule archive zip" aria-label="Télécharge tous les tomes possédés de cette série dans une seule archive zip">${svgIcon('download')} Télécharger la série (zip)</button>
                             ` : ''}
+                            <div class="toolbar-dropdown-separator" role="separator"></div>
                             <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteSeries(${seriesId})" title="Supprimer définitivement cette série et son dossier du disque" aria-label="Supprimer définitivement cette série et son dossier du disque">${svgIcon('trash-2')} Supprimer la série</button>
                         </div>
                     </div>
