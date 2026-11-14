@@ -50,7 +50,7 @@ class McpEndpointTest(unittest.TestCase):
 
         response = self._post({'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'}, token=self.token)
         names = {tool['name'] for tool in response.get_json()['result']['tools']}
-        self.assertEqual(names, {'search_series', 'get_series', 'list_tags', 'set_series_tags', 'set_reading_lists'})
+        self.assertTrue({'search_series', 'get_series', 'list_tags', 'set_series_tags', 'set_reading_lists'} <= names)
 
     def test_notification_is_accepted_without_body(self):
         response = self._post({'jsonrpc': '2.0', 'method': 'notifications/initialized'}, token=self.token)
@@ -122,6 +122,68 @@ class McpEndpointTest(unittest.TestCase):
             self.assertNotEqual(data['token'], token)
             old = self.client.post('/mcp/' + token, json={'jsonrpc': '2.0', 'id': 1, 'method': 'ping'})
             self.assertEqual(old.status_code, 401)
+
+    def _call_tool(self, name, arguments=None):
+        response = self._post({'jsonrpc': '2.0', 'id': 9, 'method': 'tools/call',
+                               'params': {'name': name, 'arguments': arguments or {}}}, token=self.token)
+        result = response.get_json()['result']
+        return result['isError'], (json.loads(result['content'][0]['text']) if not result['isError']
+                                   else result['content'][0]['text'])
+
+    def _fixture(self):
+        import sqlite3
+        conn = sqlite3.connect(self.app.config['DATABASE'])
+        lib = conn.execute('SELECT id FROM libraries LIMIT 1').fetchone()
+        lib_id = lib[0] if lib else conn.execute(
+            "INSERT INTO libraries (name, path) VALUES ('Test MCP', '/tmp/mcp-lib')").lastrowid
+        sid = conn.execute("INSERT INTO series (library_id, title, path, local_author, local_genre) "
+                           "VALUES (?, 'Série MCP', '/tmp/mcp-lib/x', 'Jean Testeur', 'Aventure')", (lib_id,)).lastrowid
+        owned = conn.execute("INSERT INTO volumes (series_id, volume_number, filename, filepath, format) "
+                             "VALUES (?, 1, 'x1.cbz', '/tmp/mcp-lib/x/x1.cbz', 'cbz')", (sid,)).lastrowid
+        missing = conn.execute("INSERT INTO volumes (series_id, volume_number) VALUES (?, 2)", (sid,)).lastrowid
+        conn.commit()
+        conn.close()
+        return lib_id, sid, owned, missing
+
+    def test_new_tools_are_listed(self):
+        response = self._post({'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'}, token=self.token)
+        names = {tool['name'] for tool in response.get_json()['result']['tools']}
+        for name in ('get_series_volumes', 'list_recent_additions', 'get_reading_history', 'list_libraries',
+                     'list_universes', 'list_requests', 'list_downloads', 'set_read_status',
+                     'set_series_monitor', 'search_missing_volumes', 'update_series_metadata'):
+            self.assertIn(name, names)
+        self.assertFalse({n for n in names if 'delete' in n or 'move' in n or 'rename' in n})
+
+    def test_read_tools(self):
+        lib_id, sid, owned, missing = self._fixture()
+        err, data = self._call_tool('get_series_volumes', {'series_id': sid})
+        self.assertFalse(err, data)
+        self.assertEqual((data['owned'], data['missing']), (1, 1))
+        self.assertEqual(data['volumes'][0]['label'], 'Tome 1')
+        err, data = self._call_tool('search_series', {'author': 'testeur', 'incomplete': True})
+        self.assertFalse(err, data)
+        self.assertIn(sid, [r['id'] for r in data['results']])
+        err, data = self._call_tool('search_series', {'author': 'testeur', 'incomplete': False})
+        self.assertNotIn(sid, [r['id'] for r in data['results']])
+        for name in ('list_recent_additions', 'get_reading_history', 'list_libraries', 'list_universes', 'list_requests', 'list_downloads'):
+            err, data = self._call_tool(name)
+            self.assertFalse(err, (name, data))
+        err, data = self._call_tool('list_libraries')
+        self.assertIn(lib_id, [l['library_id'] for l in data['libraries']])
+
+    def test_write_tools(self):
+        _lib, sid, owned, missing = self._fixture()
+        err, data = self._call_tool('update_series_metadata', {'series_id': sid, 'genre': 'Humour'})
+        self.assertFalse(err, data)
+        err, data = self._call_tool('get_series', {'series_id': sid})
+        self.assertEqual(data['manual_genre'], 'Humour')
+        err, data = self._call_tool('set_series_monitor', {'series_id': sid, 'enabled': True})
+        self.assertFalse(err, data)
+        err, data = self._call_tool('search_missing_volumes', {'series_id': sid, 'volume_id': owned})
+        self.assertTrue(err)
+        self.assertIn('déjà', data)
+        err, data = self._call_tool('update_series_metadata', {'series_id': sid})
+        self.assertTrue(err)
 
 
 if __name__ == '__main__':

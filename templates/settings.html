@@ -2395,12 +2395,23 @@
                             <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
                             <h2>🤖 IA</h2>
                             <p class="section-description">
-                                Une IA (aiautotagging.com gratuit et sans clé, Claude, Gemini, ChatGPT, un modèle via OpenRouter, Groq ou un LLM local) crée les tags des séries et regroupe les tags qui
-                                veulent dire la même chose. Les requêtes passent par votre propre clé API.
+                                Deux usages : une IA de votre choix crée et range les tags des séries, et un assistant
+                                (Claude, ChatGPT) se branche sur Bullarr par le serveur MCP pour consulter et organiser la bibliothèque.
                             </p>
                         </div>
 
-                        <div class="settings-card">
+                        <div class="ai-panes-switch" role="tablist" aria-label="Volets de l'onglet IA">
+                            <button type="button" class="ai-pane-btn active" role="tab" data-pane="tags" onclick="showAiPane('tags')">
+                                <span class="ai-pane-btn-title">🏷️ Tags par IA</span>
+                                <span class="ai-pane-btn-sub">Créer, normaliser et consigner les tags</span>
+                            </button>
+                            <button type="button" class="ai-pane-btn" role="tab" data-pane="mcp" onclick="showAiPane('mcp')">
+                                <span class="ai-pane-btn-title">🔌 Serveur MCP <span class="ai-pane-badge" id="mcpPaneBadge"></span></span>
+                                <span class="ai-pane-btn-sub">Brancher Claude ou ChatGPT sur Bullarr</span>
+                            </button>
+                        </div>
+
+                        <div class="settings-card ai-pane-card" data-ai-pane="tags">
                             <h3 style="margin-top:0;">Connexion</h3>
                             <div class="checkbox-group">
                                 <input type="checkbox" id="aiEnabled">
@@ -2450,7 +2461,7 @@
                             <div id="aiMessage" class="message"></div>
                         </div>
 
-                        <div class="settings-card">
+                        <div class="settings-card ai-pane-card" data-ai-pane="tags">
                             <h3 style="margin-top:0;">Créer des tags</h3>
                             <p class="help-text" style="display:block; margin-bottom:10px;">
                                 L'IA lit le titre, les auteurs, le genre et le résumé de chaque série, et ajoute des
@@ -2479,7 +2490,7 @@
                             </div>
                         </div>
 
-                        <div class="settings-card">
+                        <div class="settings-card ai-pane-card" data-ai-pane="tags">
                             <h3 style="margin-top:0;">Normaliser les tags</h3>
                             <p class="help-text" style="display:block; margin-bottom:10px;">
                                 L'IA repère les tags qui désignent la même chose (par exemple « de-gaulle »,
@@ -2490,7 +2501,7 @@
                             <div id="aiNormalizeProposals" class="ai-proposals" hidden></div>
                         </div>
 
-                        <div class="settings-card">
+                        <div class="settings-card ai-pane-card" data-ai-pane="tags">
                             <h3 style="margin-top:0;">Consignes de l'IA</h3>
                             <p class="help-text" style="display:block; margin-bottom:10px;">
                                 Le texte envoyé au modèle avant les séries ou les tags. La liste des tags déjà
@@ -2523,7 +2534,7 @@
                             <div id="aiPromptMessage" class="message"></div>
                         </div>
 
-                        <div class="settings-card ai-job-card" id="aiJobCard" hidden>
+                        <div class="settings-card ai-job-card ai-pane-card" data-ai-pane="tags" id="aiJobCard" hidden>
                             <div class="ai-job-head">
                                 <p class="ai-job-message" id="aiJobMessage"></p>
                                 <button type="button" class="btn btn-secondary btn-small" id="aiJobStop" onclick="stopAiJob()" hidden title="S'arrête après le lot en cours ; la création pourra être reprise">⏸ Arrêter</button>
@@ -2531,8 +2542,8 @@
                             <progress id="aiJobProgress" class="ai-job-progress" max="1" value="0" hidden></progress>
                             <p class="ai-job-fallback" id="aiJobFallback" hidden></p>
                         </div>
-                        <div class="settings-card" id="mcpCard">
-                            <h3>Serveur MCP (Claude, ChatGPT)</h3>
+                        <div class="settings-card ai-pane-card ai-pane-hidden" data-ai-pane="mcp" id="mcpCard">
+                            <h3 style="margin-top:0;">Serveur MCP (Claude, ChatGPT)</h3>
                             <p class="help-text" style="display:block;">
                                 Un assistant IA (Claude, ChatGPT, Claude Code) peut chercher dans la bibliothèque, lire une série,
                                 et poser des tags ou des listes de lecture. Il se branche avec l'adresse ci-dessous, qui contient
@@ -2616,7 +2627,7 @@
                                 </p>
                             </div>
                         </div>
-                        <div class="settings-card">
+                        <div class="settings-card ai-pane-card" data-ai-pane="tags">
                             <div class="ai-history-header">
                                 <h3 style="margin:0;">Historique</h3>
                                 <button type="button" class="btn btn-secondary btn-small" id="aiHistoryClear" onclick="clearAiHistory()" hidden>Vider</button>

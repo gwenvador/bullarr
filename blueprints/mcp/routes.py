@@ -72,20 +72,30 @@ def _brief(row, summary_chars=300):
         'id': row['id'],
         'title': row['title'],
         'year': _year(row),
-        'author': row['local_author'] or '',
-        'genre': row['local_genre'] or '',
+        'author': row['author'] or '',
+        'genre': row['genre'] or '',
         'tags': _tags_of(row),
         'oneshot': bool(row['is_oneshot']),
         'to_read_later': bool(row['to_read_later']),
         'favorite': bool(row['is_favorite']),
+        'status': row['status'],
+        'library_id': row['library_id'],
+        'owned_volumes': row['owned_count'],
+        'missing_volumes': row['missing_count'],
         'summary': summary[:summary_chars] + ('…' if len(summary) > summary_chars else ''),
     }
 
 
 _SERIES_COLUMNS = """
     s.id, s.title, s.local_author, s.local_genre, s.tags, s.local_summary, s.manual_summary,
-    s.bedetheque_description, s.is_oneshot, s.to_read_later, s.is_favorite,
-    COALESCE(s.manual_year_start, s.bedetheque_year_start, s.local_year) AS year
+    s.bedetheque_description, s.is_oneshot, s.to_read_later, s.is_favorite, s.library_id,
+    TRIM(COALESCE(NULLIF(s.manual_author, ''), NULLIF(s.local_author, ''),
+         TRIM(COALESCE(s.bedetheque_scenaristes, '') || ', ' || COALESCE(s.bedetheque_dessinateurs, ''), ', '))) AS author,
+    COALESCE(NULLIF(s.manual_genre, ''), NULLIF(s.local_genre, ''), s.bedetheque_genre, '') AS genre,
+    COALESCE(s.manual_year_start, s.bedetheque_year_start, s.local_year) AS year,
+    COALESCE(NULLIF(s.manual_status, ''), s.bedetheque_status, '') AS status,
+    (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND v.filepath IS NOT NULL AND v.filepath != '') AS owned_count,
+    (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id AND (v.filepath IS NULL OR v.filepath = '')) AS missing_count
 """
 
 
@@ -111,8 +121,20 @@ def tool_search_series(args):
     year_from = args.get('year_from')
     year_to = args.get('year_to')
     limit = max(1, min(int(args.get('limit', 25)), 100))
+    author = _normalize(args.get('author') or '').strip()
+    genre = _normalize(args.get('genre') or '').strip()
+    library_id = args.get('library_id')
+    incomplete = args.get('incomplete')
     results = []
     for row in _all_series():
+        if author and author not in _normalize(row['author']):
+            continue
+        if genre and genre not in _normalize(row['genre']):
+            continue
+        if library_id is not None and row['library_id'] != int(library_id):
+            continue
+        if incomplete is not None and bool(row['missing_count']) != bool(incomplete):
+            continue
         year = _year(row)
         if year_from is not None or year_to is not None:
             if year is None:
@@ -125,7 +147,7 @@ def tool_search_series(args):
         if any(tag not in row_tags for tag in tags):
             continue
         haystack = _normalize(' '.join([
-            row['title'] or '', row['local_author'] or '', row['local_genre'] or '',
+            row['title'] or '', row['author'] or '', row['genre'] or '',
             ' '.join(_tags_of(row)), _summary(row),
         ]))
         if any(word not in haystack for word in words):
@@ -207,6 +229,228 @@ def tool_set_reading_lists(args):
     return {'series_id': series_id, 'to_read_later': bool(row['to_read_later']), 'is_favorite': bool(row['is_favorite'])}
 
 
+# ---------------------------------------------------------------------------------------------
+# Outils ajoutés : lecture (tomes, ajouts récents, lectures, bibliothèques, univers, demandes,
+# téléchargements) et écritures légères et réversibles (lu / non lu, surveillance, recherche des
+# tomes manquants, métadonnées de série). Rien qui supprime, déplace ou renomme sur le disque.
+# Les écritures passent par les routes de l'interface (_call), pour garder exactement la même
+# logique (Komga, notifications, rescan) ; l'appel MCP agit comme l'administrateur.
+
+def _call(method, path, body=None, query=None):
+    """Appelle une route de Bullarr en interne et renvoie son JSON ; erreur HTTP -> McpError."""
+    adapter = current_app.url_map.bind('localhost')
+    endpoint, view_args = adapter.match(path, method=method)
+    with current_app.test_request_context(path, method=method, json=body, query_string=query or {}):
+        response = current_app.make_response(current_app.view_functions[endpoint](**view_args))
+        data = response.get_json(silent=True)
+    if response.status_code >= 400 or (isinstance(data, dict) and data.get('success') is False):
+        message = (data or {}).get('error') if isinstance(data, dict) else None
+        raise McpError(message or f'Erreur {response.status_code}')
+    return data
+
+
+def _vol_label(row):
+    from blueprints.library.book_requests import _volume_label
+    return _volume_label(row)
+
+
+def _owned(row):
+    return bool(row['filepath']) and (row['filesystem_present'] if 'filesystem_present' in row.keys() else 1) != 0
+
+
+def _limit(args, default, maximum):
+    return max(1, min(int(args.get('limit', default)), maximum))
+
+
+def tool_get_series_volumes(args):
+    series_id = int(args['series_id'])
+    if not _series_exists(series_id):
+        raise McpError(f'Série {series_id} introuvable')
+    rows = _call('GET', f'/api/series/{series_id}/volumes')
+    rows = rows if isinstance(rows, list) else (rows or {}).get('volumes', [])
+    volumes = []
+    for v in rows:
+        if v.get('id') is None:
+            continue  # album Bédéthèque sans fiche locale : pas encore suivi
+        ci = v.get('comicinfo') or {}
+        if isinstance(ci, str):
+            try:
+                ci = json.loads(ci)
+            except ValueError:
+                ci = {}
+        side = max(v.get('page_width') or 0, v.get('page_height') or 0)
+        owned = bool(v.get('filepath')) and v.get('filesystem_present', 1) != 0
+        volumes.append({
+            'volume_id': v['id'],
+            'label': _vol_label(v),
+            'title': (ci or {}).get('title') or '',
+            'owned': owned,
+            'format': v.get('format') if owned else None,
+            'pages': v.get('page_count') if owned else None,
+            'page_size_px': side or None,
+            'read': bool(v.get('komga_read_completed')) if owned else None,
+            'reading_page': v.get('komga_read_page') if owned and not v.get('komga_read_completed') else None,
+        })
+    return {'series_id': series_id, 'owned': sum(1 for v in volumes if v['owned']),
+            'missing': sum(1 for v in volumes if not v['owned']), 'volumes': volumes}
+
+
+def tool_list_recent_additions(args):
+    days = max(1, min(int(args.get('days', 7)), 365))
+    limit = _limit(args, 50, 200)
+    conn = _db()
+    try:
+        rows = conn.execute("""
+            SELECT f.series_id, f.series_title, f.filename, f.action, f.created_at
+            FROM import_history_files f
+            WHERE f.status = 'success' AND f.action IN ('imported', 'replaced')
+              AND f.created_at >= datetime('now', ?)
+            ORDER BY f.created_at DESC, f.id DESC LIMIT ?
+        """, (f'-{days} days', limit)).fetchall()
+    finally:
+        conn.close()
+    return {'days': days, 'count': len(rows), 'additions': [
+        {'series_id': r['series_id'], 'series_title': r['series_title'], 'file': r['filename'],
+         'replaced': r['action'] == 'replaced', 'at': r['created_at']} for r in rows]}
+
+
+def tool_get_reading_history(args):
+    limit = _limit(args, 50, 300)
+    data = _call('GET', '/api/reading-history')
+    items = data.get('items') or []
+    return {'source': data.get('source_label'), 'total': len(items), 'items': [
+        {key: item.get(key) for key in ('series_id', 'series_title', 'volume_id', 'label', 'completed',
+                                         'page', 'pages_count', 'read_at', 'library_name')}
+        for item in items[:limit]]}
+
+
+def tool_list_libraries(args):
+    conn = _db()
+    try:
+        rows = conn.execute("""
+            SELECT l.id, l.name, l.is_default,
+                   (SELECT COUNT(*) FROM series s WHERE s.library_id = l.id) AS series,
+                   (SELECT COUNT(*) FROM volumes v JOIN series s ON s.id = v.series_id
+                     WHERE s.library_id = l.id AND v.filepath IS NOT NULL AND v.filepath != '') AS owned,
+                   (SELECT COUNT(*) FROM volumes v JOIN series s ON s.id = v.series_id
+                     WHERE s.library_id = l.id AND (v.filepath IS NULL OR v.filepath = '')) AS missing
+            FROM libraries l ORDER BY l.name
+        """).fetchall()
+    finally:
+        conn.close()
+    return {'libraries': [{'library_id': r['id'], 'name': r['name'], 'default': bool(r['is_default']),
+                           'series': r['series'], 'owned_volumes': r['owned'], 'missing_volumes': r['missing']}
+                          for r in rows]}
+
+
+def tool_list_universes(args):
+    conn = _db()
+    try:
+        universes = conn.execute('SELECT id, name FROM universes ORDER BY name').fetchall()
+        links = conn.execute("""
+            SELECT us.universe_id, s.id, s.title FROM universe_series us
+            JOIN series s ON s.id = us.series_id ORDER BY s.title
+        """).fetchall()
+    finally:
+        conn.close()
+    members = {}
+    for row in links:
+        members.setdefault(row['universe_id'], []).append({'series_id': row['id'], 'title': row['title']})
+    return {'universes': [{'universe_id': u['id'], 'name': u['name'], 'series': members.get(u['id'], [])}
+                          for u in universes]}
+
+
+def tool_list_requests(args):
+    query = {'status': args['status']} if args.get('status') else None
+    data = _call('GET', '/api/requests', query=query)
+    keys = ('id', 'kind', 'status', 'title', 'volume_label', 'series_id', 'user_name', 'library_name',
+            'owned', 'total', 'error', 'created_at')
+    return {'requests': [{k: r.get(k) for k in keys if k in r} for r in (data.get('requests') or [])[:_limit(args, 50, 300)]]}
+
+
+def tool_list_downloads(args):
+    include_finished = bool(args.get('include_finished'))
+    conn = _db()
+    try:
+        where = '' if include_finished else "WHERE status NOT IN ('imported', 'failed', 'cancelled', 'skipped')"
+        rows = conn.execute(f"""
+            SELECT id, title, client, status, series_id, volume_number, bytes_downloaded, bytes_total,
+                   created_at, completed_at, paused
+            FROM active_downloads {where} ORDER BY id DESC LIMIT ?
+        """, (_limit(args, 30, 200),)).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        total = r['bytes_total'] or 0
+        out.append({'id': r['id'], 'title': r['title'], 'client': r['client'], 'status': r['status'],
+                    'paused': bool(r['paused']), 'series_id': r['series_id'], 'volume_number': r['volume_number'],
+                    'progress_pct': round(100 * (r['bytes_downloaded'] or 0) / total) if total else None,
+                    'created_at': r['created_at'], 'completed_at': r['completed_at']})
+    return {'downloads': out}
+
+
+def tool_set_read_status(args):
+    read = bool(args.get('read', True))
+    if args.get('volume_id') is not None:
+        _call('POST', f"/api/volumes/{int(args['volume_id'])}/read-status", {'read': read})
+        return {'volume_id': int(args['volume_id']), 'read': read}
+    if args.get('series_id') is not None:
+        data = _call('POST', f"/api/series/{int(args['series_id'])}/read-status", {'read': read})
+        return {'series_id': int(args['series_id']), 'read': read,
+                **{k: data[k] for k in ('done', 'failed') if k in data}}
+    raise McpError('Indiquez volume_id ou series_id')
+
+
+def tool_set_series_monitor(args):
+    series_id = int(args['series_id'])
+    enabled = bool(args.get('enabled', True))
+    _call('POST', f'/api/missing-monitor/series/{series_id}/monitor', {'enabled': enabled})
+    return {'series_id': series_id, 'monitored': enabled}
+
+
+def tool_search_missing_volumes(args):
+    series_id = int(args['series_id'])
+    body = {'series_id': series_id}
+    if args.get('volume_id') is not None:
+        conn = _db()
+        try:
+            vol = conn.execute('SELECT * FROM volumes WHERE id = ? AND series_id = ?',
+                               (int(args['volume_id']), series_id)).fetchone()
+        finally:
+            conn.close()
+        if vol is None:
+            raise McpError('Tome introuvable dans cette série')
+        if _owned(vol):
+            raise McpError(f'{_vol_label(vol)} est déjà en bibliothèque')
+        if vol['is_integral']:
+            body.update(is_integral=True, volume_number=vol['integral_number'])
+        elif vol['is_hs']:
+            body.update(is_hs=True, volume_number=vol['hs_number'])
+        elif vol['is_episode']:
+            body.update(is_episode=True, volume_number=vol['episode_number'])
+        elif vol['volume_number'] is not None:
+            body['volume_number'] = vol['volume_number']
+        else:
+            body['oneshot'] = True
+    data = _call('POST', '/api/bedetheque/auto-acquire/run', body)
+    return {'series_id': series_id, 'started': True,
+            'message': (data or {}).get('message') or 'Recherche automatique lancée ; les tomes trouvés '
+                       'avec confiance seront téléchargés puis importés.'}
+
+
+_METADATA_FIELDS = ('summary', 'genre', 'status', 'author', 'year_start', 'year_end', 'universe_id')
+
+
+def tool_update_series_metadata(args):
+    series_id = int(args['series_id'])
+    body = {key: args[key] for key in _METADATA_FIELDS if key in args}
+    if not body:
+        raise McpError('Aucun champ à modifier')
+    _call('PUT', f'/api/series/{series_id}/manual-metadata', body)
+    return {'series_id': series_id, 'updated': sorted(body)}
+
+
 _SERIES_ID = {'type': 'integer', 'description': 'Identifiant de la série (voir search_series)'}
 
 TOOLS = {
@@ -215,8 +459,9 @@ TOOLS = {
         'description': (
             'Cherche des séries dans la bibliothèque Bullarr. La recherche texte porte sur le titre, '
             "l'auteur, le genre, les tags et le résumé ; plusieurs mots doivent tous être présents. "
-            'Filtres : tags (tous requis), année de parution (year_from / year_to). Exemple : des BD '
-            'des années 1970 qui parlent de chats : query "chat", year_from 1970, year_to 1979.'
+            'Filtres : tags (tous requis), année de parution (year_from / year_to), auteur, genre, '
+            'bibliothèque, incomplete (true = il manque des tomes). Exemple : des BD des années 1970 qui '
+            'parlent de chats : query "chat", year_from 1970, year_to 1979.'
         ),
         'schema': {
             'type': 'object',
@@ -225,6 +470,10 @@ TOOLS = {
                 'tags': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Tags requis'},
                 'year_from': {'type': 'integer'},
                 'year_to': {'type': 'integer'},
+                'author': {'type': 'string', 'description': "Partie du nom de l'auteur"},
+                'genre': {'type': 'string', 'description': 'Partie du genre'},
+                'library_id': {'type': 'integer', 'description': 'Voir list_libraries'},
+                'incomplete': {'type': 'boolean', 'description': 'true : séries où il manque des tomes ; false : complètes'},
                 'limit': {'type': 'integer', 'description': '1 à 100, 25 par défaut'},
             },
         },
@@ -260,6 +509,80 @@ TOOLS = {
             },
             'required': ['series_id'],
         },
+    },
+    'get_series_volumes': {
+        'handler': tool_get_series_volumes,
+        'description': ("Tomes d'une série, possédés et manquants : libellé (Tome N, HS, Intégrale), titre, "
+                        'format, nombre de pages, taille des pages en pixels, lu ou non, page en cours.'),
+        'schema': {'type': 'object', 'properties': {'series_id': _SERIES_ID}, 'required': ['series_id']},
+    },
+    'list_recent_additions': {
+        'handler': tool_list_recent_additions,
+        'description': 'Fichiers ajoutés ou remplacés dans la bibliothèque ces derniers jours, du plus récent au plus ancien.',
+        'schema': {'type': 'object', 'properties': {
+            'days': {'type': 'integer', 'description': '1 à 365, 7 par défaut'},
+            'limit': {'type': 'integer', 'description': '1 à 200, 50 par défaut'}}},
+    },
+    'get_reading_history': {
+        'handler': tool_get_reading_history,
+        'description': 'Tomes lus ou commencés, du plus récent au plus ancien (compte administrateur).',
+        'schema': {'type': 'object', 'properties': {'limit': {'type': 'integer', 'description': '1 à 300, 50 par défaut'}}},
+    },
+    'list_libraries': {
+        'handler': tool_list_libraries,
+        'description': 'Bibliothèques avec leur nombre de séries, de tomes possédés et de tomes manquants.',
+        'schema': {'type': 'object', 'properties': {}},
+    },
+    'list_universes': {
+        'handler': tool_list_universes,
+        'description': 'Univers (groupes de séries liées, ex. spin-offs) et les séries de chacun.',
+        'schema': {'type': 'object', 'properties': {}},
+    },
+    'list_requests': {
+        'handler': tool_list_requests,
+        'description': 'Demandes de séries ou de tomes faites par les lecteurs.',
+        'schema': {'type': 'object', 'properties': {
+            'status': {'type': 'string', 'description': 'Filtre facultatif : pending (en attente), searching, added, rejected…'},
+            'limit': {'type': 'integer'}}},
+    },
+    'list_downloads': {
+        'handler': tool_list_downloads,
+        'description': 'Téléchargements en cours (progression, client) ; include_finished ajoute les terminés et échoués.',
+        'schema': {'type': 'object', 'properties': {
+            'include_finished': {'type': 'boolean'}, 'limit': {'type': 'integer', 'description': '1 à 200, 30 par défaut'}}},
+    },
+    'set_read_status': {
+        'handler': tool_set_read_status,
+        'description': ('Marque un tome (volume_id) ou tous les tomes possédés d\'une série (series_id) comme lus '
+                        'ou non lus, pour le compte administrateur (synchronisé avec Komga si relié).'),
+        'schema': {'type': 'object', 'properties': {
+            'volume_id': {'type': 'integer', 'description': 'Voir get_series_volumes'},
+            'series_id': _SERIES_ID, 'read': {'type': 'boolean', 'description': 'true par défaut'}}},
+    },
+    'set_series_monitor': {
+        'handler': tool_set_series_monitor,
+        'description': 'Active ou coupe la surveillance d\'une série : recherche et téléchargement automatiques des tomes manquants.',
+        'schema': {'type': 'object', 'properties': {'series_id': _SERIES_ID, 'enabled': {'type': 'boolean'}},
+                   'required': ['series_id', 'enabled']},
+    },
+    'search_missing_volumes': {
+        'handler': tool_search_missing_volumes,
+        'description': ('Lance tout de suite la recherche automatique des tomes manquants d\'une série, ou d\'un seul '
+                        'tome manquant (volume_id). Seuls les résultats trouvés avec confiance sont téléchargés.'),
+        'schema': {'type': 'object', 'properties': {
+            'series_id': _SERIES_ID, 'volume_id': {'type': 'integer', 'description': 'Tome manquant précis (facultatif)'}},
+            'required': ['series_id']},
+    },
+    'update_series_metadata': {
+        'handler': tool_update_series_metadata,
+        'description': ('Corrige les métadonnées d\'une série (résumé, genre, statut, auteur, années, univers). '
+                        'Seuls les champs fournis changent ; chaîne vide = effacer. Ne touche à aucun fichier.'),
+        'schema': {'type': 'object', 'properties': {
+            'series_id': _SERIES_ID, 'summary': {'type': 'string'}, 'genre': {'type': 'string'},
+            'status': {'type': 'string'}, 'author': {'type': 'string'},
+            'year_start': {'type': 'string'}, 'year_end': {'type': 'string'},
+            'universe_id': {'type': ['integer', 'null'], 'description': 'Voir list_universes ; null retire l\'univers'}},
+            'required': ['series_id']},
     },
 }
 

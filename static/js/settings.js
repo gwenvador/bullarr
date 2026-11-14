@@ -1836,6 +1836,9 @@ function switchTab(tabName) {
     } else if (tabName === 'ai') {
         loadAiSettings();
         loadMcpInfo();
+        let pane = 'tags';
+        try { pane = localStorage.getItem('settingsAiPane') || 'tags'; } catch (e) { /* stockage indisponible */ }
+        showAiPane(pane);
     }
 }
 
@@ -3748,6 +3751,19 @@ async function saveAiPrompts() {
     }
 }
 
+// Onglet IA : deux volets, « Tags par IA » et « Serveur MCP » (cartes data-ai-pane).
+function showAiPane(pane) {
+    if (pane !== 'mcp') pane = 'tags';
+    document.querySelectorAll('#tab-ai [data-ai-pane]').forEach(card =>
+        card.classList.toggle('ai-pane-hidden', card.dataset.aiPane !== pane));
+    document.querySelectorAll('#tab-ai .ai-pane-btn').forEach(button => {
+        const active = button.dataset.pane === pane;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    try { localStorage.setItem('settingsAiPane', pane); } catch (e) { /* stockage indisponible */ }
+}
+
 // Carte « Serveur MCP » de l'onglet IA : adresse du connecteur (jeton dans l'URL) et commande Claude Code.
 let mcpToken = null;
 
@@ -3792,6 +3808,11 @@ function _renderMcpInfo(data) {
     document.getElementById('mcpEnabled').hidden = !data.enabled;
     // Explication du jeton .env seulement si l'interrupteur est mis mais qu'il manque le jeton.
     document.getElementById('mcpDisabled').hidden = data.enabled || !data.switch;
+    const badge = document.getElementById('mcpPaneBadge');
+    if (badge) {
+        badge.textContent = data.enabled ? 'activé' : 'désactivé';
+        badge.classList.toggle('on', !!data.enabled);
+    }
     document.getElementById('mcpStatus').textContent =
         data.enabled ? '✅ Activé' : (data.switch ? '⚪ Désactivé : aucun jeton' : '⚪ Désactivé');
     if (!data.enabled) return;

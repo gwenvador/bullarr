@@ -346,13 +346,25 @@ s'y connecter pour chercher dans la bibliothèque, lire une fiche, créer des ta
 
 | Outil | Rôle |
 |---|---|
-| `search_series` | Cherche des séries par mots (titre, auteur, genre, tags, résumé) et par tags, avec un filtre d'année. |
+| `search_series` | Cherche des séries par mots (titre, auteur, genre, tags, résumé), par tags, année, auteur, genre, bibliothèque, ou seulement les séries incomplètes. |
 | `get_series` | Fiche complète d'une série : résumé, auteur, genre, tags, listes. |
+| `get_series_volumes` | Tomes possédés et manquants d'une série : format, pages, définition, lu ou non. |
 | `list_tags` | Tous les tags, avec le nombre de séries pour chacun. |
+| `list_libraries` | Bibliothèques, avec leurs séries, tomes possédés et manquants. |
+| `list_universes` | Univers et leurs séries. |
+| `list_recent_additions` | Fichiers ajoutés ou remplacés ces derniers jours. |
+| `get_reading_history` | Tomes lus ou commencés. |
+| `list_requests` | Demandes de séries ou de tomes des lecteurs. |
+| `list_downloads` | Téléchargements en cours. |
 | `set_series_tags` | Remplace les tags d'une série. |
 | `set_reading_lists` | Ajoute ou retire une série de « à lire plus tard » et des favoris. |
+| `set_read_status` | Marque un tome ou une série comme lu ou non lu. |
+| `set_series_monitor` | Active ou coupe la surveillance d'une série. |
+| `search_missing_volumes` | Lance la recherche automatique des tomes manquants (série entière ou un tome). |
+| `update_series_metadata` | Corrige résumé, genre, statut, auteur, années ou univers d'une série. |
 
-Il n'expose ni suppression, ni modification des fichiers.
+Il n'expose rien d'irréversible : ni suppression, ni déplacement, fusion ou renommage sur le disque,
+ni réglages ou comptes. Les appels agissent comme l'administrateur.
 
 **Configuration**
 
