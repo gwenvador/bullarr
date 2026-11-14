@@ -8,7 +8,9 @@ qui ne prennent qu'une URL (claude.ai et l'appli Claude, ChatGPT). Sans ce jeton
 l'endpoint répond 503.
 """
 from error_utils import error_message
+from encryption import decrypt, encrypt
 import hmac
+import secrets
 import json
 import os
 import re
@@ -304,6 +306,60 @@ def process(message):
     return {'jsonrpc': '2.0', 'id': request_id, 'result': result}
 
 
+# Interrupteur et jeton réglables depuis Configuration → IA, dans mcp_config.json (à côté de
+# ai_config.json). Le jeton BULLARR_MCP_TOKEN du .env, s'il existe, reste prioritaire.
+def _config_path():
+    return os.path.join(os.path.dirname(current_app.config['AI_CONFIG_FILE']), 'mcp_config.json')
+
+
+def load_mcp_config():
+    cfg = {'enabled': True, 'token': ''}
+    try:
+        with open(_config_path(), 'r', encoding='utf-8') as handle:
+            stored = json.load(handle)
+        if isinstance(stored, dict):
+            cfg['enabled'] = bool(stored.get('enabled', True))
+            cfg['token'] = decrypt(stored['token']) if stored.get('token') else ''
+    except (OSError, ValueError):
+        pass
+    return cfg
+
+
+def save_mcp_config(cfg):
+    with open(_config_path(), 'w', encoding='utf-8') as handle:
+        json.dump({'enabled': bool(cfg.get('enabled')),
+                   'token': encrypt(cfg['token']) if cfg.get('token') else ''}, handle, indent=4)
+
+
+def _effective_token(cfg=None):
+    """(jeton, source) : celui du .env d'abord, sinon celui créé depuis la Configuration."""
+    env = os.environ.get('BULLARR_MCP_TOKEN', '')
+    if env:
+        return env, 'env'
+    cfg = cfg or load_mcp_config()
+    return (cfg['token'], 'settings') if cfg['token'] else ('', None)
+
+
+def _info(cfg):
+    token, source = _effective_token(cfg)
+    return {'success': True, 'enabled': bool(cfg['enabled'] and token), 'switch': cfg['enabled'],
+            'token': token or None, 'token_source': source, 'tools': list(TOOLS)}
+
+
+@mcp_bp.route('/api/mcp/config', methods=['POST'])
+def mcp_config():
+    """Active ou coupe le serveur MCP ; à la première activation sans jeton, en crée un.
+    {"regenerate": true} remplace le jeton enregistré (pas celui du .env)."""
+    body = request.get_json(silent=True) or {}
+    cfg = load_mcp_config()
+    if 'enabled' in body:
+        cfg['enabled'] = bool(body['enabled'])
+    if body.get('regenerate') or (cfg['enabled'] and not _effective_token(cfg)[0]):
+        cfg['token'] = secrets.token_urlsafe(32)
+    save_mcp_config(cfg)
+    return jsonify(_info(cfg))
+
+
 def _token_ok(supplied, expected):
     return bool(supplied) and hmac.compare_digest(supplied.encode('utf-8'), expected.encode('utf-8'))
 
@@ -311,8 +367,7 @@ def _token_ok(supplied, expected):
 @mcp_bp.route('/api/mcp/info', methods=['GET'])
 def mcp_info():
     """Onglet IA de la Configuration (administrateurs) : état du serveur MCP et jeton à copier."""
-    token = os.environ.get('BULLARR_MCP_TOKEN', '')
-    return jsonify({'success': True, 'enabled': bool(token), 'token': token or None, 'tools': list(TOOLS)})
+    return jsonify(_info(load_mcp_config()))
 
 
 @mcp_bp.route('/mcp', methods=['GET', 'POST'])
@@ -320,9 +375,12 @@ def mcp_info():
 def mcp_endpoint(url_token=None):
     """Endpoint MCP (Streamable HTTP, réponses JSON seulement). Accès par jeton dédié, dans
     l'en-tête Authorization ou dans l'adresse (/mcp/<jeton>)."""
-    expected = os.environ.get('BULLARR_MCP_TOKEN', '')
+    cfg = load_mcp_config()
+    expected, _source = _effective_token(cfg)
+    if not cfg['enabled']:
+        return jsonify({'success': False, 'error': 'Serveur MCP désactivé dans la Configuration'}), 503
     if not expected:
-        return jsonify({'success': False, 'error': 'Serveur MCP désactivé : BULLARR_MCP_TOKEN non configuré'}), 503
+        return jsonify({'success': False, 'error': 'Serveur MCP désactivé : aucun jeton configuré'}), 503
     if request.method == 'GET':
         # Pas de flux SSE côté serveur : les clients utilisent uniquement POST
         return jsonify({'success': False, 'error': 'Utilisez POST'}), 405

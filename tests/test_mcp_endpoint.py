@@ -16,6 +16,9 @@ class McpEndpointTest(unittest.TestCase):
 
     def setUp(self):
         self.client = self.app.test_client()
+        path = os.path.join(os.path.dirname(self.app.config['AI_CONFIG_FILE']), 'mcp_config.json')
+        if os.path.exists(path):
+            os.remove(path)
         self.token = 'jeton-de-test-' + 'x' * 20
 
     def _post(self, body, token=None, env=True):
@@ -95,6 +98,30 @@ class McpEndpointTest(unittest.TestCase):
         self.assertIsNone(data['token'])
         from blueprints.auth.routes import _PUBLIC_ENDPOINTS
         self.assertNotIn('mcp.mcp_info', _PUBLIC_ENDPOINTS)
+
+    def test_switch_off_refuses_even_a_good_token(self):
+        with mock.patch.dict(os.environ, {'BULLARR_MCP_TOKEN': self.token}):
+            data = self.client.post('/api/mcp/config', json={'enabled': False}).get_json()
+        self.assertFalse(data['enabled'])
+        self.assertFalse(data['switch'])
+        body = {'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}
+        self.assertEqual(self._post(body, token=self.token).status_code, 503)
+        with mock.patch.dict(os.environ, {'BULLARR_MCP_TOKEN': self.token}):
+            self.client.post('/api/mcp/config', json={'enabled': True})
+        self.assertEqual(self._post(body, token=self.token).status_code, 200)
+
+    def test_enabling_without_env_token_creates_one(self):
+        with mock.patch.dict(os.environ, {'BULLARR_MCP_TOKEN': ''}):
+            data = self.client.post('/api/mcp/config', json={'enabled': True}).get_json()
+            self.assertTrue(data['enabled'])
+            self.assertEqual(data['token_source'], 'settings')
+            token = data['token']
+            ok = self.client.post('/mcp/' + token, json={'jsonrpc': '2.0', 'id': 1, 'method': 'ping'})
+            self.assertEqual(ok.status_code, 200)
+            data = self.client.post('/api/mcp/config', json={'regenerate': True}).get_json()
+            self.assertNotEqual(data['token'], token)
+            old = self.client.post('/mcp/' + token, json={'jsonrpc': '2.0', 'id': 1, 'method': 'ping'})
+            self.assertEqual(old.status_code, 401)
 
 
 if __name__ == '__main__':

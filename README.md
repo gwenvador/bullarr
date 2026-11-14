@@ -358,7 +358,9 @@ Il n'expose ni suppression, ni modification des fichiers.
 
 1. Dans le fichier `.env` de Bullarr, définissez `BULLARR_MCP_TOKEN` avec une longue chaîne
    aléatoire (par exemple `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`), puis
-   redémarrez Bullarr. Sans ce jeton, `/mcp` répond `503`.
+   redémarrez Bullarr. Sans ce jeton, `/mcp` répond `503`. Plus simple : cochez « Activer le
+   serveur MCP » dans Configuration → IA, un jeton est alors créé (le jeton du `.env` reste prioritaire).
+   Décochée, cette case coupe `/mcp`.
 2. Configuration → IA → **Serveur MCP** affiche l'adresse du connecteur, `https://<votre-bullarr>/mcp/<BULLARR_MCP_TOKEN>`,
    avec les étapes pour chaque assistant. Claude (claude.ai, appli de bureau ou mobile : Paramètres → Connecteurs →
    Ajouter un connecteur personnalisé, sans OAuth) et ChatGPT (mode développeur, authentification « aucune ») ne prennent

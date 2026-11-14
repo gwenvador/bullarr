@@ -2538,6 +2538,13 @@
                                 et poser des tags ou des listes de lecture. Il se branche avec l'adresse ci-dessous, qui contient
                                 le jeton <code>BULLARR_MCP_TOKEN</code> du fichier <code>.env</code> : gardez-la secrète.
                             </p>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="mcpSwitch" onchange="setMcpEnabled(this.checked)">
+                                <label for="mcpSwitch">
+                                    <strong>Activer le serveur MCP</strong>
+                                    <span class="help-text">Coupé, l'adresse /mcp refuse tout appel, même avec le bon jeton.</span>
+                                </label>
+                            </div>
                             <p class="mcp-status" id="mcpStatus">Chargement…</p>
                             <div id="mcpEnabled" hidden>
                                 <div class="form-group">
@@ -2594,10 +2601,12 @@
                                     qu'aucune authentification du proxy (SSO) ne protège <code>/mcp</code>. Changer le jeton dans
                                     <code>.env</code> (puis redémarrer) coupe les connecteurs existants.
                                 </p>
+                                <button type="button" class="btn btn-secondary btn-small" id="mcpRegenerate" onclick="regenerateMcpToken()" hidden>Changer le jeton</button>
                             </div>
                             <div id="mcpDisabled" hidden>
                                 <p class="help-text" style="display:block;">
-                                    Pour l'activer, ajoutez dans le <code>.env</code> une ligne
+                                    Cochez « Activer » : un jeton est créé automatiquement. Vous pouvez aussi le fixer dans le
+                                    <code>.env</code> avec une ligne
                                     <code>BULLARR_MCP_TOKEN=</code> suivie d'une longue valeur aléatoire
                                     (par exemple le résultat de <code>openssl rand -hex 32</code>), puis redémarrez Bullarr.
                                 </p>

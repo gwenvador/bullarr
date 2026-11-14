@@ -3755,22 +3755,54 @@ async function loadMcpInfo() {
     const status = document.getElementById('mcpStatus');
     if (!status) return;
     try {
-        const data = await (await fetch('/api/mcp/info')).json();
-        mcpToken = data.token || null;
-        document.getElementById('mcpEnabled').hidden = !data.enabled;
-        document.getElementById('mcpDisabled').hidden = !!data.enabled;
-        status.textContent = data.enabled ? '✅ Activé' : '⚪ Désactivé : aucun jeton BULLARR_MCP_TOKEN';
-        if (!data.enabled) return;
-        document.getElementById('mcpUrl').value = location.origin + '/mcp/' + mcpToken;
-        document.getElementById('mcpCliCommand').textContent =
-            `claude mcp add --transport http bullarr ${location.origin}/mcp --header "Authorization: Bearer ${mcpToken}"`;
-        document.getElementById('mcpDesktopConfig').textContent = JSON.stringify({
-            mcpServers: { bullarr: { command: 'npx', args: ['-y', 'mcp-remote', `${location.origin}/mcp/${mcpToken}`] } }
-        }, null, 2);
-        document.getElementById('mcpTools').textContent = (data.tools || []).join(', ');
+        _renderMcpInfo(await (await fetch('/api/mcp/info')).json());
     } catch (error) {
         status.textContent = 'État du serveur MCP indisponible';
     }
+}
+
+async function setMcpEnabled(enabled) {
+    await _postMcpConfig({ enabled });
+}
+
+async function regenerateMcpToken() {
+    if (!confirm('Créer un nouveau jeton ? Les connecteurs déjà configurés cesseront de marcher.')) return;
+    await _postMcpConfig({ regenerate: true });
+}
+
+async function _postMcpConfig(body) {
+    try {
+        const response = await fetch('/api/mcp/config', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Erreur');
+        _renderMcpInfo(data);
+    } catch (error) {
+        showMessage('mcpMessage', `Échec : ${error.message}`, 'error');
+        loadMcpInfo();
+    }
+}
+
+function _renderMcpInfo(data) {
+    mcpToken = data.token || null;
+    document.getElementById('mcpSwitch').checked = !!data.switch;
+    const regen = document.getElementById('mcpRegenerate');
+    if (regen) regen.hidden = data.token_source !== 'settings';
+    document.getElementById('mcpEnabled').hidden = !data.enabled;
+    // Explication du jeton .env seulement si l'interrupteur est mis mais qu'il manque le jeton.
+    document.getElementById('mcpDisabled').hidden = data.enabled || !data.switch;
+    document.getElementById('mcpStatus').textContent =
+        data.enabled ? '✅ Activé' : (data.switch ? '⚪ Désactivé : aucun jeton' : '⚪ Désactivé');
+    if (!data.enabled) return;
+    const url = `${location.origin}/mcp/${mcpToken}`;
+    document.getElementById('mcpUrl').value = url;
+    document.getElementById('mcpCliCommand').textContent =
+        `claude mcp add --transport http bullarr ${location.origin}/mcp --header "Authorization: Bearer ${mcpToken}"`;
+    document.getElementById('mcpDesktopConfig').textContent = JSON.stringify({
+        mcpServers: { bullarr: { command: 'npx', args: ['-y', 'mcp-remote', url] } }
+    }, null, 2);
+    document.getElementById('mcpTools').textContent = (data.tools || []).join(', ');
 }
 
 function toggleMcpUrl(button) {
