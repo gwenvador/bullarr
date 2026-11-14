@@ -5640,3 +5640,68 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
 html body:has(#settings-nav-subgroup) :is(.settings-card, .backup-card, .guide-card, .settings-modal-content) {
     background-image: var(--surface-glow);
 }
+
+/* « Éditer manuellement » : police du site (plus de Courier en gras), libellés discrets,
+   champs en grille, sélecteurs au même style que les champs, tomes en liste lisible. */
+.manual-edit-modal-content input,
+.manual-edit-modal-content textarea,
+.manual-edit-modal-content select {
+    font-family: inherit !important;
+    font-weight: 400 !important;
+}
+.manual-edit-modal-content .rename-section h3 { font-size: 1.05em; font-weight: 600; margin: 0 0 14px; }
+.manual-edit-modal-content .rename-modal-subtitle strong { font-weight: 600; }
+.manual-edit-field-row label,
+.manual-edit-field-block,
+.manual-edit-renumber-section label {
+    font-size: 0.8em;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    letter-spacing: 0.01em;
+}
+.manual-edit-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 0; }
+.manual-edit-field-row-author { grid-template-columns: minmax(0, 2fr) minmax(90px, 0.6fr) minmax(90px, 0.6fr); }
+.manual-edit-field-row label { margin-bottom: 12px; min-width: 0; }
+.manual-edit-field-row input,
+.manual-edit-field-block input,
+.manual-edit-field-block textarea,
+.manual-edit-field-block select,
+.manual-edit-modal-content .rename-section input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 12px;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+.manual-edit-field-block select,
+.manual-edit-renumber-section select { appearance: auto; cursor: pointer; }
+.manual-edit-field-block select:focus,
+.manual-edit-field-row input:focus,
+.manual-edit-field-block input:focus,
+.manual-edit-field-block textarea:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+.manual-edit-field-block textarea { line-height: 1.55; min-height: 140px; }
+.manual-edit-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8em;
+    color: var(--color-text-muted); background: var(--color-surface-alt); border-color: var(--color-border); }
+.manual-edit-volume-header { padding: 9px 6px; gap: 10px; }
+.manual-edit-volume-toggle { color: var(--color-text-muted); width: 12px; }
+.manual-edit-volume-number {
+    flex: none; font-size: 0.75em; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-accent);
+}
+.manual-edit-volume-label { font-weight: 500; color: var(--color-text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manual-edit-volume-file { margin-left: auto; font-size: 0.8em; color: var(--color-text-muted); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+.manual-edit-volume-row { border-color: var(--color-border); }
+@media (max-width: 640px) {
+    .manual-edit-field-row-author { grid-template-columns: 1fr 1fr; }
+    .manual-edit-field-row-author label:first-child { grid-column: 1 / -1; }
+    .manual-edit-volume-file { display: none; }
+}

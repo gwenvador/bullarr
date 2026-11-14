@@ -3796,7 +3796,7 @@ function buildVolumeActionsGearHtml(v) {
     const searchAgainNumber = v.volume_number ?? v.integral_number ?? v.hs_number ?? v.episode_number ?? 'null';
     const searchAgainItemHtml = `<button type="button" class="toolbar-dropdown-item" onclick="searchMissingVolume(currentSeriesDetail.title, ${searchAgainNumber}, {seriesId: currentSeriesDetail.id, isIntegral: ${!!v.is_integral}, isHs: ${!!v.is_hs}, isEpisode: ${!!v.is_episode}, currentVolumeId: ${v.id}})">${svgIcon('radar')} Rechercher un remplacement</button>`;
     const autoAcquireAgainItemHtml = (searchAgainNumber !== 'null')
-        ? `<button type="button" class="toolbar-dropdown-item" onclick="runSeriesAutoAcquire(currentSeriesDetail.id, {volumeNumber: ${searchAgainNumber}, isIntegral: ${!!v.is_integral}, isHs: ${!!v.is_hs}, isEpisode: ${!!v.is_episode}, seriesTitle: currentSeriesDetail.title, buttonEl: this})">${svgIcon('radar')} Recherche automatique</button>`
+        ? `<button type="button" class="toolbar-dropdown-item" onclick="runSeriesAutoAcquire(currentSeriesDetail.id, {volumeNumber: ${searchAgainNumber}, isIntegral: ${!!v.is_integral}, isHs: ${!!v.is_hs}, isEpisode: ${!!v.is_episode}, seriesTitle: currentSeriesDetail.title, buttonEl: this})">${svgIcon('radar')} Remplacement automatique</button>`
         : '';
     // Envoi manuel d'un fichier directement pour CE tome, DÉJÀ possédé ("pour ajouter un
     // fichier c'est sur un volume manquant. pour un volume existant renomme a remplacer
@@ -5652,29 +5652,23 @@ async function renderSeriesDetail(seriesId, { silent = false } = {}) {
                         </button>
                         <div class="toolbar-dropdown-menu toolbar-dropdown-menu-autoclose" id="series-actions-menu-${seriesId}" style="display: none;">
                             <button class="toolbar-dropdown-item" onclick="scanSeries(${seriesId})" title="Scan rapide: ne retraite que les fichiers nouveaux/modifiés" aria-label="Scan rapide: ne retraite que les fichiers nouveaux/modifiés">${svgIcon('refresh-cw')} Actualiser</button>
+${(data.bedetheque && data.bedetheque.url && !data.is_oneshot) ? `
                             <button class="toolbar-dropdown-item" onclick="reloadSeriesAlbumsFromBedetheque(${seriesId}, this)" title="Relit la liste des albums sur Bédéthèque et ajoute ceux qui manquent, sans rien changer d'autre" aria-label="Relit la liste des albums sur Bédéthèque et ajoute ceux qui manquent, sans rien changer d'autre">${svgIcon('refresh-cw')} Recharger les albums</button>
+                            ` : ''}
                             <button class="toolbar-dropdown-item" onclick="updateSeriesMetadataFromBedetheque(${seriesId}, this)" title="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)" aria-label="Rafraîchit les infos de la série (résumé, couverture, statut...) ET écrit le ComicInfo.xml de tous les tomes (cbz uniquement)">${svgIcon('tag')} MAJ métadonnées (série + tomes)</button>
                             <button class="toolbar-dropdown-item" onclick="openMergeSeriesModal(${seriesId})" title="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)" aria-label="Fusionner cette série dans une autre (déplace tous ses tomes, cette fiche disparaît)">${svgIcon('git-merge')} Fusionner</button>
+                            <button class="toolbar-dropdown-item" onclick="openMoveSeriesDialog([{id: ${seriesId}, title: currentSeriesDetail.title, library_id: currentSeriesDetail.library_id}])" title="Déplace le dossier de la série sur le disque vers une autre bibliothèque">${svgIcon('folder-input')} Déplacer vers une autre bibliothèque</button>
                             <button class="toolbar-dropdown-item" onclick="openManualEditModal(${seriesId})" title="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque" aria-label="Éditer à la main le résumé/genre/statut/auteur/année de la série et le ComicInfo.xml de chaque tome, sans passer par Bédéthèque">${svgIcon('pencil')} Éditer manuellement</button>
                             <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">${svgIcon('bookmark')} ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
                             <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">${svgIcon('heart')} ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
                             ${_seriesReadMenuItemHtml(data)}
                             ${_seriesUpscaleMenuItemsHtml(data, seriesId)}
-                            ${data.is_oneshot ? `
-                            <button class="toolbar-dropdown-item" onclick="triggerSeriesFileUpload(${seriesId})" title="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé" aria-label="Envoyer directement le fichier de cette édition unique, sans passer par un répertoire d'import surveillé">${svgIcon('upload')} Ajouter un fichier</button>
-                            ` : ''}
-                            ${(data.is_oneshot && oneshotFile && oneshotFile.filepath) ? `
-                            <button class="toolbar-dropdown-item" onclick="window.location.href='/api/volumes/${oneshotFile.id}/download'">${svgIcon('download')} Télécharger le fichier</button>
-                            ` : ''}
                             ${oneshotDropdownItemHtml}
                             ${!data.is_oneshot ? `
                             <button class="toolbar-dropdown-item" onclick="toggleSeriesCompleteOverride(${seriesId})" title="${data.manual_complete_override ? 'Le calcul automatique (Terminé/Incomplet/En cours) reprendra la main' : 'Force le statut \'Terminé\' quel que soit le calcul automatique - utile si un mix d\'intégrales/albums le trompe'}">${data.manual_complete_override ? svgIcon('x') : svgIcon('check')} ${data.manual_complete_override ? 'Retirer la déclaration "complète"' : 'Déclarer cette série complète'}</button>
                             ` : ''}
                             ${(data.total_volumes > 1 && !data.is_oneshot) ? `
                             <button class="toolbar-dropdown-item" onclick="downloadSeriesZip(${seriesId})" title="Télécharge tous les tomes possédés de cette série dans une seule archive zip" aria-label="Télécharge tous les tomes possédés de cette série dans une seule archive zip">${svgIcon('download')} Télécharger la série (zip)</button>
-                            ` : ''}
-                            ${(data.is_oneshot && oneshotFile && oneshotFile.filepath) ? `
-                            <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteVolume(${oneshotFile.id}, ${seriesId}, '${escapeForAttribute(data.title)}')" title="Supprime uniquement le fichier - la fiche de cette série reste, pour supprimer aussi la série elle-même utilisez 'Supprimer la série' ci-dessous" aria-label="Supprime uniquement le fichier - la fiche de cette série reste, pour supprimer aussi la série elle-même utilisez 'Supprimer la série' ci-dessous">${svgIcon('trash-2')} Supprimer le fichier</button>
                             ` : ''}
                             <button class="toolbar-dropdown-item toolbar-dropdown-item-danger" onclick="deleteSeries(${seriesId})" title="Supprimer définitivement cette série et son dossier du disque" aria-label="Supprimer définitivement cette série et son dossier du disque">${svgIcon('trash-2')} Supprimer la série</button>
                         </div>
@@ -7565,6 +7559,18 @@ function buildManualEditVolumeFieldsHtml(v, seriesId, seriesTitle, renameModalVo
     `;
 }
 
+// En-tête replié d'un tome dans « Éditer manuellement » : pastille du numéro (absente
+// quand le tome n'en a pas), titre sans le code Bédéthèque, puis nom du fichier en gris.
+function _manualEditVolumeHeaderHtml(v, isOneshot, seriesTitle) {
+    const number = String(volumeNumberLabel(v, isOneshot));
+    let title = _displayVolumeTitle(v);
+    if (title && seriesTitle && normalizeForSearch(title.trim()) === normalizeForSearch(seriesTitle.trim())) title = '';
+    const badge = number && number !== '—' ? `<span class="manual-edit-volume-number">${escapeHtml(number)}</span>` : '';
+    const label = title || (badge ? '' : (v.filename || 'Tome sans numéro'));
+    return `${badge}<span class="manual-edit-volume-label">${escapeHtml(label)}</span>
+                    <span class="manual-edit-volume-file">${escapeHtml(v.filename || (hasVolumeFile(v) ? '' : 'Manquant'))}</span>`;
+}
+
 function renderManualEditModal(data, focusVolumeId) {
     if (focusVolumeId) {
         renderManualEditModalSingleVolume(data, focusVolumeId);
@@ -7598,8 +7604,7 @@ function renderManualEditModal(data, focusVolumeId) {
             <div class="manual-edit-volume-row" id="manual-edit-volume-${v.id}">
                 <div class="manual-edit-volume-header" onclick="toggleManualEditVolume(${v.id})">
                     <span class="manual-edit-volume-toggle" id="manual-edit-volume-toggle-${v.id}">▸</span>
-                    <span class="manual-edit-volume-label">${escapeHtml(rawLabel)}</span>
-                    <span class="help-text">${escapeHtml(v.filename || '')}</span>
+                    ${_manualEditVolumeHeaderHtml(v, isOneshot, data.title)}
                 </div>
                 <div class="manual-edit-volume-fields" id="manual-edit-volume-fields-${v.id}" style="display:none;">
                     ${buildManualEditVolumeFieldsHtml(v, data.id, data.title, rawLabel)}
@@ -7665,10 +7670,10 @@ function renderManualEditModal(data, focusVolumeId) {
                         <label>Genre <input type="text" id="manual-series-genre" value="${escapeHtml(effectiveGenre)}"></label>
                         <label>Statut <input type="text" id="manual-series-status" value="${escapeHtml(effectiveStatus)}"></label>
                     </div>
-                    <div class="manual-edit-field-row">
+                    <div class="manual-edit-field-row manual-edit-field-row-author">
                         <label>Auteur(s) <input type="text" id="manual-series-author" value="${escapeHtml(effectiveAuthor)}"></label>
-                        <label>Année début <input type="text" id="manual-series-year-start" value="${escapeHtml(effectiveYearStart)}" style="max-width:100px;"></label>
-                        <label>Année fin <input type="text" id="manual-series-year-end" value="${escapeHtml(effectiveYearEnd)}" style="max-width:100px;"></label>
+                        <label>Année début <input type="text" inputmode="numeric" id="manual-series-year-start" value="${escapeHtml(effectiveYearStart)}"></label>
+                        <label>Année fin <input type="text" inputmode="numeric" id="manual-series-year-end" value="${escapeHtml(effectiveYearEnd)}"></label>
                     </div>
                     <label class="manual-edit-field-block">Résumé <textarea id="manual-series-summary" rows="6">${escapeHtml(effectiveSummary)}</textarea></label>
                     ${manualUniverseFieldHtml}
