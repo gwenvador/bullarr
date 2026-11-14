@@ -103,7 +103,7 @@ def move_one_series(conn, series_id, target):
     """Déplace une série vers la bibliothèque `target` (Row id/path). Renvoie un dict
     {success, title, error?, new_path?}."""
     row = conn.execute(
-        'SELECT s.id, s.title, s.path, s.library_id, l.path AS library_path '
+        'SELECT s.id, s.title, s.path, s.library_id, l.path AS library_path, l.name AS library_name '
         'FROM series s JOIN libraries l ON l.id = s.library_id WHERE s.id = ?', (series_id,)).fetchone()
     if row is None:
         return {'success': False, 'title': f'#{series_id}', 'error': 'Série introuvable'}
@@ -162,7 +162,8 @@ def move_one_series(conn, series_id, target):
         return {'success': False, 'title': title, 'error': f'Base non mise à jour : {exc}'}
     if moved_on_disk:
         _remove_empty_parents(source_path, source_root)
-    return {'success': True, 'title': title, 'new_path': new_path}
+    return {'success': True, 'title': title, 'new_path': new_path, 'old_path': row['path'],
+            'from_library': row['library_name']}
 
 
 def _relink_komga(app, series_ids):
@@ -190,6 +191,26 @@ def _relink_komga(app, series_ids):
         trigger_scan_async(after_scan=after_scan)
 
 
+def _log_move(app, series_id, result, target):
+    """« déplacement c'est pas l'historique » : chaque série déplacée (ou en échec) laisse
+    une ligne 'move_series' dans l'Historique, comme merge/move_volume. Les séries déjà
+    dans la bibliothèque cible (skipped) n'ont rien fait, rien à journaliser."""
+    if result.get('skipped'):
+        return
+    try:
+        from .action_history import log_action
+        with app.app_context():
+            if result.get('success'):
+                detail = (f"{result.get('from_library') or '?'} → {target['name']} · "
+                          f"{result.get('old_path') or ''} → {result.get('new_path') or ''}")
+                log_action('move_series', series_id, result.get('title'), detail)
+            else:
+                log_action('move_series', series_id, result.get('title'), f"→ {target['name']}",
+                           success=False, error=result.get('error'))
+    except Exception:
+        logger.exception('Journalisation du déplacement de la série %s', series_id)
+
+
 def _run(app, job_id, series_ids, target_id):
     job = _jobs[job_id]
     moved = []
@@ -205,6 +226,7 @@ def _run(app, job_id, series_ids, target_id):
                     job['current'] = index
                     result = move_one_series(conn, series_id, target)
                     job['results'].append(result)
+                    _log_move(app, series_id, result, target)
                     if result['success'] and not result.get('skipped'):
                         moved.append(series_id)
             finally:

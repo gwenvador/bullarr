@@ -100,6 +100,16 @@ class SeriesMoveTest(unittest.TestCase):
         new_path = os.path.join(self.comics, 'Marvel', 'Spider-Man', 'T01.cbz')
         self.assertEqual(self.db('SELECT destination_path FROM import_history_files'), [(new_path,)])
 
+    def test_move_is_logged_in_history(self):
+        from blueprints.library.action_history import init_action_history_table
+        with self.app.app_context():
+            init_action_history_table()
+        self.move([1])
+        rows = self.db("SELECT series_id, success, detail FROM action_history WHERE action_type = 'move_series'")
+        self.assertEqual(len(rows), 1, rows)
+        self.assertEqual(rows[0][:2], (1, 1))
+        self.assertIn('BD → Comics', rows[0][2])
+
     def test_copies_across_mounts(self):
         real_rename = os.rename
         calls = []
