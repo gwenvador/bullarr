@@ -19,9 +19,14 @@ class ComicReaderSpreadTest(unittest.TestCase):
     def test_cover_stays_alone_and_pairs_start_on_even_pages(self):
         start = self.js.index('function _comicReaderNormalizePage(')
         body = self.js[start:self.js.index('function _comicReaderStorageKey(', start)]
-        self.assertIn('spread && page > 1 && page % 2 === 1 ? page - 1 : page', body)
-        self.assertIn('spread && start > 1 && start + 1 <= count', body)
-        self.assertIn('page === 1 ? 2 : page + 2', body)
+        self.assertIn('spread && page > 1 && page % 2 !== parity ? page - 1 : page', body)
+        self.assertIn('spread && pairs && start + 1 <= count', body)
+        self.assertIn('page === 1 && coverAlone ? 2 : page + 2', body)
+
+    def test_spread_starts_on_the_current_page(self):
+        start = self.js.index('function toggleComicReaderSpread(')
+        body = self.js[start:start + 600]
+        self.assertIn('comicReader.spreadParity = comicReader.page > 1 ? comicReader.page % 2 : 0', body)
 
     def test_zoom_and_layout_work_on_the_pages_container(self):
         self.assertIn("getElementById('comic-reader-pages')", self.js)

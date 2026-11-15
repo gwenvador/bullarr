@@ -25,6 +25,9 @@ const comicReader = {
     fit: 'page',
     thumbs: true,
     spread: false,
+    // Parité des pages qui ouvrent une double page : 0 (2-3, 4-5…, couverture seule) par
+    // défaut, 1 (1-2, 3-4…) quand le mode deux pages est activé sur une page impaire.
+    spreadParity: 0,
     zoom: 1,
     panX: 0,
     panY: 0,
@@ -62,23 +65,28 @@ const COMIC_READER_FITS = {
     height: { label: 'Hauteur', next: 'page' },
 };
 
-// Pages affichées ensemble. Mode deux pages : la page 1 (couverture) seule, puis des paires
-// qui commencent à une page paire (2-3, 4-5…) ; la dernière page est seule si elle est impaire.
+// Pages affichées ensemble. Mode deux pages : par défaut la page 1 (couverture) seule, puis
+// des paires qui commencent à une page paire (2-3, 4-5…). « ça devrait commencer à la page où
+// je suis quand je l'active » : activé sur une page impaire, les paires commencent aux pages
+// impaires (1-2, 3-4…) - voir comicReader.spreadParity. La dernière page peut rester seule.
 function _comicReaderNormalizePage(number, count, spread) {
     const page = Math.min(Math.max(1, number), Math.max(1, count));
-    return spread && page > 1 && page % 2 === 1 ? page - 1 : page;
+    const parity = comicReader.spreadParity || 0;
+    return spread && page > 1 && page % 2 !== parity ? page - 1 : page;
 }
 
 function _comicReaderSpreadPages(start, count, spread) {
-    return spread && start > 1 && start + 1 <= count ? [start, start + 1] : [start];
+    const pairs = start > 1 || (comicReader.spreadParity || 0) === 1;
+    return spread && pairs && start + 1 <= count ? [start, start + 1] : [start];
 }
 
 // Première page de la vue suivante / précédente (null : déjà au bout).
 function _comicReaderStepTarget(page, step, count, spread) {
     let target;
     if (spread) {
-        if (step > 0) target = page === 1 ? 2 : page + 2;
-        else target = page <= 2 ? 1 : page - 2;
+        const coverAlone = (comicReader.spreadParity || 0) === 0;
+        if (step > 0) target = page === 1 && coverAlone ? 2 : page + 2;
+        else target = Math.max(1, page - 2);
     } else {
         target = page + step;
     }
@@ -786,6 +794,8 @@ function toggleComicReaderRtl() {
 
 function toggleComicReaderSpread() {
     comicReader.spread = !comicReader.spread;
+    // La double page commence à la page affichée au moment où on l'active.
+    if (comicReader.spread) comicReader.spreadParity = comicReader.page > 1 ? comicReader.page % 2 : 0;
     _comicReaderSavePref('comic-reader-spread', comicReader.spread ? '1' : '0');
     _applyComicReaderSpread();
     if (comicReader.count) showComicReaderPage(comicReader.page);
@@ -1034,6 +1044,7 @@ async function openComicReader(volumeId) {
     _flushComicReaderProgress();  // lecture précédente encore en attente d'envoi
     comicReader.volumeId = volumeId;
     comicReader.count = 0;
+    comicReader.spreadParity = 0;
     comicReader.progressReady = false;
     comicReader.previous = null;
     comicReader.next = null;
