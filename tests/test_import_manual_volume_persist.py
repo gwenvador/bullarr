@@ -51,5 +51,26 @@ class ManualVolumeSurvivesRescanTest(unittest.TestCase):
         self.assertEqual(files[0]['destination']['tracking_id'], 5153)
 
 
+    def test_tracking_kept_when_original_series_was_deleted(self):
+        """La série d'origine du téléchargement n'existe plus : destination suivie None,
+        le lien passe par l'id du téléchargement qui a livré le fichier."""
+        from blueprints.library.routes import _append_scanned_file
+        from blueprints.library.scanner import LibraryScanner
+        import sqlite3
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("INSERT INTO active_downloads (id, series_id, title, client, status) VALUES (5153, 1483, 'El Diablo', 'qbittorrent', 'completed')")
+        conn.commit()
+        conn.close()
+        destination = {'library_id': 1, 'series_id': 860, 'series_title': 'Marsupilami', 'manual_override': True}
+        files = []
+        with self.app.test_request_context('/'):
+            _append_scanned_file(self.path, self.root, 'El Diablo.cbz', None,
+                                 LibraryScanner(self.db_path),
+                                 {self.path}, {}, files, pack_download_id=5153, validate_file=False,
+                                 manual_destinations={self.path: destination})
+        self.assertEqual(files[0]['destination']['tracking_id'], 5153)
+        self.assertEqual(files[0]['destination']['client'], 'qbittorrent')
+
+
 if __name__ == '__main__':
     unittest.main()

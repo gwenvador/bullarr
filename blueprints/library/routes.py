@@ -5637,6 +5637,20 @@ def _strip_container_identity(parsed, destination):
     return {key: value for key, value in destination.items() if key not in _VOLUME_IDENTITY_FIELDS}
 
 
+def _tracked_download_client(tracking_id):
+    """Client (qbittorrent, telegram...) d'une ligne active_downloads, None si inconnue."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        row = conn.execute('SELECT client FROM active_downloads WHERE id = ?', (tracking_id,)).fetchone()
+        return row[0] if row else None
+    except Exception:
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def _append_scanned_file(filepath, import_root, filename, destination, scanner,
                           manual_override_filepaths, import_config, files_found, pack_download_id=None,
                           validate_file=True, manual_destinations=None):
@@ -5655,6 +5669,13 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
         for key in ('tracking_id', 'client'):
             if destination.get(key) is None and tracked.get(key) is not None:
                 destination[key] = tracked[key]
+        # La série d'origine du téléchargement peut avoir été supprimée entretemps
+        # (_build_active_download_destination renvoie alors None) : le lien passe par
+        # l'id du téléchargement qui a livré le fichier.
+        if destination.get('tracking_id') is None and pack_download_id is not None:
+            destination['tracking_id'] = pack_download_id
+            if destination.get('client') is None:
+                destination['client'] = _tracked_download_client(pack_download_id)
     relative_path = os.path.relpath(filepath, import_root)
     parsed = scanner.parse_filename(filename)
     parent_dir = os.path.dirname(relative_path)
