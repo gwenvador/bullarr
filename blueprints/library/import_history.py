@@ -227,6 +227,50 @@ def mark_import_item_unavailable(source_path):
     except Exception as exc:
         print(f"Erreur mise à jour disponibilité item Import: {exc}")
 
+def close_orphaned_import_operations(live_operation_ids):
+    """Clôt les opérations « started » qui ne tournent plus (aucun fil d'import vivant,
+    voir import_control.active_operations) : interrompues par un redémarrage juste après leur
+    début. Libère leurs réservations de fichiers ; sans aucun import actif, les
+    téléchargements restés « importing » repassent en attente. Retourne le nombre
+    d'opérations closes."""
+    live = set(live_operation_ids or ())
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        rows = conn.execute("SELECT operation_id FROM import_history WHERE status = 'started'").fetchall()
+        orphans = [row[0] for row in rows if row[0] not in live]
+        for operation_id in orphans:
+            conn.execute('''
+                UPDATE import_history_files
+                SET status = 'error', action = 'error',
+                    message = 'Import annulé : traitement interrompu avant la fin, rien n''a été modifié'
+                WHERE operation_id = ? AND status = 'processing'
+            ''', (operation_id,))
+            conn.execute('''
+                UPDATE import_history
+                SET status = 'failed', completed_at = CURRENT_TIMESTAMP,
+                    details = COALESCE(details, 'Import annulé')
+                WHERE operation_id = ?
+            ''', (operation_id,))
+            try:
+                conn.execute('DELETE FROM import_in_progress WHERE operation_id = ?', (operation_id,))
+            except sqlite3.Error:
+                pass
+        if not live:
+            try:
+                conn.execute("UPDATE active_downloads SET status = 'completed' WHERE status = 'importing'")
+            except sqlite3.Error:
+                pass
+        conn.commit()
+        return len(orphans)
+    except Exception as exc:
+        print(f"Erreur clôture des imports orphelins: {exc}")
+        return 0
+    finally:
+        if conn:
+            conn.close()
+
+
 def cleanup_stale_operations():
     """Technical rationale and compatibility constraints for this code path."""
     conn = None
@@ -266,7 +310,7 @@ def cleanup_stale_operations():
 
         cursor.execute('''
             SELECT operation_id FROM import_history
-            WHERE status = 'started' AND created_at < datetime('now', '-5 minutes')
+            WHERE status = 'started'
         ''')
         stale_operation_ids = [row['operation_id'] for row in cursor.fetchall()]
 

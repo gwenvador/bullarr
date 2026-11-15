@@ -28,7 +28,27 @@ class ImportWorkerTimeout(ImportWorkerError, TimeoutError):
     pass
 
 
-def run_killable_command(command, timeout):
+class ImportWorkerCancelled(ImportWorkerError):
+    pass
+
+
+def _kill_worker(process):
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    # Never wait indefinitely for a task stuck in uninterruptible NFS I/O.
+    try:
+        process.wait(timeout=0.2)
+    except subprocess.TimeoutExpired:
+        pass
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()
+
+
+def run_killable_command(command, timeout, cancel_check=None):
+    """cancel_check: appelé chaque seconde ; True tue le worker (« Annuler l'import »)."""
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -36,24 +56,23 @@ def run_killable_command(command, timeout):
         text=True,
         start_new_session=True,
     )
-    try:
-        stdout, stderr = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _kill_worker(process)
+            raise ImportWorkerTimeout(
+                f"Import worker exceeded {timeout}s and was terminated"
+            )
         try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        # Never wait indefinitely for a task stuck in uninterruptible NFS I/O.
-        try:
-            process.wait(timeout=0.2)
+            stdout, stderr = process.communicate(
+                timeout=min(remaining, 1.0) if cancel_check else remaining
+            )
+            break
         except subprocess.TimeoutExpired:
-            pass
-        for stream in (process.stdout, process.stderr):
-            if stream is not None:
-                stream.close()
-        raise ImportWorkerTimeout(
-            f"Import worker exceeded {timeout}s and was terminated"
-        )
+            if cancel_check and cancel_check():
+                _kill_worker(process)
+                raise ImportWorkerCancelled("Import annulé à la demande")
     if process.returncode:
         raise ImportWorkerError(
             (stderr or stdout or f"worker exited {process.returncode}").strip()
@@ -68,7 +87,7 @@ def _atomic_json_write(path, data):
     os.replace(tmp, path)
 
 
-def _call_worker(action, payload, staging_dir, timeout):
+def _call_worker(action, payload, staging_dir, timeout, cancel_check=None):
     staging = Path(staging_dir)
     staging.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
@@ -80,6 +99,7 @@ def _call_worker(action, payload, staging_dir, timeout):
         run_killable_command(
             [sys.executable, "-m", "blueprints.library.import_worker", action, str(payload_path)],
             timeout=timeout,
+            cancel_check=cancel_check,
         )
         if not result_path.exists():
             raise ImportWorkerError("worker produced no result")
@@ -95,7 +115,7 @@ def _call_worker(action, payload, staging_dir, timeout):
                 pass
 
 
-def prepare_import_file(source_path, fmt, auto_convert, staging_dir, timeout=300):
+def prepare_import_file(source_path, fmt, auto_convert, staging_dir, timeout=300, cancel_check=None):
     return _call_worker(
         "prepare",
         {
@@ -107,6 +127,7 @@ def prepare_import_file(source_path, fmt, auto_convert, staging_dir, timeout=300
         },
         staging_dir,
         timeout,
+        cancel_check,
     )
 
 

@@ -137,6 +137,26 @@ class ImportClaimsAndOverridesTest(unittest.TestCase):
         self.assertEqual(import_history.get_in_progress_filepaths(), set())
         self.assertEqual(self.query('SELECT id, status FROM active_downloads ORDER BY id'), [(1, 'completed'), (2, 'pending')])
 
+    def test_operation_interrupted_right_after_its_start_is_closed_at_startup(self):
+        # Redémarrage 27 s après le début d'un import manuel : plus de délai de 5 minutes.
+        import_history.log_import_operation('fresh-op', 'manual_import', '/x', 'started')
+        file_id = import_history.log_import_file_started('fresh-op', 'a.cbz')
+        import_history.cleanup_stale_operations()
+        self.assertEqual(self.query("SELECT status FROM import_history WHERE operation_id = 'fresh-op'"), [('failed',)])
+        self.assertEqual(self.query(f"SELECT status FROM import_history_files WHERE id = {file_id}"), [('error',)])
+
+    def test_cancel_closes_orphaned_operations_but_not_live_ones(self):
+        import_history.log_import_operation('orphan-op', 'manual_import', '/x', 'started')
+        import_history.log_import_file_started('orphan-op', 'a.cbz')
+        import_history.log_import_operation('live-op', 'auto_import', '/x', 'started')
+        import_history.log_import_file_started('live-op', 'b.cbz')
+        closed = import_history.close_orphaned_import_operations({'live-op'})
+        self.assertEqual(closed, 1)
+        rows = dict(self.query('SELECT operation_id, status FROM import_history'))
+        self.assertEqual(rows, {'orphan-op': 'failed', 'live-op': 'started'})
+        files = dict(self.query('SELECT filename, status FROM import_history_files'))
+        self.assertEqual(files, {'a.cbz': 'error', 'b.cbz': 'processing'})
+
     # --- small helpers
     def test_delete_import_operation_removes_only_that_operation(self):
         import_history.log_import_operation('op-a', 'auto_import', '/x', 'completed')

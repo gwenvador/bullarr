@@ -77,6 +77,7 @@ ACTIONS = {
     'library.convert_import_file': ('convert', "Conversion d'un fichier à importer"),
     'library.convert_import_files_batch': ('convert', 'Conversion de fichiers à importer'),
     'library.stop_import_route': ('import', 'Import arrêté'),
+    'library.cancel_import_route': ('import', 'Import annulé'),
     'library.enrich_series_ebdz': ('metadata', 'Série enrichie (EBDZ)'),
     'library.komga_enrich_series': ('metadata', 'Série enrichie (Komga)'),
     'library.ebdz_match_series': ('match', 'Associée à EBDZ'),

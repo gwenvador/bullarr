@@ -25,7 +25,7 @@ import zipfile
 import rarfile
 from pathlib import Path
 from collections import Counter
-from .import_worker import prepare_import_file, transfer_import_file, cleanup_stale_staging
+from .import_worker import prepare_import_file, transfer_import_file, cleanup_stale_staging, ImportWorkerCancelled
 
 
 # Potentially blocking filesystem work runs in a separate OS process. A Python
@@ -7582,6 +7582,20 @@ def stop_import_route():
     return jsonify({'success': True, 'paused': True})
 
 
+@library_bp.route('/api/import/cancel', methods=['POST'])
+def cancel_import_route():
+    """« Annuler l'import » : interrompt le fichier en cours (voir import_control) et les
+    suivants du même lot, sans mettre l'import automatique en pause. Une opération restée
+    « en cours » sans import réellement actif (interrompue par un redémarrage) est close
+    tout de suite. Réponse : cancelling (un import actif va s'arrêter), closed_operations
+    (opérations orphelines closes), paused (état de la pause, inchangé)."""
+    cancelling = import_control.request_cancel()
+    from .import_history import close_orphaned_import_operations
+    closed = close_orphaned_import_operations(import_control.active_operations())
+    return jsonify({'success': True, 'cancelling': cancelling, 'closed_operations': closed,
+                    'paused': import_control.is_paused()})
+
+
 @library_bp.route('/api/import/resume', methods=['POST'])
 def resume_import_route():
     import_control.resume()
@@ -7899,6 +7913,9 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
         # Generate the operation row; each source path is claimed atomically immediately
         # before its own preparation and released in that iteration's finally block.
         operation_id = str(uuid.uuid4())
+        # Inscrite avant sa ligne « started » : /api/import/cancel ne doit jamais la prendre
+        # pour une opération orpheline (interrompue par un redémarrage).
+        import_control.register_operation(operation_id)
         log_import_operation(operation_id, operation_type, ','.join(import_roots), 'started')
 
         # Liste pour accumuler les logs à enregistrer (pour éviter les problèmes de verrou SQLite)
@@ -8087,13 +8104,20 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 # validate in a killable subprocess. No NFS/archive/PDF work runs in the
                 # Flask process. The original is untouched until the final DB commit.
                 source_was_copied = _should_preserve_import_source(original_source_path)
-                preparation = prepare_import_file(
-                    original_source_path,
-                    file_data['parsed'].get('format'),
-                    import_config.get('auto_convert_to_cbz', True),
-                    _import_staging_directory(),
-                    timeout=IMPORT_STEP_TIMEOUT_SECONDS,
-                )
+                import_control.raise_if_cancelled()
+                try:
+                    preparation = prepare_import_file(
+                        original_source_path,
+                        file_data['parsed'].get('format'),
+                        import_config.get('auto_convert_to_cbz', True),
+                        _import_staging_directory(),
+                        timeout=IMPORT_STEP_TIMEOUT_SECONDS,
+                        cancel_check=import_control.cancel_requested,
+                    )
+                except ImportWorkerCancelled:
+                    import_control.raise_if_cancelled()
+                    raise
+                import_control.raise_if_cancelled()
                 staged_source_path = preparation['path']
                 source_path = staged_source_path
                 file_data['filename'] = preparation['filename']
@@ -8119,6 +8143,8 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 if not _import_execution_lock.acquire(timeout=lock_timeout):
                     raise TimeoutError("Finalisation reportée: un scan/import modifie déjà la bibliothèque")
                 per_file_lock_acquired = True
+                # Dernier point d'annulation : au-delà, le fichier est finalisé d'un bloc.
+                import_control.raise_if_cancelled()
                 rollback_source_path = original_source_path
 
                 overridden_from = file_data['parsed'].get('tracked_volume_overridden_from')
@@ -8642,6 +8668,14 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
                 except Exception as restore_old_error:
                     print(f"⚠️ Restauration de l'ancien volume impossible: {restore_old_error}")
 
+                if isinstance(e, import_control.ImportCancelled):
+                    # Annulé : le fichier ne repart pas tout seul 30 s plus tard avec
+                    # l'import automatique, il attend un clic sur « Importer ».
+                    try:
+                        from .import_history import mark_import_file_manual
+                        mark_import_file_manual(file_data.get('filepath'))
+                    except Exception:
+                        pass
                 failed_count += 1
                 failures.append({
                     'file': file_data['filename'],
@@ -8925,6 +8959,7 @@ def _execute_import_batch(files_to_import, *, operation_type, lock_timeout, stri
     finally:
         if operation_id:
             release_import_files(operation_id)
+            import_control.unregister_operation(operation_id)
 
 
 @library_bp.route('/api/import/execute', methods=['POST'])
