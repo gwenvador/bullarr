@@ -51,7 +51,10 @@ function historySourceBadgeHtml(source, sourceLink) {
     const icon = `<img src="${HISTORY_SOURCE_ICONS[source]}" alt="${label}" style="width:14px; height:14px; vertical-align:-2px; object-fit:contain;">`;
     const safeLink = safeHistorySourceLink(sourceLink);
     return safeLink
-        ? `<a href="${escapeHtmlHistory(safeLink)}" target="_blank" rel="noopener" data-tooltip="${label} - voir la source">${icon}</a>`
+        // « je n'arrive pas à voir la source » : l'icône seule (14 px) était un lien, mais le
+        // clic remontait à la ligne, qui ouvre la fiche série. Lien texte explicite, et
+        // stopPropagation comme le lien de la série.
+        ? `<a href="${escapeHtmlHistory(safeLink)}" target="_blank" rel="noopener noreferrer" class="history-link history-source-link" data-tooltip="Ouvrir la page d'origine (${label})" onclick="event.stopPropagation();">${icon} Source ${svgIcon('external-link')}</a>`
         : `<span data-tooltip="${label}">${icon}</span>`;
 }
 // Distinction manuel/auto - plus fine que HISTORY_TYPE_ICONS/LABELS ci-dessus (qui ne
@@ -426,7 +429,7 @@ function historyEventRowHtml(e, index, idPrefix = 'history-row', hideSeriesLink 
             <td style="padding:6px 8px; white-space:nowrap; text-align:center;" data-tooltip="${escapeHtmlHistory(typeLabel)}">${svgIcon(e.icon || HISTORY_TYPE_ICONS[e.type] || 'tag')}</td>
             <td style="padding:6px 8px; overflow-wrap:break-word; word-break:break-word;">
                 <div style="font-weight:600; display:flex; align-items:center; gap:4px;">${expandable ? '▸ ' : ''}${labelHtml}</div>
-                <div style="color:var(--color-text-muted); font-size:0.9em; white-space:pre-line;">${e.sourceHtml ? e.sourceHtml + ' ' : ''}${escapeHtmlHistory(e.detail)}</div>
+                <div style="color:var(--color-text-muted); font-size:0.9em; white-space:pre-line;">${escapeHtmlHistory(e.detail)}${e.sourceHtml ? (e.detail ? ' · ' : '') + e.sourceHtml : ''}</div>
                 ${fileNamesHtml}
             </td>
             <td style="padding:6px 8px; text-align:center;">${statusBadge}</td>
