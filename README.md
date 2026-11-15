@@ -13,7 +13,9 @@ tomes manquants.
 
 ## ✨ Fonctionnalités
 
-- 📖 **Multi-bibliothèques** : plusieurs dossiers racine, chacun avec ses propres séries/tomes
+- 📖 **Multi-bibliothèques** : plusieurs dossiers racine, chacun avec ses propres séries/tomes ;
+  une série se déplace d'une bibliothèque à l'autre (menu Actions de la fiche ou sélection
+  multiple) : dossier, chemins et Komga suivent
 - 🏷️ **Bédéthèque comme référence métadonnées** : recherche/association automatique (score
   de similarité, gestion des intégrales/hors-séries/one-shots), écriture du `ComicInfo.xml`
   dans les archives, badge de complétude par série
@@ -24,7 +26,8 @@ tomes manquants.
 - 🔍 **Recherche multi-sources** : forum [EBDZ.net](https://ebdz.net) (liens ed2k),
   [Prowlarr](https://prowlarr.com/), canaux Telegram dédiés et sources web :
   [fourtoutici.cc](https://fourtoutici.cc), Anna's Archive (via Shelfmark) et le forum VK
-  [Au Phil des Bulles](https://vk.com/board203785966) (PDF, sans compte VK)
+  [Au Phil des Bulles](https://vk.com/board203785966) (PDF, sans compte VK). Les résultats
+  sans rapport avec la recherche (autre série, roman, magazine) sont écartés
 - 🆕 **Nouveautés** : derniers fichiers EBDZ et Telegram, et flux RSS (DupeFR, Prowlarr,
   forum VK), avec la série reconnue, les tomes déjà possédés et un téléchargement en un clic
 - 📊 **Surveillance des tomes manquants** (façon Sonarr) : détection des tomes non
@@ -53,13 +56,16 @@ tomes manquants.
 - ✅ **Vérification de bibliothèque** : détection des séries sans métadonnées, noms non
   standard, et test d'intégrité réel des archives (zip/rar/pdf), avec actions de
   correction en masse
-- 🕓 **Historique** : imports et actions (renommage/suppression/déplacement) journalisés
+- 🕓 **Historique** : toutes les actions y laissent une ligne : imports, téléchargements,
+  renommages, suppressions, déplacements, scans, lectures, surveillance, métadonnées, tags,
+  conversions, upscaling, comptes et réglages (la section modifiée, jamais les valeurs)
 - 🔐 **Sécurité** : secrets (mots de passe/clés API) chiffrés sur disque (Fernet),
   authentification optionnelle (désactivée par défaut) : comptes locaux, avec en option un
   bouton SSO/OIDC sur la même page de connexion
 - 👥 **Comptes et demandes** : comptes administrateur et lecteur (rôle par groupe OIDC ou
   forcé par compte), inscription ouverte validée par un admin, demandes de BD des lecteurs à
-  valider (ou validées automatiquement), listes personnelles, page Mon profil avec avatar,
+  valider (ou validées automatiquement) : une série entière, ou un tome manquant d'une série
+  déjà présente (« Demander ce tome »), listes personnelles, page Mon profil avec avatar,
   journal des comptes dans l'Historique
 - 🧸 **Contrôle parental** : bibliothèques visibles et genres masqués par lecteur,
   préréglage « Enfant »
@@ -72,11 +78,15 @@ tomes manquants.
   les tags existants, avec IA de secours et historique des traitements ; option pour
   taguer automatiquement chaque nouvelle série (Configuration → IA)
 - 🖼️ **Vue Affiches** : grille de couvertures avec statut, sélection multiple, filtres Statut,
-  Origine (BD, Comics, Manga) et Listes, et « Continuer la lecture » synchronisé avec Komga
+  Origine (BD, Comics, Manga) et Listes, et « Continuer la lecture » synchronisé avec Komga.
+  Les filtres de colonnes du tableau restent appliqués dans les autres vues, et leurs listes
+  ne proposent que les valeurs encore possibles
 - 🔔 **Notifications** : Telegram, ntfy et notifications instantanées pour l'application
   Android (UnifiedPush), par événement, avec un lien vers la fiche Bullarr de la BD
-- 🤖 **Claude et ChatGPT (serveur MCP)** : chercher dans la bibliothèque, lire une fiche, créer
-  des tags et gérer les listes, voir [🤖 Serveur MCP](#-serveur-mcp-claude-et-chatgpt)
+- 🤖 **Claude et ChatGPT (serveur MCP)** : 18 outils pour chercher dans la bibliothèque, lire
+  les fiches et les tomes, suivre lectures, demandes et téléchargements, corriger les
+  métadonnées, lancer la recherche des tomes manquants ou ajouter une série depuis Bédéthèque ;
+  activé d'un clic dans Configuration → IA, voir [🤖 Serveur MCP](#-serveur-mcp-claude-et-chatgpt)
 - 🐳 **100 % Docker**, base SQLite (aucune base externe à gérer)
 - 🔌 **API** : toutes les fonctions de l'interface pilotables par une application externe
   avec une clé API (générale ou propre à chaque compte) — voir

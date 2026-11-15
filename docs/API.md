@@ -122,6 +122,8 @@ Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà
 | `POST /api/scan/<library_id>?force=1` | Scan de la bibliothèque. Répond `202` avec `job_id`, ou `409` si un scan tourne déjà. |
 | `GET /api/scan/jobs/<job_id>` | Avancement du scan. |
 | `POST /api/scan/series/<series_id>` | Scan d'une seule série. |
+| `POST /api/series/move` | Administrateur : déplace des séries vers une autre bibliothèque (`{"series_ids": [12, 13], "library_id": 3}`) : dossier déplacé sur le disque, chemins des tomes et de l'historique d'import mis à jour, Komga rescanné. Répond `202` avec `job_id`, `409` si un déplacement tourne déjà. |
+| `GET /api/series/move/<job_id>` | Avancement : `status` (`running`, `succeeded`, `failed`), `current`/`total`, et par série `results` (`success`, `title`, `error`, `new_path`). |
 | `GET /api/volumes/<volume_id>/download` | Télécharge le fichier d'un tome. |
 | `GET /api/series/<series_id>/download` | Archive ZIP de toute la série. |
 | `GET /api/volumes/<volume_id>/reader` | Lecteur : titre et nombre de pages d'un tome (CBZ, CBR ou PDF). |
@@ -146,6 +148,23 @@ Le code vaut 60 secondes et ne sert qu'une fois. Code inconnu, expiré ou déjà
 | `GET /api/reading-history/export.csv` | Export CSV de cet historique. |
 | `POST /api/reading-history/import` | Import d'un CSV au même format. |
 | `GET /api/reading-history/users` | Administrateur : comptes dont on peut afficher l'historique (`?user=` sur les routes ci-dessus). |
+
+### Historique des actions
+
+| Route | Rôle |
+|---|---|
+| `GET /api/actions/history` | Toutes les actions faites dans Bullarr, de la plus récente à la plus ancienne : `action_type`, `series_id`, `series_title`, `detail`, `success`, `error`, `created_at`. Paramètres : `limit` (50 par défaut), `type` (par exemple `move_series`, `scan`, `read`, `settings`), `series_id`. |
+| `GET /api/actions/history/<action_id>` | Détail fichier par fichier d'un renommage. |
+
+Types : `rename`, `delete`, `delete_volume`, `merge`, `move_volume`, `move_series`, `renumber_volume`, `convert`, `scan`, `read`, `reading_list`, `tags`, `metadata`, `series_edit`, `match`, `monitor`, `library`, `review`, `download`, `download_control`, `download_remove`, `scrape`, `export`, `import`, `add_series`, `request`, `user`, `settings`, `ai`, `auto_acquire`, `upscale*`, `downscale*`. Pour `settings`, seul le nom de la section est noté, jamais les valeurs. Les imports et les téléchargements ont en plus leur propre historique (`GET /api/import/history`, `GET /api/missing-monitor/history`).
+
+### Serveur MCP
+
+| Route | Rôle |
+|---|---|
+| `GET /api/mcp/info` | Administrateur : état du serveur MCP (`enabled`), adresse avec jeton, origine du jeton (`env` ou `settings`) et liste des outils. |
+| `POST /api/mcp/config` | Administrateur : `{"enabled": true}` active ou coupe `/mcp` (un jeton est créé s'il n'y en a pas) ; `{"regenerate": true}` remplace le jeton. |
+| `POST /mcp`, `POST /mcp/<jeton>` | Le serveur MCP lui-même (JSON-RPC, transport HTTP), jeton en `Authorization: Bearer` ou dans l'adresse. Voir le README. |
 
 ### Upscaling
 

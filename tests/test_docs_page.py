@@ -16,7 +16,8 @@ class GuideSourceTest(unittest.TestCase):
 
     def test_toc_links_match_sections(self):
         import re
-        anchors = re.findall(r'<a href="#([\w-]+)">', self.guide)
+        toc = self.guide.split('</nav>', 1)[0] if '</nav>' in self.guide else self.guide.split('<section', 1)[0]
+        anchors = re.findall(r'<a href="#([\w-]+)">', toc)
         sections = re.findall(r'<section id="([\w-]+)">', self.guide)
         self.assertEqual(anchors, sections)
 

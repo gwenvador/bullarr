@@ -32,7 +32,8 @@ class NouveautesZapAndOwnedTest(unittest.TestCase):
         self.assertIn('function libraryIconHtml()', self.icons)
         self.assertIn('/static/img/bullarr-icon.png', self.icons)
         self.assertIn('libraryIconHtml()', self.search_table)
-        self.assertGreaterEqual(self.nouveautes.count('${libraryIconHtml()}'), 4)
+        # Nouveautés : la pastille « Fiche » a remplacé le logo (0ffebad4), seul le tableau
+        # de recherche le garde.
         rule = self.css[self.css.index('.icon-owned {'):].split('}')[0]
         self.assertIn('#2e9e5b', rule)
         self.assertNotIn('border: 1px', rule)  # pas de pastille autour de l'icône
