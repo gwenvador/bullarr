@@ -2541,15 +2541,19 @@ function refreshFilterDropdownUI() {
 function updateSortDropdownActiveButton() {
     const mode = SERIES_SORT_MODES[seriesSortMode] || SERIES_SORT_MODES.alpha;
     const descending = mode.desc !== seriesSortReversed;
-    const arrow = descending ? '↓' : '↑';
+    // Flèche au trait (même jeu d'icônes que la barre d'outils) plutôt que ↑/↓ en texte.
+    const arrowPath = descending
+        ? '<path d="M12 5v14" /><path d="m19 12-7 7-7-7" />'
+        : '<path d="m5 12 7-7 7 7" /><path d="M12 19V5" />';
+    const arrow = `<span class="sort-direction" aria-label="${descending ? 'décroissant' : 'croissant'}"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${arrowPath}</svg></span>`;
     document.querySelectorAll('#sort-dropdown-menu .toolbar-dropdown-item').forEach(btn => {
         const active = btn.dataset.sort === seriesSortMode;
         btn.classList.toggle('active', active);
         btn.querySelector('.sort-direction')?.remove();
-        if (active) btn.insertAdjacentHTML('beforeend', ` <span class="sort-direction">${arrow}</span>`);
+        if (active) btn.insertAdjacentHTML('beforeend', arrow);
     });
     const label = document.getElementById('series-sort-label');
-    if (label) label.textContent = `${mode.label} ${arrow}`;
+    if (label) label.innerHTML = `${escapeHtml(mode.label)}${arrow}`;
 }
 
 function setSeriesSortMode(mode) {
