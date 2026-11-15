@@ -612,6 +612,8 @@ function _pendingDownloadRowHtml(pending) {
             // reparsé depuis le titre - "✓ Prêt" mentait sur ce second cas, l'import
             // automatique ne pouvant de toute façon jamais s'en charger seul. Le crayon
             // (openTrackingEditModal, déjà existant) reste le seul moyen de le corriger.
+            : pending.status === 'completed' && pending.needs_volume_correction && pending.needs_series_correction
+            ? `<span class="import-download-error" data-tooltip="Ni la série ni le numéro de tome n'ont pu être identifiés - rattachement manuel nécessaire (crayon)">${svgIcon('alert-triangle')} Série et tome à préciser</span>`
             : pending.status === 'completed' && pending.needs_volume_correction
             ? `<span class="import-download-error" data-tooltip="Le numéro de tome n'a pas pu être identifié - correction manuelle nécessaire (crayon)">${svgIcon('alert-triangle')} Tome à préciser</span>`
             : _pendingIncompatibleFolder(pending)
