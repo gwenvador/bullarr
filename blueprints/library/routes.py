@@ -5367,12 +5367,70 @@ def _series_title_forms(series_title):
 
 
 def _pack_file_matches_destination(parsed, destination):
-    """Only auto-import a pack member when its parsed series is exact."""
+    """Only auto-import a pack member when its parsed series is exact, or when its title
+    is exactly the title of one album of the destination series (see
+    _album_volume_for_pack_title, which then also fills in parsed['volume'])."""
     parsed_title = (parsed or {}).get('title')
     series_title = (destination or {}).get('series_title')
     if not parsed_title or not series_title:
         return False
-    return _normalize_title_for_match(parsed_title) in _series_title_forms(series_title)
+    if _normalize_title_for_match(parsed_title) in _series_title_forms(series_title):
+        return True
+    number = _album_volume_for_pack_title(parsed_title, (destination or {}).get('series_id'))
+    if number is None:
+        return False
+    if parsed.get('volume') is None and not (parsed.get('is_integral') or parsed.get('is_hs') or parsed.get('is_episode')):
+        parsed['volume'] = number
+        parsed['volume_from_album_title'] = True
+    return parsed.get('volume') == number
+
+
+def _album_title_key(text):
+    """Mots distinctifs d'un titre d'album, sans articles ni marque du pluriel :
+    « L'enfer » et « Les enfers » donnent la même clé."""
+    words = []
+    for word in _normalize_title_for_match(text).split():
+        if word in _ALBUM_TITLE_STOPWORDS:
+            continue
+        if len(word) > 3 and word[-1] in 'sx':
+            word = word[:-1]
+        words.append(word)
+    return tuple(sorted(words))
+
+
+def _album_volume_for_pack_title(parsed_title, series_id):
+    """« Le reste du monde » (pack Chauzy) : fichiers nommés « <titre de l'album> - <auteur> »,
+    sans numéro, que le parseur lit comme titre de série. Le numéro du tome de la série de
+    destination dont le titre d'album (ComicInfo/Bédéthèque) est exactement ce titre - le
+    nom entier ou la partie avant « - » - si un seul tome correspond, sinon None."""
+    if not parsed_title or not series_id:
+        return None
+    keys = {_album_title_key(parsed_title)}
+    if ' - ' in parsed_title:
+        keys.add(_album_title_key(parsed_title.split(' - ', 1)[0]))
+    keys.discard(())
+    if not keys:
+        return None
+    conn = None
+    try:
+        conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+        rows = conn.execute(
+            "SELECT volume_number, comicinfo FROM volumes WHERE series_id = ? AND volume_number IS NOT NULL "
+            "AND COALESCE(is_bis, 0) = 0", (series_id,)).fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        if conn:
+            conn.close()
+    numbers = set()
+    for volume_number, comicinfo in rows:
+        try:
+            title = (json.loads(comicinfo or '{}') or {}).get('title') or ''
+        except (TypeError, ValueError):
+            continue
+        if title and _album_title_key(title) in keys:
+            numbers.add(volume_number)
+    return numbers.pop() if len(numbers) == 1 else None
 
 
 _ALBUM_TITLE_STOPWORDS = {'le', 'la', 'les', 'l', 'de', 'du', 'des', 'd', 'et', 'un', 'une', 'a', 'au', 'aux', 'en'}
