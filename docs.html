@@ -242,12 +242,14 @@
           <ul>
             <li>Trois vues : affiches, aperçu (une ligne par série) et tableau.</li>
             <li>La recherche du haut de page trouve les titres et les tags.</li>
-            <li>La fiche d'une série montre les tomes possédés et manquants.</li>
+            <li>La fiche d'une série montre les tomes possédés et manquants. Sa molette regroupe les actions par famille : scan et métadonnées, édition, fusion et déplacement, listes, upscaling.</li>
+            <li><em>Déplacer dans une autre bibliothèque</em> (molette de la fiche, ou sélection multiple) déplace le dossier sur le disque ; tomes, historique et Komga suivent.</li>
+            <li>Les filtres de colonnes du tableau restent appliqués dans les autres vues.</li>
           </ul>
         </div>
         <div class="guide-card">
           <h3>📡 Surveillance</h3>
-          <p>Bullarr lit les flux RSS, EBDZ et Telegram, repère les nouveaux albums de vos séries et télécharge ceux qui vous manquent.</p>
+          <p>Bullarr lit les flux RSS, EBDZ et Telegram, repère les nouveaux albums de vos séries et télécharge ceux qui vous manquent. Quand un résultat est douteux, il attend votre choix dans <em>Validation</em>. Les <em>Nouveautés</em> regroupent les tomes d'une même série publiés en moins de deux heures.</p>
         </div>
         <div class="guide-card">
           <h3>🧭 Enrichir</h3>
@@ -255,7 +257,7 @@
         </div>
         <div class="guide-card">
           <h3>📖 Lecteur de BD</h3>
-          <p>CBZ, CBR et PDF dans le navigateur : double page, zoom, miniatures, plein écran. <kbd>?</kbd> affiche les raccourcis.</p>
+          <p>CBZ, CBR et PDF dans le navigateur : double page, zoom, miniatures, plein écran. Un clic au milieu de la page affiche ou masque la barre et les miniatures. <kbd>?</kbd> affiche les raccourcis.</p>
         </div>
         <div class="guide-card">
           <h3>✏️ Renommage et métadonnées</h3>
@@ -271,7 +273,11 @@
         </div>
         <div class="guide-card">
           <h3>📑 Lectures</h3>
-          <p><em>Suivi → Lectures</em> : ce que vous avez lu, avec export et import CSV. Imports et actions sont, eux, dans <em>Suivi → Historique</em>.</p>
+          <p><em>Suivi → Lectures</em> : ce que vous avez lu, avec export et import CSV.</p>
+        </div>
+        <div class="guide-card">
+          <h3>🕓 Historique</h3>
+          <p><em>Suivi → Historique</em> garde une trace de chaque action : imports, téléchargements, renommages, déplacements, scans, lectures, surveillance, métadonnées, comptes et réglages (la section modifiée, jamais les valeurs).</p>
         </div>
       </div>
     </section>
@@ -307,28 +313,30 @@
       </ul>
       <div class="guide-note">Seuls le titre, les auteurs, le genre, l’année, l’origine, le résumé et les tags sont envoyés, jamais les fichiers. Avec votre propre clé, les appels sont facturés par le fournisseur. Chaque traitement est visible dans l'historique.</div>
       <h3>Serveur MCP</h3>
-      <p>Le serveur <a href="https://modelcontextprotocol.io">MCP</a> (adresse <code>/mcp</code> de votre instance) permet à Claude ou à un autre assistant de fouiller votre bibliothèque : « J'ai un polar noir avec des animaux ? ». Il peut aussi changer les tags et les listes.</p>
+      <p>Le serveur <a href="https://modelcontextprotocol.io">MCP</a> permet à Claude, ChatGPT ou un autre assistant de travailler avec votre bibliothèque : « J'ai un polar noir avec des animaux ? », « Quelles séries de Tronchet me manquent ? », « Ajoute Blacksad et cherche les tomes ».</p>
       <div class="guide-table">
         <table>
-          <thead><tr><th>Outil</th><th>Rôle</th></tr></thead>
+          <thead><tr><th>Outils</th><th>Rôle</th></tr></thead>
           <tbody>
-            <tr><td><code>search_series</code></td><td>Chercher par mots, tags et année.</td></tr>
-            <tr><td><code>get_series</code></td><td>Lire la fiche d'une série.</td></tr>
-            <tr><td><code>list_tags</code></td><td>Lister les tags et le nombre de séries pour chacun.</td></tr>
-            <tr><td><code>set_series_tags</code></td><td>Remplacer les tags d'une série.</td></tr>
-            <tr><td><code>set_reading_lists</code></td><td>Gérer « à lire plus tard » et les favoris.</td></tr>
+            <tr><td><code>search_series</code>, <code>get_series</code>, <code>get_series_volumes</code></td><td>Chercher (mots, tags, année, auteur, genre, bibliothèque, séries incomplètes), lire une fiche et ses tomes.</td></tr>
+            <tr><td><code>list_tags</code>, <code>list_libraries</code>, <code>list_universes</code></td><td>Tags, bibliothèques et univers.</td></tr>
+            <tr><td><code>list_recent_additions</code>, <code>get_reading_history</code>, <code>list_requests</code>, <code>list_downloads</code></td><td>Derniers ajouts, lectures, demandes, téléchargements en cours.</td></tr>
+            <tr><td><code>set_series_tags</code>, <code>set_reading_lists</code>, <code>set_read_status</code>, <code>set_series_monitor</code>, <code>update_series_metadata</code></td><td>Tags, listes, lu / non lu, surveillance, résumé, genre, statut, auteur, années, univers.</td></tr>
+            <tr><td><code>search_missing_volumes</code></td><td>Lancer la recherche automatique des tomes manquants.</td></tr>
+            <tr><td><code>find_series_on_bedetheque</code>, <code>add_series</code></td><td>Trouver une série sur Bédéthèque et l'ajouter.</td></tr>
           </tbody>
         </table>
       </div>
       <h4>Activer le serveur</h4>
       <ol class="guide-steps">
-        <li>Ajoutez <code>BULLARR_MCP_TOKEN=</code> suivi d'une chaîne aléatoire dans le <code>.env</code>, puis redémarrez. Sans ce jeton, le serveur MCP est désactivé.</li>
-        <li>Déclarez le serveur dans votre assistant, par exemple Claude Code :</li>
+        <li><em>Configuration → IA</em>, volet <strong>Serveur MCP</strong> : activez l'interrupteur. Un jeton est créé ; un jeton <code>BULLARR_MCP_TOKEN</code> dans le <code>.env</code> reste prioritaire.</li>
+        <li>Le volet donne l'adresse du connecteur, <code>https://&lt;votre-bullarr&gt;/mcp/&lt;jeton&gt;</code>, et les étapes pour chaque assistant : appli Claude de bureau, claude.ai, ChatGPT, Claude Code.</li>
+        <li>Bullarr accessible seulement sur votre réseau ? L'appli Claude de bureau lance alors le serveur en local avec <code>npx mcp-remote</code> : le bloc à coller dans <code>claude_desktop_config.json</code> est donné tout prêt.</li>
       </ol>
+      <p>Pour Claude Code, le jeton passe plutôt dans l'en-tête :</p>
       <pre><code>claude mcp add --transport http bullarr https://&lt;votre-bullarr&gt;/mcp \
-  --header "Authorization: Bearer &lt;BULLARR_MCP_TOKEN&gt;"</code></pre>
-      <p>Les autres clients prennent la même adresse et le même en-tête <code>Authorization: Bearer</code>.</p>
-      <div class="guide-note">Le serveur ne supprime rien et ne touche à aucun fichier. Gardez le jeton pour vous. Un assistant hébergé sur internet (ChatGPT, claude.ai) ne joint votre Bullarr que s'il est accessible depuis internet.</div>
+  --header "Authorization: Bearer &lt;jeton&gt;"</code></pre>
+      <div class="guide-note">Le serveur ne supprime, ne déplace et ne renomme rien, et ne touche ni aux réglages ni aux comptes. Gardez le jeton pour vous ; <em>Régénérer</em> le remplace. claude.ai et ChatGPT passent par internet : ils ne joignent votre Bullarr que s'il est accessible depuis internet.</div>
     </section>
 
     <section id="api">
@@ -357,7 +365,7 @@
       <p>Chaque couverture porte une pastille <strong>LD</strong>, <strong>SD</strong> ou <strong>HD</strong>, et la fiche d'une série indique combien de ses tomes sont en basse définition. Le seuil (1600 px par défaut) se règle dans <em>Configuration → Upscaling</em>.</p>
       <h3>Améliorer un album</h3>
       <ul>
-        <li><strong>Pour lire</strong> : le bouton <em>HD</em> du lecteur améliore les pages à la volée, dans le navigateur. Le fichier ne change pas. Un appui long sur <em>HD</em> force l'amélioration de toutes les pages, même d'un tome déjà en haute définition.</li>
+        <li><strong>Pour lire</strong> : le bouton <em>HD</em> du lecteur améliore les pages à la volée, dans le navigateur. Le fichier ne change pas. Sur un tome déjà en haute définition, <em>HD</em> est grisé ; un appui long force quand même l'amélioration de toutes les pages, pour ce tome seulement.</li>
         <li><strong>Pour de bon</strong> : <em>Upscaler en HD</em> dans la molette d'un tome ou d'une série, ou la page <em>Actions → Upscaling</em> pour en traiter plusieurs. Le fichier est remplacé par sa version HD ; l'original est gardé et <em>Restaurer la version SD</em> le remet en place. Dans la fiche de la série, ces tomes portent l'étiquette ✨ <em>Upscalé</em> ; le filtre Qualité de la bibliothèque a une entrée <em>Upscalées</em>.</li>
       </ul>
       <p>Comptez de quelques minutes à plus d'une heure par album : le serveur calcule sur le processeur, un tome à la fois.</p>
@@ -385,9 +393,9 @@
         <li><strong>Contrôle parental</strong> : par lecteur, bibliothèques visibles et genres masqués, avec un préréglage « Enfant ».</li>
       </ul>
       <h3>Demandes de BD</h3>
-      <p>Un lecteur demande une série depuis la page <em>Demandes</em>. L'admin l'accepte (en choisissant la bibliothèque) ou la refuse avec un motif dans <em>Validation</em> ; une option accepte tout automatiquement. Une demande acceptée ajoute la série et lance sa recherche.</p>
+      <p>Un lecteur demande une série depuis la page <em>Demandes</em>. L'admin l'accepte (en choisissant la bibliothèque) ou la refuse avec un motif dans <em>Validation</em> ; une option accepte tout automatiquement. Une demande acceptée ajoute la série et lance sa recherche. Un lecteur peut aussi demander un tome manquant d'une série déjà présente (<em>Demander ce tome</em>, sur la fiche ou dans l'application Android) : acceptée, la demande lance la recherche de ce tome.</p>
       <h3>Mon profil</h3>
-      <p>Nom, e-mail, mot de passe, avatar, clé API personnelle et compte Komga. Pour Komga, Bullarr crée une clé à votre nom et ne garde pas le mot de passe ; sans Komga, Bullarr retient lui-même où vous en êtes. Connexions et changements de comptes sont dans <em>Suivi → Historique</em>.</p>
+      <p>Nom, e-mail, mot de passe, avatar, clé API personnelle et compte Komga. Pour Komga, Bullarr crée une clé à votre nom et ne garde pas le mot de passe ; sans Komga, Bullarr retient lui-même où vous en êtes. Connexions et changements de comptes sont aussi dans <em>Suivi → Historique</em>.</p>
       <h3>Thèmes</h3>
       <p><em>Configuration → Thème</em> : cinq palettes (Atelier, Ardoise, Sauge, Océan, Prune), en clair, en sombre ou en <em>Système</em> qui suit l'appareil. Le choix est propre à chaque navigateur. L'application Android a les mêmes palettes.</p>
     </section>
