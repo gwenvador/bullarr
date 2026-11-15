@@ -5644,7 +5644,17 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
     la racine d'un répertoire surveillé) et chaque fichier trouvé dans le dossier d'un
     téléchargement (voir _collect_download_folder_files)."""
     manual_destinations = manual_destinations or {}
-    destination = manual_destinations.get(filepath, destination)
+    manual = manual_destinations.get(filepath)
+    if manual is not None:
+        # « ça remet El Diablo alors que je viens de le changer en Marsupilami » : la
+        # destination manuelle remplaçait celle du téléchargement suivi et perdait son
+        # tracking_id - la ligne du téléchargement restait affichée à côté du fichier, avec
+        # l'ancienne série. On garde le lien vers le téléchargement d'origine.
+        tracked = destination or {}
+        destination = dict(manual)
+        for key in ('tracking_id', 'client'):
+            if destination.get(key) is None and tracked.get(key) is not None:
+                destination[key] = tracked[key]
     relative_path = os.path.relpath(filepath, import_root)
     parsed = scanner.parse_filename(filename)
     parent_dir = os.path.dirname(relative_path)
@@ -5678,6 +5688,15 @@ def _append_scanned_file(filepath, import_root, filename, destination, scanner,
     gate_passed = True
     if file_destination and not is_container:
         gate_passed = apply_tracked_volume_and_gate(parsed, file_destination)
+    # « ça n'a pas conservé le volume après refresh » : le tome choisi à la main est
+    # enregistré (destination_json.volume_override) mais parsed était relu depuis le nom
+    # du fichier à chaque scan - la liste retombait sur « auto » / un autre tome.
+    manual_volume = (manual_destinations.get(filepath) or {}).get('volume_override')
+    if isinstance(manual_volume, dict) and not is_container:
+        for key in ('volume', 'is_integral', 'integral_number', 'is_hs', 'hs_number',
+                    'is_episode', 'episode_number', 'is_special', 'special_label'):
+            if key in manual_volume:
+                parsed[key] = manual_volume[key]
 
     # Le client suivi dans active_downloads est plus fiable qu'une recherche du nom
     # parmi tout l'historique Telegram (plus de 120 000 noms chargés par page).
