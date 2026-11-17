@@ -90,6 +90,7 @@ function renderUpscalingModels() {
         badges = `<span class="upscale-badge upscale-badge-ok">${svgIcon('check')} Prêt</span>`;
     }
     if (queued) badges += `<span class="upscale-badge">${queued} en attente</span>`;
+    if (running || queued) badges += `<button type="button" class="btn btn-sm btn-danger" id="upscalingStopAll" onclick="event.preventDefault(); upscalingStopAll()">${svgIcon('circle-x')} Tout arrêter</button>`;
     document.getElementById('upscalingState').innerHTML = badges;
     const summary = document.getElementById('upscalingModelSummary');
     if (summary) summary.textContent = `· ${_upModelLabel(data.model)}`;
@@ -367,6 +368,21 @@ async function upscalingCancel(volumeId) {
     const data = response ? await response.json().catch(() => null) : null;
     showToast('upscaling-cancel', data?.success ? 'Annulation demandée, le fichier reste inchangé.' : 'Rien à annuler pour cet album.',
         { icon: 'x', autoHideMs: 4000 });
+    clearTimeout(upscalingPoll);
+    loadUpscaling();
+}
+
+async function upscalingStopAll() {
+    const queued = (upscalingData.jobs || []).filter(job => UPSCALING_BUSY.includes(job.status)).length;
+    if (queued > 1 && !confirm(`Arrêter l'album en cours et retirer les ${queued - 1} autre(s) de la file ?`)) return;
+    const btn = document.getElementById('upscalingStopAll');
+    if (btn) btn.disabled = true;
+    document.querySelectorAll('button[onclick^="upscalingCancel("]').forEach(b => { b.disabled = true; });
+    document.querySelectorAll('.upscaling-progress-label').forEach(label => { label.textContent = 'Annulation…'; });
+    const response = await fetch('/api/upscale/stop', { method: 'POST' }).catch(() => null);
+    const data = response ? await response.json().catch(() => null) : null;
+    showToast('upscaling-cancel', data?.success ? `Tout est arrêté (${data.cancelled} album(s)), les fichiers restent inchangés.` : 'Arrêt impossible, réessaie.',
+        { icon: 'x', autoHideMs: 5000 });
     clearTimeout(upscalingPoll);
     loadUpscaling();
 }

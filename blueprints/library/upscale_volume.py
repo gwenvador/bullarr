@@ -466,6 +466,26 @@ def cancel(volume_id):
     return True
 
 
+def cancel_all():
+    """Arrête tout : l'album en cours s'interrompt (fichier inchangé) et la file d'attente
+    est vidée. Renvoie la liste des tomes touchés."""
+    touched = []
+    dropped = []
+    with _lock:
+        for volume_id, state in _jobs.items():
+            if state['status'] == 'queued':
+                state['status'] = 'cancelled'
+                state['finished_at'] = time.time()
+                dropped.append(volume_id)
+                touched.append(volume_id)
+            elif state['status'] == 'running' and not state.get('cancel'):
+                state['cancel'] = True
+                touched.append(volume_id)
+    for volume_id in dropped:
+        _queue_remove(_app, volume_id)
+    return touched
+
+
 def _next_job():
     with _lock:
         while True:

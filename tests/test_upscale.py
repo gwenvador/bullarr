@@ -414,3 +414,23 @@ class CancelBetweenTilesTest(unittest.TestCase):
             self.assertTrue(issubclass(upscale_volume.UpscaleCancelled, upscale.UpscaleStopped))
         finally:
             upscale._session = saved
+
+
+class StopAllTest(unittest.TestCase):
+    def test_cancel_all_stops_running_and_empties_queue(self):
+        saved = dict(upscale_volume._jobs), upscale_volume._app
+        upscale_volume._jobs.clear()
+        upscale_volume._app = None
+        try:
+            for volume_id, status in ((1, 'running'), (2, 'queued'), (3, 'queued'), (4, 'done')):
+                upscale_volume._jobs[volume_id] = {'volume_id': volume_id, 'status': status, 'cancel': False}
+            self.assertEqual(sorted(upscale_volume.cancel_all()), [1, 2, 3])
+            self.assertTrue(upscale_volume._jobs[1]['cancel'])
+            self.assertEqual(upscale_volume._jobs[2]['status'], 'cancelled')
+            self.assertEqual(upscale_volume._jobs[3]['status'], 'cancelled')
+            self.assertEqual(upscale_volume._jobs[4]['status'], 'done')
+            self.assertEqual(upscale_volume.cancel_all(), [])
+        finally:
+            upscale_volume._jobs.clear()
+            upscale_volume._jobs.update(saved[0])
+            upscale_volume._app = saved[1]

@@ -2494,6 +2494,17 @@ def upscale_threshold():
                     'heavy_page_bytes': upscale_volume.HEAVY_PAGE_BYTES})
 
 
+@library_bp.route('/api/upscale/stop', methods=['POST'])
+def upscale_stop_all():
+    """Tout arrêter : annule l'album en cours et vide la file d'attente."""
+    from . import upscale_volume
+    app = current_app._get_current_object()
+    touched = upscale_volume.cancel_all()
+    for volume_id in touched:
+        upscale_volume.log_cancelled(app, volume_id)
+    return jsonify({'success': True, 'cancelled': len(touched)})
+
+
 @library_bp.route('/api/upscale/jobs', methods=['GET'])
 def upscale_jobs():
     """File d'attente de l'upscaling hors ligne (en attente, en cours, récemment terminés)."""

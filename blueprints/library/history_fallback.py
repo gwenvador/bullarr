@@ -87,6 +87,7 @@ ACTIONS = {
     'library.upscale_volumes_batch': ('upscale_queue', 'Upscaling demandé'),
     'library.upscale_volume_route': {'POST': ('upscale_queue', 'Upscaling demandé'),
                                      'DELETE': ('upscale_cancel', 'Upscaling annulé')},
+    'library.upscale_stop_all': ('upscale_cancel', 'Upscaling arrêté'),
     'library.downscale_volume_route': ('downscale_queue', 'Réduction demandée'),
     'library.restore_volume_sd': ('upscale_restore', 'Version SD remise'),
     'library.delete_volume_sd_backup': ('upscale_backup_delete', 'Sauvegarde SD supprimée'),
