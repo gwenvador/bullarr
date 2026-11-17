@@ -51,6 +51,24 @@ class UpdateStatusTest(unittest.TestCase):
         with mock.patch.object(updates, 'safe_external_get', return_value=response):
             self.assertEqual(updates._fetch_release('https://api.github.com/x')['apk_url'], 'https://x/app.apk')
 
+    def test_ipa_asset_is_picked_from_the_ios_release(self):
+        payload = {'tag_name': 'v1.10', 'html_url': 'https://x/r', 'assets': [
+            {'name': 'bullarr-ios-1.10.ipa', 'browser_download_url': 'https://x/app.ipa'}]}
+        response = mock.Mock(content=json.dumps(payload).encode())
+        with mock.patch.object(updates, 'safe_external_get', return_value=response):
+            release = updates._fetch_release('https://api.github.com/x')
+        self.assertEqual(release['ipa_url'], 'https://x/app.ipa')
+        self.assertIsNone(release['apk_url'])
+
+    def test_ios_release_is_reported_with_its_ipa(self):
+        releases = {'bullarr': self.release('v9.2'), 'android': self.release('v1.3'),
+                    'ios': dict(self.release('v1.10'), ipa_url='https://x/app.ipa')}
+        with mock.patch.object(updates, '_fetch_release', side_effect=lambda url: releases[
+                next(name for name, api in updates.RELEASES.items() if api == url)]):
+            status = updates.update_status('9.1')
+        self.assertEqual(status['ios'], {'latest': '1.10', 'url': 'https://github.com/x/releases/tag/v1.10',
+                                         'ipa_url': 'https://x/app.ipa'})
+
 
 class AppVersionTest(unittest.TestCase):
     def test_app_version_is_the_current_release(self):
@@ -72,6 +90,9 @@ class AboutCardTest(unittest.TestCase):
         self.assertNotIn('Télécharger</a>', script)
         self.assertIn("document.getElementById('about-android-link').textContent = `v${android.latest}`", script)
         self.assertIn('badge.href = android.apk_url || android.url', script)
+        self.assertIn('<a id="about-ios" class="about-badge about-badge-link"', badges)
+        self.assertIn('AltStore', badges)
+        self.assertIn('badge.href = ios.ipa_url || ios.url', script)
 
 
 if __name__ == '__main__':

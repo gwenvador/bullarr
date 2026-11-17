@@ -1,4 +1,4 @@
-"""Mises à jour disponibles: dernières releases GitHub de Bullarr et de son application Android.
+"""Mises à jour disponibles: dernières releases GitHub de Bullarr et de ses applications Android et iOS.
 
 Lecture de l'API publique de GitHub (sans compte), mise en cache 6 h: la page Configuration n'appelle GitHub qu'au plus
 quelques fois par jour, et un échec réseau n'empêche jamais l'affichage (la dernière valeur connue est conservée).
@@ -14,6 +14,7 @@ CACHE_SECONDS = 6 * 3600
 RELEASES = {
     'bullarr': 'https://api.github.com/repos/gwenvador/bullarr/releases/latest',
     'android': 'https://api.github.com/repos/gwenvador/bullarr-android/releases/latest',
+    'ios': 'https://api.github.com/repos/gwenvador/bullarr-ios/releases/latest',
 }
 _cache = {}
 _lock = threading.Lock()
@@ -34,10 +35,11 @@ def _fetch_release(url):
                                  headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'Bullarr'})
     response.raise_for_status()
     data = json.loads(response.content)
-    apk = next((asset.get('browser_download_url') for asset in data.get('assets') or []
-                if str(asset.get('name') or '').lower().endswith('.apk')), None)
+    def asset_url(extension):
+        return next((asset.get('browser_download_url') for asset in data.get('assets') or []
+                     if str(asset.get('name') or '').lower().endswith(extension)), None)
     return {'tag': data.get('tag_name') or '', 'url': data.get('html_url') or '',
-            'published_at': data.get('published_at'), 'apk_url': apk}
+            'published_at': data.get('published_at'), 'apk_url': asset_url('.apk'), 'ipa_url': asset_url('.ipa')}
 
 
 def latest_release(name, now=None):
@@ -64,6 +66,7 @@ def latest_release(name, now=None):
 def update_status(current_version):
     bullarr = latest_release('bullarr')
     android = latest_release('android')
+    ios = latest_release('ios')
     return {
         'current': current_version,
         'bullarr': None if not bullarr else {
@@ -71,4 +74,6 @@ def update_status(current_version):
             'update_available': is_newer(bullarr['tag'], current_version)},
         'android': None if not android else {
             'latest': android['tag'].lstrip('v'), 'url': android['url'], 'apk_url': android['apk_url']},
+        'ios': None if not ios else {
+            'latest': ios['tag'].lstrip('v'), 'url': ios['url'], 'ipa_url': ios.get('ipa_url')},
     }

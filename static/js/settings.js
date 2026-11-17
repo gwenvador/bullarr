@@ -3504,7 +3504,7 @@ async function restoreBackup() {
 }
 
 
-// À propos: bouton « Mise à jour disponible » (vers la release) et dernière version de l'application Android,
+// À propos: bouton « Mise à jour disponible » (vers la release) et dernières versions des applications Android et iOS,
 // affichée à côté de la version de Bullarr, la version elle-même servant de lien vers l'APK.
 async function loadAboutUpdates() {
     const box = document.getElementById('about-update');
@@ -3517,6 +3517,13 @@ async function loadAboutUpdates() {
             const badge = document.getElementById('about-android');
             document.getElementById('about-android-link').textContent = `v${android.latest}`;
             badge.href = android.apk_url || android.url;
+            badge.hidden = false;
+        }
+        const ios = data.ios;
+        if (ios) {
+            const badge = document.getElementById('about-ios');
+            document.getElementById('about-ios-link').textContent = `v${ios.latest}`;
+            badge.href = ios.ipa_url || ios.url;
             badge.hidden = false;
         }
         const bullarr = data.bullarr;
