@@ -109,11 +109,15 @@ function renderUpscalingModels() {
             <div class="upscaling-running-text"><span class="upscaling-muted">En cours · ${_upEsc(_upModelLabel(running.model))}</span>
                 <strong>${_upEsc(running.series_title || '')}</strong><span class="upscaling-muted">${_upEsc(running.filename || '')}</span></div>
             ${_upProgress(running)}
-            <button type="button" class="upscale-icon-btn danger" onclick="upscalingCancel(${running.volume_id})" data-tooltip="Annuler" aria-label="Annuler">${svgIcon('x')}</button>
+            <button type="button" class="upscale-icon-btn danger" onclick="upscalingCancel(${running.volume_id})"${running.cancel ? ' disabled' : ''} data-tooltip="Annuler" aria-label="Annuler">${svgIcon('x')}</button>
         </div>` : '';
 }
 
 function _upProgress(job) {
+    if (job.cancel) {
+        return `<span class="upscaling-progress"><span class="upscale-progress"><span style="width:0%"></span></span>
+        <span class="upscale-progress-label upscaling-progress-label">Annulation…</span></span>`;
+    }
     const pct = job.total ? Math.round(100 * (job.page || 0) / job.total) : 0;
     return `<span class="upscaling-progress"><span class="upscale-progress"><span style="width:${pct}%"></span></span>
         <span class="upscale-progress-label upscaling-progress-label">${job.total ? `${job.page || 0}/${job.total}` : '…'}</span></span>`;
@@ -352,7 +356,18 @@ async function upscalingRunSelected() {
 }
 
 async function upscalingCancel(volumeId) {
-    await fetch(`/api/volumes/${volumeId}/upscale`, { method: 'DELETE' }).catch(() => null);
+    // Retour immédiat : le bouton tourne et la ligne passe à « Annulation… » sans attendre le serveur.
+    document.querySelectorAll(`button[onclick="upscalingCancel(${volumeId})"]`).forEach(btn => {
+        btn.disabled = true;
+        btn.classList.add('is-cancelling');
+        const label = btn.parentElement?.querySelector('.upscaling-progress-label');
+        if (label) label.textContent = 'Annulation…';
+    });
+    const response = await fetch(`/api/volumes/${volumeId}/upscale`, { method: 'DELETE' }).catch(() => null);
+    const data = response ? await response.json().catch(() => null) : null;
+    showToast('upscaling-cancel', data?.success ? 'Annulation demandée, le fichier reste inchangé.' : 'Rien à annuler pour cet album.',
+        { icon: 'x', autoHideMs: 4000 });
+    clearTimeout(upscalingPoll);
     loadUpscaling();
 }
 

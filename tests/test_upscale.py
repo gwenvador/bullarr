@@ -69,7 +69,7 @@ def _cbz(path, sizes):
 
 @unittest.skipIf(np is None, 'numpy absent')
 class UpscaleCbzTest(unittest.TestCase):
-    def fake(self, data, model):
+    def fake(self, data, model, should_stop=None):
         with Image.open(io.BytesIO(data)) as image:
             if not upscale.needs_upscale(*image.size):
                 return None
@@ -378,3 +378,39 @@ class DownscaleTest(unittest.TestCase):
             with app.app_context():
                 error = upscale_volume.check_volume(upscale_volume._volume_row(app, 7), 'downscale:2000:keep')
                 self.assertIn('Rien à réduire', error)
+
+
+@unittest.skipIf(np is None, 'numpy absent')
+class CancelBetweenTilesTest(unittest.TestCase):
+    def test_should_stop_interrupts_the_page(self):
+        class FakeInput:
+            name = 'input'
+
+        class FakeSession:
+            calls = 0
+
+            def get_inputs(self):
+                return [FakeInput()]
+
+            def run(self, _outputs, feeds):
+                FakeSession.calls += 1
+                tile = next(iter(feeds.values()))
+                return [tile.repeat(4, axis=2).repeat(4, axis=3)]
+
+        buffer = io.BytesIO()
+        Image.new('RGB', (900, 700), (10, 20, 30)).save(buffer, 'PNG')
+        saved = upscale._session
+        upscale._session = lambda model: FakeSession()
+        try:
+            asked = []
+
+            def stop():
+                asked.append(1)
+                return len(asked) > 1      # la 2e tuile n'est pas calculée
+
+            with self.assertRaises(upscale.UpscaleStopped):
+                upscale.upscale_image(buffer.getvalue(), 'fast', should_stop=stop)
+            self.assertEqual(FakeSession.calls, 1)
+            self.assertTrue(issubclass(upscale_volume.UpscaleCancelled, upscale.UpscaleStopped))
+        finally:
+            upscale._session = saved

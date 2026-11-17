@@ -174,9 +174,14 @@ def upscale_array(rgb, run, spec):
     return out[:height * scale, :width * scale]
 
 
-def upscale_image(data, model):
+class UpscaleStopped(Exception):
+    """Calcul d'une page interrompu entre deux tuiles (annulation demandée)."""
+
+
+def upscale_image(data, model, should_stop=None):
     """Octets d'une page -> octets JPEG agrandis x OUTPUT_SCALE, ou None si la page n'est
-    pas en basse définition."""
+    pas en basse définition. `should_stop` est consulté avant chaque tuile : s'il répond
+    vrai, UpscaleStopped est levée sans attendre la fin de la page."""
     import numpy as np
     from PIL import Image
     spec = MODELS[model]
@@ -188,7 +193,11 @@ def upscale_image(data, model):
     with _lock:
         session = _session(model)
         input_name = session.get_inputs()[0].name
-        big = upscale_array(rgb, lambda tile: session.run(None, {input_name: tile})[0], spec)
+        def run_tile(tile):
+            if should_stop and should_stop():
+                raise UpscaleStopped()
+            return session.run(None, {input_name: tile})[0]
+        big = upscale_array(rgb, run_tile, spec)
     result = Image.fromarray(big)
     if spec['scale'] != OUTPUT_SCALE:
         result = result.resize((width * OUTPUT_SCALE, height * OUTPUT_SCALE), Image.LANCZOS)

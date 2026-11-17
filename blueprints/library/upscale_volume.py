@@ -35,7 +35,7 @@ _MAX_FINISHED = 20
 BACKUP_DIR_NAME = '.bullarr-sd-backup'
 
 
-class UpscaleCancelled(Exception):
+class UpscaleCancelled(upscale.UpscaleStopped):
     pass
 
 
@@ -503,7 +503,7 @@ def _run(app):
             with app.app_context():
                 _process(app, volume_id, model)
             _update(volume_id, status='done', finished_at=time.time())
-        except UpscaleCancelled:
+        except upscale.UpscaleStopped:
             _update(volume_id, status='cancelled', finished_at=time.time())
         except Exception as e:  # noqa: BLE001 - l'erreur est montrée dans l'interface
             _update(volume_id, status='error', error=str(e) or e.__class__.__name__, finished_at=time.time())
@@ -736,7 +736,11 @@ def _process(app, volume_id, model):
     filepath = row['filepath']
     work_dir = work_dir_for(app, row, model.replace(':', '_'))
     _clear_work(app, volume_id, keep=work_dir)   # pages d'un autre modèle ou d'un fichier modifié
-    page_function = (lambda data, _model: downscale_image(data, spec[0])) if spec else None
+    if spec:
+        page_function = lambda data, _model: downscale_image(data, spec[0])
+    else:   # annulation prise en compte entre deux tuiles, pas seulement entre deux pages
+        page_function = lambda data, page_model: upscale.upscale_image(
+            data, page_model, should_stop=lambda: _cancelled(volume_id))
     temp, upscaled, median = upscale_cbz(
         filepath, model,
         progress=lambda page, total, done: _update(volume_id, page=page, total=total, upscaled=done),
