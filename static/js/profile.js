@@ -170,52 +170,80 @@ function pfRenderKomga() {
     form.hidden = false;
 }
 
-let pfApiKey = '';
-let pfApiScopes = ['full'];
+let pfApiKeys = [];
+let pfApiAvailable = null;
+let pfNewKeyScopes = ['read'];
 
-function pfRenderApiScopes(payload) {
-    if (payload && payload.scopes) pfApiScopes = payload.scopes;
-    renderApiScopes(document.getElementById('pf-apikey-scopes'), payload, async scopes => {
-        pfApiScopes = scopes;
-        if (!pfApiKey) return; // enregistrés à la création de la clé
-        try {
-            const response = await fetch('/api/auth/profile/api-key/scopes', {
-                method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({scopes})
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible');
-            pfMessage('pf-apikey-message', 'Droits enregistrés.');
-        } catch (error) {
-            pfMessage('pf-apikey-message', error.message, true);
-        }
-    });
+function pfDate(seconds) {
+    return seconds ? new Date(seconds * 1000).toLocaleDateString('fr-FR', {day: 'numeric', month: 'short', year: 'numeric'}) : '';
 }
 
-function pfRenderApiKey() {
-    document.getElementById('pf-apikey-card').hidden = false;
-    document.getElementById('pf-apikey').value = pfApiKey;
-    document.getElementById('pf-apikey-copy').hidden = !pfApiKey;
-    document.getElementById('pf-apikey-delete').hidden = !pfApiKey;
-    document.querySelector('#pf-apikey-create span:last-child').textContent = pfApiKey ? 'Régénérer' : 'Générer une clé';
-}
-
-async function pfApiKeyCall(method, okMessage) {
-    try {
-        const response = await fetch('/api/auth/profile/api-key', method === 'POST'
-            ? {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify({scopes: pfApiScopes})}
-            : {method});
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.success) {
-            if (method === 'GET') return; // carte masquée (pas de compte : authentification désactivée)
-            throw new Error(data.error || 'Opération impossible');
-        }
-        pfApiKey = data.api_key || '';
-        pfRenderApiKey();
-        if (data.available) pfRenderApiScopes(data);
-        if (okMessage) pfMessage('pf-apikey-message', okMessage);
-    } catch (error) {
-        pfMessage('pf-apikey-message', error.message, true);
+async function pfApiKeysCall(url, method, body) {
+    const options = {method};
+    if (body !== undefined) {
+        options.headers = {'Content-Type': 'application/json'};
+        options.body = JSON.stringify(body);
     }
+    const response = await fetch(url, options);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || 'Opération impossible');
+    pfApiKeys = data.keys || [];
+    if (data.available) pfApiAvailable = data.available;
+    pfRenderApiKeys();
+    return data;
+}
+
+function pfRenderApiKeys() {
+    document.getElementById('pf-apikey-card').hidden = false;
+    const list = document.getElementById('pf-apikeys');
+    list.innerHTML = pfApiKeys.length ? pfApiKeys.map(k => `
+        <div class="pf-apikey" data-key-id="${k.id}">
+            <div class="pf-apikey-head">
+                <strong>${pfEscape(k.name)}</strong>
+                <small>créée le ${pfDate(k.created_at)}${k.last_used_at ? ` · utilisée le ${pfDate(k.last_used_at)}` : ' · jamais utilisée'}</small>
+                <button type="button" class="rq-btn rq-btn-ghost pf-apikey-delete">Supprimer</button>
+            </div>
+            <span class="pf-pass"><input type="password" readonly value="${pfEscape(k.api_key)}" spellcheck="false" autocomplete="off"><button type="button" class="pf-eye pf-apikey-show" aria-label="Afficher">${svgIcon('eye')}</button><button type="button" class="pf-eye pf-apikey-copy" aria-label="Copier">${svgIcon('copy')}</button></span>
+            <div class="api-scopes pf-apikey-scopes"></div>
+        </div>`).join('') : '<p class="pf-hint">Aucune clé pour le moment.</p>';
+    list.querySelectorAll('.pf-apikey').forEach(card => {
+        const id = Number(card.dataset.keyId);
+        const key = pfApiKeys.find(k => k.id === id);
+        const field = card.querySelector('input');
+        card.querySelector('.pf-apikey-show').addEventListener('click', event => {
+            field.type = field.type === 'password' ? 'text' : 'password';
+            event.currentTarget.innerHTML = svgIcon(field.type === 'password' ? 'eye' : 'eye-off');
+        });
+        card.querySelector('.pf-apikey-copy').addEventListener('click', async () => {
+            try { await navigator.clipboard.writeText(key.api_key); pfMessage('pf-apikey-message', `Clé « ${key.name} » copiée.`); }
+            catch (error) { field.type = 'text'; field.select(); pfMessage('pf-apikey-message', 'Sélectionnez la clé et copiez-la.', true); }
+        });
+        card.querySelector('.pf-apikey-delete').addEventListener('click', async () => {
+            if (!confirm(`Supprimer la clé « ${key.name} » ? L’application qui l’utilise perdra l’accès.`)) return;
+            try { await pfApiKeysCall(`/api/auth/profile/api-keys/${id}`, 'DELETE'); pfMessage('pf-apikey-message', 'Clé supprimée.'); }
+            catch (error) { pfMessage('pf-apikey-message', error.message, true); }
+        });
+        renderApiScopes(card.querySelector('.pf-apikey-scopes'), {scopes: key.scopes || ['full'], available: pfApiAvailable}, async scopes => {
+            try {
+                const response = await fetch(`/api/auth/profile/api-keys/${id}`, {
+                    method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({scopes})
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible');
+                key.scopes = scopes;
+                pfMessage('pf-apikey-message', `Droits de « ${key.name} » enregistrés.`);
+            } catch (error) {
+                pfMessage('pf-apikey-message', error.message, true);
+            }
+        });
+    });
+    renderApiScopes(document.getElementById('pf-apikey-new-scopes'), {scopes: pfNewKeyScopes, available: pfApiAvailable},
+        scopes => { pfNewKeyScopes = scopes; });
+}
+
+async function pfLoadApiKeys() {
+    try { await pfApiKeysCall('/api/auth/profile/api-keys', 'GET'); }
+    catch (error) { /* carte masquée (pas de compte : authentification désactivée) */ }
 }
 
 async function pfLoadKomga() {
@@ -304,28 +332,21 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = false;
         }
     });
-    document.getElementById('pf-apikey-create').addEventListener('click', async () => {
-        if (pfApiKey && !confirm('Remplacer la clé ? Les applications qui utilisent l’ancienne devront être reconfigurées.')) return;
-        await pfApiKeyCall('POST', 'Nouvelle clé créée.');
-    });
-    document.getElementById('pf-apikey-delete').addEventListener('click', async () => {
-        if (!confirm('Supprimer la clé ? Les applications qui l’utilisent perdront l’accès.')) return;
-        await pfApiKeyCall('DELETE', 'Clé supprimée.');
-    });
-    document.getElementById('pf-apikey-copy').addEventListener('click', async () => {
-        const field = document.getElementById('pf-apikey');
+    document.getElementById('pf-apikey-new').addEventListener('submit', async event => {
+        event.preventDefault();
+        const nameField = document.getElementById('pf-apikey-name');
         try {
-            await navigator.clipboard.writeText(field.value);
+            const data = await pfApiKeysCall('/api/auth/profile/api-keys', 'POST', {name: nameField.value, scopes: pfNewKeyScopes});
+            nameField.value = '';
+            const created = pfApiKeys[pfApiKeys.length - 1];
+            if (created && created.api_key === data.api_key) {
+                const input = document.querySelector(`.pf-apikey[data-key-id="${created.id}"] input`);
+                if (input) input.type = 'text';
+            }
+            pfMessage('pf-apikey-message', 'Clé créée.');
         } catch (error) {
-            const type = field.type;
-            field.type = 'text';
-            field.select();
-            document.execCommand('copy');
-            field.type = type;
+            pfMessage('pf-apikey-message', error.message, true);
         }
-        pfMessage('pf-apikey-message', 'Clé copiée.');
     });
-    pfLoad();
-    pfLoadKomga();
-    pfApiKeyCall('GET');
+    pfLoadApiKeys();
 });

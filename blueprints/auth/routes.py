@@ -223,11 +223,10 @@ def enforce_login():
     if api_key_ok is False:
         # Clé personnelle d'un compte : mêmes droits que ce compte (lecteur limité à ses
         # routes et à ses bibliothèques), sans jeton CSRF.
-        row = accounts.user_for_api_key(_supplied_api_key())
+        row, scopes = accounts.user_for_api_key(_supplied_api_key())
         if row is None:
             return jsonify({'success': False, 'error': 'Clé API invalide'}), 401
         g.api_user = accounts.api_user(row)
-        scopes = accounts.api_key_scopes(row)
         if not scope_allows(scopes, request.endpoint, request.method, request.url_rule.rule if request.url_rule else ''):
             return jsonify({'success': False, 'error': denied_message(scopes)}), 403
         if current_role(config) == ROLE_READER:
@@ -1199,48 +1198,84 @@ def _my_api_key_owner():
 
 @auth_bp.route('/api/auth/profile/api-key', methods=['GET'])
 def get_my_api_key():
-    """Clé API personnelle du compte connecté (applications : extension Mihon...)."""
+    """Ancienne route (une seule clé) : première clé du compte. Voir /api/auth/profile/api-keys."""
     key, error = _my_api_key_owner()
     if error:
         return error
-    return jsonify({'success': True, 'api_key': accounts.get_api_key(key) or '',
-                    **scopes_payload(accounts.api_key_scopes(accounts.get_user(key)))})
+    keys = accounts.list_api_keys(key)
+    first = keys[0] if keys else {'api_key': '', 'scopes': None}
+    return jsonify({'success': True, 'api_key': first['api_key'], **scopes_payload(first['scopes'])})
 
 
 @auth_bp.route('/api/auth/profile/api-key', methods=['POST'])
 def create_my_api_key():
-    """Crée ou remplace la clé personnelle ; l'ancienne cesse aussitôt de fonctionner. Corps
-    facultatif {"scopes": [...]} : droits de la nouvelle clé (sinon ceux de l'ancienne)."""
+    """Ancienne route : ajoute une clé (les autres clés restent valides)."""
     key, error = _my_api_key_owner()
     if error:
         return error
     requested = _requested_scopes()
-    if requested is None:
-        requested = accounts.api_key_scopes(accounts.get_user(key))
     value = accounts.create_api_key(key, requested)
     log_activity('api_key_created', detail='Clé API personnelle')
     return jsonify({'success': True, 'api_key': value, **scopes_payload(requested)})
 
 
-@auth_bp.route('/api/auth/profile/api-key/scopes', methods=['PUT'])
-def set_my_api_key_scopes():
-    """Change les droits de la clé personnelle sans la régénérer. Corps : {"scopes": [...]}."""
-    key, error = _my_api_key_owner()
-    if error:
-        return error
-    requested = _requested_scopes()
-    if requested is None:
-        return jsonify({'success': False, 'error': 'scopes manquant'}), 400
-    return jsonify({'success': True, **scopes_payload(accounts.set_api_key_scopes(key, requested))})
-
-
 @auth_bp.route('/api/auth/profile/api-key', methods=['DELETE'])
 def delete_my_api_key():
+    """Ancienne route : supprime toutes les clés du compte."""
     key, error = _my_api_key_owner()
     if error:
         return error
     accounts.delete_api_key(key)
     return jsonify({'success': True})
+
+
+def _api_keys_payload(key):
+    return {'success': True, 'keys': accounts.list_api_keys(key), **scopes_payload(None)}
+
+
+@auth_bp.route('/api/auth/profile/api-keys', methods=['GET'])
+def list_my_api_keys():
+    """Clés API du compte connecté : [{id, name, api_key, scopes, created_at, last_used_at}]."""
+    key, error = _my_api_key_owner()
+    if error:
+        return error
+    return jsonify(_api_keys_payload(key))
+
+
+@auth_bp.route('/api/auth/profile/api-keys', methods=['POST'])
+def create_my_named_api_key():
+    """Nouvelle clé. Corps : {"name": "...", "scopes": [...]} (droits par défaut : accès complet)."""
+    key, error = _my_api_key_owner()
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    value = accounts.create_api_key(key, _requested_scopes(), data.get('name'))
+    if value is None:
+        return jsonify({'success': False, 'error': 'Aucun compte connecté'}), 400
+    log_activity('api_key_created', detail=f"Clé API personnelle : {str(data.get('name') or 'Clé API')[:60]}")
+    return jsonify({**_api_keys_payload(key), 'api_key': value})
+
+
+@auth_bp.route('/api/auth/profile/api-keys/<int:key_id>', methods=['PUT'])
+def update_my_api_key(key_id):
+    """Renomme une clé et/ou change ses droits. Corps : {"name"?, "scopes"?}."""
+    key, error = _my_api_key_owner()
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    if not accounts.update_api_key(key, key_id, data.get('name'), _requested_scopes(), 'scopes' in data):
+        return jsonify({'success': False, 'error': 'Clé introuvable'}), 404
+    return jsonify(_api_keys_payload(key))
+
+
+@auth_bp.route('/api/auth/profile/api-keys/<int:key_id>', methods=['DELETE'])
+def delete_my_named_api_key(key_id):
+    key, error = _my_api_key_owner()
+    if error:
+        return error
+    if not accounts.delete_api_key(key, key_id):
+        return jsonify({'success': False, 'error': 'Clé introuvable'}), 404
+    return jsonify(_api_keys_payload(key))
 
 
 @auth_bp.route('/api/auth/token', methods=['POST'])
@@ -1267,7 +1302,7 @@ def api_token():
         return jsonify({'success': False, 'error': 'Compte en attente de validation'}), 403
     with _app_login_lock:
         _password_login_failures.pop(address, None)
-    value = accounts.get_api_key(row['user_key']) or accounts.create_api_key(row['user_key'])
+    value = accounts.get_api_key(row['user_key']) or accounts.create_api_key(row['user_key'], name='Application')
     log_activity('login', actor_key=row['user_key'], actor_name=row['name'] or username,
                  detail=f'Application (clé API) · IP {address}')
     return jsonify({'success': True, 'api_key': value})

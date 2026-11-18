@@ -224,83 +224,112 @@ def _api_key_hash(key):
     return hashlib.sha256(key.encode('utf-8')).hexdigest()
 
 
-def create_api_key(key, scopes=None):
-    """Crée (ou remplace) la clé API personnelle du compte `key` ; None si le compte n'existe pas.
-    scopes : droits de la clé (voir api_scopes.py) ; None = accès complet."""
-    from encryption import encrypt
+# Clés API personnelles : plusieurs par compte (table api_keys), chacune avec un nom et ses
+# droits (voir api_scopes.py). Les anciennes colonnes users.api_key_* sont reprises une fois
+# par roles.init_tables (« Clé principale »).
+
+def _key_row(row):
+    from encryption import decrypt
     from .api_scopes import normalize_scopes
-    value = secrets.token_hex(16)
-    scopes = normalize_scopes(scopes)
+    scopes = None
+    if row['scopes_json']:
+        try:
+            scopes = normalize_scopes(json.loads(row['scopes_json']))
+        except ValueError:
+            scopes = []
+    return {'id': row['id'], 'name': row['name'] or 'Clé API', 'api_key': decrypt(row['key_enc']) or '',
+            'scopes': scopes, 'created_at': row['created_at'], 'last_used_at': row['last_used_at']}
+
+
+def list_api_keys(key):
     conn = _connect()
     try:
-        updated = conn.execute('UPDATE users SET api_key_hash = ?, api_key_enc = ?, api_key_scopes_json = ? '
-                               'WHERE user_key = ?',
-                               (_api_key_hash(value), encrypt(value),
-                                json.dumps(scopes) if scopes is not None else None, key)).rowcount
+        rows = conn.execute('SELECT * FROM api_keys WHERE user_key = ? ORDER BY id', (key,)).fetchall()
+    finally:
+        conn.close()
+    return [_key_row(row) for row in rows]
+
+
+def create_api_key(key, scopes=None, name=None):
+    """Ajoute une clé API au compte `key` et renvoie sa valeur ; None si le compte n'existe pas.
+    scopes : droits de la clé ; None = accès complet."""
+    from encryption import encrypt
+    from .api_scopes import normalize_scopes
+    if not get_user(key):
+        return None
+    value = secrets.token_hex(16)
+    scopes = normalize_scopes(scopes)
+    name = (str(name or '').strip() or 'Clé API')[:60]
+    conn = _connect()
+    try:
+        conn.execute('INSERT INTO api_keys (user_key, name, key_hash, key_enc, scopes_json, created_at) '
+                     'VALUES (?, ?, ?, ?, ?, ?)',
+                     (key, name, _api_key_hash(value), encrypt(value),
+                      json.dumps(scopes) if scopes is not None else None, time.time()))
         conn.commit()
     finally:
         conn.close()
-    return value if updated else None
+    return value
 
 
 def get_api_key(key):
-    from encryption import decrypt
-    row = get_user(key)
-    if not row or not row['api_key_enc']:
-        return None
-    return decrypt(row['api_key_enc']) or None
+    """Valeur de la première clé du compte (applications qui se connectent par identifiant)."""
+    keys = list_api_keys(key)
+    return keys[0]['api_key'] if keys else None
 
 
-def api_key_scopes(row):
-    """Droits de la clé personnelle d'une ligne de users ; None = accès complet."""
+def update_api_key(key, key_id, name=None, scopes=None, set_scopes=False):
+    """Renomme une clé et/ou change ses droits ; False si elle n'est pas à ce compte."""
     from .api_scopes import normalize_scopes
-    try:
-        raw = row['api_key_scopes_json']
-    except (IndexError, KeyError):
-        return None
-    if not raw:
-        return None
-    try:
-        return normalize_scopes(json.loads(raw))
-    except ValueError:
-        return []  # valeur illisible : la clé ne garde que les routes toujours permises
-
-
-def set_api_key_scopes(key, scopes):
-    from .api_scopes import normalize_scopes
-    scopes = normalize_scopes(scopes)
     conn = _connect()
     try:
-        conn.execute('UPDATE users SET api_key_scopes_json = ? WHERE user_key = ?',
-                     (json.dumps(scopes) if scopes is not None else None, key))
+        if not conn.execute('SELECT 1 FROM api_keys WHERE id = ? AND user_key = ?', (key_id, key)).fetchone():
+            return False
+        if name is not None:
+            conn.execute('UPDATE api_keys SET name = ? WHERE id = ?', ((str(name).strip() or 'Clé API')[:60], key_id))
+        if set_scopes:
+            scopes = normalize_scopes(scopes)
+            conn.execute('UPDATE api_keys SET scopes_json = ? WHERE id = ?',
+                         (json.dumps(scopes) if scopes is not None else None, key_id))
         conn.commit()
+        return True
     finally:
         conn.close()
-    return scopes
 
 
-def delete_api_key(key):
+def delete_api_key(key, key_id=None):
+    """Supprime une clé du compte (key_id) ou toutes ses clés ; False si la clé n'existe pas."""
     conn = _connect()
     try:
-        conn.execute('UPDATE users SET api_key_hash = NULL, api_key_enc = NULL, api_key_scopes_json = NULL '
-                     'WHERE user_key = ?', (key,))
+        if key_id is None:
+            conn.execute('DELETE FROM api_keys WHERE user_key = ?', (key,))
+            deleted = True
+        else:
+            deleted = conn.execute('DELETE FROM api_keys WHERE id = ? AND user_key = ?', (key_id, key)).rowcount > 0
         conn.commit()
+        return deleted
     finally:
         conn.close()
 
 
 def user_for_api_key(supplied):
-    """Compte actif dont la clé personnelle est `supplied`, sinon None."""
+    """(compte actif, droits de la clé) pour la clé personnelle `supplied`, sinon (None, None)."""
     if not supplied or not _has_database():
-        return None
+        return None, None
     conn = _connect()
     try:
-        row = conn.execute('SELECT * FROM users WHERE api_key_hash = ?', (_api_key_hash(supplied),)).fetchone()
+        found = conn.execute('SELECT * FROM api_keys WHERE key_hash = ?', (_api_key_hash(supplied),)).fetchone()
+        if not found:
+            return None, None
+        row = conn.execute('SELECT * FROM users WHERE user_key = ?', (found['user_key'],)).fetchone()
+        if row and (found['last_used_at'] or 0) < time.time() - 300:
+            conn.execute('UPDATE api_keys SET last_used_at = ? WHERE id = ?', (time.time(), found['id']))
+            conn.commit()
     finally:
         conn.close()
     if not row or row['status'] == STATUS_PENDING:
-        return None
-    return row
+        return None, None
+    return row, _key_row(found)['scopes']
 
 
 def api_user(row):

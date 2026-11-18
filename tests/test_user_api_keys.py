@@ -66,30 +66,39 @@ class UserApiKeysTest(unittest.TestCase):
         self.assertEqual(len(key), 32)
         self.assertEqual(client.get('/api/auth/profile/api-key').get_json()['api_key'], key)
         stored = sqlite3.connect(self.db_path).execute(
-            "SELECT api_key_hash, api_key_enc FROM users WHERE user_key = 'password:bob'").fetchone()
+            "SELECT key_hash, key_enc FROM api_keys WHERE user_key = 'password:bob'").fetchone()
         self.assertNotIn(key, ''.join(stored))
         external = self.app.test_client()
         self.assertEqual(external.get('/api/auth/me', headers={'X-Api-Key': key}).get_json()['user']['name'], 'bob')
         self.assertEqual(client.delete('/api/auth/profile/api-key', headers={'X-CSRF-Token': 'tok'}).status_code, 200)
         self.assertEqual(external.get('/api/auth/me', headers={'X-Api-Key': key}).status_code, 401)
 
-    def test_scoped_key_limits_actions(self):
+    def test_several_named_keys_with_scopes(self):
         client = self._session_client('alice')
-        response = client.post('/api/auth/profile/api-key', headers={'X-CSRF-Token': 'tok'},
-                               json={'scopes': ['read', 'tags']})
-        self.assertEqual(response.get_json()['scopes'], ['read', 'tags'])
-        headers = {'X-Api-Key': response.get_json()['api_key']}
+        csrf = {'X-CSRF-Token': 'tok'}
+        tags = client.post('/api/auth/profile/api-keys', headers=csrf,
+                           json={'name': 'Script tags', 'scopes': ['read', 'tags']}).get_json()
+        full = client.post('/api/auth/profile/api-keys', headers=csrf, json={'name': 'Mihon'}).get_json()
+        self.assertEqual([k['name'] for k in full['keys']], ['Script tags', 'Mihon'])
+        tag_key, tag_id = tags['api_key'], tags['keys'][0]['id']
         external = self.app.test_client()
-        self.assertEqual(external.get('/api/series/1/tags', headers=headers).status_code, 200)
-        self.assertEqual(external.put('/api/series/1/tags', headers=headers, json={'tags': ['famille']}).status_code, 200)
-        self.assertEqual(external.post('/api/series/1/read-status', headers=headers, json={'read': True}).status_code, 403)
-        self.assertEqual(external.get('/api/prowlarr/config', headers=headers).status_code, 403)
-        # Droits changés sans régénérer la clé : lecture seule.
-        response = client.put('/api/auth/profile/api-key/scopes', headers={'X-CSRF-Token': 'tok'},
-                              json={'scopes': ['read']})
-        self.assertEqual(response.get_json()['scopes'], ['read'])
-        self.assertEqual(external.put('/api/series/1/tags', headers=headers, json={'tags': []}).status_code, 403)
-        self.assertEqual(external.get('/api/series/1/tags', headers=headers).status_code, 200)
+        h = {'X-Api-Key': tag_key}
+        self.assertEqual(external.get('/api/series/1/tags', headers=h).status_code, 200)
+        self.assertEqual(external.put('/api/series/1/tags', headers=h, json={'tags': ['famille']}).status_code, 200)
+        self.assertEqual(external.post('/api/series/1/read-status', headers=h, json={'read': True}).status_code, 403)
+        self.assertEqual(external.get('/api/prowlarr/config', headers=h).status_code, 403)
+        self.assertEqual(external.get('/api/prowlarr/config', headers={'X-Api-Key': full['api_key']}).status_code, 200)
+        # Droits changés sans régénérer : lecture seule.
+        client.put(f'/api/auth/profile/api-keys/{tag_id}', headers=csrf, json={'scopes': ['read']})
+        self.assertEqual(external.put('/api/series/1/tags', headers=h, json={'tags': []}).status_code, 403)
+        # Supprimer une clé laisse l'autre valide.
+        left = client.delete(f'/api/auth/profile/api-keys/{tag_id}', headers=csrf).get_json()
+        self.assertEqual([k['name'] for k in left['keys']], ['Mihon'])
+        self.assertEqual(external.get('/api/auth/me', headers=h).status_code, 401)
+        self.assertEqual(external.get('/api/auth/me', headers={'X-Api-Key': full['api_key']}).status_code, 200)
+        # Une clé d'un autre compte ne se supprime pas.
+        self.assertEqual(self._session_client('bob').delete(
+            f"/api/auth/profile/api-keys/{left['keys'][0]['id']}", headers=csrf).status_code, 404)
 
     def test_reader_key_keeps_reader_limits(self):
         key = self._key_for('bob')

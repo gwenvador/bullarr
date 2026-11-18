@@ -33,7 +33,9 @@ READER_ENDPOINTS = {
     'auth.upload_avatar': frozenset({'POST'}), 'auth.delete_avatar': frozenset({'DELETE'}),
     'auth.choose_avatar': frozenset({'PUT'}), 'auth.avatar_presets': _GET,
     'auth.get_my_api_key': _GET, 'auth.create_my_api_key': frozenset({'POST'}),
-    'auth.delete_my_api_key': frozenset({'DELETE'}), 'auth.set_my_api_key_scopes': frozenset({'PUT'}),
+    'auth.delete_my_api_key': frozenset({'DELETE'}),
+    'auth.list_my_api_keys': _GET, 'auth.create_my_named_api_key': frozenset({'POST'}),
+    'auth.update_my_api_key': frozenset({'PUT'}), 'auth.delete_my_named_api_key': frozenset({'DELETE'}),
     # Bibliothèques et séries (lecture)
     'library.libraries': _GET, 'library.library_operations': _GET, 'library.get_library_info': _GET,
     'library.get_library_last_updated': _GET, 'library.get_library_series': _GET,
@@ -109,6 +111,25 @@ def init_tables(cursor):
                    'api_key_hash', 'api_key_enc', 'api_key_scopes_json'):
         if column not in columns:
             cursor.execute(f'ALTER TABLE users ADD COLUMN {column} TEXT')
+    # Clés API personnelles : plusieurs par compte, chacune nommée et avec ses droits.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_key TEXT NOT NULL,
+            name TEXT,
+            key_hash TEXT NOT NULL UNIQUE,
+            key_enc TEXT NOT NULL,
+            scopes_json TEXT,
+            created_at REAL,
+            last_used_at REAL
+        )''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_key)')
+    # Reprise de l'ancienne clé unique par compte (colonnes de users), une seule fois.
+    cursor.execute("INSERT OR IGNORE INTO api_keys (user_key, name, key_hash, key_enc, scopes_json, created_at) "
+                   "SELECT user_key, 'Clé principale', api_key_hash, api_key_enc, api_key_scopes_json, strftime('%s','now') "
+                   "FROM users WHERE api_key_hash IS NOT NULL AND api_key_enc IS NOT NULL")
+    cursor.execute("UPDATE users SET api_key_hash = NULL, api_key_enc = NULL, api_key_scopes_json = NULL "
+                   "WHERE api_key_hash IS NOT NULL")
     # Demande à valider : bibliothèque visée au moment de la demande, décision (qui, quand).
     request_columns = {row[1] for row in cursor.execute('PRAGMA table_info(book_requests)').fetchall()}
     # volume_id / volume_label : demande d'UN tome manquant d'une série déjà dans la bibliothèque.
