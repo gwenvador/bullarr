@@ -127,6 +127,39 @@ def series_meta(database, urls):
             result[url] = json.loads(raw)
         except ValueError:
             pass
+    # Séries de la bibliothèque : genre, années, tomes et parution déjà en base (fiche lue au
+    # rattachement, corrections manuelles prioritaires), sans lecture de page.
+    for url, meta in library_series_meta(database, wanted).items():
+        result[url] = {**result.get(url, {}), **meta}
+    return result
+
+
+def library_series_meta(database, urls):
+    """{url canonique: meta} des séries possédées dont la fiche Bédéthèque est l'une de ces adresses."""
+    wanted = set(urls or [])
+    if not wanted:
+        return {}
+    conn = sqlite3.connect(database, timeout=30.0)
+    try:
+        rows = conn.execute(
+            "SELECT bedetheque_url, COALESCE(NULLIF(manual_genre, ''), bedetheque_genre), "
+            "COALESCE(NULLIF(manual_status, ''), bedetheque_status), bedetheque_total_volumes, "
+            "COALESCE(manual_year_start, bedetheque_year_start), COALESCE(manual_year_end, bedetheque_year_end) "
+            "FROM series WHERE COALESCE(bedetheque_url, '') != ''").fetchall()
+    except sqlite3.OperationalError:
+        return {}  # base sans table series (tests, cache seul)
+    finally:
+        conn.close()
+    result = {}
+    for url, genre, status, total, year_start, year_end in rows:
+        canonical = normalize_series_url(url)
+        if canonical not in wanted:
+            continue
+        meta = {'genre': genre, 'status': status, 'total_volumes': total,
+                'year_start': year_start, 'year_end': year_end}
+        meta = {key: value for key, value in meta.items() if value not in (None, '')}
+        if meta:
+            result[canonical] = meta
     return result
 
 

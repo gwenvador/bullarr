@@ -42,6 +42,25 @@ class OriginParsingTest(unittest.TestCase):
         script = (Path(__file__).resolve().parents[1] / 'static/js/nav.js').read_text()
         self.assertIn("BEDETHEQUE_ORIGIN_KINDS['franco-belge']", script)
 
+    def test_meta_of_owned_series_comes_from_the_library(self):
+        import sqlite3, tempfile, os
+        fd, db = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        self.addCleanup(os.remove, db)
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE series (bedetheque_url TEXT, manual_genre TEXT, bedetheque_genre TEXT, "
+                     "manual_status TEXT, bedetheque_status TEXT, bedetheque_total_volumes INTEGER, "
+                     "manual_year_start INTEGER, bedetheque_year_start INTEGER, manual_year_end INTEGER, "
+                     "bedetheque_year_end INTEGER)")
+        conn.execute("INSERT INTO series VALUES ('http://bedetheque.com/serie-12-BD-Exemple.html', 'Policier', "
+                     "'Humour', NULL, 'Série finie', 4, NULL, 2001, NULL, 2009)")
+        conn.commit()
+        conn.close()
+        url = 'https://www.bedetheque.com/serie-12-BD-Exemple.html'
+        self.assertEqual(origins.series_meta(db, [url]), {url: {
+            'genre': 'Policier', 'status': 'Série finie', 'total_volumes': 4,
+            'year_start': 2001, 'year_end': 2009}})
+
     def test_meta_read_from_the_same_page(self):
         html = ('<div class="bdt-ah--serie"><h1><a>X</a></h1><span class="bdt-sh-genre">Aventure</span>'
                 '<span class="bdt-sh-parution">Série en cours</span><ul class="bdt-ah-pastilles">'

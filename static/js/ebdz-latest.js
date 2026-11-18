@@ -677,7 +677,7 @@ function _initNouveautesCoverPreview() {
 // fiches par appel, le serveur répond « pending » tant qu'il en reste). Gardée en mémoire
 // pour la page ; le filtre Genre charge les origines de toutes les lignes, pas seulement des
 // lignes affichées.
-const NOUVEAUTES_ORIGINS_KEY = 'bullarr:nouveautes:origins:v3';
+const NOUVEAUTES_ORIGINS_KEY = 'bullarr:nouveautes:origins:v4';
 // Les origines ne changent pas: gardées dans le navigateur, elles ne sont redemandées au serveur
 // (puis à Bédéthèque) que pour les séries jamais vues.
 const _nouveautesOriginCache = (() => {
