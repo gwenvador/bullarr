@@ -5426,8 +5426,12 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
 .nouveautes-cover-tip img + span { margin-top: 5px; }
 .nouveautes-bdt-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 2px; font-weight: 500; font-size: .9rem;
     flex: 0 1 auto; min-width: 0; }
-/* Sur la ligne de la série (en-tête) : les tags restent à droite du nom et passent à la ligne entre eux. */
-.nouveautes-table .nouveautes-matched-series.has-series { flex-wrap: nowrap !important; }
+/* « c est mieux en bas » : les tags sur leur propre ligne, sous le nom de la série
+   (ligne simple comme en-tête de groupe), plus à côté du nom. */
+.nouveautes-table .nouveautes-matched-series.has-series { flex-wrap: wrap !important; }
+.nouveautes-table .nouveautes-matched-series.has-series > .nouveautes-bdt-tags,
+.nouveautes-series-group-head > .nouveautes-bdt-tags { flex: 0 0 100%; margin: 2px 0 0; }
+.nouveautes-series-group-head > .nouveautes-bdt-tags { margin-top: -4px; }
 .nouveautes-table .nouveautes-matched-series.has-series > a { flex: none; }
 .nouveautes-bdt-tags:empty { display: none; }
 .nouveautes-bdt-tag { font-size: .76em; font-weight: 500; line-height: 1.3; padding: 1px 7px; border-radius: 999px; white-space: nowrap;
