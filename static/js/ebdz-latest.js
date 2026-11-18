@@ -582,6 +582,16 @@ function _nouveautesSeriesCover(seriesId) {
     return _nouveautesCoverCache.get(seriesId);
 }
 
+// « Aventure, Humour · 2019–2024 · 5 tomes · Série en cours » : lu dans la fiche Bédéthèque
+// déjà ouverte pour le drapeau (aucune lecture de plus).
+function _nouveautesMetaText(meta) {
+    if (!meta) return '';
+    const years = meta.year_start ? (meta.year_end && meta.year_end !== meta.year_start
+        ? `${meta.year_start}–${meta.year_end}` : `${meta.year_start}`) : '';
+    const tomes = meta.total_volumes ? `${meta.total_volumes} tome${meta.total_volumes > 1 ? 's' : ''}` : '';
+    return [meta.genre, years, tomes, meta.status].filter(Boolean).join(' · ');
+}
+
 function _nouveautesBedethequeCover(url, title) {
     const key = `bdt:${url}`;
     if (!_nouveautesCoverCache.has(key)) {
@@ -590,7 +600,8 @@ function _nouveautesBedethequeCover(url, title) {
             .then(data => {
                 // Bédéthèque en pause ou budget atteint : on pourra réessayer au prochain survol.
                 if (data && data.limited) _nouveautesCoverCache.delete(key);
-                return data && data.cover ? { url: data.cover, title: title || '' } : null;
+                if (data && data.meta && _nouveautesOriginCache[url]) _nouveautesOriginCache[url].meta = data.meta;
+                return data && (data.cover || data.meta) ? { url: data.cover, title: title || '', meta: data.meta } : null;
             })
             .catch(() => { _nouveautesCoverCache.delete(key); return null; });
         _nouveautesCoverCache.set(key, request);
@@ -623,7 +634,9 @@ function _initNouveautesCoverPreview() {
             ? await _nouveautesSeriesCover(Number(target.dataset.coverSeriesId))
             : await _nouveautesBedethequeCover(target.dataset.coverBdtUrl, target.textContent.trim());
         if (current !== target || !cover) return;
-        tip.innerHTML = `<img src="${escapeHtml(cover.url)}" alt="">${cover.title ? `<span>${escapeHtml(cover.title)}</span>` : ''}`;
+        const meta = _nouveautesMetaText(cover.meta || (target.dataset.coverBdtUrl && _nouveautesOriginCache[target.dataset.coverBdtUrl]?.meta));
+        tip.innerHTML = `${cover.url ? `<img src="${escapeHtml(cover.url)}" alt="">` : ''}${cover.title ? `<span>${escapeHtml(cover.title)}</span>` : ''}`
+            + (meta ? `<small>${escapeHtml(meta)}</small>` : '');
         place(target);
         tip.hidden = false;
     });
@@ -641,7 +654,7 @@ function _initNouveautesCoverPreview() {
 // fiches par appel, le serveur répond « pending » tant qu'il en reste). Gardée en mémoire
 // pour la page ; le filtre Genre charge les origines de toutes les lignes, pas seulement des
 // lignes affichées.
-const NOUVEAUTES_ORIGINS_KEY = 'bullarr:nouveautes:origins:v1';
+const NOUVEAUTES_ORIGINS_KEY = 'bullarr:nouveautes:origins:v2';
 // Les origines ne changent pas: gardées dans le navigateur, elles ne sont redemandées au serveur
 // (puis à Bédéthèque) que pour les séries jamais vues.
 const _nouveautesOriginCache = (() => {
@@ -681,7 +694,7 @@ function _nouveautesGenreCellHtml(event) {
     const url = _nouveautesBedethequeUrl(event);
     const known = url ? _nouveautesOriginCache[url] : null;
     return `<td class="nouveautes-genre-cell" style="padding:10px;">${url
-        ? `<span class="nouveautes-origin-slot" data-bdt-url="${escapeHtml(url)}">${known ? bedethequeOriginHtml(known.origin) : ''}</span>`
+        ? `<span class="nouveautes-origin-slot" data-bdt-url="${escapeHtml(url)}"${known && known.meta ? ` data-tooltip="${escapeHtml(_nouveautesMetaText(known.meta))}"` : ''}>${known ? bedethequeOriginHtml(known.origin) : ''}</span>`
         : ''}</td>`;
 }
 
@@ -689,6 +702,7 @@ function _fillNouveautesGenreSlots() {
     document.querySelectorAll('#nouveautes-events-body .nouveautes-origin-slot[data-bdt-url]').forEach(slot => {
         const known = _nouveautesOriginCache[slot.dataset.bdtUrl];
         if (known && !slot.innerHTML) slot.innerHTML = bedethequeOriginHtml(known.origin);
+        if (known && known.meta && !slot.dataset.tooltip) slot.dataset.tooltip = _nouveautesMetaText(known.meta);
     });
 }
 

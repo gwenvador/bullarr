@@ -42,6 +42,15 @@ class OriginParsingTest(unittest.TestCase):
         script = (Path(__file__).resolve().parents[1] / 'static/js/nav.js').read_text()
         self.assertIn("BEDETHEQUE_ORIGIN_KINDS['franco-belge']", script)
 
+    def test_meta_read_from_the_same_page(self):
+        html = ('<div class="bdt-ah--serie"><h1><a>X</a></h1><span class="bdt-sh-genre">Aventure</span>'
+                '<span class="bdt-sh-parution">Série en cours</span><ul class="bdt-ah-pastilles">'
+                '<li title="Nombre de tomes">5 tomes</li><li title="Origine de la série">Franco-Belge</li></ul>'
+                '<p class="bdt-ah-by">2019 - 2024</p></div>')
+        self.assertEqual(origins.parse_series_meta(html), {'genre': 'Aventure', 'status': 'Série en cours',
+                                                           'total_volumes': 5, 'year_start': 2019, 'year_end': 2024})
+        self.assertEqual(origins.parse_series_meta('<html>rien</html>'), {})
+
     def test_only_bedetheque_series_urls(self):
         self.assertEqual(origins.normalize_series_url('http://bedetheque.com/serie-500-BD-Blacksad.html?x=1#y'),
                          'https://www.bedetheque.com/serie-500-BD-Blacksad.html')

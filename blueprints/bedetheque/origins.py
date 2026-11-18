@@ -9,6 +9,7 @@ série ne change pas : une valeur trouvée est gardée ; une page sans origine l
 retentée après ORIGIN_RETRY_DAYS.
 """
 import re
+import json
 import sqlite3
 import threading
 import time
@@ -88,6 +89,47 @@ def parse_origin(html):
     return None
 
 
+META_KEYS = ('genre', 'status', 'total_volumes', 'year_start', 'year_end')
+
+
+def parse_series_meta(html):
+    """Genre, parution, nombre de tomes et années d'une fiche série, ou {} si rien n'est lisible."""
+    try:
+        from bs4 import BeautifulSoup
+        from .scraper import parse_series_header
+        header = parse_series_header(BeautifulSoup(html or '', 'html.parser'))
+    except Exception:
+        return {}
+    return {key: header[key] for key in META_KEYS if header.get(key)}
+
+
+def _meta_json(html):
+    meta = parse_series_meta(html)
+    return json.dumps(meta, ensure_ascii=False) if meta else None
+
+
+def series_meta(database, urls):
+    """{url: {genre, status, total_volumes, year_start, year_end}} déjà connus (cache des
+    fiches lues pour l'origine), sans aucune lecture réseau."""
+    wanted = [u for u in {normalize_series_url(u) for u in urls or []} if u]
+    if not wanted:
+        return {}
+    conn = sqlite3.connect(database, timeout=30.0)
+    try:
+        _ensure_cache(conn)
+        rows = conn.execute(f"SELECT url, meta_json FROM bedetheque_origin_cache WHERE url IN ({','.join('?' * len(wanted))}) "
+                            "AND meta_json IS NOT NULL", wanted).fetchall()
+    finally:
+        conn.close()
+    result = {}
+    for url, raw in rows:
+        try:
+            result[url] = json.loads(raw)
+        except ValueError:
+            pass
+    return result
+
+
 def normalize_series_url(url):
     """Adresse canonique d'une fiche série Bédéthèque, ou None si ce n'en est pas une."""
     parsed = urlparse(str(url or '').strip())
@@ -108,6 +150,9 @@ def _ensure_cache(conn):
     for column in ('cover_url', 'cover_path'):
         if column not in columns:
             conn.execute(f'ALTER TABLE bedetheque_origin_cache ADD COLUMN {column} TEXT')
+    if 'meta_json' not in columns:
+        # Genre, années, tomes, parution : lus dans la même page que l'origine (aucune lecture de plus).
+        conn.execute('ALTER TABLE bedetheque_origin_cache ADD COLUMN meta_json TEXT')
 
 
 # Couverture du tome 1 : balise og:image de la fiche (le bloc « serie-image » montre une planche).
@@ -169,8 +214,9 @@ def series_cover(database, url, fetch_page=None, download=None):
             origin = origin or parse_origin(html)
             conn.execute('INSERT OR IGNORE INTO bedetheque_origin_cache (url, origin, fetched_at) VALUES (?, ?, ?)',
                          (canonical, origin, time.time()))
-            conn.execute('UPDATE bedetheque_origin_cache SET cover_url = ?, origin = COALESCE(origin, ?) WHERE url = ?',
-                         (cover_url or '', origin, canonical))
+            conn.execute('UPDATE bedetheque_origin_cache SET cover_url = ?, origin = COALESCE(origin, ?), '
+                         'meta_json = COALESCE(?, meta_json) WHERE url = ?',
+                         (cover_url or '', origin, _meta_json(html), canonical))
             conn.commit()
             if origin:
                 _save_to_catalog([(canonical, origin)])
@@ -270,8 +316,8 @@ def resolve_origins(database, urls, fetch_page=None, fetch_limit=6):
                 break  # pause du site ou limite atteinte : on s'arrête, rien n'est mémorisé
             except Exception:
                 continue  # réessayé au prochain appel
-            conn.execute('INSERT OR REPLACE INTO bedetheque_origin_cache (url, origin, fetched_at, cover_url) '
-                         'VALUES (?, ?, ?, ?)', (url, origin, time.time(), parse_cover(html) or ''))
+            conn.execute('INSERT OR REPLACE INTO bedetheque_origin_cache (url, origin, fetched_at, cover_url, meta_json) '
+                         'VALUES (?, ?, ?, ?, ?)', (url, origin, time.time(), parse_cover(html) or '', _meta_json(html)))
             conn.commit()
             if origin:
                 _save_to_catalog([(url, origin)])

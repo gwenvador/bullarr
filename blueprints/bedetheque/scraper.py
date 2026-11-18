@@ -363,6 +363,69 @@ def _anti_bot_delay():
 
 
 
+def parse_series_header(soup):
+    """En-tête d'une fiche série Bédéthèque (ancienne et nouvelle mise en page) : genre,
+    parution, nombre de tomes, origine, langue et années. Sert à la fiche complète et à la
+    lecture de l'origine (Nouveautés), qui lit la même page."""
+    info = {'genre': None, 'status': None, 'total_volumes': None, 'origin': None, 'language': None,
+            'year_start': None, 'year_end': None}
+    for li in soup.select('ul.serie-info li'):
+        label = li.find('label')
+        if not label:
+            continue
+        label_text = label.get_text(strip=True)
+        key = label_text.rstrip(':').strip()
+        value = li.get_text(strip=True)[len(label_text):].strip()
+        if key == 'Genre':
+            info['genre'] = value or None
+        elif key == 'Parution':
+            info['status'] = value or None
+        elif key == 'Tomes':
+            info['total_volumes'] = int(value) if value.isdigit() else None
+        elif key == 'Origine':
+            info['origin'] = _canonical_origin(value)
+        elif key == 'Langue':
+            info['language'] = value or None
+
+    if not info['genre']:
+        genres = [a.get_text(' ', strip=True) for a in soup.select('.bdt-ah--serie .bdt-sh-genre')]
+        info['genre'] = ', '.join(g for g in genres if g) or None
+    if not info['status']:
+        status = soup.select_one('.bdt-ah--serie .bdt-sh-parution')
+        info['status'] = status.get_text(' ', strip=True) if status else None
+    for pill in soup.select('.bdt-ah--serie .bdt-ah-pastilles li'):
+        label = (pill.get('title') or '').lower()
+        value = pill.get_text(' ', strip=True)
+        if 'nombre de tomes' in label:
+            match = re.search(r'\d+', value)
+            if match:
+                info['total_volumes'] = int(match.group())
+        elif 'origine' in label:
+            info['origin'] = _canonical_origin(value)
+        elif 'langue' in label:
+            info['language'] = value or None
+
+    h3 = soup.select_one('.bandeau-info.serie h3')
+    if h3:
+        h3_text = h3.get_text(' ', strip=True)
+        year_match = re.search(r'\b(19\d{2}|20\d{2})\s*-\s*(19\d{2}|20\d{2})\b', h3_text)
+        if year_match:
+            info['year_start'] = int(year_match.group(1))
+            info['year_end'] = int(year_match.group(2))
+        else:
+            single_year = re.search(r'\b(19\d{2}|20\d{2})\b', h3_text)
+            if single_year:
+                info['year_start'] = int(single_year.group(1))
+    if not h3:
+        years = soup.select_one('.bdt-ah--serie .bdt-ah-by')
+        if years:
+            matches = re.findall(r'\b(?:19|20)\d{2}\b', years.get_text(' ', strip=True))
+            if matches:
+                info['year_start'] = int(matches[0])
+                info['year_end'] = int(matches[1]) if len(matches) > 1 else None
+    return info
+
+
 def _canonical_origin(value):
     """Origine telle que le reste de l'application la comprend (Europe / USA / Asie / Autre) :
     la fiche affiche désormais « Franco-Belge », « Comics » ou « Manga » au lieu de ces noms."""
@@ -795,60 +858,7 @@ class BedethequeScraper:
             if h1:
                 info['title'] = h1.get_text(strip=True)
 
-            for li in soup.select('ul.serie-info li'):
-                label = li.find('label')
-                if not label:
-                    continue
-                label_text = label.get_text(strip=True)
-                key = label_text.rstrip(':').strip()
-                value = li.get_text(strip=True)[len(label_text):].strip()
-                if key == 'Genre':
-                    info['genre'] = value or None
-                elif key == 'Parution':
-                    info['status'] = value or None
-                elif key == 'Tomes':
-                    info['total_volumes'] = int(value) if value.isdigit() else None
-                elif key == 'Origine':
-                    info['origin'] = _canonical_origin(value)
-                elif key == 'Langue':
-                    info['language'] = value or None
-
-            if not info['genre']:
-                genres = [a.get_text(' ', strip=True) for a in soup.select('.bdt-ah--serie .bdt-sh-genre')]
-                info['genre'] = ', '.join(g for g in genres if g) or None
-            if not info['status']:
-                status = soup.select_one('.bdt-ah--serie .bdt-sh-parution')
-                info['status'] = status.get_text(' ', strip=True) if status else None
-            for pill in soup.select('.bdt-ah--serie .bdt-ah-pastilles li'):
-                label = (pill.get('title') or '').lower()
-                value = pill.get_text(' ', strip=True)
-                if 'nombre de tomes' in label:
-                    match = re.search(r'\d+', value)
-                    if match:
-                        info['total_volumes'] = int(match.group())
-                elif 'origine' in label:
-                    info['origin'] = _canonical_origin(value)
-                elif 'langue' in label:
-                    info['language'] = value or None
-
-            h3 = soup.select_one('.bandeau-info.serie h3')
-            if h3:
-                h3_text = h3.get_text(' ', strip=True)
-                year_match = re.search(r'\b(19\d{2}|20\d{2})\s*-\s*(19\d{2}|20\d{2})\b', h3_text)
-                if year_match:
-                    info['year_start'] = int(year_match.group(1))
-                    info['year_end'] = int(year_match.group(2))
-                else:
-                    single_year = re.search(r'\b(19\d{2}|20\d{2})\b', h3_text)
-                    if single_year:
-                        info['year_start'] = int(single_year.group(1))
-            if not h3:
-                years = soup.select_one('.bdt-ah--serie .bdt-ah-by')
-                if years:
-                    matches = re.findall(r'\b(?:19|20)\d{2}\b', years.get_text(' ', strip=True))
-                    if matches:
-                        info['year_start'] = int(matches[0])
-                        info['year_end'] = int(matches[1]) if len(matches) > 1 else None
+            info.update(parse_series_header(soup))
 
             desc_p = soup.select_one('div.single-content.serie > p, .bdt-sh-resume')
             if desc_p:

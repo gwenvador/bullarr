@@ -3038,7 +3038,7 @@ def bedetheque_series_origins():
     Comics / Manga dans Nouveautés. Corps : {"urls": [...]} (200 au plus). Réponse :
     {"success", "origins": {url: {"origin", "kind": "bd"|"comics"|"manga"|null}}, "pending"}
     - pending : adresses pas encore lues (au plus 6 pages lues par appel), à redemander."""
-    from .origins import resolve_origins, origin_kind, normalize_series_url, origin_fetch_limited
+    from .origins import resolve_origins, origin_kind, normalize_series_url, origin_fetch_limited, series_meta
     data = request.get_json(silent=True) or {}
     urls = data.get('urls') or []
     if not isinstance(urls, list):
@@ -3054,10 +3054,13 @@ def bedetheque_series_origins():
         return jsonify({'success': False, 'error': error_message(e, "Lecture de l'origine impossible")}), 500
     # Réponse indexée par les adresses telles qu'envoyées (la page retrouve ainsi ses lignes).
     answered = {}
+    # Genre, années, tomes : notés en lisant la même fiche que l'origine, sans lecture de plus.
+    metas = series_meta(current_app.config['DATABASE'], list(origins))
     for url in urls[:200]:
         canonical = normalize_series_url(url)
         if canonical in origins:
-            answered[url] = {'origin': origins[canonical], 'kind': origin_kind(origins[canonical])}
+            answered[url] = {'origin': origins[canonical], 'kind': origin_kind(origins[canonical]),
+                             'meta': metas.get(canonical)}
     # limited : budget horaire épuisé ou pause du site - la page n'insiste pas, elle réessaiera plus tard.
     return jsonify({'success': True, 'pending': pending, 'origins': answered,
                     'limited': bool(pending) and origin_fetch_limited()})
@@ -3080,7 +3083,10 @@ def bedetheque_series_cover():
                                      lambda cover_url: scraper._download_cover(cover_url, './data/covers'))
     except Exception as e:
         return jsonify({'success': False, 'error': error_message(e, 'Couverture indisponible')}), 500
-    return jsonify({'success': True, 'cover': f'/{path}' if path else None, 'limited': limited})
+    from .origins import series_meta, normalize_series_url
+    url = request.args.get('url', '')
+    meta = series_meta(current_app.config['DATABASE'], [url]).get(normalize_series_url(url))
+    return jsonify({'success': True, 'cover': f'/{path}' if path else None, 'limited': limited, 'meta': meta})
 
 
 @bedetheque_bp.route('/guard/status', methods=['GET'])
