@@ -592,6 +592,25 @@ function _nouveautesMetaText(meta) {
     return [meta.genre, years, tomes, meta.status].filter(Boolean).join(' · ');
 }
 
+// Tags Bédéthèque (genre, années, tomes, parution) à côté du nom, remplis dès que l'origine
+// de la fiche est connue (même lecture que le drapeau).
+function _nouveautesBdtTagsInner(meta) {
+    if (!meta) return '';
+    const years = meta.year_start ? (meta.year_end && meta.year_end !== meta.year_start
+        ? `${meta.year_start}–${meta.year_end}` : `${meta.year_start}`) : '';
+    const tags = [...String(meta.genre || '').split(',').map(g => g.trim()).filter(Boolean).map(g => ['genre', g]),
+        years && ['years', years],
+        meta.total_volumes && ['tomes', `${meta.total_volumes} tome${meta.total_volumes > 1 ? 's' : ''}`],
+        meta.status && ['status', meta.status]].filter(Boolean);
+    return tags.map(([kind, text]) => `<span class="nouveautes-bdt-tag is-${kind}">${escapeHtml(text)}</span>`).join('');
+}
+
+function _nouveautesBdtTagsHtml(event) {
+    const url = _nouveautesBedethequeUrl(event);
+    if (!url) return '';
+    return `<span class="nouveautes-bdt-tags" data-bdt-url="${escapeHtml(url)}">${_nouveautesBdtTagsInner(_nouveautesOriginCache[url]?.meta)}</span>`;
+}
+
 function _nouveautesBedethequeCover(url, title) {
     const key = `bdt:${url}`;
     if (!_nouveautesCoverCache.has(key)) {
@@ -703,6 +722,10 @@ function _fillNouveautesGenreSlots() {
         const known = _nouveautesOriginCache[slot.dataset.bdtUrl];
         if (known && !slot.innerHTML) slot.innerHTML = bedethequeOriginHtml(known.origin);
         if (known && known.meta && !slot.dataset.tooltip) slot.dataset.tooltip = _nouveautesMetaText(known.meta);
+    });
+    document.querySelectorAll('#nouveautes-events-body .nouveautes-bdt-tags[data-bdt-url]:empty').forEach(box => {
+        const meta = _nouveautesOriginCache[box.dataset.bdtUrl]?.meta;
+        if (meta) box.innerHTML = _nouveautesBdtTagsInner(meta);
     });
 }
 
@@ -1328,7 +1351,7 @@ function _nouveautesEbdzRowHtml(event, index) {
             <td style="padding:10px; text-align:center;">${typeIconHtml}</td>
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
-                <div class="nouveautes-title">${_nouveautesTitleHtml(filename)}</div>
+                <div class="nouveautes-title">${_nouveautesTitleHtml(filename)}${_nouveautesBdtTagsHtml(event)}</div>
                 ${_nouveautesSeriesHtml(event)}
                 ${_nouveautesMetaHtml([volumeLabel && ['nouveautes-meta-vol', _nouveautesVolumeLabel(volumeLabel)], link.filesize && ['nouveautes-meta-size', formatBytes(link.filesize)]])}
             </td>
@@ -1421,7 +1444,7 @@ function _nouveautesRssRowHtml(event) {
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
     // Release déjà possédée : ligne verte, comme les lignes EBDZ et Telegram.
     const ownedRowClass = event.already_owned === true ? 'volume-table-row-owned ' : '';
-    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div class="nouveautes-title">${title}</div>${matchedSeriesHtml}${event.vk ? '' : _nouveautesMetaHtml([_nouveautesGuessVolume(rawTitle) && ['nouveautes-meta-vol', _nouveautesVolumeLabel(_nouveautesGuessVolume(rawTitle))], event.size > 0 && ['nouveautes-meta-size', formatBytes(event.size)]])}${description ? `<div class="nouveautes-desc">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
+    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div class="nouveautes-title">${title}${_nouveautesBdtTagsHtml(event)}</div>${matchedSeriesHtml}${event.vk ? '' : _nouveautesMetaHtml([_nouveautesGuessVolume(rawTitle) && ['nouveautes-meta-vol', _nouveautesVolumeLabel(_nouveautesGuessVolume(rawTitle))], event.size > 0 && ['nouveautes-meta-size', formatBytes(event.size)]])}${description ? `<div class="nouveautes-desc">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
@@ -1447,7 +1470,7 @@ function _nouveautesTelegramRowHtml(event) {
             <td style="padding:10px; white-space:nowrap; text-align:center;">${telegramIconHtml}</td>
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
-                <div class="nouveautes-title">${_nouveautesTitleHtml(event.filename)}</div>
+                <div class="nouveautes-title">${_nouveautesTitleHtml(event.filename)}${_nouveautesBdtTagsHtml(event)}</div>
                 ${_nouveautesSeriesHtml(event)}
                 ${_nouveautesMetaHtml([event.parsed_volume && ['nouveautes-meta-vol', _nouveautesVolumeLabel(event.parsed_volume)], event.file_size && ['nouveautes-meta-size', formatBytes(event.file_size)]])}
             </td>

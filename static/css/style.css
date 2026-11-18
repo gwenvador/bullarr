@@ -5424,6 +5424,12 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
 .nouveautes-cover-tip span { display: block; margin-top: 5px; font-size: .78em; font-weight: 600; line-height: 1.3; text-align: center; color: var(--color-text); }
 
 .nouveautes-cover-tip img + span { margin-top: 5px; }
+.nouveautes-bdt-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: 1px; }
+.nouveautes-bdt-tags:empty { display: none; }
+.nouveautes-bdt-tag { font-size: .76em; font-weight: 500; line-height: 1.3; padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+    color: var(--color-text-muted); background: var(--color-surface-alt); border: 1px solid var(--color-border); }
+.nouveautes-bdt-tag.is-genre { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
 .nouveautes-cover-tip small { display: block; margin-top: 3px; font-size: .72em; line-height: 1.35; text-align: center; color: var(--color-text-muted); }
 
 /* Nouveautés : tome / taille sur la même ligne que le nom du fichier (« il y a de
