@@ -117,7 +117,7 @@ class UserApiKeysTest(unittest.TestCase):
         client = self.app.test_client()
         headers = {'X-Api-Key': key}
         self.assertEqual(client.get('/api/auth/users', headers=headers).status_code, 200)
-        self.assertEqual(client.get('/api/auth/api-key', headers=headers).status_code, 403)
+        self.assertEqual(client.get('/api/auth/api-key', headers=headers).status_code, 404)  # clé générale retirée
         self.assertEqual(client.post('/api/auth/profile/api-key', headers=headers).status_code, 403)
 
     def test_token_endpoint_returns_personal_key(self):

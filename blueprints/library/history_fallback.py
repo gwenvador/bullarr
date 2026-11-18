@@ -126,8 +126,6 @@ ACTIONS = {
     'ai.ai_job_stop': ('ai', 'Traitement IA arrêté'),
     # Comptes
     'auth.set_user_role': ('user', "Rôle d'un utilisateur modifié"),
-    'auth.regenerate_api_key': ('user', 'Clé API régénérée'),
-    'auth.delete_api_key': ('user', 'Clé API supprimée'),
     'auth.delete_my_api_key': ('user', 'Clé API personnelle supprimée'),
     # Réglages et sauvegarde
     'settings.restore_backup': ('settings', 'Sauvegarde restaurée'),

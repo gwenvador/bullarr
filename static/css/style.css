@@ -5717,17 +5717,42 @@ html body:has(#settings-nav-subgroup) :is(.settings-card, .backup-card, .guide-c
 a.history-source-link { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; white-space: nowrap; }
 a.history-source-link .icon { width: 12px; height: 12px; }
 
-
-/* Droits d'une clé API (Paramètres > Accès API, Mon profil) */
-.api-scopes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
-.api-scope { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 8px; cursor: pointer; }
-.api-scope input { margin-top: 3px; }
-.api-scope span { display: flex; flex-direction: column; gap: 2px; }
-.api-scope small { color: var(--color-text-muted); font-size: 0.82em; line-height: 1.3; }
-.api-scope:has(input:disabled) { opacity: 0.55; }
-
-.pf-apikeys { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
-.pf-apikey { border: 1px solid var(--color-border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.pf-apikey-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.pf-apikey-head small { color: var(--color-text-muted); flex: 1; }
-.pf-apikey-new { border-top: 1px solid var(--color-border); padding-top: 14px; }
+/* Clés API (Mon profil) */
+.pf-apikey-card { grid-column: 1 / -1; }
+.pf-apikeys { display: flex; flex-direction: column; margin: 14px 0 4px; border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; }
+.pf-apikeys:has(.pf-apikeys-empty) { border-style: dashed; }
+.pf-apikeys-empty { margin: 0; padding: 14px 16px; font-size: .88em; color: var(--color-text-muted); }
+.pf-apikey { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+.pf-apikey + .pf-apikey { border-top: 1px solid var(--color-border); }
+.pf-apikey.is-new { background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
+.pf-apikey-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pf-apikey-info { flex: 1; min-width: 0; }
+.pf-apikey-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-apikey-meta { font-size: .8em; color: var(--color-text-muted); margin-top: 2px; }
+.pf-apikey-scope-btn { flex-shrink: 0; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 4px 10px;
+    border-radius: 999px; border: 1px solid var(--color-border); background: var(--color-surface-alt, transparent); color: var(--color-text);
+    font: inherit; font-size: .8em; cursor: pointer; }
+.pf-apikey-scope-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.pf-apikey-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.pf-apikey-actions button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+    border: 0; border-radius: 8px; background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.pf-apikey-actions button:hover { background: var(--color-surface-alt, rgba(127,127,127,.12)); color: var(--color-text); }
+.pf-apikey-actions .pf-apikey-delete:hover { color: var(--color-danger, #d9534f); }
+.pf-apikey-actions .icon, .pf-apikey-actions svg { width: 17px; height: 17px; }
+.pf-apikey-value { display: block; padding: 8px 10px; border-radius: 8px; background: var(--color-surface-alt, rgba(127,127,127,.08));
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; word-break: break-all; user-select: all; }
+.api-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.api-chip { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--color-border); background: transparent; color: var(--color-text-muted);
+    font: inherit; font-size: .82em; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+.api-chip:hover { border-color: var(--color-accent); color: var(--color-text); }
+.api-chip.is-on { background: color-mix(in srgb, var(--color-accent) 14%, transparent); border-color: var(--color-accent); color: var(--color-accent); font-weight: 600; }
+.pf-apikey-new { display: grid; gap: 10px; margin-top: 12px; padding: 14px; border: 1px solid var(--color-border); border-radius: 12px; }
+.pf-apikey-new input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--color-border);
+    background: var(--color-bg, transparent); color: var(--color-text); font: inherit; }
+.pf-apikey-new input:focus { outline: 0; border-color: var(--color-accent); }
+.pf-apikey-new-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 600px) {
+    .pf-apikey-row { flex-wrap: wrap; }
+    .pf-apikey-info { flex-basis: 100%; }
+    .pf-apikey-scope-btn { max-width: none; margin-right: auto; }
+}

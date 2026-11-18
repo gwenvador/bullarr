@@ -193,52 +193,83 @@ async function pfApiKeysCall(url, method, body) {
     return data;
 }
 
+let pfOpenScopes = null;
+
 function pfRenderApiKeys() {
     document.getElementById('pf-apikey-card').hidden = false;
     const list = document.getElementById('pf-apikeys');
-    list.innerHTML = pfApiKeys.length ? pfApiKeys.map(k => `
+    list.innerHTML = pfApiKeys.length ? pfApiKeys.map(k => {
+        const used = k.last_used_at ? `utilisée le ${pfDate(k.last_used_at)}` : 'jamais utilisée';
+        return `
         <div class="pf-apikey" data-key-id="${k.id}">
-            <div class="pf-apikey-head">
-                <strong>${pfEscape(k.name)}</strong>
-                <small>créée le ${pfDate(k.created_at)}${k.last_used_at ? ` · utilisée le ${pfDate(k.last_used_at)}` : ' · jamais utilisée'}</small>
-                <button type="button" class="rq-btn rq-btn-ghost pf-apikey-delete">Supprimer</button>
+            <div class="pf-apikey-row">
+                <div class="pf-apikey-info">
+                    <div class="pf-apikey-name">${pfEscape(k.name)}</div>
+                    <div class="pf-apikey-meta">créée le ${pfDate(k.created_at)} · ${used}</div>
+                </div>
+                <button type="button" class="pf-apikey-scope-btn" data-tooltip="Changer les droits">${pfEscape(apiScopesSummary(k.scopes, pfApiAvailable))}</button>
+                <div class="pf-apikey-actions">
+                    <button type="button" class="pf-apikey-show" data-tooltip="Afficher la clé" aria-label="Afficher la clé">${svgIcon('eye')}</button>
+                    <button type="button" class="pf-apikey-copy" data-tooltip="Copier la clé" aria-label="Copier la clé">${svgIcon('copy')}</button>
+                    <button type="button" class="pf-apikey-delete" data-tooltip="Supprimer la clé" aria-label="Supprimer la clé">${svgIcon('trash-2')}</button>
+                </div>
             </div>
-            <span class="pf-pass"><input type="password" readonly value="${pfEscape(k.api_key)}" spellcheck="false" autocomplete="off"><button type="button" class="pf-eye pf-apikey-show" aria-label="Afficher">${svgIcon('eye')}</button><button type="button" class="pf-eye pf-apikey-copy" aria-label="Copier">${svgIcon('copy')}</button></span>
-            <div class="api-scopes pf-apikey-scopes"></div>
-        </div>`).join('') : '<p class="pf-hint">Aucune clé pour le moment.</p>';
+            <code class="pf-apikey-value" hidden>${pfEscape(k.api_key)}</code>
+            <div class="api-chips pf-apikey-scopes" ${pfOpenScopes === k.id ? '' : 'hidden'}></div>
+        </div>`;
+    }).join('') : '<p class="pf-apikeys-empty">Aucune clé pour le moment.</p>';
     list.querySelectorAll('.pf-apikey').forEach(card => {
         const id = Number(card.dataset.keyId);
         const key = pfApiKeys.find(k => k.id === id);
-        const field = card.querySelector('input');
+        const value = card.querySelector('.pf-apikey-value');
+        const scopesBox = card.querySelector('.pf-apikey-scopes');
+        const scopeBtn = card.querySelector('.pf-apikey-scope-btn');
         card.querySelector('.pf-apikey-show').addEventListener('click', event => {
-            field.type = field.type === 'password' ? 'text' : 'password';
-            event.currentTarget.innerHTML = svgIcon(field.type === 'password' ? 'eye' : 'eye-off');
+            value.hidden = !value.hidden;
+            event.currentTarget.innerHTML = svgIcon(value.hidden ? 'eye' : 'eye-off');
         });
         card.querySelector('.pf-apikey-copy').addEventListener('click', async () => {
             try { await navigator.clipboard.writeText(key.api_key); pfMessage('pf-apikey-message', `Clé « ${key.name} » copiée.`); }
-            catch (error) { field.type = 'text'; field.select(); pfMessage('pf-apikey-message', 'Sélectionnez la clé et copiez-la.', true); }
+            catch (error) { value.hidden = false; pfMessage('pf-apikey-message', 'Copie impossible : sélectionnez la clé affichée.', true); }
         });
         card.querySelector('.pf-apikey-delete').addEventListener('click', async () => {
             if (!confirm(`Supprimer la clé « ${key.name} » ? L’application qui l’utilise perdra l’accès.`)) return;
             try { await pfApiKeysCall(`/api/auth/profile/api-keys/${id}`, 'DELETE'); pfMessage('pf-apikey-message', 'Clé supprimée.'); }
             catch (error) { pfMessage('pf-apikey-message', error.message, true); }
         });
-        renderApiScopes(card.querySelector('.pf-apikey-scopes'), {scopes: key.scopes || ['full'], available: pfApiAvailable}, async scopes => {
+        scopeBtn.addEventListener('click', () => {
+            pfOpenScopes = scopesBox.hidden ? id : null;
+            scopesBox.hidden = !scopesBox.hidden;
+        });
+        renderApiScopes(scopesBox, {scopes: key.scopes, available: pfApiAvailable}, async scopes => {
             try {
                 const response = await fetch(`/api/auth/profile/api-keys/${id}`, {
                     method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({scopes})
                 });
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible');
-                key.scopes = scopes;
-                pfMessage('pf-apikey-message', `Droits de « ${key.name} » enregistrés.`);
+                key.scopes = scopes.includes('full') ? null : scopes;
+                scopeBtn.textContent = apiScopesSummary(key.scopes, pfApiAvailable);
+                pfMessage('pf-apikey-message', 'Droits enregistrés.');
             } catch (error) {
                 pfMessage('pf-apikey-message', error.message, true);
             }
         });
     });
-    renderApiScopes(document.getElementById('pf-apikey-new-scopes'), {scopes: pfNewKeyScopes, available: pfApiAvailable},
-        scopes => { pfNewKeyScopes = scopes; });
+}
+
+function pfToggleNewKey(open) {
+    const form = document.getElementById('pf-apikey-new');
+    form.hidden = !open;
+    document.getElementById('pf-apikey-add').hidden = open;
+    if (open) {
+        pfNewKeyScopes = ['read'];
+        renderApiScopes(document.getElementById('pf-apikey-new-scopes'), {scopes: pfNewKeyScopes, available: pfApiAvailable},
+            scopes => { pfNewKeyScopes = scopes; });
+        document.getElementById('pf-apikey-name').focus();
+    } else {
+        form.reset();
+    }
 }
 
 async function pfLoadApiKeys() {
@@ -332,18 +363,22 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = false;
         }
     });
+    document.getElementById('pf-apikey-add').addEventListener('click', () => pfToggleNewKey(true));
+    document.getElementById('pf-apikey-cancel').addEventListener('click', () => pfToggleNewKey(false));
     document.getElementById('pf-apikey-new').addEventListener('submit', async event => {
         event.preventDefault();
-        const nameField = document.getElementById('pf-apikey-name');
         try {
-            const data = await pfApiKeysCall('/api/auth/profile/api-keys', 'POST', {name: nameField.value, scopes: pfNewKeyScopes});
-            nameField.value = '';
-            const created = pfApiKeys[pfApiKeys.length - 1];
-            if (created && created.api_key === data.api_key) {
-                const input = document.querySelector(`.pf-apikey[data-key-id="${created.id}"] input`);
-                if (input) input.type = 'text';
+            const data = await pfApiKeysCall('/api/auth/profile/api-keys', 'POST',
+                {name: document.getElementById('pf-apikey-name').value, scopes: pfNewKeyScopes});
+            pfToggleNewKey(false);
+            const created = pfApiKeys.find(k => k.api_key === data.api_key);
+            const card = created && document.querySelector(`.pf-apikey[data-key-id="${created.id}"]`);
+            if (card) {
+                card.querySelector('.pf-apikey-value').hidden = false;
+                card.querySelector('.pf-apikey-show').innerHTML = svgIcon('eye-off');
+                card.classList.add('is-new');
             }
-            pfMessage('pf-apikey-message', 'Clé créée.');
+            pfMessage('pf-apikey-message', 'Clé créée : copiez-la dans votre application.');
         } catch (error) {
             pfMessage('pf-apikey-message', error.message, true);
         }

@@ -52,6 +52,8 @@ const ICON_PATHS = {
     magnet: '<path d="m12 15 4 4" /><path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z" /><path d="m5 8 4 4" />',
     star: '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />',
     eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" />',
+    eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" />',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />',
     'eye-off': '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" /><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" /><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" /><path d="m2 2 20 20" />',
     zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />',
     database: '<ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" />',
@@ -143,26 +145,40 @@ function svgIcon(name, extraClass) {
 }
 
 
-// Droits d'une clé API (Paramètres > Accès API, Mon profil) : cases à cocher, « Accès complet »
-// exclusif des autres. onChange(scopes) reçoit la nouvelle liste.
+// Droits d'une clé API (Mon profil) : pastilles à bascule, « Accès complet » exclusif des
+// autres. onChange(scopes) reçoit la nouvelle liste.
 function renderApiScopes(container, payload, onChange) {
     if (!container || !payload || !Array.isArray(payload.available)) return;
-    const selected = new Set(payload.scopes || ['full']);
+    let selected = new Set(payload.scopes && payload.scopes.length ? payload.scopes : (payload.scopes ? [] : ['full']));
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
-    container.innerHTML = payload.available.map(scope => `
-        <label class="api-scope">
-            <input type="checkbox" value="${esc(scope.code)}"${selected.has(scope.code) ? ' checked' : ''}>
-            <span><strong>${esc(scope.label)}</strong><small>${esc(scope.help)}</small></span>
-        </label>`).join('');
-    const boxes = [...container.querySelectorAll('input[type=checkbox]')];
-    const sync = () => {
-        const full = boxes.find(box => box.value === 'full').checked;
-        boxes.forEach(box => { if (box.value !== 'full') box.disabled = full; });
+    const draw = () => {
+        const full = selected.has('full');
+        container.innerHTML = payload.available.map(scope => {
+            const on = full ? scope.code === 'full' : selected.has(scope.code);
+            return `<button type="button" class="api-chip${on ? ' is-on' : ''}${scope.code === 'full' ? ' is-full' : ''}"
+                data-code="${esc(scope.code)}" aria-pressed="${on}" data-tooltip="${esc(scope.help)}">${esc(scope.label)}</button>`;
+        }).join('');
     };
-    sync();
-    boxes.forEach(box => box.addEventListener('change', () => {
-        sync();
-        const full = boxes.find(b => b.value === 'full').checked;
-        onChange(full ? ['full'] : boxes.filter(b => b.checked && b.value !== 'full').map(b => b.value));
-    }));
+    draw();
+    container.onclick = event => {
+        const chip = event.target.closest('.api-chip');
+        if (!chip) return;
+        const code = chip.dataset.code;
+        if (code === 'full') {
+            selected = selected.has('full') ? new Set(['read']) : new Set(['full']);
+        } else {
+            selected.delete('full');
+            if (selected.has(code)) selected.delete(code); else selected.add(code);
+        }
+        draw();
+        onChange([...selected]);
+    };
+}
+
+// Libellé court des droits d'une clé (« Accès complet », « Lecture · Tags »…).
+function apiScopesSummary(scopes, available) {
+    if (!scopes || scopes.includes('full')) return 'Accès complet';
+    if (!scopes.length) return 'Aucun droit';
+    const labels = Object.fromEntries((available || []).map(s => [s.code, s.label]));
+    return scopes.map(code => labels[code] || code).join(' · ');
 }

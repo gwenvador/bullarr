@@ -1968,29 +1968,10 @@
                         <div class="settings-card" id="apiAccessCard">
                             <h3>Accès API</h3>
                             <p class="help-text">
-                                Les applications externes contrôlent Bullarr par les routes <code>/api/</code>,
-                                avec cette clé dans l'en-tête <code>X-Api-Key</code> (ou le paramètre <code>?apikey=</code>).
-                                Elle ne donne pas accès aux pages. Choisissez ci-dessous ce qu'elle a le droit de faire
-                                (par défaut : tous les droits d'administration).
-                                Pour avoir plusieurs clés (une par application, chacune avec ses droits), créez-les dans <a href="/profil">Mon profil</a> : chaque compte peut en avoir autant qu'il veut, limitées à ses droits.
+                                Les clés API se créent dans <a href="/profil">Mon profil</a> : chaque compte peut en avoir
+                                plusieurs (une par application), chacune limitée aux droits du compte et aux droits cochés.
                                 <a href="/api/docs" target="_blank" rel="noopener">Liste des routes</a>
                             </p>
-                            <div class="form-group">
-                                <label for="apiKeyValue">Clé API</label>
-                                <div class="password-input-group">
-                                    <input type="text" id="apiKeyValue" readonly placeholder="Aucune clé : accès API désactivé" spellcheck="false" autocomplete="off">
-                                    <button type="button" class="btn-toggle-password" id="apiKeyCopyBtn" onclick="copyApiKey()" hidden>Copier</button>
-                                </div>
-                            </div>
-                            <div class="form-group" id="apiKeyScopesGroup" hidden>
-                                <label>Droits de la clé</label>
-                                <div class="api-scopes" id="apiKeyScopes"></div>
-                            </div>
-                            <div class="form-actions">
-                                <button type="button" class="btn" id="apiKeyGenerateBtn" onclick="regenerateApiKey()">Générer une clé</button>
-                                <button type="button" class="btn" id="apiKeyDeleteBtn" onclick="deleteApiKey()" hidden>Supprimer la clé</button>
-                            </div>
-                            <div id="apiKeyMessage" class="message"></div>
                         </div>
                     </div>
                 </div>

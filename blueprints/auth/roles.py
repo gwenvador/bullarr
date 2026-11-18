@@ -234,7 +234,7 @@ def current_role(config=None):
         return g.bullarr_role
     role = ROLE_ADMIN
     user = request_user()
-    if user and not g.get('api_key_auth') and not current_app.config.get('AUTH_BYPASS_LOGIN', False):
+    if user and not current_app.config.get('AUTH_BYPASS_LOGIN', False):
         if config is None:
             from .config_store import load_oidc_config
             config = load_oidc_config()

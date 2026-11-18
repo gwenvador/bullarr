@@ -211,7 +211,7 @@ est optionnelle et désactivée tant qu'elle n'est pas explicitement activée.
 | 💻 Clients | Clients de téléchargement : aMule/eMule, qBittorrent, rTorrent, Deluge, Shelfmark |
 | 🧩 Intégrations | Komga : rescan après import, envoi de la page lue |
 | 📱 Notifications | Telegram (bot) et ntfy, par événement. Carte **Liens** : adresse publique de Bullarr utilisée dans les liens des notifications (vide : l'adresse vue par le navigateur) |
-| 🔐 Login | Authentification : comptes locaux, avec SSO OIDC en option (désactivée par défaut). Carte **Utilisateurs et rôles** : comptes, rôles, inscription, demandes de BD, contrôle parental. La page de connexion affiche le formulaire et/ou un bouton SSO ; la redirection automatique vers le SSO est une option, désactivée par défaut. Carte **Accès API** : clé pour les applications externes |
+| 🔐 Login | Authentification : comptes locaux, avec SSO OIDC en option (désactivée par défaut). Carte **Utilisateurs et rôles** : comptes, rôles, inscription, demandes de BD, contrôle parental. La page de connexion affiche le formulaire et/ou un bouton SSO ; la redirection automatique vers le SSO est une option, désactivée par défaut. |
 | 📊 Surveillance | Détection et acquisition automatique des tomes manquants |
 | 📥 Imports | Activation et règles de l'import automatique de fichiers |
 | 🗂️ Recherche | Priorité des formats dans les résultats de recherche et ordre des sources |
@@ -320,8 +320,8 @@ inutile de forcer un scan manuel côté Komga.
 ### 🔌 API
 
 Bullarr se pilote aussi par une API HTTP/JSON (application mobile, scripts, domotique) :
-générez une clé dans **Configuration** → `Login` → **Accès API** (clé générale) ou dans
-**Mon profil** (clé propre au compte, avec ses droits), puis envoyez-la dans l'en-tête
+créez une clé dans **Mon profil → Clés API** (une par application, avec les droits du compte
+réduits à ceux choisis), puis envoyez-la dans l'en-tête
 `X-Api-Key`. Un compte local peut aussi obtenir sa clé avec son identifiant et son mot de
 passe (`POST /api/auth/token`), comme le fait l'extension Mihon / Tachiyomi.
 

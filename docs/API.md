@@ -10,7 +10,7 @@ Toutes les routes de l'interface web sous `/api/` sont utilisables par une appli
 
 ## Authentification
 
-1. Dans Bullarr, ouvrez **Paramètres → Login → Accès API** et cliquez sur **Générer une clé**.
+1. Dans Bullarr, ouvrez **Mon profil → Clés API**, cliquez sur **Nouvelle clé**, donnez-lui un nom et choisissez ses droits.
 2. Envoyez la clé à chaque requête, au choix :
    - en-tête `X-Api-Key: <clé>` (recommandé) ;
    - en-tête `Authorization: Bearer <clé>` ;
@@ -27,15 +27,16 @@ Règles :
 - **Clé fausse :** réponse `401` `{"success": false, "error": "Clé API invalide"}`, même si l'authentification est désactivée.
 - **Sans clé :** si le mode Login est actif, un client qui envoie `Accept: application/json` reçoit `401`, et les autres sont redirigés vers `/login`.
 - **Mode « Sans authentification » :** les routes répondent aussi sans clé. Mettez Bullarr derrière un mode Login si l'API est exposée.
-- **Gestion de la clé :** la clé ne peut pas se lire, se régénérer ni se supprimer elle-même. Ces actions (`GET`, `POST` et `DELETE` `/api/auth/api-key`) demandent une session ouverte dans le navigateur.
-- **Stockage :** la clé est chiffrée sur le disque, dans `data/oidc_config.json`. La régénérer coupe immédiatement l'ancienne.
+- **Gestion des clés :** une clé ne peut ni lire, ni créer, ni supprimer de clé. Ces actions demandent une session ouverte dans le navigateur.
+- **Stockage :** les clés sont chiffrées dans la base. Supprimer une clé la coupe immédiatement.
 
-### Clé personnelle d'un compte
+### Clés d'un compte
 
-Chaque compte peut aussi avoir sa propre clé, créée dans **Mon profil**. Elle agit avec les droits de ce compte (rôle lecteur, bibliothèques visibles, genres masqués) au lieu des droits complets de la clé générale.
+Chaque compte a ses propres clés, une par application. Une clé agit avec les droits du compte (rôle lecteur, bibliothèques visibles, genres masqués), réduits aux droits choisis pour elle : accès complet, lecture seule, tags, suivi de lecture, métadonnées, surveillance, demandes.
 
-- `GET`, `POST` et `DELETE` `/api/auth/profile/api-key` : lire, créer (ou remplacer) et supprimer la clé du compte connecté. Comme pour la clé générale, ces routes demandent une session ouverte dans le navigateur.
-- `POST /api/auth/token` avec `{"username": "...", "password": "..."}` : un compte local obtient sa clé personnelle (créée au besoin) avec son identifiant et son mot de passe. C'est ce qu'utilise l'extension Mihon / Tachiyomi. Réponses : `400` si la connexion par mot de passe n'est pas activée, `401` si les identifiants sont faux, `403` si le compte attend sa validation, `429` après trop d'échecs.
+- `GET` et `POST` `/api/auth/profile/api-keys` : lister les clés du compte connecté, en créer une avec `{"name": "...", "scopes": ["read", "tags"]}`.
+- `PUT` et `DELETE` `/api/auth/profile/api-keys/<id>` : renommer une clé ou changer ses droits, la supprimer.
+- `POST /api/auth/token` avec `{"username": "...", "password": "..."}` : un compte local obtient une clé (créée au besoin) avec son identifiant et son mot de passe. C'est ce qu'utilise l'extension Mihon / Tachiyomi. Réponses : `400` si la connexion par mot de passe n'est pas activée, `401` si les identifiants sont faux, `403` si le compte attend sa validation, `429` après trop d'échecs.
 
 ### Connexion SSO d'une application (sans clé API)
 

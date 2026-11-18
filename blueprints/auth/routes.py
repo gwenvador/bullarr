@@ -17,7 +17,7 @@ from . import auth_bp
 from encryption import decrypt
 from error_utils import error_message
 from .config_store import (AUTH_MODES, LEGACY_AUTH_MODES, load_oidc_config, save_oidc_config, normalize_issuer_url,
-                           generate_api_key)
+)
 from . import accounts
 from .activity import log_activity, list_activity
 from .roles import (request_user, ROLES, ROLE_READER, PARENTAL_PRESET, all_genres, computed_role, current_role, normalize_groups,
@@ -145,15 +145,9 @@ def _supplied_api_key():
     return key.strip()
 
 
-def _api_key_status(config):
-    """None si aucune clé n'est fournie, True si elle est valide, False sinon.
-
-    Une clé n'est acceptée que sur les routes /api/ : elle ne donne pas accès aux pages."""
-    supplied = _supplied_api_key()
-    if not supplied or not request.path.startswith('/api/'):
-        return None
-    expected = config.get('api_key_decrypted') or ''
-    return bool(expected) and hmac.compare_digest(expected, supplied)
+def _api_key_supplied_for_api():
+    """Clé fournie sur une route /api/ (une clé n'ouvre jamais les pages)."""
+    return bool(_supplied_api_key()) and request.path.startswith('/api/')
 
 
 def _signup_enabled(config):
@@ -211,18 +205,11 @@ def enforce_login():
 
     config = load_oidc_config()
 
-    # Accès API : une clé valide remplace la session et le jeton CSRF ; une clé fausse
-    # est refusée même sans authentification, pour que le client voie son erreur.
-    api_key_ok = _api_key_status(config)
-    if api_key_ok is True:
-        g.api_key_auth = True
-        scopes = normalize_scopes(config.get('api_key_scopes'))
-        if not scope_allows(scopes, request.endpoint, request.method, request.url_rule.rule if request.url_rule else ''):
-            return jsonify({'success': False, 'error': denied_message(scopes)}), 403
-        return None
-    if api_key_ok is False:
-        # Clé personnelle d'un compte : mêmes droits que ce compte (lecteur limité à ses
-        # routes et à ses bibliothèques), sans jeton CSRF.
+    # Accès API : une clé personnelle (Mon profil) remplace la session et le jeton CSRF ; une clé
+    # fausse est refusée même sans authentification, pour que le client voie son erreur.
+    if _api_key_supplied_for_api():
+        # Mêmes droits que le compte (lecteur limité à ses routes et à ses bibliothèques),
+        # restreints aux droits cochés pour cette clé.
         row, scopes = accounts.user_for_api_key(_supplied_api_key())
         if row is None:
             return jsonify({'success': False, 'error': 'Clé API invalide'}), 401
@@ -1124,66 +1111,10 @@ def test_oidc_discovery():
         return jsonify({'success': False, 'error': f"Erreur: {'Erreur interne'}"}), 500
 
 
-@auth_bp.route('/api/auth/api-key', methods=['GET'])
-def get_api_key():
-    """Clé API de Bullarr (en-tête X-Api-Key pour les applications externes)."""
-    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
-        return jsonify({'success': False, 'error': 'La clé API ne peut pas être lue avec la clé API'}), 403
-    config = load_oidc_config()
-    return jsonify({'success': True, 'api_key': config.get('api_key_decrypted') or '',
-                    **scopes_payload(normalize_scopes(config.get('api_key_scopes')))})
-
-
 def _requested_scopes():
     """Droits envoyés dans le corps {"scopes": [...]} ; None s'ils ne sont pas fournis."""
     data = request.get_json(silent=True) or {}
     return normalize_scopes(data.get('scopes')) if 'scopes' in data else None
-
-
-@auth_bp.route('/api/auth/api-key', methods=['POST'])
-def regenerate_api_key():
-    """Crée (ou remplace) la clé API ; l'ancienne cesse aussitôt de fonctionner. Corps
-    facultatif {"scopes": [...]} : droits de la nouvelle clé (sinon ceux de l'ancienne)."""
-    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
-        return jsonify({'success': False, 'error': 'La clé API ne peut pas être changée avec la clé API'}), 403
-    config = load_oidc_config()
-    config['api_key_decrypted'] = generate_api_key()
-    requested = _requested_scopes()
-    if requested is not None:
-        config['api_key_scopes'] = requested
-    if not save_oidc_config(config):
-        return jsonify({'success': False, 'error': 'Erreur de sauvegarde de la clé API'}), 500
-    return jsonify({'success': True, 'api_key': config['api_key_decrypted'],
-                    **scopes_payload(normalize_scopes(config.get('api_key_scopes')))})
-
-
-@auth_bp.route('/api/auth/api-key/scopes', methods=['PUT'])
-def set_api_key_scopes():
-    """Change les droits de la clé API sans la régénérer. Corps : {"scopes": [...]}."""
-    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
-        return jsonify({'success': False, 'error': 'Les droits de la clé ne se changent pas avec une clé API'}), 403
-    requested = _requested_scopes()
-    if requested is None:
-        return jsonify({'success': False, 'error': 'scopes manquant'}), 400
-    config = load_oidc_config()
-    config['api_key_scopes'] = requested
-    if not save_oidc_config(config):
-        return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
-    return jsonify({'success': True, **scopes_payload(requested)})
-
-
-@auth_bp.route('/api/auth/api-key', methods=['DELETE'])
-def delete_api_key():
-    """Supprime la clé API : plus aucun accès par clé."""
-    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
-        return jsonify({'success': False, 'error': 'La clé API ne peut pas être supprimée avec la clé API'}), 403
-    config = load_oidc_config()
-    config.pop('api_key', None)
-    config.pop('api_key_decrypted', None)
-    config.pop('api_key_scopes', None)
-    if not save_oidc_config(config):
-        return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
-    return jsonify({'success': True})
 
 
 def _my_api_key_owner():

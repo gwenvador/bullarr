@@ -1,42 +1,51 @@
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 
 from werkzeug.security import generate_password_hash
 
+from config import Config
+
 
 class ApiKeyAccessTest(unittest.TestCase):
-    """Clé API : accès aux routes /api/ sans session ni CSRF, jamais aux pages."""
-
-    @classmethod
-    def setUpClass(cls):
-        os.makedirs('data', exist_ok=True)
-        from app import create_app
-        cls.app = create_app()
-        cls.app.config['TESTING'] = True
+    """Clé API d'un compte : accès aux routes /api/ sans session ni CSRF, jamais aux pages."""
 
     def setUp(self):
+        os.makedirs('data', exist_ok=True)
+        fd, self.db_path = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        Config._init_database(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("INSERT INTO users (user_key, name, auth_method, password_hash, role_override) "
+                     "VALUES ('password:admin', 'Admin', 'password', ?, 'admin')", (generate_password_hash('secret'),))
+        conn.commit()
+        conn.close()
         self.config_dir = tempfile.TemporaryDirectory()
         self.config_path = os.path.join(self.config_dir.name, 'oidc_config.json')
-        self.app.config['OIDC_CONFIG_FILE'] = self.config_path
-        self.app.config['AUTH_BYPASS_LOGIN'] = False
         with open(self.config_path, 'w') as f:
             json.dump({'mode': 'password', 'username': 'admin',
                        'password_hash': generate_password_hash('secret')}, f)
+        from app import create_app
+        self.app = create_app()
+        self.app.config.update(DATABASE=self.db_path, TESTING=True, OIDC_CONFIG_FILE=self.config_path,
+                               AUTH_BYPASS_LOGIN=False)
         self.client = self.app.test_client()
 
     def tearDown(self):
+        os.remove(self.db_path)
         self.config_dir.cleanup()
 
     def _login(self):
         with self.client.session_transaction() as sess:
-            sess['user'] = {'name': 'admin'}
+            sess['user'] = {'name': 'admin', 'auth_method': 'password'}
             sess['csrf_token'] = 'tok'
 
     def _create_key(self):
         self._login()
-        response = self.client.post('/api/auth/api-key', headers={'X-CSRF-Token': 'tok'})
+        response = self.client.post('/api/auth/profile/api-keys', json={'name': 'Script'},
+                                    headers={'X-CSRF-Token': 'tok'})
         self.assertEqual(response.status_code, 200, response.get_data(as_text=True))
         key = response.get_json()['api_key']
         self.assertEqual(len(key), 32)
@@ -45,9 +54,13 @@ class ApiKeyAccessTest(unittest.TestCase):
 
     def test_key_is_stored_encrypted(self):
         key = self._create_key()
-        stored = open(self.config_path).read()
-        self.assertNotIn(key, stored)
-        self.assertIn('"api_key"', stored)
+        conn = sqlite3.connect(self.db_path)
+        rows = conn.execute('SELECT key_hash, key_enc FROM api_keys').fetchall()
+        conn.close()
+        self.assertEqual(len(rows), 1)
+        self.assertNotIn(key, ' '.join(str(v) for v in rows[0]))
+        with open(self.config_path) as f:
+            self.assertNotIn('api_key', f.read())
 
     def test_valid_key_opens_api_routes_without_session_or_csrf(self):
         key = self._create_key()
@@ -71,11 +84,13 @@ class ApiKeyAccessTest(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login', response.headers['Location'])
 
-    def test_key_cannot_read_or_change_itself(self):
+    def test_key_cannot_manage_keys(self):
         key = self._create_key()
-        for method in ('get', 'post', 'delete'):
-            response = getattr(self.client, method)('/api/auth/api-key', headers={'X-Api-Key': key})
-            self.assertEqual(response.status_code, 403, method)
+        for method, url in (('get', '/api/auth/profile/api-keys'), ('post', '/api/auth/profile/api-keys'),
+                            ('delete', '/api/auth/profile/api-keys/1'), ('get', '/api/auth/api-key')):
+            response = getattr(self.client, method)(url, headers={'X-Api-Key': key})
+            self.assertIn(response.status_code, (403, 404), f'{method} {url}')
+            self.assertNotEqual(response.status_code, 200)
 
     def test_api_client_without_key_gets_401_json(self):
         response = self.client.get('/api/auth/me', headers={'Accept': 'application/json'})
@@ -85,7 +100,9 @@ class ApiKeyAccessTest(unittest.TestCase):
     def test_deleted_key_stops_working(self):
         key = self._create_key()
         self._login()
-        self.assertEqual(self.client.delete('/api/auth/api-key', headers={'X-CSRF-Token': 'tok'}).status_code, 200)
+        key_id = self.client.get('/api/auth/profile/api-keys').get_json()['keys'][0]['id']
+        response = self.client.delete(f'/api/auth/profile/api-keys/{key_id}', headers={'X-CSRF-Token': 'tok'})
+        self.assertEqual(response.status_code, 200)
         external = self.app.test_client()
         self.assertEqual(external.get('/api/auth/me', headers={'X-Api-Key': key}).status_code, 401)
 

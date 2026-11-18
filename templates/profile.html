@@ -108,18 +108,22 @@
                                 </form>
                             </section>
 
-                            <section id="pf-apikey-card" class="pf-card" hidden>
+                            <section id="pf-apikey-card" class="pf-card pf-apikey-card" hidden>
                                 <h3><span data-pf-icon="key-round"></span>Clés API</h3>
-                                <p class="pf-hint">Pour les applications (extension Mihon / Tachiyomi, scripts…) : elles accèdent à Bullarr par l’en-tête <code>X-Api-Key</code>, avec vos droits ou moins selon les cases cochées. Une clé par application : vous pourrez en supprimer une sans toucher aux autres.</p>
+                                <p class="pf-hint">Une clé par application (Mihon, script, domotique…), à envoyer dans l’en-tête <code>X-Api-Key</code>. Elle agit avec vos droits, réduits à ceux que vous choisissez.</p>
                                 <div id="pf-apikeys" class="pf-apikeys"></div>
-                                <form id="pf-apikey-new" class="pf-apikey-new">
-                                    <label class="pf-field"><span>Nouvelle clé</span><input type="text" id="pf-apikey-name" maxlength="60" placeholder="Nom (ex. Mihon, script tags)" autocomplete="off"></label>
-                                    <div class="pf-field"><span>Droits</span><div class="api-scopes" id="pf-apikey-new-scopes"></div></div>
-                                    <div class="pf-form-foot">
-                                        <div id="pf-apikey-message" class="pf-message"></div>
-                                        <button type="submit" class="rq-btn rq-btn-primary"><span data-pf-icon="key-round"></span><span>Créer la clé</span></button>
+                                <form id="pf-apikey-new" class="pf-apikey-new" hidden>
+                                    <input type="text" id="pf-apikey-name" maxlength="60" placeholder="Nom de la clé (ex. Mihon)" autocomplete="off" required>
+                                    <div class="api-chips" id="pf-apikey-new-scopes"></div>
+                                    <div class="pf-apikey-new-actions">
+                                        <button type="button" id="pf-apikey-cancel" class="rq-btn rq-btn-ghost">Annuler</button>
+                                        <button type="submit" class="rq-btn rq-btn-primary">Créer la clé</button>
                                     </div>
                                 </form>
+                                <div class="pf-form-foot">
+                                    <div id="pf-apikey-message" class="pf-message"></div>
+                                    <button type="button" id="pf-apikey-add" class="rq-btn rq-btn-ghost"><span data-pf-icon="key-round"></span><span>Nouvelle clé</span></button>
+                                </div>
                             </section>
 
                             <section id="pf-sso-card" class="pf-card" hidden>
