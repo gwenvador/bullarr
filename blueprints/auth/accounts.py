@@ -8,6 +8,7 @@ password_hash ; sa clé est « password:<identifiant> » (voir roles.user_key). 
 role_override (admin / reader), administrateur par défaut. Les comptes OIDC (Pocket ID)
 apparaissent dans la même table à leur première connexion.
 """
+import json
 import hashlib
 import re
 import secrets
@@ -223,14 +224,19 @@ def _api_key_hash(key):
     return hashlib.sha256(key.encode('utf-8')).hexdigest()
 
 
-def create_api_key(key):
-    """Crée (ou remplace) la clé API personnelle du compte `key` ; None si le compte n'existe pas."""
+def create_api_key(key, scopes=None):
+    """Crée (ou remplace) la clé API personnelle du compte `key` ; None si le compte n'existe pas.
+    scopes : droits de la clé (voir api_scopes.py) ; None = accès complet."""
     from encryption import encrypt
+    from .api_scopes import normalize_scopes
     value = secrets.token_hex(16)
+    scopes = normalize_scopes(scopes)
     conn = _connect()
     try:
-        updated = conn.execute('UPDATE users SET api_key_hash = ?, api_key_enc = ? WHERE user_key = ?',
-                               (_api_key_hash(value), encrypt(value), key)).rowcount
+        updated = conn.execute('UPDATE users SET api_key_hash = ?, api_key_enc = ?, api_key_scopes_json = ? '
+                               'WHERE user_key = ?',
+                               (_api_key_hash(value), encrypt(value),
+                                json.dumps(scopes) if scopes is not None else None, key)).rowcount
         conn.commit()
     finally:
         conn.close()
@@ -245,10 +251,39 @@ def get_api_key(key):
     return decrypt(row['api_key_enc']) or None
 
 
+def api_key_scopes(row):
+    """Droits de la clé personnelle d'une ligne de users ; None = accès complet."""
+    from .api_scopes import normalize_scopes
+    try:
+        raw = row['api_key_scopes_json']
+    except (IndexError, KeyError):
+        return None
+    if not raw:
+        return None
+    try:
+        return normalize_scopes(json.loads(raw))
+    except ValueError:
+        return []  # valeur illisible : la clé ne garde que les routes toujours permises
+
+
+def set_api_key_scopes(key, scopes):
+    from .api_scopes import normalize_scopes
+    scopes = normalize_scopes(scopes)
+    conn = _connect()
+    try:
+        conn.execute('UPDATE users SET api_key_scopes_json = ? WHERE user_key = ?',
+                     (json.dumps(scopes) if scopes is not None else None, key))
+        conn.commit()
+    finally:
+        conn.close()
+    return scopes
+
+
 def delete_api_key(key):
     conn = _connect()
     try:
-        conn.execute('UPDATE users SET api_key_hash = NULL, api_key_enc = NULL WHERE user_key = ?', (key,))
+        conn.execute('UPDATE users SET api_key_hash = NULL, api_key_enc = NULL, api_key_scopes_json = NULL '
+                     'WHERE user_key = ?', (key,))
         conn.commit()
     finally:
         conn.close()

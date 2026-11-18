@@ -1419,6 +1419,27 @@ async function loadOidcSettings() {
 }
 
 // ===== Accès API =====
+let apiKeyScopes = ['full'];
+
+function renderApiKeyScopes(payload) {
+    if (payload && payload.scopes) apiKeyScopes = payload.scopes;
+    document.getElementById('apiKeyScopesGroup').hidden = false;
+    renderApiScopes(document.getElementById('apiKeyScopes'), payload, async scopes => {
+        apiKeyScopes = scopes;
+        if (!document.getElementById('apiKeyValue').value) return; // enregistrés à la création de la clé
+        try {
+            const response = await fetch('/api/auth/api-key/scopes', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+            showMessage('apiKeyMessage', '✅ Droits de la clé enregistrés', 'success');
+        } catch (error) {
+            showMessage('apiKeyMessage', '❌ ' + error.message, 'error');
+        }
+    });
+}
+
 function renderApiKey(key) {
     document.getElementById('apiKeyValue').value = key || '';
     document.getElementById('apiKeyCopyBtn').hidden = !key;
@@ -1432,6 +1453,7 @@ async function loadApiKey() {
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
         renderApiKey(data.api_key);
+        renderApiKeyScopes(data);
     } catch (error) {
         showMessage('apiKeyMessage', '❌ Clé API illisible : ' + error.message, 'error');
     }
@@ -1441,10 +1463,13 @@ async function regenerateApiKey() {
     if (document.getElementById('apiKeyValue').value
         && !confirm('Régénérer la clé API ? Les applications qui utilisent l\'ancienne clé perdront l\'accès.')) return;
     try {
-        const response = await fetch('/api/auth/api-key', { method: 'POST' });
+        const response = await fetch('/api/auth/api-key', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scopes: apiKeyScopes })
+        });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
         renderApiKey(data.api_key);
+        renderApiKeyScopes(data);
         showMessage('apiKeyMessage', '✅ Nouvelle clé API enregistrée', 'success');
     } catch (error) {
         showMessage('apiKeyMessage', '❌ ' + error.message, 'error');

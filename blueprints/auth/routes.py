@@ -131,6 +131,9 @@ def _oidc_ready(config):
     return _oidc_enabled(config) and bool(config.get('issuer')) and bool(config.get('client_id'))
 
 
+from .api_scopes import normalize_scopes, scope_allows, denied_message, scopes_payload
+
+
 def _supplied_api_key():
     """Clé API envoyée par un client externe : en-tête X-Api-Key (ou Authorization: Bearer),
     ou paramètre ?apikey= pour les clients qui ne savent pas ajouter d'en-tête."""
@@ -213,6 +216,9 @@ def enforce_login():
     api_key_ok = _api_key_status(config)
     if api_key_ok is True:
         g.api_key_auth = True
+        scopes = normalize_scopes(config.get('api_key_scopes'))
+        if not scope_allows(scopes, request.endpoint, request.method, request.url_rule.rule if request.url_rule else ''):
+            return jsonify({'success': False, 'error': denied_message(scopes)}), 403
         return None
     if api_key_ok is False:
         # Clé personnelle d'un compte : mêmes droits que ce compte (lecteur limité à ses
@@ -221,6 +227,9 @@ def enforce_login():
         if row is None:
             return jsonify({'success': False, 'error': 'Clé API invalide'}), 401
         g.api_user = accounts.api_user(row)
+        scopes = accounts.api_key_scopes(row)
+        if not scope_allows(scopes, request.endpoint, request.method, request.url_rule.rule if request.url_rule else ''):
+            return jsonify({'success': False, 'error': denied_message(scopes)}), 403
         if current_role(config) == ROLE_READER:
             if not reader_allowed(request.endpoint, request.method):
                 return jsonify({'success': False, 'error': 'Réservé aux administrateurs'}), 403
@@ -1122,19 +1131,46 @@ def get_api_key():
     if getattr(g, 'api_key_auth', False) or g.get('api_user'):
         return jsonify({'success': False, 'error': 'La clé API ne peut pas être lue avec la clé API'}), 403
     config = load_oidc_config()
-    return jsonify({'success': True, 'api_key': config.get('api_key_decrypted') or ''})
+    return jsonify({'success': True, 'api_key': config.get('api_key_decrypted') or '',
+                    **scopes_payload(normalize_scopes(config.get('api_key_scopes')))})
+
+
+def _requested_scopes():
+    """Droits envoyés dans le corps {"scopes": [...]} ; None s'ils ne sont pas fournis."""
+    data = request.get_json(silent=True) or {}
+    return normalize_scopes(data.get('scopes')) if 'scopes' in data else None
 
 
 @auth_bp.route('/api/auth/api-key', methods=['POST'])
 def regenerate_api_key():
-    """Crée (ou remplace) la clé API ; l'ancienne cesse aussitôt de fonctionner."""
+    """Crée (ou remplace) la clé API ; l'ancienne cesse aussitôt de fonctionner. Corps
+    facultatif {"scopes": [...]} : droits de la nouvelle clé (sinon ceux de l'ancienne)."""
     if getattr(g, 'api_key_auth', False) or g.get('api_user'):
         return jsonify({'success': False, 'error': 'La clé API ne peut pas être changée avec la clé API'}), 403
     config = load_oidc_config()
     config['api_key_decrypted'] = generate_api_key()
+    requested = _requested_scopes()
+    if requested is not None:
+        config['api_key_scopes'] = requested
     if not save_oidc_config(config):
         return jsonify({'success': False, 'error': 'Erreur de sauvegarde de la clé API'}), 500
-    return jsonify({'success': True, 'api_key': config['api_key_decrypted']})
+    return jsonify({'success': True, 'api_key': config['api_key_decrypted'],
+                    **scopes_payload(normalize_scopes(config.get('api_key_scopes')))})
+
+
+@auth_bp.route('/api/auth/api-key/scopes', methods=['PUT'])
+def set_api_key_scopes():
+    """Change les droits de la clé API sans la régénérer. Corps : {"scopes": [...]}."""
+    if getattr(g, 'api_key_auth', False) or g.get('api_user'):
+        return jsonify({'success': False, 'error': 'Les droits de la clé ne se changent pas avec une clé API'}), 403
+    requested = _requested_scopes()
+    if requested is None:
+        return jsonify({'success': False, 'error': 'scopes manquant'}), 400
+    config = load_oidc_config()
+    config['api_key_scopes'] = requested
+    if not save_oidc_config(config):
+        return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
+    return jsonify({'success': True, **scopes_payload(requested)})
 
 
 @auth_bp.route('/api/auth/api-key', methods=['DELETE'])
@@ -1145,6 +1181,7 @@ def delete_api_key():
     config = load_oidc_config()
     config.pop('api_key', None)
     config.pop('api_key_decrypted', None)
+    config.pop('api_key_scopes', None)
     if not save_oidc_config(config):
         return jsonify({'success': False, 'error': 'Erreur de sauvegarde'}), 500
     return jsonify({'success': True})
@@ -1166,18 +1203,35 @@ def get_my_api_key():
     key, error = _my_api_key_owner()
     if error:
         return error
-    return jsonify({'success': True, 'api_key': accounts.get_api_key(key) or ''})
+    return jsonify({'success': True, 'api_key': accounts.get_api_key(key) or '',
+                    **scopes_payload(accounts.api_key_scopes(accounts.get_user(key)))})
 
 
 @auth_bp.route('/api/auth/profile/api-key', methods=['POST'])
 def create_my_api_key():
-    """Crée ou remplace la clé personnelle ; l'ancienne cesse aussitôt de fonctionner."""
+    """Crée ou remplace la clé personnelle ; l'ancienne cesse aussitôt de fonctionner. Corps
+    facultatif {"scopes": [...]} : droits de la nouvelle clé (sinon ceux de l'ancienne)."""
     key, error = _my_api_key_owner()
     if error:
         return error
-    value = accounts.create_api_key(key)
+    requested = _requested_scopes()
+    if requested is None:
+        requested = accounts.api_key_scopes(accounts.get_user(key))
+    value = accounts.create_api_key(key, requested)
     log_activity('api_key_created', detail='Clé API personnelle')
-    return jsonify({'success': True, 'api_key': value})
+    return jsonify({'success': True, 'api_key': value, **scopes_payload(requested)})
+
+
+@auth_bp.route('/api/auth/profile/api-key/scopes', methods=['PUT'])
+def set_my_api_key_scopes():
+    """Change les droits de la clé personnelle sans la régénérer. Corps : {"scopes": [...]}."""
+    key, error = _my_api_key_owner()
+    if error:
+        return error
+    requested = _requested_scopes()
+    if requested is None:
+        return jsonify({'success': False, 'error': 'scopes manquant'}), 400
+    return jsonify({'success': True, **scopes_payload(accounts.set_api_key_scopes(key, requested))})
 
 
 @auth_bp.route('/api/auth/profile/api-key', methods=['DELETE'])

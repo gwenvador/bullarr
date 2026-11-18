@@ -110,9 +110,10 @@
 
                             <section id="pf-apikey-card" class="pf-card" hidden>
                                 <h3><span data-pf-icon="key-round"></span>Clé API</h3>
-                                <p class="pf-hint">Pour les applications (extension Mihon / Tachiyomi…) : elles accèdent à Bullarr avec vos droits, par l’en-tête <code>X-Api-Key</code>. Un compte local peut aussi s’y connecter avec son identifiant et son mot de passe.</p>
+                                <p class="pf-hint">Pour les applications (extension Mihon / Tachiyomi…) : elles accèdent à Bullarr avec vos droits (ou moins, selon les cases cochées), par l’en-tête <code>X-Api-Key</code>. Un compte local peut aussi s’y connecter avec son identifiant et son mot de passe.</p>
                                 <label class="pf-field"><span>Votre clé</span>
                                     <span class="pf-pass"><input type="password" id="pf-apikey" readonly placeholder="Aucune clé" spellcheck="false" autocomplete="off"><button type="button" class="pf-eye" data-pf-toggle="pf-apikey" aria-label="Afficher" data-pf-icon="eye"></button><button type="button" class="pf-eye" id="pf-apikey-copy" aria-label="Copier" data-pf-icon="copy" hidden></button></span></label>
+                                <div class="pf-field"><span>Droits de la clé</span><div class="api-scopes" id="pf-apikey-scopes"></div></div>
                                 <div class="pf-form-foot">
                                     <div id="pf-apikey-message" class="pf-message"></div>
                                     <button type="button" id="pf-apikey-delete" class="rq-btn rq-btn-ghost" hidden>Supprimer</button>

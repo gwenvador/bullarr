@@ -73,6 +73,24 @@ class UserApiKeysTest(unittest.TestCase):
         self.assertEqual(client.delete('/api/auth/profile/api-key', headers={'X-CSRF-Token': 'tok'}).status_code, 200)
         self.assertEqual(external.get('/api/auth/me', headers={'X-Api-Key': key}).status_code, 401)
 
+    def test_scoped_key_limits_actions(self):
+        client = self._session_client('alice')
+        response = client.post('/api/auth/profile/api-key', headers={'X-CSRF-Token': 'tok'},
+                               json={'scopes': ['read', 'tags']})
+        self.assertEqual(response.get_json()['scopes'], ['read', 'tags'])
+        headers = {'X-Api-Key': response.get_json()['api_key']}
+        external = self.app.test_client()
+        self.assertEqual(external.get('/api/series/1/tags', headers=headers).status_code, 200)
+        self.assertEqual(external.put('/api/series/1/tags', headers=headers, json={'tags': ['famille']}).status_code, 200)
+        self.assertEqual(external.post('/api/series/1/read-status', headers=headers, json={'read': True}).status_code, 403)
+        self.assertEqual(external.get('/api/prowlarr/config', headers=headers).status_code, 403)
+        # Droits changés sans régénérer la clé : lecture seule.
+        response = client.put('/api/auth/profile/api-key/scopes', headers={'X-CSRF-Token': 'tok'},
+                              json={'scopes': ['read']})
+        self.assertEqual(response.get_json()['scopes'], ['read'])
+        self.assertEqual(external.put('/api/series/1/tags', headers=headers, json={'tags': []}).status_code, 403)
+        self.assertEqual(external.get('/api/series/1/tags', headers=headers).status_code, 200)
+
     def test_reader_key_keeps_reader_limits(self):
         key = self._key_for('bob')
         client = self.app.test_client()

@@ -171,6 +171,25 @@ function pfRenderKomga() {
 }
 
 let pfApiKey = '';
+let pfApiScopes = ['full'];
+
+function pfRenderApiScopes(payload) {
+    if (payload && payload.scopes) pfApiScopes = payload.scopes;
+    renderApiScopes(document.getElementById('pf-apikey-scopes'), payload, async scopes => {
+        pfApiScopes = scopes;
+        if (!pfApiKey) return; // enregistrés à la création de la clé
+        try {
+            const response = await fetch('/api/auth/profile/api-key/scopes', {
+                method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({scopes})
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible');
+            pfMessage('pf-apikey-message', 'Droits enregistrés.');
+        } catch (error) {
+            pfMessage('pf-apikey-message', error.message, true);
+        }
+    });
+}
 
 function pfRenderApiKey() {
     document.getElementById('pf-apikey-card').hidden = false;
@@ -182,7 +201,9 @@ function pfRenderApiKey() {
 
 async function pfApiKeyCall(method, okMessage) {
     try {
-        const response = await fetch('/api/auth/profile/api-key', {method});
+        const response = await fetch('/api/auth/profile/api-key', method === 'POST'
+            ? {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify({scopes: pfApiScopes})}
+            : {method});
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) {
             if (method === 'GET') return; // carte masquée (pas de compte : authentification désactivée)
@@ -190,6 +211,7 @@ async function pfApiKeyCall(method, okMessage) {
         }
         pfApiKey = data.api_key || '';
         pfRenderApiKey();
+        if (data.available) pfRenderApiScopes(data);
         if (okMessage) pfMessage('pf-apikey-message', okMessage);
     } catch (error) {
         pfMessage('pf-apikey-message', error.message, true);

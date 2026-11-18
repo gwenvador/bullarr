@@ -33,7 +33,7 @@ READER_ENDPOINTS = {
     'auth.upload_avatar': frozenset({'POST'}), 'auth.delete_avatar': frozenset({'DELETE'}),
     'auth.choose_avatar': frozenset({'PUT'}), 'auth.avatar_presets': _GET,
     'auth.get_my_api_key': _GET, 'auth.create_my_api_key': frozenset({'POST'}),
-    'auth.delete_my_api_key': frozenset({'DELETE'}),
+    'auth.delete_my_api_key': frozenset({'DELETE'}), 'auth.set_my_api_key_scopes': frozenset({'PUT'}),
     # Bibliothèques et séries (lecture)
     'library.libraries': _GET, 'library.library_operations': _GET, 'library.get_library_info': _GET,
     'library.get_library_last_updated': _GET, 'library.get_library_series': _GET,
@@ -106,7 +106,7 @@ def init_tables(cursor):
     # api_key_hash / api_key_enc : clé API personnelle (empreinte pour la recherche,
     # valeur chiffrée pour l'afficher à son propriétaire dans « Mon profil »).
     for column in ('allowed_libraries_json', 'blocked_genres_json', 'password_hash', 'status', 'avatar',
-                   'api_key_hash', 'api_key_enc'):
+                   'api_key_hash', 'api_key_enc', 'api_key_scopes_json'):
         if column not in columns:
             cursor.execute(f'ALTER TABLE users ADD COLUMN {column} TEXT')
     # Demande à valider : bibliothèque visée au moment de la demande, décision (qui, quand).

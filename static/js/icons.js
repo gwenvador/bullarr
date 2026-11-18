@@ -9,6 +9,8 @@ function safeExternalHttpUrl(value) {
 }
 
 const ICON_PATHS = {
+    'search-x': '<path d="m13.5 8.5-5 5" /><path d="m8.5 8.5 5 5" /><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
+    'library-big': '<rect width="8" height="18" x="3" y="3" rx="1" /><path d="M7 3v18" /><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" />',
     bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />',
     heart: '<path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" />',
     image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />',
@@ -138,4 +140,29 @@ function svgIcon(name, extraClass) {
     if (!inner) return '';
     const cls = extraClass ? `icon icon-${name} ${extraClass}` : `icon icon-${name}`;
     return `<svg class="${cls}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${inner}</svg>`;
+}
+
+
+// Droits d'une clé API (Paramètres > Accès API, Mon profil) : cases à cocher, « Accès complet »
+// exclusif des autres. onChange(scopes) reçoit la nouvelle liste.
+function renderApiScopes(container, payload, onChange) {
+    if (!container || !payload || !Array.isArray(payload.available)) return;
+    const selected = new Set(payload.scopes || ['full']);
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    container.innerHTML = payload.available.map(scope => `
+        <label class="api-scope">
+            <input type="checkbox" value="${esc(scope.code)}"${selected.has(scope.code) ? ' checked' : ''}>
+            <span><strong>${esc(scope.label)}</strong><small>${esc(scope.help)}</small></span>
+        </label>`).join('');
+    const boxes = [...container.querySelectorAll('input[type=checkbox]')];
+    const sync = () => {
+        const full = boxes.find(box => box.value === 'full').checked;
+        boxes.forEach(box => { if (box.value !== 'full') box.disabled = full; });
+    };
+    sync();
+    boxes.forEach(box => box.addEventListener('change', () => {
+        sync();
+        const full = boxes.find(b => b.value === 'full').checked;
+        onChange(full ? ['full'] : boxes.filter(b => b.checked && b.value !== 'full').map(b => b.value));
+    }));
 }

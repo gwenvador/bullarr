@@ -1534,7 +1534,11 @@ function displaySeries(series) {
 
     if (series.length === 0) {
         grid.className = 'series-grid';
-        grid.innerHTML = '<div class="no-data"><span class="no-data-icon">📚</span><h3>Aucune série trouvée</h3><p>Scannez votre bibliothèque pour commencer</p></div>';
+        const searchInput = document.getElementById('search');
+        const narrowed = activeFilters.size > 0 || seriesColumnFilters.size > 0 || !!(searchInput && searchInput.value.trim());
+        grid.innerHTML = narrowed
+            ? `<div class="no-data"><span class="no-data-icon">${svgIcon('search-x')}</span><h3>Aucune série ne correspond</h3><p>Aucune série de cette bibliothèque ne correspond aux filtres ou à la recherche.</p><button class="btn btn-secondary" type="button" onclick="clearSeriesFilters()">Retirer les filtres</button></div>`
+            : `<div class="no-data"><span class="no-data-icon">${svgIcon('library-big')}</span><h3>Aucune série</h3><p>Scannez votre bibliothèque pour commencer</p></div>`;
         return;
     }
 
@@ -1995,9 +1999,11 @@ function filterSeries() {
     const searchTerm = normalizeForSearch(searchInput ? searchInput.value : '');
     // Recherche sur titre + auteur + genre + tags (texte pré-normalisé et mis en cache
     // dans _searchHaystack par loadLibraryData/buildSearchHaystack), pas seulement le titre
-    // Une série sans aucun album (ajoutée depuis Enrichir mais encore rien reçu) n'a pas sa place dans la grille.
+    // Une série sans aucun album (ajoutée depuis Enrichir mais encore rien reçu) n'a pas sa place
+    // dans la grille… sauf quand on la cherche : recherche tapée ou filtre de tag (lien ?tag=).
+    const lookingFor = !!searchTerm || [...activeFilters].some(key => key.startsWith('tag:'));
     let filtered = seriesData.filter(s =>
-        seriesHasAlbums(s) && (s._searchHaystack || buildSearchHaystack(s)).includes(searchTerm)
+        (lookingFor || seriesHasAlbums(s)) && (s._searchHaystack || buildSearchHaystack(s)).includes(searchTerm)
     );
 
 
