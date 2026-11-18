@@ -348,5 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pfMessage('pf-apikey-message', error.message, true);
         }
     });
+    pfLoad();
+    pfLoadKomga();
     pfLoadApiKeys();
 });
