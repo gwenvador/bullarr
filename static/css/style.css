@@ -5430,7 +5430,6 @@ a.nouveautes-series-pill:hover { color: #fff; background: #16a34a; border-color:
     color: var(--color-text-muted); background: var(--color-surface-alt); border: 1px solid var(--color-border); }
 .nouveautes-bdt-tag.is-genre { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
     background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
-.nouveautes-cover-tip small { display: block; margin-top: 3px; font-size: .72em; line-height: 1.35; text-align: center; color: var(--color-text-muted); }
 
 /* Nouveautés : tome / taille sur la même ligne que le nom du fichier (« il y a de
    l espace. met sur la meme ligne ») ; ils passent à la ligne seulement faute de place. */

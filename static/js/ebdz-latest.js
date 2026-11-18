@@ -619,7 +619,11 @@ function _nouveautesBedethequeCover(url, title) {
             .then(data => {
                 // Bédéthèque en pause ou budget atteint : on pourra réessayer au prochain survol.
                 if (data && data.limited) _nouveautesCoverCache.delete(key);
-                if (data && data.meta && _nouveautesOriginCache[url]) _nouveautesOriginCache[url].meta = data.meta;
+                if (data && data.meta && _nouveautesOriginCache[url]) {
+                    _nouveautesOriginCache[url].meta = data.meta;
+                    _fillNouveautesGenreSlots();
+                    _saveNouveautesOrigins();
+                }
                 return data && (data.cover || data.meta) ? { url: data.cover, title: title || '', meta: data.meta } : null;
             })
             .catch(() => { _nouveautesCoverCache.delete(key); return null; });
@@ -653,9 +657,8 @@ function _initNouveautesCoverPreview() {
             ? await _nouveautesSeriesCover(Number(target.dataset.coverSeriesId))
             : await _nouveautesBedethequeCover(target.dataset.coverBdtUrl, target.textContent.trim());
         if (current !== target || !cover) return;
-        const meta = _nouveautesMetaText(cover.meta || (target.dataset.coverBdtUrl && _nouveautesOriginCache[target.dataset.coverBdtUrl]?.meta));
-        tip.innerHTML = `${cover.url ? `<img src="${escapeHtml(cover.url)}" alt="">` : ''}${cover.title ? `<span>${escapeHtml(cover.title)}</span>` : ''}`
-            + (meta ? `<small>${escapeHtml(meta)}</small>` : '');
+        if (!cover.url) return;
+        tip.innerHTML = `<img src="${escapeHtml(cover.url)}" alt="">${cover.title ? `<span>${escapeHtml(cover.title)}</span>` : ''}`;
         place(target);
         tip.hidden = false;
     });
@@ -673,7 +676,7 @@ function _initNouveautesCoverPreview() {
 // fiches par appel, le serveur répond « pending » tant qu'il en reste). Gardée en mémoire
 // pour la page ; le filtre Genre charge les origines de toutes les lignes, pas seulement des
 // lignes affichées.
-const NOUVEAUTES_ORIGINS_KEY = 'bullarr:nouveautes:origins:v2';
+const NOUVEAUTES_ORIGINS_KEY = 'bullarr:nouveautes:origins:v3';
 // Les origines ne changent pas: gardées dans le navigateur, elles ne sont redemandées au serveur
 // (puis à Bédéthèque) que pour les séries jamais vues.
 const _nouveautesOriginCache = (() => {
@@ -733,7 +736,8 @@ function _fillNouveautesGenreSlots() {
 async function loadNouveautesOrigins(urls) {
     if (_nouveautesOriginRun) await _nouveautesOriginRun;
     const wanted = [...new Set((urls || []).filter(Boolean))];
-    let missing = wanted.filter(url => !(url in _nouveautesOriginCache));
+    const unknown = url => !(url in _nouveautesOriginCache) || _nouveautesOriginCache[url].meta === undefined;
+    let missing = wanted.filter(unknown);
     if (!missing.length) return false;
     _nouveautesOriginRun = (async () => {
         for (let round = 0; round < 60 && missing.length; round++) {
@@ -745,7 +749,7 @@ async function loadNouveautesOrigins(urls) {
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok || !data.success) return;
                 const answered = Object.entries(data.origins || {});
-                answered.forEach(([url, value]) => { _nouveautesOriginCache[url] = value; });
+                answered.forEach(([url, value]) => { _nouveautesOriginCache[url] = { ...value, meta: value.meta || null }; });
                 _fillNouveautesGenreSlots();
                 _saveNouveautesOrigins();
                 // Budget horaire épuisé ou Bédéthèque en pause : on n'insiste pas, ces adresses
@@ -753,13 +757,13 @@ async function loadNouveautesOrigins(urls) {
                 if (data.limited) return;
                 // Rien de lu et rien en attente côté serveur : adresses non reconnues, on les écarte.
                 if (!answered.length && !data.pending) {
-                    missing.slice(0, 100).forEach(url => { _nouveautesOriginCache[url] = { origin: null, kind: null }; });
+                    missing.slice(0, 100).forEach(url => { _nouveautesOriginCache[url] = { origin: null, kind: null, meta: null }; });
                 }
             } catch (error) {
                 console.warn('Origine Bédéthèque indisponible:', error);
                 return;
             }
-            missing = wanted.filter(url => !(url in _nouveautesOriginCache));
+            missing = wanted.filter(unknown);
             if (missing.length) await new Promise(resolve => setTimeout(resolve, 300));
         }
     })();
