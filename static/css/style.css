@@ -5769,3 +5769,4 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     .pf-apikey-info { flex-basis: 100%; }
     .pf-apikey-scope-btn { max-width: none; margin-right: auto; }
 }
+.pf-apikey-new[hidden], .pf-apikey-value[hidden], .api-chips[hidden] { display: none; }
