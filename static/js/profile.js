@@ -174,7 +174,7 @@ let pfApiKeys = [];
 let pfApiAvailable = null;
 let pfNewKeyScopes = ['read'];
 
-function pfDate(seconds) {
+function pfKeyDate(seconds) {
     return seconds ? new Date(seconds * 1000).toLocaleDateString('fr-FR', {day: 'numeric', month: 'short', year: 'numeric'}) : '';
 }
 
@@ -199,13 +199,13 @@ function pfRenderApiKeys() {
     document.getElementById('pf-apikey-card').hidden = false;
     const list = document.getElementById('pf-apikeys');
     list.innerHTML = pfApiKeys.length ? pfApiKeys.map(k => {
-        const used = k.last_used_at ? `utilisée le ${pfDate(k.last_used_at)}` : 'jamais utilisée';
+        const used = k.last_used_at ? `utilisée le ${pfKeyDate(k.last_used_at)}` : 'jamais utilisée';
         return `
         <div class="pf-apikey" data-key-id="${k.id}">
             <div class="pf-apikey-row">
                 <div class="pf-apikey-info">
                     <div class="pf-apikey-name">${pfEscape(k.name)}</div>
-                    <div class="pf-apikey-meta">créée le ${pfDate(k.created_at)} · ${used}</div>
+                    <div class="pf-apikey-meta">créée le ${pfKeyDate(k.created_at)} · ${used}</div>
                 </div>
                 <button type="button" class="pf-apikey-scope-btn" data-tooltip="Changer les droits">${pfEscape(apiScopesSummary(k.scopes, pfApiAvailable))}</button>
                 <div class="pf-apikey-actions">
@@ -217,7 +217,8 @@ function pfRenderApiKeys() {
             <code class="pf-apikey-value" hidden>${pfEscape(k.api_key)}</code>
             <div class="api-chips pf-apikey-scopes" ${pfOpenScopes === k.id ? '' : 'hidden'}></div>
         </div>`;
-    }).join('') : '<p class="pf-apikeys-empty">Aucune clé pour le moment.</p>';
+    }).join('') : `<div class="pf-apikeys-empty">${svgIcon('key-round')}<div><strong>Aucune clé</strong>
+            <span>Créez-en une pour chaque application qui doit accéder à Bullarr.</span></div></div>`;
     list.querySelectorAll('.pf-apikey').forEach(card => {
         const id = Number(card.dataset.keyId);
         const key = pfApiKeys.find(k => k.id === id);

@@ -5718,10 +5718,23 @@ a.history-source-link { display: inline-flex; align-items: center; gap: 4px; fon
 a.history-source-link .icon { width: 12px; height: 12px; }
 
 /* Clés API (Mon profil) */
-.pf-apikey-card { grid-column: 1 / -1; }
+.pf-hero + .pf-grid { margin-top: 18px; }
+@media (min-width: 900px) {
+    .pf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pf-apikey-card { grid-column: 2; grid-row: span 2; }
+}
+.pf-apikey-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.pf-apikey-top h3 { margin: 0; }
+.pf-apikey-add { padding: 6px 14px; font-size: .88em; }
+.pf-apikey-add[hidden] { display: none; }
+.pf-apikeys:empty { display: none; }
+.pf-apikeys-empty { display: flex; align-items: center; gap: 14px; padding: 18px 16px; color: var(--color-text-muted); font-size: .9em; }
+.pf-apikeys-empty .icon, .pf-apikeys-empty svg { width: 26px; height: 26px; flex-shrink: 0; padding: 10px; border-radius: 12px;
+    color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.pf-apikeys-empty strong { display: block; color: var(--color-text); margin-bottom: 2px; }
+#pf-apikey-message:empty { display: none; }
+#pf-apikey-message { margin-top: 10px; }
 .pf-apikeys { display: flex; flex-direction: column; margin: 14px 0 4px; border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; }
-.pf-apikeys:has(.pf-apikeys-empty) { border-style: dashed; }
-.pf-apikeys-empty { margin: 0; padding: 14px 16px; font-size: .88em; color: var(--color-text-muted); }
 .pf-apikey { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
 .pf-apikey + .pf-apikey { border-top: 1px solid var(--color-border); }
 .pf-apikey.is-new { background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
