@@ -559,7 +559,8 @@ function _nouveautesSeriesHtml(event) {
     const content = bedethequeUrl
         ? `<a href="${escapeHtml(bedethequeUrl)}"${coverAttr} target="_blank" rel="noopener noreferrer"${ownedId ? '' : ' data-tooltip="Voir la série sur Bédéthèque"'} onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="" style="width:14px; height:14px; vertical-align:-2px; margin-right:4px;">${escapeHtml(label)}</a>`
         : `<span${coverAttr}>${escapeHtml(label)}</span>`;
-    return `<div class="nouveautes-matched-series has-series" style="display:flex; align-items:center; gap:6px;">${content}${pencilHtml}</div>`;
+    // Tags Bédéthèque (genre, années, tomes, parution) sur la ligne de la série, à côté de son nom.
+    return `<div class="nouveautes-matched-series has-series" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">${content}${pencilHtml}${_nouveautesBdtTagsHtml(event)}</div>`;
 }
 
 // « pour les séries que l'on possède, affiche la couverture en passant sur le nom » :
@@ -1355,7 +1356,7 @@ function _nouveautesEbdzRowHtml(event, index) {
             <td style="padding:10px; text-align:center;">${typeIconHtml}</td>
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
-                <div class="nouveautes-title">${_nouveautesTitleHtml(filename)}${_nouveautesBdtTagsHtml(event)}</div>
+                <div class="nouveautes-title">${_nouveautesTitleHtml(filename)}</div>
                 ${_nouveautesSeriesHtml(event)}
                 ${_nouveautesMetaHtml([volumeLabel && ['nouveautes-meta-vol', _nouveautesVolumeLabel(volumeLabel)], link.filesize && ['nouveautes-meta-size', formatBytes(link.filesize)]])}
             </td>
@@ -1448,7 +1449,7 @@ function _nouveautesRssRowHtml(event) {
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
     // Release déjà possédée : ligne verte, comme les lignes EBDZ et Telegram.
     const ownedRowClass = event.already_owned === true ? 'volume-table-row-owned ' : '';
-    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div class="nouveautes-title">${title}${_nouveautesBdtTagsHtml(event)}</div>${matchedSeriesHtml}${event.vk ? '' : _nouveautesMetaHtml([_nouveautesGuessVolume(rawTitle) && ['nouveautes-meta-vol', _nouveautesVolumeLabel(_nouveautesGuessVolume(rawTitle))], event.size > 0 && ['nouveautes-meta-size', formatBytes(event.size)]])}${description ? `<div class="nouveautes-desc">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
+    return `<tr class="nouveautes-event-row ${ownedRowClass}${_nouveautesIsNew(event) ? 'nouveautes-row-new' : ''}" style="border-bottom:1px solid var(--color-border);"><td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td><td style="padding:10px; text-align:center;"><img src="/static/img/rss-logo.svg" alt="RSS" class="nouveautes-source-icon" data-tooltip="Flux RSS"></td><td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td><td class="nouveautes-details-cell" style="padding:10px;"><div class="nouveautes-title">${title}</div>${matchedSeriesHtml}${event.vk ? '' : _nouveautesMetaHtml([_nouveautesGuessVolume(rawTitle) && ['nouveautes-meta-vol', _nouveautesVolumeLabel(_nouveautesGuessVolume(rawTitle))], event.size > 0 && ['nouveautes-meta-size', formatBytes(event.size)]])}${description ? `<div class="nouveautes-desc">${description}</div>` : ''}</td>${_nouveautesGenreCellHtml(event)}<td style="padding:10px; text-align:center;">${_nouveautesMatchedHtml(event)}</td><td class="nouveautes-actions-cell" style="padding:10px;"><div style="display:flex; align-items:center; gap:8px;">${rssStatusHtml}${downloadButtons}${torrentClientButtons}${addButton}</div></td></tr>`;
 }
 
 function _nouveautesTelegramRowHtml(event) {
@@ -1474,7 +1475,7 @@ function _nouveautesTelegramRowHtml(event) {
             <td style="padding:10px; white-space:nowrap; text-align:center;">${telegramIconHtml}</td>
             <td class="nouveautes-origin-cell" style="padding:10px; color:var(--color-text-muted); font-size:0.9em;">${escapeHtml(_nouveautesOrigin(event))}</td>
             <td class="nouveautes-details-cell" style="padding:10px;">
-                <div class="nouveautes-title">${_nouveautesTitleHtml(event.filename)}${_nouveautesBdtTagsHtml(event)}</div>
+                <div class="nouveautes-title">${_nouveautesTitleHtml(event.filename)}</div>
                 ${_nouveautesSeriesHtml(event)}
                 ${_nouveautesMetaHtml([event.parsed_volume && ['nouveautes-meta-vol', _nouveautesVolumeLabel(event.parsed_volume)], event.file_size && ['nouveautes-meta-size', formatBytes(event.file_size)]])}
             </td>
