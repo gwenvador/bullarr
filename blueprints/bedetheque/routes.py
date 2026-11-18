@@ -3063,6 +3063,26 @@ def bedetheque_series_origins():
                     'limited': bool(pending) and origin_fetch_limited()})
 
 
+@bedetheque_bp.route('/series-cover', methods=['GET'])
+def bedetheque_series_cover():
+    """Couverture d'une série Bédéthèque non possédée, pour le survol dans Nouveautés.
+    ?url=<fiche série>. Réponse : {"success", "cover": "/covers/…" ou null, "limited"}.
+    Au plus une page lue (si l'adresse de l'image n'a pas déjà été notée en lisant l'origine),
+    puis l'image est gardée localement."""
+    from .origins import series_cover
+    scraper = BedethequeScraper()
+
+    def fetch_page(url):
+        return _fetch_bedetheque_page(scraper, url).decode('utf-8', errors='replace')
+
+    try:
+        path, limited = series_cover(current_app.config['DATABASE'], request.args.get('url', ''), fetch_page,
+                                     lambda cover_url: scraper._download_cover(cover_url, './data/covers'))
+    except Exception as e:
+        return jsonify({'success': False, 'error': error_message(e, 'Couverture indisponible')}), 500
+    return jsonify({'success': True, 'cover': f'/{path}' if path else None, 'limited': limited})
+
+
 @bedetheque_bp.route('/guard/status', methods=['GET'])
 def bedetheque_guard_status():
     """Appels vers Bédéthèque / BDGest : compteurs (1 h, 24 h), limite et pause éventuelle."""

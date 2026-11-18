@@ -102,6 +102,88 @@ def normalize_series_url(url):
 def _ensure_cache(conn):
     conn.execute('''CREATE TABLE IF NOT EXISTS bedetheque_origin_cache (
         url TEXT PRIMARY KEY, origin TEXT, fetched_at REAL NOT NULL)''')
+    # Couverture de la série : l'adresse de l'image est dans la même page que l'origine, elle
+    # est donc notée au passage ; cover_path = image déjà téléchargée (servie par /covers/).
+    columns = {row[1] for row in conn.execute('PRAGMA table_info(bedetheque_origin_cache)')}
+    for column in ('cover_url', 'cover_path'):
+        if column not in columns:
+            conn.execute(f'ALTER TABLE bedetheque_origin_cache ADD COLUMN {column} TEXT')
+
+
+# Couverture du tome 1 : balise og:image de la fiche (le bloc « serie-image » montre une planche).
+_COVER_RE = re.compile(r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"', re.IGNORECASE)
+_COVER_RE_NEW = re.compile(r'<img[^>]*\bsrc="([^"]*/(?:media/Couvertures|cache/thb_couv)/[^"]+)"', re.IGNORECASE)
+
+
+def safe_cover_url(url):
+    """Adresse d'image acceptée seulement sur Bédéthèque (jamais un autre hôte)."""
+    parsed = urlparse(str(url or '').strip())
+    host = (parsed.hostname or '').lower()
+    if parsed.scheme != 'https' or not (host == 'bedetheque.com' or host.endswith('.bedetheque.com')):
+        return None
+    return parsed.geturl()
+
+
+def parse_cover(html):
+    """Adresse de la couverture de la série dans le HTML de sa fiche, ou None."""
+    for pattern in (_COVER_RE, _COVER_RE_NEW):
+        match = pattern.search(html or '')
+        if match:
+            src = match.group(1).replace('&amp;', '&').strip()
+            if src.startswith('//'):
+                src = 'https:' + src
+            elif src.startswith('/'):
+                src = 'https://www.bedetheque.com' + src
+            return safe_cover_url(src)
+    return None
+
+
+def series_cover(database, url, fetch_page=None, download=None):
+    """(chemin local de la couverture ou None, limited). Lit la fiche seulement si son adresse
+    d'image n'est pas encore connue (une page, comptée dans le budget horaire des origines),
+    puis télécharge l'image une fois : les survols suivants ne coûtent plus rien."""
+    canonical = normalize_series_url(url)
+    if not canonical:
+        return None, False
+    conn = sqlite3.connect(database, timeout=30.0)
+    try:
+        _ensure_cache(conn)
+        row = conn.execute('SELECT origin, cover_url, cover_path FROM bedetheque_origin_cache WHERE url = ?',
+                           (canonical,)).fetchone()
+        origin, cover_url, cover_path = row if row else (None, None, None)
+        if cover_path:
+            return cover_path, False
+        if not cover_url:
+            if fetch_page is None:
+                return None, False
+            if origin_fetch_limited():
+                return None, True
+            with _recent_fetches_lock:
+                _recent_fetches.append(time.time())
+            from .guard import BedethequeGuardError
+            try:
+                html = fetch_page(canonical)
+            except BedethequeGuardError:
+                return None, True
+            cover_url = parse_cover(html)
+            origin = origin or parse_origin(html)
+            conn.execute('INSERT OR IGNORE INTO bedetheque_origin_cache (url, origin, fetched_at) VALUES (?, ?, ?)',
+                         (canonical, origin, time.time()))
+            conn.execute('UPDATE bedetheque_origin_cache SET cover_url = ?, origin = COALESCE(origin, ?) WHERE url = ?',
+                         (cover_url or '', origin, canonical))
+            conn.commit()
+            if origin:
+                _save_to_catalog([(canonical, origin)])
+        cover_url = safe_cover_url(cover_url)
+        if not cover_url or download is None:
+            return None, False
+        cover_path = download(cover_url)
+        if cover_path:
+            conn.execute('UPDATE bedetheque_origin_cache SET cover_path = ? WHERE url = ?', (cover_path, canonical))
+            conn.commit()
+        return cover_path, False
+    finally:
+        conn.close()
 
 
 def _save_to_catalog(pairs):
@@ -182,13 +264,14 @@ def resolve_origins(database, urls, fetch_page=None, fetch_limit=6):
             with _recent_fetches_lock:
                 _recent_fetches.append(time.time())
             try:
-                origin = parse_origin(fetch_page(url))
+                html = fetch_page(url)
+                origin = parse_origin(html)
             except BedethequeGuardError:
                 break  # pause du site ou limite atteinte : on s'arrête, rien n'est mémorisé
             except Exception:
                 continue  # réessayé au prochain appel
-            conn.execute('INSERT OR REPLACE INTO bedetheque_origin_cache (url, origin, fetched_at) VALUES (?, ?, ?)',
-                         (url, origin, time.time()))
+            conn.execute('INSERT OR REPLACE INTO bedetheque_origin_cache (url, origin, fetched_at, cover_url) '
+                         'VALUES (?, ?, ?, ?)', (url, origin, time.time(), parse_cover(html) or ''))
             conn.commit()
             if origin:
                 _save_to_catalog([(url, origin)])

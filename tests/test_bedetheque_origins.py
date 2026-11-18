@@ -167,3 +167,50 @@ class CatalogOriginsTest(unittest.TestCase):
         conn.commit()
         conn.close()
         self.assertEqual(self.catalog_index.get_catalog_origins([url]), {url: 'Europe'})
+
+
+class SeriesCoverTests(unittest.TestCase):
+    PAGE = ('<meta property="og:image" content="https://www.bedetheque.com/media/Couvertures/x01.jpg" />'
+            '<li title="Origine de la série"><i class="bdt-ori-3"></i> Manga</li>')
+    URL = 'https://www.bedetheque.com/serie-1-BD-X.html'
+
+    def setUp(self):
+        import tempfile, os
+        from blueprints.bedetheque import origins
+        self.origins = origins
+        fd, self.db = tempfile.mkstemp(suffix='.db'); os.close(fd)
+        conn = sqlite3.connect(self.db)
+        conn.execute('CREATE TABLE series (id INTEGER PRIMARY KEY, bedetheque_url TEXT, bedetheque_origin TEXT)')
+        conn.commit(); conn.close()
+        origins._recent_fetches.clear()
+
+    def tearDown(self):
+        import os
+        os.unlink(self.db)
+
+    def test_reads_page_once_then_uses_local_file(self):
+        from unittest import mock
+        pages, downloads = [], []
+        fetch = lambda url: pages.append(url) or self.PAGE
+        download = lambda url: downloads.append(url) or 'covers/x01.jpg'
+        with mock.patch.object(self.origins, '_save_to_catalog'), \
+                mock.patch.object(self.origins, 'origin_fetch_limited', return_value=False):
+            self.assertEqual(self.origins.series_cover(self.db, self.URL, fetch, download), ('covers/x01.jpg', False))
+            self.assertEqual(self.origins.series_cover(self.db, self.URL, fetch, download), ('covers/x01.jpg', False))
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(downloads, ['https://www.bedetheque.com/media/Couvertures/x01.jpg'])
+
+    def test_origin_read_notes_cover_url(self):
+        from unittest import mock
+        with mock.patch.object(self.origins, '_save_to_catalog'), \
+                mock.patch('blueprints.bedetheque.catalog_index.get_catalog_origins', return_value={}):
+            self.origins.resolve_origins(self.db, [self.URL], lambda url: self.PAGE)
+        calls = []
+        path, _ = self.origins.series_cover(self.db, self.URL, lambda url: calls.append(url),
+                                            lambda url: 'covers/x01.jpg')
+        self.assertEqual(path, 'covers/x01.jpg')
+        self.assertEqual(calls, [])
+
+    def test_rejects_foreign_image_host(self):
+        self.assertIsNone(self.origins.parse_cover('<meta property="og:image" content="https://evil.example/a.jpg">'))
+        self.assertIsNone(self.origins.series_cover(self.db, 'https://evil.example/serie-1-BD-X.html')[0])

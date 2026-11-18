@@ -553,7 +553,9 @@ function _nouveautesSeriesHtml(event) {
     const label = seriesTitle || 'Bédéthèque';
     // Série possédée : sa couverture s'affiche au survol du nom (voir _initNouveautesCoverPreview).
     const ownedId = event.type === 'ebdz' ? event.matched_series_id : event.series_id;
-    const coverAttr = ownedId ? ` data-cover-series-id="${Number(ownedId)}"` : '';
+    // Série non possédée : couverture lue sur Bédéthèque au survol (une fois, puis gardée).
+    const coverAttr = ownedId ? ` data-cover-series-id="${Number(ownedId)}"`
+        : (bedethequeUrl ? ` data-cover-bdt-url="${escapeHtml(bedethequeUrl)}"` : '');
     const content = bedethequeUrl
         ? `<a href="${escapeHtml(bedethequeUrl)}"${coverAttr} target="_blank" rel="noopener noreferrer"${ownedId ? '' : ' data-tooltip="Voir la série sur Bédéthèque"'} onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="" style="width:14px; height:14px; vertical-align:-2px; margin-right:4px;">${escapeHtml(label)}</a>`
         : `<span${coverAttr}>${escapeHtml(label)}</span>`;
@@ -580,6 +582,22 @@ function _nouveautesSeriesCover(seriesId) {
     return _nouveautesCoverCache.get(seriesId);
 }
 
+function _nouveautesBedethequeCover(url, title) {
+    const key = `bdt:${url}`;
+    if (!_nouveautesCoverCache.has(key)) {
+        const request = fetch(`/api/bedetheque/series-cover?url=${encodeURIComponent(url)}`)
+            .then(response => response.ok ? response.json() : null)
+            .then(data => {
+                // Bédéthèque en pause ou budget atteint : on pourra réessayer au prochain survol.
+                if (data && data.limited) _nouveautesCoverCache.delete(key);
+                return data && data.cover ? { url: data.cover, title: title || '' } : null;
+            })
+            .catch(() => { _nouveautesCoverCache.delete(key); return null; });
+        _nouveautesCoverCache.set(key, request);
+    }
+    return _nouveautesCoverCache.get(key);
+}
+
 function _initNouveautesCoverPreview() {
     const body = document.getElementById('nouveautes-events-body');
     if (!body || body._coverPreview) return;
@@ -598,17 +616,19 @@ function _initNouveautesCoverPreview() {
         tip.style.top = `${top}px`;
     };
     body.addEventListener('mouseover', async event => {
-        const target = event.target.closest('[data-cover-series-id]');
+        const target = event.target.closest('[data-cover-series-id], [data-cover-bdt-url]');
         if (!target || target === current) return;
         current = target;
-        const cover = await _nouveautesSeriesCover(Number(target.dataset.coverSeriesId));
+        const cover = target.dataset.coverSeriesId
+            ? await _nouveautesSeriesCover(Number(target.dataset.coverSeriesId))
+            : await _nouveautesBedethequeCover(target.dataset.coverBdtUrl, target.textContent.trim());
         if (current !== target || !cover) return;
         tip.innerHTML = `<img src="${escapeHtml(cover.url)}" alt="">${cover.title ? `<span>${escapeHtml(cover.title)}</span>` : ''}`;
         place(target);
         tip.hidden = false;
     });
     body.addEventListener('mouseout', event => {
-        const target = event.target.closest('[data-cover-series-id]');
+        const target = event.target.closest('[data-cover-series-id], [data-cover-bdt-url]');
         if (!target || target.contains(event.relatedTarget)) return;
         current = null;
         tip.hidden = true;
