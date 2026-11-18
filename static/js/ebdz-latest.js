@@ -1803,6 +1803,11 @@ function _groupNouveautesSeriesRows(body) {
                 .find(Boolean);
             if (seriesLink) name.appendChild(seriesLink.cloneNode(true));
             else name.textContent = first.dataset.seriesName || '';
+            // Tags Bédéthèque : une seule fois, sur l'en-tête du groupe (ils sont remplis plus
+            // tard par _fillNouveautesGenreSlots s'ils sont encore vides : l'élément est déplacé).
+            const groupTags = members.map(r => r.querySelector('.nouveautes-bdt-tags')).find(Boolean) || null;
+            members.forEach(r => r.querySelectorAll('.nouveautes-bdt-tags').forEach(el => { if (el !== groupTags) el.remove(); }));
+            if (groupTags) groupTags.remove();
             members.forEach(r => {
                 r.querySelectorAll('.nouveautes-matched-series a[href]:not([href="#"])').forEach(a => a.remove());
                 // Le crayon restant, seul sur sa ligne, rejoint la ligne du titre de l'album.
@@ -1836,6 +1841,7 @@ function _groupNouveautesSeriesRows(body) {
                 openNouveautesGroupMatchModal(indices, first.dataset.seriesName || '');
             });
             nameRow.append(name, pencil, btn);
+            if (groupTags) nameRow.append(groupTags);
             details.append(nameRow);
             header.appendChild(details);
             // « le bouton pour tout télécharger en un coup, juste l'éclair » : l'éclair vise
