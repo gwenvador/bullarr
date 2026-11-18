@@ -342,10 +342,7 @@
     <section id="api">
       <h2><span class="guide-num">7</span> API</h2>
       <p>Tout ce que fait l'interface passe par une API HTTP/JSON. Envoyez une clé dans l'en-tête <code>X-Api-Key</code> :</p>
-      <ul>
-        <li><strong>clé d'administration</strong> : <em>Configuration → Login → Accès API</em>, tous les droits ;</li>
-        <li><strong>clé personnelle</strong> : <em>Mon profil</em>, limitée aux droits du compte.</li>
-      </ul>
+      <p>Créez les clés dans <em>Mon profil → Clés API</em>, une par application. Chaque clé agit avec les droits du compte, réduits à ceux choisis : accès complet, lecture seule, tags, suivi de lecture, métadonnées, surveillance ou demandes.</p>
       <p>La page <code>/api/docs</code> de votre instance liste les routes ; <a href="https://github.com/gwenvador/bullarr/blob/main/docs/API.md">docs/API.md</a> les détaille avec des exemples <code>curl</code> et Python.</p>
     </section>
 
@@ -395,7 +392,7 @@
       <h3>Demandes de BD</h3>
       <p>Un lecteur demande une série depuis la page <em>Demandes</em>. L'admin l'accepte (en choisissant la bibliothèque) ou la refuse avec un motif dans <em>Validation</em> ; une option accepte tout automatiquement. Une demande acceptée ajoute la série et lance sa recherche. Un lecteur peut aussi demander un tome manquant d'une série déjà présente (<em>Demander ce tome</em>, sur la fiche ou dans l'application Android) : acceptée, la demande lance la recherche de ce tome.</p>
       <h3>Mon profil</h3>
-      <p>Nom, e-mail, mot de passe, avatar, clé API personnelle et compte Komga. Pour Komga, Bullarr crée une clé à votre nom et ne garde pas le mot de passe ; sans Komga, Bullarr retient lui-même où vous en êtes. Connexions et changements de comptes sont aussi dans <em>Suivi → Historique</em>.</p>
+      <p>Nom, e-mail, mot de passe, avatar, clés API (une par application, avec leurs droits) et compte Komga. Pour Komga, Bullarr crée une clé à votre nom et ne garde pas le mot de passe ; sans Komga, Bullarr retient lui-même où vous en êtes. Connexions et changements de comptes sont aussi dans <em>Suivi → Historique</em>.</p>
       <h3>Thèmes</h3>
       <p><em>Configuration → Thème</em> : cinq palettes (Atelier, Ardoise, Sauge, Océan, Prune), en clair, en sombre ou en <em>Système</em> qui suit l'appareil. Le choix est propre à chaque navigateur. L'application Android a les mêmes palettes.</p>
     </section>
