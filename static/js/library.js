@@ -4063,12 +4063,12 @@ function buildVolumeItemHtml(v, isOneshot, seriesTitle, seriesId) {
                               data-is-hs="${v.is_hs ? '1' : ''}"
                               data-is-episode="${v.is_episode ? '1' : ''}"
                               title="Rechercher ce tome sur EBDZ/Prowlarr">${svgIcon('search')} Non possédé</span>
-                        ${ci.year ? ` <span${_volumeDateTooltipAttr(v)}>📅 ${escapeHtml(_volumeDateLabel(v))}</span>` : ''}
+                        ${ci.year ? ` <span class="volume-date"${_volumeDateTooltipAttr(v)}>${svgIcon('calendar')}${escapeHtml(_volumeDateLabel(v))}</span>` : ''}
                     </div>
                     <div class="volume-meta">
-                        ${ci.writer ? `<span class="badge">✍️ ${escapeHtml(ci.writer)}</span>` : ''}
-                        ${ci.publisher ? `<span class="badge">🏢 ${escapeHtml(ci.publisher)}</span>` : ''}
-                        ${ci.genre ? `<span class="badge">🏷️ ${escapeHtml(ci.genre)}</span>` : ''}
+                        ${ci.writer ? `<span class="badge meta-chip" title="Auteur">${svgIcon('pen-line')}${escapeHtml(ci.writer)}</span>` : ''}
+                        ${ci.publisher ? `<span class="badge meta-chip" title="Éditeur">${svgIcon('building')}${escapeHtml(ci.publisher)}</span>` : ''}
+                        ${ci.genre && !/^\s*(genre\s+)?non\s+d[ée]fini\s*$/i.test(ci.genre) ? `<span class="badge meta-chip" title="Genre">${svgIcon('tag')}${escapeHtml(ci.genre)}</span>` : ''}
                     </div>
                     ${buildTruncatedHtml(ci.summary, 200, 'volume-summary')}
                 </div>

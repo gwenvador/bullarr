@@ -5786,3 +5786,10 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     .pf-apikey-scope-btn { max-width: none; margin-right: auto; }
 }
 .pf-apikey-new[hidden], .pf-apikey-value[hidden], .api-chips[hidden] { display: none; }
+
+/* « les icones c'est moche » : icônes au trait à la place des émojis (fiche d'un tome). */
+.volume-meta .meta-chip, .volume-file-detail .volume-date { display: inline-flex; align-items: center; gap: 5px; }
+.volume-meta .meta-chip .icon, .volume-file-detail .volume-date .icon {
+    width: 13px; height: 13px; flex: none; stroke-width: 2; opacity: .55;
+}
+.volume-file-detail .volume-date { color: var(--text-secondary, inherit); font-variant-numeric: tabular-nums; }
