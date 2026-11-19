@@ -2945,14 +2945,21 @@ def get_library_series(library_id):
                    u.name AS universe_name,
                    COALESCE(rp.book_count, 0) AS komga_book_count,
                    COALESCE(rp.read_count, 0) AS komga_read_count,
-                   COALESCE(rp.reading_count, 0) AS komga_reading_count
+                   COALESCE(rp.reading_count, 0) AS komga_reading_count,
+                   COALESCE(rp.read_units, 0) AS komga_read_units
             FROM series s
             LEFT JOIN universes u ON u.id = s.universe_id
             -- Avancement de lecture Komga des tomes possédés et rattachés (voir komga/read_progress.py).
             LEFT JOIN (
                 SELECT v.series_id, COUNT(*) AS book_count,
                        SUM(CASE WHEN p.completed = 1 THEN 1 ELSE 0 END) AS read_count,
-                       SUM(CASE WHEN COALESCE(p.completed, 0) = 0 AND COALESCE(p.page, 0) > 0 THEN 1 ELSE 0 END) AS reading_count
+                       SUM(CASE WHEN COALESCE(p.completed, 0) = 0 AND COALESCE(p.page, 0) > 0 THEN 1 ELSE 0 END) AS reading_count,
+                       -- « T1 lu et T2 65/67 : tu mets 50 % » : un tome commencé compte pour sa part
+                       -- de pages lues, pas pour zéro (barre de lecture des miniatures).
+                       SUM(CASE WHEN p.completed = 1 THEN 1.0
+                                WHEN COALESCE(p.page, 0) > 0 AND COALESCE(p.pages_count, v.page_count, 0) > 0
+                                    THEN MIN(1.0, p.page * 1.0 / COALESCE(p.pages_count, v.page_count))
+                                ELSE 0 END) AS read_units
                 FROM volumes v LEFT JOIN {progress_sql} p ON p.vol_id = v.id
                 WHERE {progress_scope}v.filepath IS NOT NULL
                 GROUP BY v.series_id
@@ -3042,6 +3049,7 @@ def get_library_series(library_id):
                 'komga_book_count': row['komga_book_count'],
                 'komga_read_count': row['komga_read_count'],
                 'komga_reading_count': row['komga_reading_count'],
+                'komga_read_units': round(row['komga_read_units'] or 0, 3),
             })
 
         conn.close()

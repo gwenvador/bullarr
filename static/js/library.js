@@ -650,7 +650,9 @@ function komgaReadingInfo(s) {
     if (!total) return null;
     const read = Number(s.komga_read_count) || 0;
     const reading = Number(s.komga_reading_count) || 0;
-    return { total, read, reading, started: read + reading > 0, percent: Math.round(100 * read / total) };
+    // Pages lues des tomes commencés comprises (komga_read_units) ; tomes finis seuls sinon.
+    const units = s.komga_read_units != null ? Number(s.komga_read_units) || 0 : read;
+    return { total, read, reading, started: read + reading > 0, percent: Math.min(100, Math.round(100 * units / total)) };
 }
 
 function _seriesReadLabel(s) {
