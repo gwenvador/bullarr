@@ -367,3 +367,12 @@
 .review-btn.review-dismiss-btn, .review-btn.review-group-close-btn { padding: 4px 10px; min-height: 28px; }
 .review-btn.review-dismiss-btn .icon, .review-btn.review-group-close-btn .icon { width: 13px; height: 13px; }
 .review-date { font-size: .8em; }
+
+/* Filtre des fichiers trouvés d'un album */
+.review-candidate-filter {
+    width: 100%; box-sizing: border-box; padding: 7px 10px; font: inherit; font-size: .9em;
+    border: 1px solid var(--color-border, #d8dbe3); border-radius: 8px;
+    background: var(--color-surface, #fff); color: inherit;
+}
+.review-candidate-filter:focus { outline: none; border-color: var(--color-accent); }
+.review-candidate[hidden] { display: none !important; }

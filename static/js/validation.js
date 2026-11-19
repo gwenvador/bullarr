@@ -154,6 +154,30 @@ function _reviewCandidatesOpen(reviewId, count) {
     return (count <= 3) !== expandedReviewCandidates.has(reviewId);
 }
 
+// « une recherche par album à valider » : filtre la liste des fichiers trouvés d'un seul
+// album, pour repérer le bon. Tous les mots doivent apparaître, dans n'importe quel ordre,
+// sans tenir compte des accents ni des ligatures (soeur = Sœur ; points, tirets = espace).
+function reviewFilterNormalize(text) {
+    return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+        .replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/ß/g, 'ss')
+        .replace(/[._\-–—]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function filterReviewCandidates(reviewId, value) {
+    const list = document.getElementById(`review-candidates-${reviewId}`);
+    if (!list) return;
+    const words = reviewFilterNormalize(value).split(' ').filter(Boolean);
+    let shown = 0;
+    list.querySelectorAll('.review-candidate').forEach(row => {
+        const text = row.dataset.filter || '';
+        const match = words.every(word => text.includes(word));
+        row.hidden = !match;
+        if (match) shown += 1;
+    });
+    const empty = list.querySelector('.review-candidate-filter-empty');
+    if (empty) empty.hidden = shown > 0;
+}
+
 function toggleReviewCandidates(reviewId) {
     if (expandedReviewCandidates.has(reviewId)) expandedReviewCandidates.delete(reviewId);
     else expandedReviewCandidates.add(reviewId);
@@ -255,7 +279,7 @@ function _reviewTomeHtml(review) {
             ? `<button class="review-btn review-btn-primary" type="button" onclick="downloadReviewCandidate(${review.id}, ${candidate.candidate_index ?? index}, this)">${svgIcon('download')} Télécharger</button>`
             : knownUrl ? ''
             : `<button class="review-btn review-btn-primary" type="button" onclick="openReviewBedethequeModal(${review.id}, '${reviewAttr(review.series_title || '')}')">${bdIcon} Associer à une série</button>`;
-        return `<div class="review-candidate">
+        return `<div class="review-candidate" data-filter="${reviewAttr(reviewFilterNormalize(name))}">
             <span class="review-source">${reviewSourceIcon(candidate) || svgIcon('file-check')}</span>
             <div class="review-candidate-text"><span class="review-candidate-name" title="${reviewAttr(name)}">${reviewEscape(name)}</span>
                 <span class="review-candidate-meta">${meta}${_reviewCandidateAvailabilityHtml(candidate, review.id, index)}</span></div>
@@ -277,7 +301,7 @@ function _reviewTomeHtml(review) {
         ${_reviewReasonHtml(review.reason)}
         ${retryAction}
         ${toggle}
-        <div class="review-candidates" id="review-candidates-${review.id}"${isExpanded ? '' : ' hidden'}>${candidatesHtml || '<div class="review-meta">Aucun candidat détaillé.</div>'}</div>
+        <div class="review-candidates" id="review-candidates-${review.id}"${isExpanded ? '' : ' hidden'}>${count > 1 ? `<input type="search" class="review-candidate-filter" placeholder="Filtrer les fichiers de cet album (ex. sisco 04)" oninput="filterReviewCandidates(${review.id}, this.value)" autocomplete="off">` : ''}${candidatesHtml || '<div class="review-meta">Aucun candidat détaillé.</div>'}<div class="review-meta review-candidate-filter-empty" hidden>Aucun fichier ne correspond.</div></div>
     </div>`;
 }
 
