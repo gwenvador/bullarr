@@ -367,3 +367,12 @@
 .review-btn.review-dismiss-btn, .review-btn.review-group-close-btn { padding: 4px 10px; min-height: 28px; }
 .review-btn.review-dismiss-btn .icon, .review-btn.review-group-close-btn .icon { width: 13px; height: 13px; }
 .review-date { font-size: .8em; }
+
+/* Recherche dans les albums à valider (série, tome, noms de fichiers). */
+.review-search {
+    width: 100%; box-sizing: border-box; margin: 0 0 12px; padding: 9px 12px;
+    font: inherit; color: var(--color-text); background: var(--color-surface);
+    border: 1px solid var(--color-border); border-radius: 8px;
+}
+.review-search:focus { outline: none; border-color: var(--color-accent); }
+.review-card[hidden], .review-tome[hidden] { display: none !important; }

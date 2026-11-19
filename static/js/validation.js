@@ -268,7 +268,9 @@ function _reviewTomeHtml(review) {
     const toggle = count > 0
         ? `<button class="review-candidates-toggle${isExpanded ? ' review-candidates-toggle-open' : ''}" type="button" id="review-candidates-toggle-${review.id}" data-count="${count}" onclick="toggleReviewCandidates(${review.id})">${listLabel} ${svgIcon('chevron-down')}</button>`
         : `<span class="review-candidates-label">${listLabel}</span>`;
-    return `<div class="review-tome" data-review-id="${review.id}">
+    const searchText = [review.series_title, volume,
+        ...(review.candidates || []).map(c => reviewDecodeFilename(c.filename || c.title || ''))].join(' ');
+    return `<div class="review-tome" data-review-id="${review.id}" data-search="${reviewAttr(reviewSearchNormalize(searchText))}">
         <div class="review-tome-header">
             <span class="review-volume">${reviewEscape(volume)}</span>
             ${reviewDateHtml(review.created_at)}
@@ -279,6 +281,49 @@ function _reviewTomeHtml(review) {
         ${toggle}
         <div class="review-candidates" id="review-candidates-${review.id}"${isExpanded ? '' : ' hidden'}>${candidatesHtml || '<div class="review-meta">Aucun candidat détaillé.</div>'}</div>
     </div>`;
+}
+
+// « met un filtre pour rechercher dans les albums » : série, tome et noms des fichiers
+// candidats, sans tenir compte des accents ni des ligatures (soeur = Sœur ; points, tirets
+// et soulignés = espace), comme la recherche des applis.
+function reviewSearchNormalize(text) {
+    return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+        .replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/ß/g, 'ss')
+        .replace(/[._\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function applyReviewSearch() {
+    const input = document.getElementById('review-search');
+    const root = document.getElementById('review-list');
+    if (!input || !root) return;
+    const query = reviewSearchNormalize(input.value);
+    let shown = 0;
+    root.querySelectorAll('.review-card').forEach(card => {
+        let visibleTomes = 0;
+        card.querySelectorAll('.review-tome').forEach(tome => {
+            const match = !query || (tome.dataset.search || '').includes(query);
+            tome.hidden = !match;
+            if (match) visibleTomes += 1;
+            // Recherche active : fichiers candidats dépliés pour montrer les albums trouvés.
+            const list = tome.querySelector('.review-candidates');
+            if (list && query && match) list.hidden = false;
+        });
+        card.hidden = visibleTomes === 0;
+        shown += visibleTomes;
+    });
+    let empty = document.getElementById('review-search-empty');
+    if (query && !shown && root.querySelector('.review-card')) {
+        if (!empty) {
+            empty = document.createElement('div');
+            empty.id = 'review-search-empty';
+            empty.className = 'review-empty';
+            root.after(empty);
+        }
+        empty.textContent = `Aucun album ne correspond à « ${input.value.trim()} ».`;
+        empty.hidden = false;
+    } else if (empty) {
+        empty.hidden = true;
+    }
 }
 
 async function loadAutoAcquireReviews() {
@@ -323,6 +368,7 @@ async function loadAutoAcquireReviews() {
                 <div class="review-group-items">${tomesHtml}</div>
             </article>`;
         }).join('');
+        applyReviewSearch();
         _loadReviewEd2kAvailability(reviews);
     } catch (error) {
         root.innerHTML = `<div class="review-empty">${svgIcon('circle-x')} Impossible de charger la file de validation : ${reviewEscape(error.message)}</div>`;
