@@ -12,7 +12,7 @@ class NouveautesPersistenceTest(unittest.TestCase):
         self.script = (ROOT / 'static/js/ebdz-latest.js').read_text()
 
     def test_origins_are_kept_in_the_browser(self):
-        self.assertIn("bullarr:nouveautes:origins:v1", self.script)
+        self.assertIn("bullarr:nouveautes:origins:v4", self.script)
         self.assertIn('_saveNouveautesOrigins();', self.script)
 
     def test_cached_rss_rows_are_shown_at_once(self):

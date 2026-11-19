@@ -110,13 +110,20 @@ def has_link(user_key):
 # les tomes rattachés à un livre Komga peuvent avoir un avancement (dénominateur des barres).
 ProgressSource = namedtuple('ProgressSource', 'sql params kind komga_only')
 
-_COLUMNS = 'v2.id AS vol_id, k.page, k.pages_count, k.completed, k.read_at, k.synced_at'
+# « pour les BD lues à plus de 98 %, il reste 2 ou 3 pages max : considère-les comme lues » :
+# un tome dont il ne reste que les dernières pages (3 au plus sur un album d'au moins 30 pages,
+# ou 98 %) compte comme lu partout où l'avancement est affiché (barres, filtre Lu, reprise).
+_PAGES = 'COALESCE(k.pages_count, v2.page_count, 0)'
+_COMPLETED = (f'CASE WHEN k.completed = 1 OR (COALESCE(k.page, 0) > 0 AND {_PAGES} > 0 AND '
+              f'(k.page * 1.0 >= 0.98 * {_PAGES} OR ({_PAGES} >= 30 AND k.page >= {_PAGES} - 3))) '
+              'THEN 1 ELSE 0 END AS completed')
+_COLUMNS = f'v2.id AS vol_id, k.page, k.pages_count, {_COMPLETED}, k.read_at, k.synced_at'
 SERVER_SOURCE = ProgressSource(
     f'(SELECT {_COLUMNS} FROM volumes v2 JOIN komga_read_progress k ON k.komga_book_id = v2.komga_book_id)',
     (), 'komga', True)
 _USER_SQL = (f'(SELECT {_COLUMNS} FROM volumes v2 JOIN user_komga_read_progress k '
              'ON k.komga_book_id = v2.komga_book_id AND k.user_key = ?)')
-_LOCAL_SQL = ('(SELECT v2.id AS vol_id, k.page, k.pages_count, k.completed, k.read_at, k.updated_at AS synced_at '
+_LOCAL_SQL = (f'(SELECT v2.id AS vol_id, k.page, k.pages_count, {_COMPLETED}, k.read_at, k.updated_at AS synced_at '
               'FROM volumes v2 JOIN user_local_read_progress k '
               'ON k.series_id = v2.series_id AND k.filename = v2.filename AND k.user_key = ?)')
 
