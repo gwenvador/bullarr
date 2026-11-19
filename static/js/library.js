@@ -653,6 +653,12 @@ function komgaReadingInfo(s) {
     return { total, read, reading, started: read + reading > 0, percent: Math.round(100 * read / total) };
 }
 
+function _seriesReadLabel(s) {
+    const info = komgaReadingInfo(s);
+    if (!info || !info.started) return 'Non lu';
+    return info.read >= info.total ? 'Lu' : 'En cours';
+}
+
 function komgaReadingLabel(info) {
     if (!info) return '';
     return `${info.read}/${info.total} lu${info.read > 1 ? 's' : ''}` + (info.reading ? ` · ${info.reading} en cours` : '');
@@ -1969,6 +1975,9 @@ function seriesMatchesFilterKey(s, key) {
     if (key === 'missing-metadata') return s.volumes_without_metadata > 0;
     if (key === 'to-read') return !!s.to_read_later;
     if (key === 'favorite') return !!s.is_favorite;
+    // « ajoute un filtre lu / non-lu » : avancement de lecture des tomes possédés (le même
+    // que la barre et la pastille « Lu » des affiches). Sans tome suivi = non lu.
+    if (key.startsWith('read:')) return _seriesReadLabel(s) === key.slice('read:'.length);
     if (key.startsWith('genre:')) {
         const wanted = key.slice('genre:'.length).toLowerCase();
         const genres = seriesGenreList(s);
@@ -2380,7 +2389,7 @@ function populateDynamicFilterOptions() {
 
 // Libellé lisible d'une clé de filtre, utilisé pour les badges dans la toolbar
 // [catégorie, valeur] d'un filtre actif, pour les puces sous la barre d'outils.
-const _FILTER_KEY_CATEGORIES = { 'status:': 'Statut', 'origin:': 'Origine', 'quality:': 'Qualité', 'genre:': 'Genre', 'author:': 'Auteur', 'year:': 'Année', 'tag:': 'Tag' };
+const _FILTER_KEY_CATEGORIES = { 'read:': 'Lecture', 'status:': 'Statut', 'origin:': 'Origine', 'quality:': 'Qualité', 'genre:': 'Genre', 'author:': 'Auteur', 'year:': 'Année', 'tag:': 'Tag' };
 const _FILTER_KEY_FIXED = {
     'missing': ['', 'Volumes manquants'], 'oneshot': ['', 'One-shot'], 'ebdz-unmatched': ['', 'Matching EBDZ'],
     'missing-metadata': ['', 'Sans métadonnées'], 'to-read': ['Liste', 'À lire plus tard'], 'favorite': ['Liste', 'Favoris'],
@@ -2401,6 +2410,7 @@ function getFilterKeyLabel(key) {
     if (key === 'to-read') return '🔖 À lire plus tard';
     if (key === 'favorite') return '♥ Favoris';
     if (key.startsWith('tag:')) return '🏷️ ' + key.slice('tag:'.length);
+    if (key.startsWith('read:')) return 'Lecture : ' + key.slice('read:'.length);
     if (key.startsWith('status:')) return 'Statut : ' + key.slice('status:'.length);
     if (key.startsWith('origin:')) return 'Origine : ' + key.slice('origin:'.length);
     if (key.startsWith('quality:')) return 'Qualité : ' + key.slice('quality:'.length);
@@ -2522,6 +2532,7 @@ const FILTER_TOOLBAR_BUTTONS = [
     { id: 'origin-filter-btn', match: key => key.startsWith('origin:') },
     { id: 'quality-filter-btn', match: key => key.startsWith('quality:') },
     { id: 'lists-filter-btn', match: key => key === 'to-read' || key === 'favorite' },
+    { id: 'read-filter-btn', match: key => key.startsWith('read:') },
     { id: 'genre-filter-btn', match: key => key.startsWith('genre:') },
     { id: 'author-filter-btn', match: key => key.startsWith('author:') },
     { id: 'year-filter-btn', match: key => key.startsWith('year:') }
