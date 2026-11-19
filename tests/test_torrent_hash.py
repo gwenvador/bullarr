@@ -2,7 +2,7 @@ import base64
 import hashlib
 import unittest
 
-from torrent_hash import _bdecode, _bencode, compute_torrent_info_hash, extract_magnet_btih
+from torrent_hash import _bdecode, _bencode, compute_torrent_info_hash, extract_magnet_btih, torrent_to_magnet
 
 INFO_RAW = b'd6:lengthi5e4:name3:abc12:piece lengthi16384e6:pieces20:' + b'x' * 20 + b'e'
 TORRENT = b'd8:announce8:http://x4:info' + INFO_RAW + b'e'
@@ -59,3 +59,18 @@ class BencodeTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TorrentToMagnetTest(unittest.TestCase):
+    def test_magnet_keeps_hash_name_and_trackers(self):
+        torrent = _bencode({b'announce': b'https://t.example/announce/key',
+                            b'announce-list': [[b'https://t.example/announce/key'], [b'udp://u.example:80']],
+                            b'info': {b'name': b'S\xc5\x93ur.cbz', b'length': 3, b'piece length': 16384, b'pieces': b'x' * 20}})
+        magnet = torrent_to_magnet(torrent)
+        self.assertEqual(extract_magnet_btih(magnet), compute_torrent_info_hash(torrent))
+        self.assertIn('dn=S%C5%93ur.cbz', magnet)
+        self.assertEqual(magnet.count('&tr='), 2)
+        self.assertIn('tr=https%3A%2F%2Ft.example%2Fannounce%2Fkey', magnet)
+
+    def test_unreadable_torrent_gives_none(self):
+        self.assertIsNone(torrent_to_magnet(b'<html>'))

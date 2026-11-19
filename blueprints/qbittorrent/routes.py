@@ -10,7 +10,8 @@ import time
 import requests
 import hmac
 import re
-from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlparse
+import unicodedata
+from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urljoin, urlparse
 from encryption import decrypt, load_encrypted_json_config, save_encrypted_json_config
 from network_safety import safe_external_get
 from error_utils import error_message
@@ -91,6 +92,9 @@ def _download_torrent_bytes(url, source):
         return bytes(data)
 
 
+_LIGATURES = str.maketrans({'œ': 'oe', 'Œ': 'OE', 'æ': 'ae', 'Æ': 'AE'})
+
+
 @qbittorrent_bp.route('/torrent-file', methods=['GET'])
 def download_prowlarr_torrent_file():
     """Fichier .torrent d'un lien Prowlarr (ligne RSS de Nouveautés), récupéré côté serveur.
@@ -103,6 +107,9 @@ def download_prowlarr_torrent_file():
     if prowlarr_url is None:
         return jsonify({'success': False, 'error': 'Lien Prowlarr non reconnu'}), 400
     name = re.sub(r'[^\w .()\[\]-]+', '_', request.args.get('name', '')).strip(' ._')[:150] or 'release'
+    # « Sœur.Marie.Thérèse… » : un en-tête HTTP n'accepte que du latin-1 (gunicorn rejetait la
+    # réponse, 400). Nom ASCII de repli + nom complet encodé (RFC 6266 / 5987).
+    ascii_name = unicodedata.normalize('NFKD', name.translate(_LIGATURES)).encode('ascii', 'ignore').decode().strip(' ._') or 'release'
     try:
         with requests.get(prowlarr_url, timeout=30, verify=False, stream=True, allow_redirects=False) as response:
             location = response.headers.get('Location') or ''
@@ -112,7 +119,8 @@ def download_prowlarr_torrent_file():
     except Exception as e:
         return jsonify({'success': False, 'error': error_message(e, 'Téléchargement impossible')}), 502
     return Response(data, mimetype='application/x-bittorrent', headers={
-        'Content-Disposition': f'attachment; filename="{name}.torrent"',
+        'Content-Disposition': f'attachment; filename="{ascii_name}.torrent"; '
+                               f"filename*=UTF-8''{quote(name + '.torrent')}",
     })
 
 
@@ -706,6 +714,17 @@ def add_torrent():
             else:
                 # Envoyer comme URL (magnet)
                 response = session.post(api_url, data=data_payload, timeout=10, verify=False)
+            # « envoie à qbittorrent ça marche pas » : le proxy nginx devant certains qBittorrent
+            # hébergés (appbox) refuse tout envoi de plus de ~8 Ko par un 405 « Not Allowed »,
+            # avant même qBittorrent - un .torrent d'intégrale dépasse souvent cette taille.
+            # Repli : le lien magnet équivalent (même hash, mêmes trackers), qui reste petit.
+            if files_to_send and response.status_code in (405, 413):
+                from torrent_hash import torrent_to_magnet
+                magnet = torrent_to_magnet(torrent_bytes)
+                if magnet:
+                    print(f"[qBittorrent Add] fichier refusé (HTTP {response.status_code}), envoi en magnet",
+                          file=sys.stderr)
+                    response = session.post(api_url, data={**data_payload, 'urls': magnet}, timeout=10, verify=False)
         finally:
             # Fermer et supprimer le fichier temporaire
             if files_to_send and torrent_file_path:
@@ -718,7 +737,7 @@ def add_torrent():
                     # aucune autre trace de cet échec.
                     print(f"[qBittorrent Add] Erreur suppression fichier temp: {'Erreur interne'}", file=sys.stderr)
 
-        if response.status_code == 200:
+        if response.status_code in (200, 202):
             # qBittorrent's /add répond "Ok." (HTTP 200) même quand rien n'a été ajouté -
             # un .torrent invalide/inexploitable (ex: la réponse d'un tracker qui n'était
             # pas vraiment un fichier torrent) échoue silencieusement côté qBittorrent, sans

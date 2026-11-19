@@ -34,6 +34,18 @@ class ProwlarrTorrentFileDownloadTest(unittest.TestCase):
         self.assertIn('Les Pompiers T01.torrent', response.headers['Content-Disposition'])
         fetch.assert_called_once_with(self.link, 'prowlarr')
 
+    def test_accented_name_gives_a_valid_header(self):
+        # « Sœur.Marie.Thérèse » : gunicorn rejetait l'en-tête non latin-1 (réponse 400).
+        with patch.object(routes, '_configured_prowlarr_download_url', return_value=self.link), \
+             patch.object(routes.requests, 'get', return_value=_response()), \
+             patch.object(routes, '_download_torrent_bytes', return_value=b'd8:announce'):
+            response = self.client.get('/api/qbittorrent/torrent-file',
+                                       query_string={'url': self.link, 'name': 'Sœur Marie-Thérèse'})
+        header = response.headers['Content-Disposition']
+        header.encode('latin-1')
+        self.assertIn('filename="Soeur Marie-Therese.torrent"', header)
+        self.assertIn("filename*=UTF-8''S%C5%93ur%20Marie-Th%C3%A9r%C3%A8se.torrent", header)
+
     def test_magnet_redirect_is_passed_to_browser(self):
         with patch.object(routes, '_configured_prowlarr_download_url', return_value=self.link),\
              patch.object(routes.requests, 'get', return_value=_response('magnet:?xt=urn:btih:abc')):

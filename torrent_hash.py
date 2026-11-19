@@ -94,3 +94,29 @@ def compute_torrent_info_hash(torrent_bytes):
         return hashlib.sha1(_bencode(info)).hexdigest()
     except Exception:
         return None
+
+
+def torrent_to_magnet(torrent_bytes):
+    """Lien magnet équivalent à un .torrent (hash du dict "info", nom, trackers d'annonce,
+    passkey comprise) - pour un client qui refuse l'envoi du fichier lui-même (voir
+    add_torrent, blueprints/qbittorrent/routes.py). None si le .torrent est illisible."""
+    from urllib.parse import quote
+    try:
+        decoded, _ = _bdecode(torrent_bytes, 0)
+        info = decoded[b'info']
+        info_hash = hashlib.sha1(_bencode(info)).hexdigest()
+    except Exception:
+        return None
+    parts = [f'xt=urn:btih:{info_hash}']
+    name = info.get(b'name') if isinstance(info, dict) else None
+    if isinstance(name, bytes):
+        parts.append('dn=' + quote(name.decode('utf-8', errors='replace')))
+    trackers = []
+    if isinstance(decoded.get(b'announce'), bytes):
+        trackers.append(decoded[b'announce'])
+    for tier in decoded.get(b'announce-list') or []:
+        for tracker in tier if isinstance(tier, list) else []:
+            if isinstance(tracker, bytes) and tracker not in trackers:
+                trackers.append(tracker)
+    parts += ['tr=' + quote(t.decode('utf-8', errors='replace'), safe='') for t in trackers]
+    return 'magnet:?' + '&'.join(parts)
