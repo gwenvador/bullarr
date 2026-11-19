@@ -2521,6 +2521,8 @@ function applyTagFilterInPlace(tag) {
 
 function clearSeriesFilters() {
     activeFilters.clear();
+    const titleFilter = document.getElementById('search');
+    if (titleFilter) titleFilter.value = '';
     refreshFilterDropdownUI();
     saveFilterState();
     filterSeries();

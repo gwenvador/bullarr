@@ -94,6 +94,12 @@
                 </div>
                 <div id="active-filter-badges" class="active-filter-badges" style="display: none;"></div>
                 <div class="search-row-view-switcher">
+                <!-- « filtrer par titre » dans toutes les vues (affiches, aperçu, tableau) : titre,
+                     auteur, genre et tags, sans accents (filterSeries lit #search). -->
+                <label class="library-title-filter" title="Filtrer les séries par titre (aussi auteur, genre, tags)">
+                    <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                    <input type="search" id="search" placeholder="Filtrer par titre" aria-label="Filtrer par titre" autocomplete="off" oninput="filterSeries()">
+                </label>
                 <div class="toolbar-dropdown" id="series-sort-section">
                     <button class="toolbar-btn" id="series-sort-btn" onclick="toggleToolbarDropdown('sort-dropdown-menu', this)" title="Ordre d'affichage des séries">
                         <span class="toolbar-btn-icon"><svg class="icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21 16-4 4-4-4" /><path d="M17 20V4" /><path d="m3 8 4-4 4 4" /><path d="M7 4v16" /></svg></span>
