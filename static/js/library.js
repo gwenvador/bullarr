@@ -6826,7 +6826,7 @@ async function openReadAlsoModal(seriesId, seriesTitle) {
                             ? `<a href="/series/${item.series_id}" class="poster-action-btn poster-action-btn-light read-also-added-btn" data-tooltip="Série ajoutée : ouvrir dans la bibliothèque" aria-label="Série ajoutée, ouvrir">${svgIcon('check')}</a>`
                             : item.series_id
                                 ? `<a href="/series/${item.series_id}" class="poster-action-btn poster-action-btn-light" data-tooltip="Ouvrir dans la bibliothèque">${svgIcon('folder')}</a>`
-                                : `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="addReadAlsoSeries(${index}, ${seriesId}, this)" data-tooltip="Ajouter la série et télécharger ses tomes" aria-label="Ajouter ${escapeForAttribute(item.title)} et la télécharger">${svgIcon('zap')}</button>`}
+                                : `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="addReadAlsoSeries(${index}, ${seriesId}, this)" data-tooltip="Ajouter la série et ses albums (téléchargés si « Télécharger automatiquement à l&#39;ajout » est activé)" aria-label="Ajouter ${escapeForAttribute(item.title)} et la télécharger">${svgIcon('plus')}</button>`}
                     </div>
                 </div>
             `).join('') : '<div class="no-data"><p>Aucune recommandation trouvée sur cette fiche Bédéthèque.</p></div>'}

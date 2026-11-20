@@ -324,12 +324,13 @@ function _updateAuthorAlbumsBulkActionsBar() {
 // mêmes actions que la modale Lire aussi - dossier si la série est en bibliothèque,
 // éclair sinon (ajoute la série ; ses albums sont téléchargés si la recherche
 // automatique est activée dans les réglages).
+const _AUTHOR_PLUS_TOOLTIP = "Ajouter la série et ses albums (téléchargés si « Télécharger automatiquement à l'ajout » est activé)";
 function _authorAlbumRowActionHtml(a, i) {
     if (a.already_in_library && a.series_id) {
         return `<a href="/series/${a.series_id}" class="poster-action-btn poster-action-btn-light" data-tooltip="Ouvrir dans la bibliothèque" onclick="event.stopPropagation()">${svgIcon('folder')}</a>`;
     }
     if (a.already_in_library) return '';
-    return `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="Ajouter la série et télécharger ses tomes">${svgIcon('zap')}</button>`;
+    return `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="${_AUTHOR_PLUS_TOOLTIP}">${svgIcon('plus')}</button>`;
 }
 
 async function addAuthorAlbumZap(index, button) {
