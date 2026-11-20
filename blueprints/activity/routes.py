@@ -479,6 +479,9 @@ def activity_status():
                         'hs_number': pending_match.get('hs_number'),
                         'is_episode': pending_match.get('is_episode', False),
                         'episode_number': pending_match.get('episode_number'),
+                        'is_special': pending_match.get('is_special', False),
+                        'volume_id': pending_match.get('volume_id'),
+                        'special_label': pending_match.get('special_label'),
                         'created_at': pending_match.get('created_at'),
                     }
                     # Lien persisté UNE FOIS ici - tous les sondages suivants pour ce
@@ -499,6 +502,9 @@ def activity_status():
                 item['hs_number'] = linked.get('hs_number')
                 item['is_episode'] = linked.get('is_episode', False)
                 item['episode_number'] = linked.get('episode_number')
+                item['is_special'] = linked.get('is_special', False)
+                item['volume_id'] = linked.get('volume_id') if item['is_special'] else None
+                item['special_label'] = linked.get('special_label')
                 item['created_at'] = linked.get('created_at')
                 recognized_items.append(item)
 
@@ -693,15 +699,20 @@ def update_tracking_route():
     hs_number = data.get('hs_number')
     is_episode = bool(data.get('is_episode'))
     episode_number = data.get('episode_number')
+    is_special = bool(data.get('is_special'))
+    special_volume_id = data.get('volume_id')
 
     if not isinstance(tracking_id, int) or not isinstance(series_id, int):
         return jsonify({'success': False, 'error': 'tracking_id/series_id invalide'}), 400
+    if is_special and not isinstance(special_volume_id, int):
+        return jsonify({'success': False, 'error': 'Choisissez le spécial dans la liste des tomes'}), 400
 
     ok = update_active_download_tracking(
         tracking_id, series_id, volume_number,
         is_integral=is_integral, integral_number=integral_number,
         is_hs=is_hs, hs_number=hs_number,
         is_episode=is_episode, episode_number=episode_number,
+        is_special=is_special, special_volume_id=special_volume_id,
     )
     if not ok:
         return jsonify({'success': False, 'error': 'Échec de la mise à jour'}), 500

@@ -458,6 +458,19 @@ def _find_existing_volume_for_import(cursor, series_id, parsed, single_album=Fal
         if existing_volume:
             return existing_volume
 
+    # Spécial rattaché par son id (téléchargement corrigé en « Spécial », voir
+    # apply_tracked_volume_and_gate) : beaucoup de spéciaux n'ont pas de libellé, la
+    # recherche par special_label ci-dessous ne saurait pas lequel remplir.
+    if parsed.get('is_special') and parsed.get('target_volume_id'):
+        cursor.execute(
+            "SELECT id, filepath, file_size, format FROM volumes WHERE id = ? AND series_id = ? "
+            "AND COALESCE(is_special, 0) = 1 AND COALESCE(special_label, '') = COALESCE(?, '')",
+            (parsed['target_volume_id'], series_id, parsed.get('special_label'))
+        )
+        target_row = cursor.fetchone()
+        if target_row:
+            return target_row
+
     volume_number = parsed.get('volume')
     is_integral = parsed.get('is_integral')
     integral_number = parsed.get('integral_number')
@@ -9846,6 +9859,7 @@ def _build_active_download_destination(series_id, volume_number, tracking_id, fo
         download_status = None
         tracked_client = None
         tracked_bis_suffix = None
+        tracked_special = None
         if tracking_id is not None:
             status_row = cursor.execute(
                 'SELECT status, client, volume_id FROM active_downloads WHERE id = ?', (tracking_id,)
@@ -9862,6 +9876,12 @@ def _build_active_download_destination(series_id, volume_number, tracking_id, fo
                 ).fetchone()
                 if bis_row:
                     tracked_bis_suffix = (bis_row[0] or 'Bis').strip() or 'Bis'
+            # Spécial choisi dans « Corriger » (voir update_active_download_tracking).
+            if status_row and status_row[2] is not None and volume_number is None:
+                tracked_special = cursor.execute(
+                    'SELECT id, special_label FROM volumes WHERE id = ? AND series_id = ? '
+                    'AND COALESCE(is_special, 0) = 1', (status_row[2], series_id)
+                ).fetchone()
         conn.close()
 
         series_id, library_id, library_path, library_name, series_title, is_oneshot, bedetheque_total_volumes = row
@@ -9894,6 +9914,8 @@ def _build_active_download_destination(series_id, volume_number, tracking_id, fo
             'episode_number': episode_number,
             'is_bis': bool(tracked_bis_suffix),
             'bis_suffix': tracked_bis_suffix,
+            'special_volume_id': tracked_special[0] if tracked_special else None,
+            'special_label': tracked_special[1] if tracked_special else None,
             # id de la ligne active_downloads elle-même (pas item['id'] côté /api/activity/
             # status, qui reste le hash/id CLIENT) - "editer les volumes et album dans
             # l'import meme quand c'est pas terminé": nécessaire pour que le frontend
@@ -9983,6 +10005,17 @@ def find_active_download_destination_by_torrent_name(folder_name, trackable_down
 
 def apply_tracked_volume_and_gate(parsed, destination):
     ""
+    # Spécial choisi explicitement pour ce téléchargement : il prime sur tout numéro lu
+    # dans le nom du fichier (« Herr Doktor T1 » peut très bien être le spécial).
+    if destination.get('special_volume_id'):
+        parsed.update({
+            'volume': None, 'is_integral': False, 'integral_number': None,
+            'is_hs': False, 'hs_number': None, 'is_episode': False, 'episode_number': None,
+            'is_bis': False, 'bis_suffix': None,
+            'is_special': True, 'special_label': destination.get('special_label'),
+            'target_volume_id': destination['special_volume_id'],
+        })
+        return True
     conflicting_type = parsed.get('is_integral') or parsed.get('is_hs') or parsed.get('is_episode')
     if conflicting_type and destination.get('volume_number') is not None:
         parsed['tracked_volume_conflict'] = destination['volume_number']

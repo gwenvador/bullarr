@@ -495,14 +495,18 @@ def find_active_downloads_by_client_item_ids(client: str, client_item_ids) -> Di
         placeholders = ','.join('?' for _ in ids)
         cursor.execute(
             f"SELECT ad.client_item_id, ad.id, ad.series_id, ad.volume_number, ad.created_at, s.title, s.is_oneshot, "
-            f"ad.is_integral, ad.integral_number, ad.is_hs, ad.hs_number, ad.is_episode, ad.episode_number "
+            f"ad.is_integral, ad.integral_number, ad.is_hs, ad.hs_number, ad.is_episode, ad.episode_number, "
+            f"sv.id, sv.special_label "
             f"FROM active_downloads ad LEFT JOIN series s ON s.id = ad.series_id "
+            f"LEFT JOIN volumes sv ON sv.id = ad.volume_id AND ad.volume_number IS NULL "
+            f"AND COALESCE(sv.is_special, 0) = 1 "
             f"WHERE ad.client = ? AND LOWER(ad.client_item_id) IN ({placeholders})",
             (client, *ids)
         )
         for row in cursor.fetchall():
             (client_item_id, tracking_id, series_id, volume_number, created_at, series_title, is_oneshot,
-             is_integral, integral_number, is_hs, hs_number, is_episode, episode_number) = row
+             is_integral, integral_number, is_hs, hs_number, is_episode, episode_number,
+             special_volume_id, special_label) = row
             result[client_item_id.lower()] = {
                 'tracking_id': tracking_id, 'priority': 0, 'series_id': series_id,
                 'volume_number': volume_number, 'series_title': series_title, 'created_at': created_at,
@@ -510,6 +514,8 @@ def find_active_downloads_by_client_item_ids(client: str, client_item_ids) -> Di
                 'is_integral': bool(is_integral), 'integral_number': integral_number,
                 'is_hs': bool(is_hs), 'hs_number': hs_number,
                 'is_episode': bool(is_episode), 'episode_number': episode_number,
+                'is_special': special_volume_id is not None, 'volume_id': special_volume_id,
+                'special_label': special_label,
             }
         if result:
             try:
@@ -603,6 +609,7 @@ def update_active_download_tracking(
     is_integral: bool = False, integral_number=None,
     is_hs: bool = False, hs_number=None,
     is_episode: bool = False, episode_number=None,
+    is_special: bool = False, special_volume_id=None,
 ) -> bool:
     """Corrige la série/le tome suivis pour un téléchargement encore en cours (actif chez
     un client ou juste 'pending', voir mark_download_pending) - "je voudrais pouvoir
@@ -627,6 +634,26 @@ def update_active_download_tracking(
             return False
         conn = sqlite3.connect(db_path, timeout=30.0)
         volume_id = None
+        # « Herr Doktor : je peux pas choisir spéciaux dans corriger la série » - un spécial
+        # n'a ni numéro ni type propre dans active_downloads : on rattache directement son
+        # id (volume_id), relu par _build_active_download_destination à l'import.
+        if is_special:
+            row = conn.execute(
+                "SELECT id FROM volumes WHERE id = ? AND series_id = ? AND COALESCE(is_special, 0) = 1",
+                (special_volume_id, series_id)
+            ).fetchone()
+            if not row:
+                conn.close()
+                return False
+            conn.execute(
+                "UPDATE active_downloads SET series_id = ?, volume_id = ?, volume_number = NULL, "
+                "is_integral = 0, integral_number = NULL, is_hs = 0, hs_number = NULL, "
+                "is_episode = 0, episode_number = NULL WHERE id = ?",
+                (series_id, row[0], download_id)
+            )
+            conn.commit()
+            conn.close()
+            return True
         if series_id is not None and volume_number is not None and not (is_integral or is_hs or is_episode):
             volume_row = conn.execute(
                 "SELECT id FROM volumes WHERE series_id = ? AND volume_number = ? AND COALESCE(is_bis, 0) = 0 "
@@ -1886,6 +1913,17 @@ def get_pending_downloads() -> List[Dict]:
             conn.close()
             return []
 
+        # Spécial choisi dans « Corriger » (volume_id sans numéro, voir
+        # update_active_download_tracking) : libellé et état « possédé » du spécial.
+        special_ids = sorted({r['volume_id'] for r in rows if r['volume_id'] is not None and r['volume_number'] is None})
+        specials_by_id = {}
+        if special_ids:
+            cursor.execute(
+                "SELECT id, special_label, filepath FROM volumes WHERE COALESCE(is_special, 0) = 1 AND id IN (%s)"
+                % ','.join('?' * len(special_ids)), special_ids
+            )
+            specials_by_id = {r['id']: r for r in cursor.fetchall()}
+
         # ``volume_number`` is NULL for integrals, specials and episodes.  Keeping
         # those rows in the generic (series_id, volume_number) set makes every
         # download whose parsed number is also NULL look already owned as soon as
@@ -2024,9 +2062,16 @@ def get_pending_downloads() -> List[Dict]:
                 and not parsed_type.get('is_episode')
             )
             needs_series_correction = series_id is None
+            special_row = specials_by_id.get(volume_id) if volume_number is None else None
+            if special_row is not None:
+                needs_volume_correction = False
+                already_owned_flag = bool(special_row['filepath'])
             pending.append({
                 'id': download_id, 'title': title, 'client': client, 'created_at': created_at,
-                'series_id': series_id, 'volume_id': volume_id, 'volume_number': resolved_volume_number,
+                'series_id': series_id, 'volume_id': volume_id,
+                'volume_number': None if special_row is not None else resolved_volume_number,
+                'is_special': special_row is not None,
+                'special_label': special_row['special_label'] if special_row is not None else None,
                 'series_title': series_title,
                 'bytes_downloaded': bytes_downloaded, 'bytes_total': bytes_total,
                 'exhausted': exhausted,

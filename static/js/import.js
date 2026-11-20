@@ -657,7 +657,7 @@ function _pendingDownloadRowHtml(pending) {
                 <div class="import-dl-actions">
                 ${pending.exhausted ? `<button class="btn-icon-only" onclick="retryTelegramDownload(${pending.id}, this)" data-tooltip="Relancer manuellement (budget de tentatives automatiques épuisé)">${svgIcon('refresh-cw')}</button>` : ''}
                 ${_pendingQueueButtonsHtml(pending)}
-                <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}', {is_integral: ${!!pending.is_integral}, integral_number: ${pending.integral_number ?? 'null'}, is_hs: ${!!pending.is_hs}, hs_number: ${pending.hs_number ?? 'null'}, is_episode: ${!!pending.is_episode}, episode_number: ${pending.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
+                <button class="btn-icon-only" onclick="openTrackingEditModal(${pending.id}, ${pending.series_id ?? 'null'}, ${pending.volume_number ?? 'null'}, '${escapeForAttribute(pending.title)}', {is_integral: ${!!pending.is_integral}, integral_number: ${pending.integral_number ?? 'null'}, is_hs: ${!!pending.is_hs}, hs_number: ${pending.hs_number ?? 'null'}, is_episode: ${!!pending.is_episode}, episode_number: ${pending.episode_number ?? 'null'}, special_volume_id: ${pending.is_special ? (pending.volume_id ?? 'null') : 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>
                 <button class="btn-icon-only" onclick="removePendingDownload(${pending.id}, this)" data-tooltip="Retirer et annuler le téléchargement chez le client (si retrouvé)">${svgIcon('trash-2')}</button>
                 </div>
             </td>
@@ -943,7 +943,7 @@ function _activeDownloadRowHtml({ clientKey, item }) {
         ? `<button class="btn-icon-only" onclick="deleteActiveDownload('${escapeForAttribute(clientKey)}', '${escapeForAttribute(String(item.id))}', ${item.tracking_id ?? 'null'}, this)" data-tooltip="Supprimer ce téléchargement">${svgIcon('trash-2')}</button>`
         : '';
     const editButtonHtml = item.tracking_id != null
-        ? `<button class="btn-icon-only" onclick="openTrackingEditModal(${item.tracking_id}, ${item.series_id ?? 'null'}, ${item.volume_number ?? 'null'}, '${escapeForAttribute(item.name)}', {is_integral: ${!!item.is_integral}, integral_number: ${item.integral_number ?? 'null'}, is_hs: ${!!item.is_hs}, hs_number: ${item.hs_number ?? 'null'}, is_episode: ${!!item.is_episode}, episode_number: ${item.episode_number ?? 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>`
+        ? `<button class="btn-icon-only" onclick="openTrackingEditModal(${item.tracking_id}, ${item.series_id ?? 'null'}, ${item.volume_number ?? 'null'}, '${escapeForAttribute(item.name)}', {is_integral: ${!!item.is_integral}, integral_number: ${item.integral_number ?? 'null'}, is_hs: ${!!item.is_hs}, hs_number: ${item.hs_number ?? 'null'}, is_episode: ${!!item.is_episode}, episode_number: ${item.episode_number ?? 'null'}, special_volume_id: ${item.is_special ? (item.volume_id ?? 'null') : 'null'}})" data-tooltip="Corriger la série/le tome suivis pour ce téléchargement">${svgIcon('pencil')}</button>`
         : '';
     const activeKey = _activeDownloadKey(clientKey, item);
     const selectCheckboxHtml = activeKey
@@ -1070,6 +1070,8 @@ function _seriesCellHtml(seriesId, seriesTitle, { bedethequeUrl = null, extraHtm
 }
 
 let trackingEditId = null;
+// Spécial suivi au moment d'ouvrir la modale (voir _loadTrackingEditVolumes).
+let trackingEditSpecialId = null;
 
 function openTrackingEditModal(trackingId, seriesId, volumeNumber, filename, typeMeta = null) {
     trackingEditId = trackingId;
@@ -1086,7 +1088,8 @@ function _populateTrackingEditModal(seriesId, volumeNumber, typeMeta = null) {
     const librarySelect = document.getElementById('tracking-edit-library');
     librarySelect.innerHTML = '<option value="">-- Sélectionner une bibliothèque --</option>' +
         allLibraries.map(lib => `<option value="${lib.id}">${escapeHtml(lib.name)}</option>`).join('');
-    const initialType = typeMeta?.is_integral ? 'integral'
+    trackingEditSpecialId = typeMeta?.special_volume_id ?? null;
+    const initialType = trackingEditSpecialId != null ? 'special' : typeMeta?.is_integral ? 'integral'
         : typeMeta?.is_hs ? 'hs' : typeMeta?.is_episode ? 'episode' : 'volume';
     const initialNumber = initialType === 'integral' ? typeMeta?.integral_number
         : initialType === 'hs' ? typeMeta?.hs_number
@@ -1130,6 +1133,7 @@ function closeTrackingEditModal() {
     document.getElementById('tracking-edit-volume').value = '';
     document.getElementById('tracking-edit-volume-group').style.display = '';
     trackingEditId = null;
+    trackingEditSpecialId = null;
 }
 
 function _loadTrackingEditSeries() {
@@ -1169,22 +1173,33 @@ function _onTrackingEditSeriesChange() {
     }
 }
 
-// Choisir un tome connu ne fait que pré-remplir le champ numéro libre ci-dessous, qui
-// reste la seule valeur réellement envoyée par saveTrackingEdit - garde le champ éditable
-// pour un tome pas encore listé (ex: hors-série tout juste annoncé). N'existe que pour
-// des tomes "classiques" (voir _loadTrackingEditVolumes) - sélectionner un tome connu
-// remet donc toujours le type sur "volume".
+// Choisir un tome connu pré-remplit le type et le champ numéro libre ci-dessous (qui
+// reste éditable pour un tome pas encore listé, ex: hors-série tout juste annoncé).
+// Valeur d'option « type:numéro » (volume/integral/hs/episode) ou « special:<id> » :
+// un spécial n'a pas de numéro, seul son id le désigne (voir saveTrackingEdit).
 function _applyTrackingEditVolumeSelection() {
     const select = document.getElementById('tracking-edit-volume-select');
-    if (select.value !== '') {
-        document.getElementById('tracking-edit-volume').value = select.value;
-        document.getElementById('tracking-edit-type').value = 'volume';
-    }
+    if (select.value === '') return;
+    const [type, value] = select.value.split(':');
+    document.getElementById('tracking-edit-type').value = type;
+    document.getElementById('tracking-edit-volume').value = type === 'special' ? '' : value;
+    _onTrackingEditTypeChange();
 }
 
 function _onTrackingEditTypeChange() {
     const type = document.getElementById('tracking-edit-type').value;
-    document.getElementById('tracking-edit-volume-select').style.display = type === 'volume' ? '' : 'none';
+    // Un spécial se choisit uniquement dans la liste : pas de numéro libre.
+    document.getElementById('tracking-edit-volume').style.display = type === 'special' ? 'none' : '';
+    const select = document.getElementById('tracking-edit-volume-select');
+    if (type !== 'special' && select.value.startsWith('special:')) select.value = '';
+}
+
+function _trackingEditOptionValue(v) {
+    if (v.is_special) return `special:${v.id}`;
+    if (v.is_integral) return `integral:${v.integral_number ?? ''}`;
+    if (v.is_hs) return `hs:${v.hs_number ?? ''}`;
+    if (v.is_episode) return `episode:${v.episode_number ?? ''}`;
+    return v.volume_number != null && !v.is_bis ? `volume:${v.volume_number}` : null;
 }
 
 async function _loadTrackingEditVolumes() {
@@ -1208,9 +1223,19 @@ async function _loadTrackingEditVolumes() {
     try {
         const response = await fetch(`/api/series/${seriesId}/volumes`);
         const volumes = await readJsonResponse(response, { expectArray: true });
-        const plainVolumes = volumes.filter(v => v.volume_number != null && !v.is_integral && !v.is_hs && !v.is_episode);
+        // « je peux pas choisir spéciaux » : tous les tomes connus (intégrales, HS,
+        // épisodes et spéciaux compris), pas seulement les tomes numérotés.
+        const seen = new Set();
+        const options = volumes.map(v => ({ v, value: _trackingEditOptionValue(v) }))
+            .filter(({ value }) => value && !seen.has(value) && seen.add(value));
         select.innerHTML = '<option value="">-- Tomes connus de la série --</option>' +
-            plainVolumes.map(v => `<option value="${v.volume_number}">${escapeHtml(_bdVolumeOptionLabel(v))}</option>`).join('');
+            options.map(({ v, value }) => `<option value="${escapeHtml(value)}">${escapeHtml(_bdVolumeOptionLabel(v))}</option>`).join('');
+        const type = document.getElementById('tracking-edit-type').value;
+        const number = document.getElementById('tracking-edit-volume').value.trim();
+        const current = type === 'special'
+            ? (trackingEditSpecialId != null ? `special:${trackingEditSpecialId}` : '')
+            : `${type}:${number}`;
+        if (current && seen.has(current)) select.value = current;
     } catch (error) {
         // Repli silencieux: le champ numéro libre reste utilisable même si la liste des
         // tomes n'a pas pu être chargée
@@ -1226,7 +1251,14 @@ async function saveTrackingEdit() {
     const volumeRaw = document.getElementById('tracking-edit-volume').value.trim();
     const volumeNumber = volumeRaw ? parseInt(volumeRaw) : null;
     const trackingType = document.getElementById('tracking-edit-type').value;
-    const typePayload = trackingType === 'integral' ? { is_integral: true, integral_number: volumeNumber }
+    const selectedOption = document.getElementById('tracking-edit-volume-select').value;
+    if (trackingType === 'special' && !selectedOption.startsWith('special:')) {
+        importNotify('Choisissez le spécial dans la liste des tomes connus', 'warning');
+        return;
+    }
+    const typePayload = trackingType === 'special'
+        ? { is_special: true, volume_id: parseInt(selectedOption.split(':')[1], 10) }
+        : trackingType === 'integral' ? { is_integral: true, integral_number: volumeNumber }
         : trackingType === 'hs' ? { is_hs: true, hs_number: volumeNumber }
         : trackingType === 'episode' ? { is_episode: true, episode_number: volumeNumber }
         : {};
