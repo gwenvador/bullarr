@@ -1478,7 +1478,7 @@ function _nouveautesEbdzRowHtml(event, index) {
             ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesEbdzLink(${index}, ${linkIndex}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
             : `<button class="btn-icon-only result-action-emule" type="button" onclick="addToEmuleFromNouveautesLink('${escapeForAttribute(link.link)}', this, '${escapeForAttribute(filename)}', allNouveautesEvents[${index}])" data-tooltip="Ajouter à eMule/aMule" aria-label="Ajouter à eMule/aMule"><img src="/static/img/emule-logo.svg" alt="" class="torrent-client-logo"></button>`;
         const zapHtml = owned || link._autoAddTriggered ? ''
-            : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${index}, this, ${linkIndex})" data-tooltip="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants" aria-label="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants">${svgIcon('download')}</button>`;
+            : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${index}, this, ${linkIndex})" data-tooltip="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants" aria-label="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants">${svgIcon('book-plus')}</button>`;
         const discoverHtml = true ? ''
             : `<button class="btn-icon-only nouveautes-add-series-btn" type="button" onclick="addSeriesFromNouveautes(${index}, this, ${linkIndex})" data-tooltip="${_NOUVEAUTES_PLUS_TOOLTIP}" aria-label="Ajouter la série">${svgIcon('plus')}</button>`;
         return `<tr class="nouveautes-event-row${(ownedRowClass + newRowClass)}" style="border-bottom:1px solid var(--color-border);">
@@ -1565,7 +1565,7 @@ function _nouveautesRssRowHtml(event) {
     const replaceOwned = event.already_owned === true && !!event.series_id;
     const addButton = event.title ? (replaceOwned
         ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesRssFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
-        : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants" aria-label="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants">${svgIcon('download')}</button>`}${true ? '' : `<button class="btn-icon-only nouveautes-add-series-btn" type="button" onclick="addSeriesFromNouveautes(${event._index}, this)" data-tooltip="${_NOUVEAUTES_PLUS_TOOLTIP}" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
+        : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants" aria-label="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants">${svgIcon('book-plus')}</button>`}${true ? '' : `<button class="btn-icon-only nouveautes-add-series-btn" type="button" onclick="addSeriesFromNouveautes(${event._index}, this)" data-tooltip="${_NOUVEAUTES_PLUS_TOOLTIP}" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
     const matchedSeriesHtml = _nouveautesSeriesHtml(event);
     // Ligne VK : le titre ouvre déjà le message sur VK ; le bouton télécharge dans Bullarr.
     const downloadButtons = event.vk ? '' : (event.download_links || []).map(item => {
@@ -1596,7 +1596,7 @@ function _nouveautesTelegramRowHtml(event) {
     const seriesMatched = _nouveautesMatched(event);
     const showReplace = !!event.series_id && event.already_owned === true;
     const addToLibraryHtml = `
-        ${showReplace ? `<button class="btn-icon-only" onclick="replaceNouveautesTelegramFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>` : event._autoAddTriggered ? '' : `<button class="btn-icon-only" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants">${svgIcon('download')}</button>`}
+        ${showReplace ? `<button class="btn-icon-only" onclick="replaceNouveautesTelegramFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>` : event._autoAddTriggered ? '' : `<button class="btn-icon-only" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants">${svgIcon('book-plus')}</button>`}
         ${true ? '' : `<button class="btn-icon-only nouveautes-add-series-btn" onclick="addSeriesFromNouveautes(${event._index}, this)" data-tooltip="${_NOUVEAUTES_PLUS_TOOLTIP}" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}
     `;
     return `
@@ -2025,7 +2025,7 @@ function _groupNouveautesSeriesRows(body) {
                     zap.setAttribute('onclick', `addSeriesAndDownloadNouveautes(${Number(zapArgs[1])}, this, ${zapArgs[2] != null ? Number(zapArgs[2]) : 'null'}, ${JSON.stringify(groupTargets)})`);
                     zap.dataset.tooltip = `Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants`;
                     zap.setAttribute('aria-label', 'Ajouter la série et télécharger ce fichier, puis ses autres tomes manquants');
-                    zap.innerHTML = svgIcon('download');
+                    zap.innerHTML = svgIcon('book-plus');
                     zap.addEventListener('click', ev => ev.stopPropagation());
                     wrap.appendChild(zap);
                     }

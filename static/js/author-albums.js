@@ -330,7 +330,7 @@ function _authorAlbumRowActionHtml(a, i) {
         return `<a href="/series/${a.series_id}" class="poster-action-btn poster-action-btn-light" data-tooltip="Ouvrir dans la bibliothèque" onclick="event.stopPropagation()">${svgIcon('folder')}</a>`;
     }
     if (a.already_in_library) return '';
-    return `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="${_AUTHOR_PLUS_TOOLTIP}">${svgIcon('download')}</button>`;
+    return `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="${_AUTHOR_PLUS_TOOLTIP}">${svgIcon('book-plus')}</button>`;
 }
 
 async function addAuthorAlbumZap(index, button) {
