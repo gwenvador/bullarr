@@ -6822,11 +6822,8 @@ async function openReadAlsoModal(seriesId, seriesTitle) {
                     </div>
                     <div class="overview-actions">
                         <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" class="poster-action-btn poster-action-btn-light" data-tooltip="Voir sur Bédéthèque"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:16px;height:16px;vertical-align:middle;"></a>
-                        ${item.read_also_added
-                            ? `<a href="/series/${item.series_id}" class="poster-action-btn poster-action-btn-light read-also-added-btn" data-tooltip="Série ajoutée : ouvrir dans la bibliothèque" aria-label="Série ajoutée, ouvrir">${svgIcon('check')}</a>`
-                            : item.series_id
-                                ? `<a href="/series/${item.series_id}" class="poster-action-btn poster-action-btn-light" data-tooltip="Ouvrir dans la bibliothèque">${svgIcon('folder')}</a>`
-                                : `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="addReadAlsoSeries(${index}, ${seriesId}, this)" data-tooltip="Ajouter la série et ses albums (téléchargés si « Télécharger automatiquement à l&#39;ajout » est activé)" aria-label="Ajouter ${escapeForAttribute(item.title)} et la télécharger">${svgIcon('book-plus')}</button>`}
+                        ${item.series_id ? '' /* le titre et la couverture ouvrent déjà la série */
+                                : `<button type="button" class="btn-icon-only series-add-btn read-also-add-btn" onclick="addReadAlsoSeries(${index}, ${seriesId}, this)" data-tooltip="Ajouter la série et ses albums (téléchargés si « Télécharger automatiquement à l&#39;ajout » est activé)" aria-label="Ajouter ${escapeForAttribute(item.title)} et la télécharger">${svgIcon('book-plus')}</button>`}
                     </div>
                 </div>
             `).join('') : '<div class="no-data"><p>Aucune recommandation trouvée sur cette fiche Bédéthèque.</p></div>'}
@@ -6854,9 +6851,7 @@ async function addReadAlsoSeries(itemIndex, viewingSeriesId, button) {
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Erreur lors de l’ajout');
         item.series_id = data.series_id;
-        // Conserver explicitement l'état « Ajouté » lors du rerendu de la modale :
-        // sinon le bouton + était immédiatement remplacé par l'icône dossier, ce qui
-        // ne permettait pas de voir que l'action venait d'être effectuée.
+        // Après le rerendu, la ligne affiche « En bibliothèque » et son titre ouvre la série.
         item.read_also_added = true;
         showToast('read-also-add', `« ${item.title} » est maintenant dans la bibliothèque`, { icon: 'check', autoHideMs: 4500, href: `/series/${data.series_id}` });
         if (data.auto_acquire_started) {
@@ -6869,7 +6864,7 @@ async function addReadAlsoSeries(itemIndex, viewingSeriesId, button) {
         button.disabled = false;
         button.innerHTML = originalHtml;
         button.classList.remove('read-also-busy');
-        button.setAttribute('data-tooltip', 'Ajouter la série et télécharger ses tomes');
+        button.setAttribute('data-tooltip', "Ajouter la série et ses albums (téléchargés si « Télécharger automatiquement à l'ajout » est activé)");
         showToast('read-also-add', `« ${item.title} » : ${error.message}`, { icon: 'circle-x', autoHideMs: 5000 });
     }
 }

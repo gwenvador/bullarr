@@ -327,7 +327,7 @@ function _updateAuthorAlbumsBulkActionsBar() {
 const _AUTHOR_PLUS_TOOLTIP = "Ajouter la série et ses albums (téléchargés si « Télécharger automatiquement à l'ajout » est activé)";
 function _authorAlbumRowActionHtml(a, i) {
     if (a.already_in_library) return '';
-    return `<button type="button" class="btn-icon-only" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="${_AUTHOR_PLUS_TOOLTIP}">${svgIcon('book-plus')}</button>`;
+    return `<button type="button" class="btn-icon-only series-add-btn" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="${_AUTHOR_PLUS_TOOLTIP}">${svgIcon('book-plus')}</button>`;
 }
 
 async function addAuthorAlbumZap(index, button) {
