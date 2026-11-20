@@ -361,14 +361,71 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null) {
             ? `${added}recherche de ${data.count} tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée (${data.sources_count} source${data.sources_count > 1 ? 's' : ''}).`
             : `${added}aucun tome manquant à télécharger.`;
         showToast('nouveautes-auto-add', `« ${title} » : ${message}`,
-            { icon: 'check', autoHideMs: 7000, href: `/series/${seriesId}` });
+            { icon: data.started ? 'loader-circle' : 'check', autoHideMs: data.started ? 0 : 7000, href: `/series/${seriesId}` });
         button.innerHTML = svgIcon('check');
         button.style.color = 'var(--color-accent)';
+        // « ça devrait télécharger le fichier dans tous les cas quand je fais éclair ; juste si
+        // Prowlarr trouve mieux il le télécharge pas, sinon il le prend » : une fois la recherche
+        // finie, si elle n'a envoyé ni ce tome ni un pack, le fichier de CETTE ligne part.
+        if (data.started) await _nouveautesZapFallback(ev, target, linkIndex, rawHint, seriesId, title);
     } catch (error) {
         // La série reste ajoutée: seule la recherche est à relancer.
         showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? '' : 'série ajoutée, mais '}${error.message}`,
             { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
         restore();
+    }
+}
+
+// Numéro de tome de la release cliquée (null : album sans numéro / one-shot).
+function _nouveautesReleaseVolume(ev, target, linkIndex, rawHint) {
+    if (ev.type === 'ebdz' && linkIndex != null) {
+        const v = target?.parsed_volume ?? target?.volume;
+        if (v != null && v !== '') return String(Number(v));
+    }
+    if (ev.type === 'telegram' && ev.volume != null && ev.volume !== '') return String(Number(ev.volume));
+    return _nouveautesGuessVolume(rawHint || ev.title || '') || null;
+}
+
+async function _waitAutoAcquireDone(seriesId, maxMs = 8 * 60 * 1000) {
+    const start = Date.now();
+    let sawRunning = false;
+    while (Date.now() - start < maxMs) {
+        await new Promise(r => setTimeout(r, 3000));
+        let status;
+        try {
+            status = await (await fetch(`/api/bedetheque/auto-acquire/status/${seriesId}`)).json();
+        } catch (e) { continue; }
+        if (status.running) { sawRunning = true; continue; }
+        // Avant le démarrage du fil, le statut peut encore être celui d'une recherche
+        // précédente : on ne s'y fie qu'après l'avoir vue tourner (ou après 15 s).
+        if (status.completed && (sawRunning || Date.now() - start > 15000)) return status;
+    }
+    return null;
+}
+
+async function _nouveautesZapFallback(ev, target, linkIndex, rawHint, seriesId, title) {
+    const status = await _waitAutoAcquireDone(seriesId);
+    if (!status) {
+        showToast('nouveautes-auto-add', `« ${title} » : la recherche dure trop longtemps, fichier de la ligne non envoyé.`,
+            { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
+        return;
+    }
+    const volume = _nouveautesReleaseVolume(ev, target, linkIndex, rawHint);
+    const lines = String(status.detail || '').split('\n').slice(1);
+    const covered = lines.some(line => /^(Pack|Intégrale)\b/.test(line)
+        || (volume ? line.startsWith(`Tome ${volume} :`) : line.startsWith('Album :')));
+    if (covered) {
+        showToast('nouveautes-auto-add', `« ${title} » : ${status.summary || 'recherche terminée.'} La recherche a trouvé ce tome, le fichier de la ligne n'est pas envoyé en plus.`,
+            { icon: 'check', autoHideMs: 9000, href: `/series/${seriesId}` });
+        return;
+    }
+    try {
+        const destination = await _downloadNouveautesRelease(ev, seriesId, linkIndex);
+        showToast('nouveautes-auto-add', `« ${title} » : rien de mieux trouvé${volume ? ` pour le tome ${volume}` : ''}, fichier de la ligne envoyé à ${destination}.${status.downloaded_count ? ` (${status.summary})` : ''}`,
+            { icon: 'check', autoHideMs: 9000, href: `/series/${seriesId}` });
+    } catch (error) {
+        showToast('nouveautes-auto-add', `« ${title} » : envoi du fichier de la ligne impossible : ${error.message}`,
+            { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
     }
 }
 

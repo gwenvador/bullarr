@@ -92,7 +92,7 @@ def search_prowlarr_raw(title, volume_num=None, label=None, confirm=False, limit
 
     try:
         response = requests.get(
-            f"{url}/api/v1/search", headers={'X-Api-Key': api_key}, params=params, timeout=30
+            f"{url}/api/v1/search", headers={'X-Api-Key': api_key}, params=params, timeout=90
         )
     except requests.exceptions.RequestException as e:
         print(f"Erreur recherche Prowlarr: {e}")

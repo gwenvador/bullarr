@@ -6724,11 +6724,17 @@ async function openReadAlsoModal(seriesId, seriesTitle) {
         <div class="author-albums-list read-also-list">
             ${items.length ? items.map((item, index) => `
                 <div class="overview-row author-album-row${item.series_id ? ' author-album-row-owned' : ''}" data-read-also-index="${index}">
-                    ${item.cover_url
-                        ? `<img class="cover-thumb-overview" src="${escapeHtml(item.cover_url)}" alt="" loading="lazy" onerror="this.style.display='none'">`
-                        : '<span class="cover-thumb-overview poster-placeholder-mini">📚</span>'}
+                    ${(() => {
+                        // « si je clique sur l'album ça devrait m'envoyer à sa page si je l'ai »
+                        const cover = item.cover_url
+                            ? `<img class="cover-thumb-overview" src="${escapeHtml(item.cover_url)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+                            : '<span class="cover-thumb-overview poster-placeholder-mini">📚</span>';
+                        return item.series_id ? `<a href="/series/${item.series_id}" class="read-also-link" tabindex="-1" aria-hidden="true">${cover}</a>` : cover;
+                    })()}
                     <div class="overview-info">
-                        <div class="overview-title">${escapeHtml(item.title)}</div>
+                        <div class="overview-title">${item.series_id
+                            ? `<a href="/series/${item.series_id}" class="read-also-link" data-tooltip="Ouvrir dans la bibliothèque">${escapeHtml(item.title)}</a>`
+                            : escapeHtml(item.title)}</div>
                         <div class="overview-tags">
                             ${item.series_id
                                 ? `<span class="overview-tag author-album-owned-tag">${svgIcon('check')} En bibliothèque</span>`
@@ -6738,7 +6744,7 @@ async function openReadAlsoModal(seriesId, seriesTitle) {
                     <div class="overview-actions">
                         <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" class="poster-action-btn poster-action-btn-light" data-tooltip="Voir sur Bédéthèque"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:16px;height:16px;vertical-align:middle;"></a>
                         ${item.read_also_added
-                            ? `<button type="button" class="poster-action-btn poster-action-btn-light read-also-added-btn" disabled data-tooltip="Série ajoutée" aria-label="Série ajoutée">Ajouté</button>`
+                            ? `<a href="/series/${item.series_id}" class="poster-action-btn poster-action-btn-light read-also-added-btn" data-tooltip="Série ajoutée : ouvrir dans la bibliothèque" aria-label="Série ajoutée, ouvrir">${svgIcon('check')}</a>`
                             : item.series_id
                                 ? `<a href="/series/${item.series_id}" class="poster-action-btn poster-action-btn-light" data-tooltip="Ouvrir dans la bibliothèque">${svgIcon('folder')}</a>`
                                 : `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="addReadAlsoSeries(${index}, ${seriesId}, this)" data-tooltip="Ajouter la série et télécharger ses tomes" aria-label="Ajouter ${escapeForAttribute(item.title)} et la télécharger">${svgIcon('zap')}</button>`}
@@ -6755,7 +6761,12 @@ async function addReadAlsoSeries(itemIndex, viewingSeriesId, button) {
     const item = items[itemIndex];
     if (!item || !button) return;
     button.disabled = true;
-    showToast('read-also-add', `⏳ Ajout de « ${item.title} »...`, { icon: 'loader-circle' });
+    // Retour immédiat sur le bouton lui-même (le toast peut être masqué par la modale).
+    const originalHtml = button.innerHTML;
+    button.innerHTML = svgIcon('loader-circle', 'icon-spin');
+    button.classList.add('read-also-busy');
+    button.setAttribute('data-tooltip', 'Ajout en cours…');
+    showToast('read-also-add', `Ajout de « ${item.title} »…`, { icon: 'loader-circle' });
     try {
         const response = await fetch('/api/bedetheque/add-series', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -6768,14 +6779,17 @@ async function addReadAlsoSeries(itemIndex, viewingSeriesId, button) {
         // sinon le bouton + était immédiatement remplacé par l'icône dossier, ce qui
         // ne permettait pas de voir que l'action venait d'être effectuée.
         item.read_also_added = true;
-        showToast('read-also-add', `✅ « ${item.title} » est maintenant dans la bibliothèque`, { icon: 'check', autoHideMs: 4500, href: `/series/${data.series_id}` });
+        showToast('read-also-add', `« ${item.title} » est maintenant dans la bibliothèque`, { icon: 'check', autoHideMs: 4500, href: `/series/${data.series_id}` });
         if (data.auto_acquire_started) {
-            showToast('read-also-auto-acquire', `🔎 Recherche automatique lancée pour « ${item.title} »`, { icon: 'search', autoHideMs: 6000 });
+            showToast('read-also-auto-acquire', `Recherche automatique lancée pour « ${item.title} »`, { icon: 'search', autoHideMs: 6000 });
         }
         openReadAlsoModal(viewingSeriesId, currentSeriesDetail.title);
     } catch (error) {
         button.disabled = false;
-        showToast('read-also-add', `❌ « ${item.title} » : ${error.message}`, { icon: 'circle-x', autoHideMs: 5000 });
+        button.innerHTML = originalHtml;
+        button.classList.remove('read-also-busy');
+        button.setAttribute('data-tooltip', 'Ajouter la série et télécharger ses tomes');
+        showToast('read-also-add', `« ${item.title} » : ${error.message}`, { icon: 'circle-x', autoHideMs: 5000 });
     }
 }
 

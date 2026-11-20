@@ -419,13 +419,14 @@
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.28);
 }
 
-.read-also-added-btn {
-    min-width: 76px;
-    cursor: default;
-    opacity: 0.9;
-    font-size: 0.78rem;
-    font-weight: 600;
+/* Éclair « À lire aussi » : rond, comme les autres boutons de la ligne ; coche verte une
+   fois la série ajoutée (lien vers sa fiche), roue qui tourne pendant l'ajout. */
+.read-also-added-btn,
+.read-also-added-btn:hover {
+    color: var(--color-success, #16a34a);
+    background: color-mix(in srgb, var(--color-success, #16a34a) 12%, transparent);
 }
+.read-also-busy { cursor: progress; opacity: 1 !important; }
 
 .cover-image-modal-caption {
     max-width: 92vw;
@@ -4434,3 +4435,7 @@ body[data-table-density="roomy"] #series-grid .series-table-row td { padding: 11
     .library-title-filter input { width: 100%; }
     .search-row-view-switcher { flex-wrap: wrap; }
 }
+
+.read-also-link { color: inherit; text-decoration: none; display: contents; }
+.overview-title .read-also-link { display: inline; }
+.overview-title .read-also-link:hover { text-decoration: underline; color: var(--color-accent); }
