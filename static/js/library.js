@@ -1015,19 +1015,35 @@ function overviewUserTagsHtml(tags) {
 // « fais que les tags soient cliquables » : sur la page bibliothèque, filtre sur place ;
 // ailleurs (fiche série), ouvre la bibliothèque de la série filtrée sur ce tag.
 function openTagFilter(tag, event, libId = null) {
+    return _openLibraryFilter('tag', tag, event, libId);
+}
+
+// « ajoute un lien dans les genres de la même façon » : même principe, filtre Genre.
+function openGenreFilter(genre, event, libId = null) {
+    return _openLibraryFilter('genre', genre, event, libId);
+}
+
+function _openLibraryFilter(kind, value, event, libId = null) {
     if (event) event.stopPropagation();
     if (typeof applyTagFilterInPlace === 'function' && typeof activeFilters !== 'undefined'
             && document.getElementById('series-sort-section') && !libId) {
         if (event) event.preventDefault();
-        applyTagFilterInPlace(tag);
+        applyFilterInPlace(kind, value);
         return false;
     }
     // La fiche série (/api/series/<id>) donne la bibliothèque dans library.id, pas library_id.
     const target = libId ?? currentSeriesDetail?.library?.id ?? currentSeriesDetail?.library_id;
     if (target == null) return true;
     if (event) event.preventDefault();
-    window.location.href = `/library/${target}?tag=${encodeURIComponent(tag)}`;
+    window.location.href = `/library/${target}?${kind}=${encodeURIComponent(value)}`;
     return false;
+}
+
+// Liens « genre » : « Aventure, Histoire » -> un lien par genre.
+function genreLinksHtml(genreText, libId = null) {
+    return splitMultiValue(genreText).map(g =>
+        `<a class="series-genre-link" href="#" onclick="return openGenreFilter('${escapeForAttribute(g)}', event, ${libId ?? 'null'})" data-tooltip="Voir les séries de ce genre">${escapeHtml(g)}</a>`
+    ).join(', ');
 }
 
 // Icônes des listes personnelles, affichées à côté du titre quand la série y figure
@@ -1128,7 +1144,7 @@ function buildTableRowHtml(s) {
         ${_isTableColumnVisible('volumes') ? `<td class="series-table-pill">${volumeLabel}</td>` : ''}
         ${_isTableColumnVisible('status') ? `<td class="series-table-pill">${escapeHtml(statusLabel)}</td>` : ''}
         ${_isTableColumnVisible('year') ? `<td class="series-table-pill">${escapeHtml(s.year || '—')}</td>` : ''}
-        ${_isTableColumnVisible('genre') ? `<td class="series-table-pill">${escapeHtml(seriesGenre(s) || '—')}</td>` : ''}
+        ${_isTableColumnVisible('genre') ? `<td class="series-table-pill">${seriesGenre(s) ? genreLinksHtml(seriesGenre(s)) : '—'}</td>` : ''}
         ${_isTableColumnVisible('type') ? `<td class="series-table-pill">${bedethequeOriginHtml(s.bedetheque_origin) || escapeHtml(bedethequeOriginLabel(s.bedetheque_origin))}</td>` : ''}
         ${optionalCellsHtml}
         <td class="series-table-actions" onclick="event.stopPropagation()"><div class="series-table-actions-inner">${buildQuickActionsHtml(s, 'poster-action-btn poster-action-btn-light')}</div></td>
@@ -2504,6 +2520,13 @@ function restoreFilterState() {
             activeFilters.add('tag:' + tagFromUrl);
             saveFilterState();
         }
+        // Lien depuis un genre de fiche série (?genre=...)
+        const genreFromUrl = new URLSearchParams(window.location.search).get('genre');
+        if (genreFromUrl) {
+            activeFilters = new Set([...activeFilters].filter(key => !key.startsWith('genre:')));
+            activeFilters.add('genre:' + genreFromUrl);
+            saveFilterState();
+        }
         const savedSort = localStorage.getItem(getFilterStorageKey('sort'));
         if (savedSort && SERIES_SORT_MODES[savedSort]) seriesSortMode = savedSort;
         seriesSortReversed = localStorage.getItem(getFilterStorageKey('sortReversed')) === '1';
@@ -2527,13 +2550,18 @@ function toggleSeriesFilter(key) {
 // Clic sur un tag dans la recherche du haut de page alors qu'on est déjà sur cette
 // bibliothèque : filtre sur ce tag seul sans recharger la page (voir selectHeaderSearchTag).
 function applyTagFilterInPlace(tag) {
-    activeFilters = new Set([...activeFilters].filter(key => !key.startsWith('tag:')));
-    activeFilters.add('tag:' + tag);
+    applyFilterInPlace('tag', tag);
+}
+
+// Filtre « tag » ou « genre » sur cette seule valeur, sans recharger la page.
+function applyFilterInPlace(kind, value) {
+    activeFilters = new Set([...activeFilters].filter(key => !key.startsWith(kind + ':')));
+    activeFilters.add(kind + ':' + value);
     refreshFilterDropdownUI();
     saveFilterState();
     filterSeries();
     const url = new URL(window.location.href);
-    url.searchParams.set('tag', tag);
+    url.searchParams.set(kind, value);
     window.history.replaceState(null, '', url);
 }
 
@@ -5623,7 +5651,7 @@ async function renderSeriesDetail(seriesId, { silent = false } = {}) {
             metaCells.push(['Auteur', _authorNamesHtml(bd.scenaristes || bd.dessinateurs)]);
         }
         if (bd.editeurs) metaCells.push(['Éditeur', escapeHtml(bd.editeurs)]);
-        if (bd.genre) metaCells.push(['Genre', escapeHtml(bd.genre)]);
+        if (bd.genre) metaCells.push(['Genre', genreLinksHtml(bd.genre, data.library?.id ?? data.library_id ?? null)]);
         if (bd.status) {
             const years = bd.year_start ? ` (${bd.year_start}${bd.year_end && bd.year_end !== bd.year_start ? '-' + bd.year_end : ''})` : '';
             metaCells.push(['Statut', escapeHtml(`${bd.status}${years}`)]);
