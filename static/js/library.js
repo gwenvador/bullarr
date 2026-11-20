@@ -1022,7 +1022,8 @@ function openTagFilter(tag, event, libId = null) {
         applyTagFilterInPlace(tag);
         return false;
     }
-    const target = libId ?? currentSeriesDetail?.library_id;
+    // La fiche série (/api/series/<id>) donne la bibliothèque dans library.id, pas library_id.
+    const target = libId ?? currentSeriesDetail?.library?.id ?? currentSeriesDetail?.library_id;
     if (target == null) return true;
     if (event) event.preventDefault();
     window.location.href = `/library/${target}?tag=${encodeURIComponent(tag)}`;
@@ -3012,7 +3013,8 @@ async function saveSeriesTags(seriesId, tags) {
 
 // Chips « tag × » de la fenêtre des tags d'une série
 function _seriesTagChipsHtml(seriesId, tags) {
-    const libId = currentSeriesDetail && currentSeriesDetail.id === seriesId ? currentSeriesDetail.library_id : null;
+    const libId = currentSeriesDetail && currentSeriesDetail.id === seriesId
+        ? (currentSeriesDetail.library?.id ?? currentSeriesDetail.library_id ?? null) : null;
     return tags.map(tag => `<span class="overview-tag series-tag-editable"><a class="series-tag-link" href="${libId != null ? `/library/${libId}?tag=${encodeURIComponent(tag)}` : '#'}" onclick="return openTagFilter('${escapeForAttribute(tag)}', event, ${libId ?? 'null'})" data-tooltip="Voir les séries avec ce tag">${escapeHtml(tag)}</a><button type="button" class="series-tag-remove" onclick="removeSeriesTag(${seriesId}, '${escapeForAttribute(tag)}', event)" data-tooltip="Supprimer le tag « ${escapeHtml(tag)} »" aria-label="Supprimer le tag ${escapeHtml(tag)}">×</button></span>`).join('');
 }
 
