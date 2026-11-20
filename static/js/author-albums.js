@@ -128,7 +128,7 @@ async function _renderAuthorAlbumsList() {
                 <label class="overview-row author-album-row${a.already_in_library ? ' author-album-row-owned' : ''}" data-author-album-title="${escapeHtml(a.title.toLowerCase())}">
                     <input type="checkbox" class="author-album-checkbox" data-index="${i}" onchange="_updateAuthorAlbumsBulkActionsBar()" style="width:18px; height:18px; cursor:pointer; flex-shrink:0;">
                     <div class="overview-info">
-                        <div class="overview-title">${escapeHtml(a.title)}</div>
+                        <div class="overview-title">${a.series_id ? `<a href="/series/${a.series_id}" class="author-album-title-link" onclick="event.stopPropagation()" data-tooltip="Ouvrir dans la bibliothèque">${escapeHtml(a.title)}</a>` : escapeHtml(a.title)}</div>
                         <div class="overview-tags">
                             ${a.year_start ? `<span class="overview-tag">${a.year_start}${a.year_end && a.year_end !== a.year_start ? '–' + a.year_end : ''}</span>` : ''}
                             ${a.already_in_library ? `<span class="overview-tag author-album-owned-tag" data-tooltip="Déjà dans votre bibliothèque">${svgIcon('check')} En bibliothèque</span>` : ''}
@@ -326,11 +326,8 @@ function _updateAuthorAlbumsBulkActionsBar() {
 // automatique est activée dans les réglages).
 const _AUTHOR_PLUS_TOOLTIP = "Ajouter la série et ses albums (téléchargés si « Télécharger automatiquement à l'ajout » est activé)";
 function _authorAlbumRowActionHtml(a, i) {
-    if (a.already_in_library && a.series_id) {
-        return `<a href="/series/${a.series_id}" class="poster-action-btn poster-action-btn-light" data-tooltip="Ouvrir dans la bibliothèque" onclick="event.stopPropagation()">${svgIcon('folder')}</a>`;
-    }
     if (a.already_in_library) return '';
-    return `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="${_AUTHOR_PLUS_TOOLTIP}">${svgIcon('book-plus')}</button>`;
+    return `<button type="button" class="btn-icon-only" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="${_AUTHOR_PLUS_TOOLTIP}">${svgIcon('book-plus')}</button>`;
 }
 
 async function addAuthorAlbumZap(index, button) {
@@ -362,13 +359,10 @@ async function addAuthorAlbumZap(index, button) {
         row?.classList.add('author-album-row-owned');
         const checkbox = row?.querySelector('input[type="checkbox"]');
         if (checkbox) { checkbox.checked = false; checkbox.disabled = true; }
-        const link = document.createElement('a');
-        link.href = `/series/${data.series_id}`;
-        link.className = 'poster-action-btn poster-action-btn-light read-also-added-btn';
-        link.dataset.tooltip = 'Ajoutée - ouvrir dans la bibliothèque';
-        link.innerHTML = svgIcon('check');
-        link.addEventListener('click', e => e.stopPropagation());
-        button.replaceWith(link);
+        const titleEl = row?.querySelector('.overview-title');
+        if (titleEl) titleEl.innerHTML = `<a href="/series/${data.series_id}" class="author-album-title-link" onclick="event.stopPropagation()" data-tooltip="Ouvrir dans la bibliothèque">${escapeHtml(album.title)}</a>`;
+        row?.querySelector('.overview-tags')?.insertAdjacentHTML('beforeend', `<span class="overview-tag author-album-owned-tag">${svgIcon('check')} En bibliothèque</span>`);
+        button.remove();
         _updateAuthorAlbumsBulkActionsBar();
         const missing = (data.missing_volumes || []).length;
         const dl = data.already_exists ? ' (déjà dans la bibliothèque)'
@@ -458,7 +452,7 @@ async function _addSelectedAuthorAlbums(soleLibraryId) {
     const added = addedSeries.length;
     showToast(
         'author-albums-add',
-        `${added} ${pluralize(added, 'série')} ${pluralize(added, 'ajoutée')}${failed ? `, ${failed} ${pluralize(failed, 'échec')}` : ''}${added ? (autoStarted ? ' ; téléchargement des tomes manquants lancé.' : ' ; rien n'est téléchargé (option « Télécharger automatiquement à l'ajout » désactivée).') : '.'}`,
+        `${added} ${pluralize(added, 'série')} ${pluralize(added, 'ajoutée')}${failed ? `, ${failed} ${pluralize(failed, 'échec')}` : ''}${added ? (autoStarted ? ' ; téléchargement des tomes manquants lancé.' : " ; rien n'est téléchargé (option « Télécharger automatiquement à l'ajout » désactivée).") : '.'}`,
         {
             icon: failed ? 'triangle-alert' : 'check',
             autoHideMs: 6000,

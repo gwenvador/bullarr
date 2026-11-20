@@ -6008,3 +6008,7 @@ a.history-source-link .icon { width: 12px; height: 12px; }
 @media (max-width: 900px) {
     .nouveautes-table > thead .col-resize-handle { display: none !important; }
 }
+
+/* Albums de l'auteur : le titre d'une série en bibliothèque ouvre sa fiche (plus de dossier). */
+.author-album-title-link { color: inherit; text-decoration: none; }
+.author-album-title-link:hover { color: var(--color-accent); text-decoration: underline; }
