@@ -6022,3 +6022,20 @@ a.history-source-link .icon { width: 12px; height: 12px; }
 }
 .overview-actions .series-add-btn:hover:not(:disabled) { color: #fff; background: #d97706; border-color: #d97706; }
 .overview-actions .series-add-btn svg { width: 16px; height: 16px; }
+
+/* « Bédéthèque et l icône ne sont pas parfaitement alignés » : rond de 24 px à côté d un
+   carré de 32 px. Albums de l auteur et Lire aussi : même carré bordé de 32 px pour les deux,
+   centrés sur la même ligne. */
+.author-albums-list .overview-actions { align-items: center; }
+.author-albums-list .overview-actions > .poster-action-btn {
+    width: 32px; height: 32px; padding: 0; margin: 0; box-sizing: border-box;
+    display: inline-grid; place-items: center;
+    border: 1px solid var(--color-border); border-radius: 9px;
+    background: var(--color-surface); transform: none;
+}
+.author-albums-list .overview-actions > .poster-action-btn:hover {
+    border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface)); transform: none;
+}
+.author-albums-list .overview-actions > .poster-action-btn img { width: 17px !important; height: 17px !important; display: block; }
+.author-albums-list .overview-actions > .series-add-btn { box-sizing: border-box; }
+.author-albums-list .overview-actions > .series-add-btn svg { display: block; }
