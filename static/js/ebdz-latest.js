@@ -751,9 +751,9 @@ function _saveNouveautesOrigins() {
 }
 let _nouveautesOriginRun = null;
 
-// Genres RSS à voir (Configuration > Indexeurs > Flux RSS) : une ligne RSS dont le genre
-// est connu et décoché est masquée ; genre inconnu (pas de série Bédéthèque) : visible.
-let nouveautesRssGenres = new Set(['bd', 'comics', 'manga']);
+// Réglage « Genres affichés dans Nouveautés » retiré (« ça n'a pas l'air de marcher, tu peux
+// supprimer ça ») : tous les genres restent affichés.
+const nouveautesRssGenres = new Set(['bd', 'comics', 'manga']);
 
 function _nouveautesRssGenreHidden(event) {
     if (event.type !== 'rss' || nouveautesRssGenres.size >= 3) return false;
@@ -2313,7 +2313,6 @@ async function _loadNouveautesBatch(limit, generation, resetPage, olderThanDays 
                 nouveautesRssRefreshing = !!rssData.refreshing;
                 if (rssData.success) {
                     rssEvents = (rssData.entries || []).map(entry => ({ type: 'rss', ...entry }));
-                    nouveautesRssGenres = new Set(rssData.genres && rssData.genres.length ? rssData.genres : ['bd', 'comics', 'manga']);
                 }
                 if (!rssData.success || rssData.errors?.length) {
                     const names = (rssData.errors || []).map(error => error.name).join(', ');

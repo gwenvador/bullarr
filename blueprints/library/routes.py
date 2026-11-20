@@ -9775,7 +9775,14 @@ def _match_series_for_auto_import(normalized_title, all_series, normalized_serie
         if len(prefix_matches) == 1:
             return prefix_matches[0]
         if len(prefix_matches) > 1:
-            return None
+            # « XIII Mystery Van Hamme Collectif T14 » commence par « XIII » ET par « XIII
+            # Mystery » : le préfixe le plus long est la série visée (sinon le release était
+            # ignoré comme ambigu). Égalité de longueur = vraie ambiguïté, rien n'est choisi.
+            lengths = [len(_normalize_title_for_match(row[3]).split()) for row in prefix_matches]
+            longest = max(lengths)
+            best = [row for row, size in zip(prefix_matches, lengths) if size == longest]
+            unique_ids = {row[0] for row in best}
+            return best[0] if len(unique_ids) == 1 else None
     return None
 
 

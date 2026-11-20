@@ -1326,9 +1326,6 @@ input[type="checkbox"].switch-input:disabled {
     .about-actions { width: 100%; }
 }
 
-.rss-genres-setting { margin: 16px 0; display: flex; flex-direction: column; gap: 6px; }
-.rss-genres-options { display: flex; flex-wrap: wrap; gap: 6px 18px; }
-.rss-genres-options label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 
 /* Catégories Prowlarr : groupes parent / sous-catégories en retrait, autres catégories repliées. */
 .prowlarr-categories { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border, #e0e0e0); }
