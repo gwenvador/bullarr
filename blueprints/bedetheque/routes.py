@@ -2695,7 +2695,11 @@ def add_series_from_bedetheque():
                 kwargs={'gate_on_global_setting': not force_auto_acquire},
                 daemon=True
             ).start()
-            auto_acquire_started = True
+            # « corrige le message » : vrai seulement si la recherche va réellement
+            # tourner (option « Télécharger automatiquement à l'ajout » ou ajout forcé) -
+            # le fil ci-dessus ne fait rien quand l'option est désactivée.
+            from blueprints.library.routes import load_library_import_config
+            auto_acquire_started = bool(force_auto_acquire or load_library_import_config().get('auto_acquire_on_add_enabled', False))
 
         logger.info(f"✓ Série ajoutée depuis Bedetheque: {series_title} (#{series_id}, {len(missing)} tomes à récupérer)")
         return jsonify({'success': True, 'series_id': series_id, 'title': series_title,

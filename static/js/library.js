@@ -6860,7 +6860,9 @@ async function addReadAlsoSeries(itemIndex, viewingSeriesId, button) {
         item.read_also_added = true;
         showToast('read-also-add', `« ${item.title} » est maintenant dans la bibliothèque`, { icon: 'check', autoHideMs: 4500, href: `/series/${data.series_id}` });
         if (data.auto_acquire_started) {
-            showToast('read-also-auto-acquire', `Recherche automatique lancée pour « ${item.title} »`, { icon: 'search', autoHideMs: 6000 });
+            showToast('read-also-auto-acquire', `« ${item.title} » : recherche et téléchargement des tomes manquants lancés`, { icon: 'search', autoHideMs: 6000 });
+        } else if (!data.already_exists) {
+            showToast('read-also-auto-acquire', `« ${item.title} » : rien n'est téléchargé (option « Télécharger automatiquement à l'ajout » désactivée)`, { icon: 'info', autoHideMs: 7000 });
         }
         openReadAlsoModal(viewingSeriesId, currentSeriesDetail.title);
     } catch (error) {

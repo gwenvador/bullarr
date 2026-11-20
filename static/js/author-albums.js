@@ -372,7 +372,8 @@ async function addAuthorAlbumZap(index, button) {
         _updateAuthorAlbumsBulkActionsBar();
         const missing = (data.missing_volumes || []).length;
         const dl = data.already_exists ? ' (déjà dans la bibliothèque)'
-            : data.auto_acquire_started ? ` ; téléchargement de ${missing} tome${missing > 1 ? 's' : ''} lancé.` : '.';
+            : data.auto_acquire_started ? ` ; téléchargement de ${missing} tome${missing > 1 ? 's' : ''} manquant${missing > 1 ? 's' : ''} lancé.`
+            : " ; rien n'est téléchargé (option « Télécharger automatiquement à l'ajout » désactivée).";
         showToast('author-albums-add', `« ${album.title} » ajoutée${dl}`, { icon: 'check', autoHideMs: 6000, href: `/series/${data.series_id}` });
     } catch (e) {
         button.disabled = false;
@@ -439,6 +440,7 @@ async function _addSelectedAuthorAlbums(soleLibraryId) {
 
     let failed = 0;
     const addedSeries = [];
+    let autoStarted = false;
     for (const cb of checkboxes) {
         const album = _authorAlbumsCache[parseInt(cb.dataset.index, 10)];
         try {
@@ -448,7 +450,7 @@ async function _addSelectedAuthorAlbums(soleLibraryId) {
                 body: JSON.stringify({ url: album.bedetheque_url, library_id: libraryId })
             });
             const data = await response.json();
-            if (data.success) addedSeries.push({ id: data.series_id, title: album.title }); else failed++;
+            if (data.success) { addedSeries.push({ id: data.series_id, title: album.title }); if (data.auto_acquire_started) autoStarted = true; } else failed++;
         } catch (e) {
             failed++;
         }
@@ -456,7 +458,7 @@ async function _addSelectedAuthorAlbums(soleLibraryId) {
     const added = addedSeries.length;
     showToast(
         'author-albums-add',
-        `${added} ${pluralize(added, 'série')} ${pluralize(added, 'ajoutée')}${failed ? `, ${failed} ${pluralize(failed, 'échec')}` : ''}.`,
+        `${added} ${pluralize(added, 'série')} ${pluralize(added, 'ajoutée')}${failed ? `, ${failed} ${pluralize(failed, 'échec')}` : ''}${added ? (autoStarted ? ' ; téléchargement des tomes manquants lancé.' : ' ; rien n'est téléchargé (option « Télécharger automatiquement à l'ajout » désactivée).') : '.'}`,
         {
             icon: failed ? 'triangle-alert' : 'check',
             autoHideMs: 6000,
