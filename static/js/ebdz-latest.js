@@ -26,7 +26,7 @@ async function _nouveautesResolveAutoAddLibraryId() {
 // information est le nom de fichier/titre ORIGINAL - transmis ici en plus pour départager
 // une série homonyme sur Bédéthèque (voir search_and_get_best_match/raw_hint,
 // scraper.py) plutôt que de perdre ce signal avant même la recherche.
-async function _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl = null, reportError = false) {
+async function _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl = null, reportError = false, withAutoAcquire = false) {
     try {
         let url = bedethequeUrl;
         if (!/^https:\/\/www\.bedetheque\.com\//i.test(url || '')) {
@@ -45,14 +45,14 @@ async function _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl = null, re
         const addResponse = await fetch('/api/bedetheque/add-series', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, library_id: libraryId, skip_auto_acquire: true })
+            body: JSON.stringify({ url, library_id: libraryId, skip_auto_acquire: !withAutoAcquire })
         });
         const addData = await addResponse.json();
         if (!addResponse.ok || !addData.success) {
             if (reportError) throw new Error(addData.error || 'Ajout de la série impossible');
             return null;
         }
-        return { seriesId: addData.series_id, alreadyExists: !!addData.already_exists };
+        return { seriesId: addData.series_id, alreadyExists: !!addData.already_exists, autoAcquire: !!addData.auto_acquire_started, missing: (addData.missing_volumes || []).length };
     } catch (e) {
         if (reportError) throw e;
         return null;
@@ -404,6 +404,48 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, g
     } catch (error) {
         showToast('nouveautes-auto-add', `« ${title} » : ${added}${sentText}, mais recherche des autres tomes impossible : ${error.message}`,
             { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
+    }
+}
+
+// « le + c'est pour les albums, pas pour je ne sais quoi » / « ajoute et télécharge les
+// albums aussi si l'option est valide » : le « + » ouvrait Découvrir sur le nom de fichier
+// brut (« Larcenet Une Aventure… CBZ-Divers » → toutes les séries de Larcenet). Il ajoute
+// maintenant la série reconnue (fiche Bédéthèque) avec ses albums ; la recherche auto de
+// ses tomes manquants part ensuite seulement si elle est activée dans les réglages
+// (Recherche automatique). Sans fiche reconnue : Découvrir sur le titre de la série.
+const _NOUVEAUTES_PLUS_TOOLTIP = "Ajouter la série et ses albums (téléchargés si la recherche automatique est activée)";
+
+async function addSeriesFromNouveautes(index, button, linkIndex = null) {
+    const ev = allNouveautesEvents[index];
+    if (!ev || button.disabled) return;
+    const target = linkIndex != null ? ev?.links?.[linkIndex] : ev;
+    const title = ev.type === 'telegram'
+        ? (ev.series_title || ev.bedetheque_title || ev.parsed_title || ev.filename)
+        : (ev.series_title || ev.matched_series_title || ev.bedetheque_title || ev.title);
+    const rawHint = ev.type === 'telegram' ? ev.filename
+        : ev.type === 'ebdz' ? ((linkIndex != null ? target : ev.links?.[0])?.filename ? decodeFilename((linkIndex != null ? target : ev.links[0]).filename) : ev.title)
+        : ev.title;
+    const bedethequeUrl = (ev.type === 'ebdz' ? ev.matched_bedetheque_url : ev.bedetheque_url) || ev.bedetheque_url;
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = svgIcon('loader-circle', 'icon-spin');
+    showToast('nouveautes-auto-add', `« ${title} » : ajout de la série…`, { icon: 'loader-circle' });
+    try {
+        const result = await _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl, true, true);
+        button.innerHTML = svgIcon('check');
+        button.style.color = 'var(--color-accent)';
+        const what = result.alreadyExists ? 'série déjà dans la bibliothèque'
+            : `série ajoutée avec ${result.missing} album${result.missing > 1 ? 's' : ''}`;
+        const dl = result.alreadyExists ? ''
+            : result.autoAcquire ? ' ; téléchargement des albums lancé si la recherche automatique est activée.' : '.';
+        showToast('nouveautes-auto-add', `« ${title} » : ${what}${dl}`,
+            { icon: 'check', autoHideMs: 9000, href: `/series/${result.seriesId}` });
+    } catch (error) {
+        button.disabled = false;
+        button.innerHTML = original;
+        const query = String(ev.bedetheque_title || ev.series_title || ev.parsed_title || _nouveautesPrettyName(title || '').text || title || '');
+        showToast('nouveautes-auto-add', `« ${title} » : ${error.message}. Ouvre Découvrir pour choisir la série.`,
+            { icon: 'circle-x', autoHideMs: 9000, href: `/discover?q=${encodeURIComponent(query)}` });
     }
 }
 
@@ -1438,7 +1480,7 @@ function _nouveautesEbdzRowHtml(event, index) {
         const zapHtml = owned || link._autoAddTriggered ? ''
             : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${index}, this, ${linkIndex})" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants" aria-label="Ajouter la série et télécharger tous ses tomes manquants">${svgIcon('zap')}</button>`;
         const discoverHtml = seriesMatched ? ''
-            : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`;
+            : `<button class="btn-icon-only nouveautes-add-series-btn" type="button" onclick="addSeriesFromNouveautes(${index}, this, ${linkIndex})" data-tooltip="${_NOUVEAUTES_PLUS_TOOLTIP}" aria-label="Ajouter la série">${svgIcon('plus')}</button>`;
         return `<tr class="nouveautes-event-row${(ownedRowClass + newRowClass)}" style="border-bottom:1px solid var(--color-border);">
             <td style="padding:10px; white-space:nowrap;" data-tooltip="${escapeHtml(formatSessionDate(event.date))}">${escapeHtml(formatSessionDateShort(event.date))}</td>
             <td style="padding:10px; text-align:center;">${typeIconHtml}</td>
@@ -1523,7 +1565,7 @@ function _nouveautesRssRowHtml(event) {
     const replaceOwned = event.already_owned === true && !!event.series_id;
     const addButton = event.title ? (replaceOwned
         ? `<button class="btn-icon-only" type="button" onclick="replaceNouveautesRssFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>`
-        : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants" aria-label="Ajouter la série et télécharger tous ses tomes manquants">${svgIcon('zap')}</button>`}${_nouveautesMatched(event) ? '' : `<button class="btn-icon-only" type="button" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(event.title)}')" data-tooltip="Ajouter la série dans Découvrir" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
+        : `${event._autoAddTriggered ? '' : `<button class="btn-icon-only" type="button" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants" aria-label="Ajouter la série et télécharger tous ses tomes manquants">${svgIcon('zap')}</button>`}${_nouveautesMatched(event) ? '' : `<button class="btn-icon-only nouveautes-add-series-btn" type="button" onclick="addSeriesFromNouveautes(${event._index}, this)" data-tooltip="${_NOUVEAUTES_PLUS_TOOLTIP}" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}`) : '';
     const matchedSeriesHtml = _nouveautesSeriesHtml(event);
     // Ligne VK : le titre ouvre déjà le message sur VK ; le bouton télécharge dans Bullarr.
     const downloadButtons = event.vk ? '' : (event.download_links || []).map(item => {
@@ -1555,7 +1597,7 @@ function _nouveautesTelegramRowHtml(event) {
     const showReplace = !!event.series_id && event.already_owned === true;
     const addToLibraryHtml = `
         ${showReplace ? `<button class="btn-icon-only" onclick="replaceNouveautesTelegramFile(${event._index}, this)" data-tooltip="Télécharger et remplacer ce fichier" aria-label="Télécharger et remplacer ce fichier">${svgIcon('file-replace')}</button>` : event._autoAddTriggered ? '' : `<button class="btn-icon-only" onclick="addSeriesAndDownloadNouveautes(${event._index}, this)" data-tooltip="Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants">${svgIcon('zap')}</button>`}
-        ${seriesMatched ? '' : `<button class="btn-icon-only" onclick="window.location.href='/discover?q=' + encodeURIComponent('${escapeForAttribute(addToLibraryQuery)}')" data-tooltip="Ajouter la série dans Découvrir">${svgIcon('plus')}</button>`}
+        ${seriesMatched ? '' : `<button class="btn-icon-only nouveautes-add-series-btn" onclick="addSeriesFromNouveautes(${event._index}, this)" data-tooltip="${_NOUVEAUTES_PLUS_TOOLTIP}" aria-label="Ajouter la série">${svgIcon('plus')}</button>`}
     `;
     return `
         <tr class="nouveautes-event-row ${(ownedRowClass + newRowClass).trim()}" style="border-bottom:1px solid var(--color-border);">
@@ -1961,7 +2003,7 @@ function _groupNouveautesSeriesRows(body) {
             if (rest > 0) {
                 // colSpan = 0 vaut 1 en HTML : la cellule n'est créée que s'il reste des colonnes.
                 // « il devrait y avoir le + aussi » : le « + » Découvrir des albums est repris.
-                const plus = members.map(r => r.querySelector('.nouveautes-actions-cell button[onclick*="/discover?q="]')).find(Boolean);
+                const plus = members.map(r => r.querySelector('.nouveautes-actions-cell .nouveautes-add-series-btn')).find(Boolean);
                 const hasActions = !!(zapArgs || plus);
                 const fillerSpan = hasActions ? rest - 1 : rest;
                 if (fillerSpan > 0) {

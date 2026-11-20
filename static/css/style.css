@@ -6002,3 +6002,9 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     .nouveautes-table > thead > tr > th:nth-child(6) .th-filterable-control { width: 100% !important; }
     .nouveautes-table > thead > tr > th:nth-child(7) { display: none !important; }
 }
+
+/* « vire la barre verticale en fin des filtres et options » : poignées de redimensionnement
+   des colonnes, inutiles au doigt une fois l en-tête en pastilles. */
+@media (max-width: 900px) {
+    .nouveautes-table > thead .col-resize-handle { display: none !important; }
+}
