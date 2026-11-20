@@ -5866,3 +5866,84 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     .volume-item .volume-meta { margin-top: 10px; }
     .volume-item .volume-summary { font-size: .84em; line-height: 1.5; margin-top: 10px; }
 }
+
+/* « Nouveautés en mobile, c'est pas très beau » : surlignage « nouveau » posé cellule par
+   cellule (des blocs séparés par les espaces de la grille), cellules vides (Genre, Série)
+   affichées comme de petits rectangles, en-têtes de groupe sans leurs actions (éclair,
+   « + »). Mobile : une carte par ligne - date, source et origine sur une ligne discrète,
+   titre en dessous, actions alignées à droite ; repère « nouveau » sur toute la carte. */
+@media (max-width: 900px) {
+    #nouveautes-events-body > tr.nouveautes-event-row,
+    #nouveautes-events-body > tr.nouveautes-series-group-row {
+        position: relative;
+        padding: 10px 8px 10px 12px;
+        border-bottom: 1px solid var(--color-border);
+        background: transparent;
+    }
+    #nouveautes-events-body > tr > td,
+    #nouveautes-events-body > tr.nouveautes-row-new > td,
+    #nouveautes-events-body > tr.nouveautes-series-group-row:hover > td {
+        background: transparent !important;
+    }
+    #nouveautes-events-body > tr.nouveautes-row-new {
+        background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+        box-shadow: inset 3px 0 0 var(--color-accent);
+    }
+    #nouveautes-events-body > tr > td:empty { display: none !important; }
+
+    /* Ligne d'un album */
+    #nouveautes-events-body > tr.nouveautes-event-row {
+        grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+        row-gap: 4px;
+        column-gap: 6px;
+    }
+    #nouveautes-events-body > tr.nouveautes-event-row > td { padding: 0 !important; }
+    #nouveautes-events-body > tr > td:nth-child(1) {
+        font-size: .82em;
+        font-weight: 600;
+        color: var(--color-text-muted);
+        font-variant-numeric: tabular-nums;
+    }
+    #nouveautes-events-body > tr > td:nth-child(2) .tab-button,
+    #nouveautes-events-body > tr > td:nth-child(2) > * { transform: scale(.8); transform-origin: left center; }
+    #nouveautes-events-body > tr > td.nouveautes-origin-cell {
+        font-size: .78em;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    #nouveautes-events-body > tr.nouveautes-event-row > td.nouveautes-details-cell { margin-top: 2px; }
+    #nouveautes-events-body > tr.nouveautes-event-row > td.nouveautes-actions-cell { margin-top: 4px; }
+    #nouveautes-events-body .nouveautes-actions-cell > div {
+        justify-content: flex-end;
+        gap: 6px !important;
+    }
+    #nouveautes-events-body .nouveautes-actions-cell .btn-icon-only {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* En-tête d'un groupe d'albums de la même série */
+    #nouveautes-events-body > tr.nouveautes-series-group-row {
+        gap: 4px 6px;
+        padding: 10px 8px 10px 12px;
+    }
+    #nouveautes-events-body > tr.nouveautes-series-group-row > td.nouveautes-details-cell { flex: 1 1 calc(100% - 110px); min-width: 0; }
+    #nouveautes-events-body > tr.nouveautes-series-group-row > td.nouveautes-actions-cell {
+        display: block !important;
+        flex: 0 0 auto;
+        align-self: flex-end;
+        margin-left: auto;
+    }
+    /* Pastille « Fiche » : sur la ligne des actions, à gauche. */
+    #nouveautes-events-body > tr.nouveautes-series-group-row:has(.nouveautes-series-pill) > td.nouveautes-details-cell { flex-basis: 100%; }
+    #nouveautes-events-body > tr.nouveautes-series-group-row > td:has(> .nouveautes-series-pill) { flex: 1 1 auto; align-self: center; text-align: left !important; }
+    /* Date, source et origine sur la première ligne ; titre et actions sur la suivante. */
+    #nouveautes-events-body > tr.nouveautes-series-group-row > td.nouveautes-origin-cell { flex: 1 1 auto; }
+}
