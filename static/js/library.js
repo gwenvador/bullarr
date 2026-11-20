@@ -3432,10 +3432,39 @@ async function setSeriesReadingList(seriesId, field, value) {
         }
         // La grille n'existe que sur la bibliothèque: sur la fiche série seule, filterSeries plante.
         if (typeof filterSeries === 'function' && document.getElementById('series-grid')) filterSeries();
-        renderSeriesDetail(seriesId);
+        // « pourquoi ça recharge la page » : la fiche entière était re-rendue (renderSeriesDetail) ;
+        // seuls les badges du titre et les deux entrées du menu changent, mis à jour sur place.
+        _applyReadingListsInPlace(seriesId, data);
     } catch (error) {
         alert('❌ Erreur: ' + error.message);
     }
+}
+
+function _applyReadingListsInPlace(seriesId, data) {
+    if (typeof currentSeriesDetail !== 'undefined' && currentSeriesDetail && Number(currentSeriesDetail.id) === Number(seriesId)) {
+        currentSeriesDetail.to_read_later = data.to_read_later;
+        currentSeriesDetail.is_favorite = data.is_favorite;
+    }
+    const titleBox = document.querySelector('.series-detail-title-with-icon');
+    if (titleBox) {
+        titleBox.querySelectorAll('.series-detail-chip-read-later, .series-detail-chip-favorite').forEach(el => el.remove());
+        if (data.to_read_later) titleBox.insertAdjacentHTML('beforeend', `<span class="series-detail-chip series-detail-chip-read-later" data-tooltip="Dans ta liste à lire">${svgIcon('bookmark')} À lire</span>`);
+        if (data.is_favorite) titleBox.insertAdjacentHTML('beforeend', `<span class="series-detail-chip series-detail-chip-favorite" data-tooltip="Dans tes favoris">${svgIcon('heart')} Favori</span>`);
+    }
+    const labels = {
+        to_read_later: on => `${svgIcon('bookmark')} ${on ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}`,
+        is_favorite: on => `${svgIcon('heart')} ${on ? 'Retirer des favoris' : 'Ajouter aux favoris'}`,
+    };
+    document.querySelectorAll(`[data-reading-list][onclick^="setSeriesReadingList(${seriesId},"]`).forEach(btn => {
+        const field = btn.dataset.readingList;
+        const on = !!data[field];
+        btn.innerHTML = labels[field](on);
+        btn.setAttribute('onclick', `setSeriesReadingList(${seriesId}, '${field}', ${!on})`);
+    });
+    document.querySelectorAll('.toolbar-dropdown-menu').forEach(el => { el.style.display = 'none'; });
+    showToast('series-reading-list', data.is_favorite || data.to_read_later
+        ? [data.to_read_later && 'À lire plus tard', data.is_favorite && 'Favori'].filter(Boolean).join(' · ')
+        : 'Retirée de tes listes', { icon: data.is_favorite ? 'heart' : 'bookmark', autoHideMs: 2500 });
 }
 
 async function toggleOneshot(seriesId) {
@@ -5749,8 +5778,8 @@ ${(data.bedetheque && data.bedetheque.url && !data.is_oneshot) ? `
                             <button class="toolbar-dropdown-item" onclick="openMoveSeriesDialog([{id: ${seriesId}, title: currentSeriesDetail.title, library_id: currentSeriesDetail.library_id}])" title="Déplace le dossier de la série sur le disque vers une autre bibliothèque">${svgIcon('folder-input')} Déplacer vers une autre bibliothèque</button>
                             <div class="toolbar-dropdown-separator" role="separator"></div>
                             ${_seriesReadMenuItemHtml(data)}
-                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">${svgIcon('bookmark')} ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
-                            <button class="toolbar-dropdown-item" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">${svgIcon('heart')} ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
+                            <button class="toolbar-dropdown-item" data-reading-list="to_read_later" onclick="setSeriesReadingList(${seriesId}, 'to_read_later', ${!readLaterOn})">${svgIcon('bookmark')} ${readLaterOn ? 'Retirer de « À lire plus tard »' : 'Ajouter à « À lire plus tard »'}</button>
+                            <button class="toolbar-dropdown-item" data-reading-list="is_favorite" onclick="setSeriesReadingList(${seriesId}, 'is_favorite', ${!favoriteOn})">${svgIcon('heart')} ${favoriteOn ? 'Retirer des favoris' : 'Ajouter aux favoris'}</button>
                             <div class="toolbar-dropdown-separator" role="separator"></div>
                             ${_seriesUpscaleMenuItemsHtml(data, seriesId)}
                             <div class="toolbar-dropdown-separator" role="separator"></div>

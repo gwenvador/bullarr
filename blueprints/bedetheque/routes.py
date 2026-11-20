@@ -2773,6 +2773,26 @@ def run_auto_acquire_now():
                     missing = []
         if not missing and row['is_oneshot']:
             missing = [None]
+        # « j'ai cliqué sur l'éclair et ça a pris des liens amule alors que les fichiers sont
+        # des torrents » : l'éclair de Nouveautés envoie d'abord les fichiers cliqués, puis
+        # cherche seulement les AUTRES tomes - ceux qu'il vient d'envoyer (exclude_volumes)
+        # et ceux déjà en cours de téléchargement pour la série ne sont pas recherchés.
+        if missing and missing != [None]:
+            def _vkey(v):
+                try:
+                    return str(int(float(v)))
+                except (TypeError, ValueError):
+                    return str(v).strip().lower()
+            skip = {_vkey(v) for v in (data.get('exclude_volumes') or []) if v is not None and v != ''}
+            check = get_db_connection()
+            try:
+                skip |= {_vkey(r[0]) for r in check.execute(
+                    "SELECT volume_number FROM active_downloads WHERE series_id = ? "
+                    "AND volume_number IS NOT NULL AND status IN ('pending', 'downloading', 'completed', 'importing')",
+                    (series_id,)).fetchall()}
+            finally:
+                check.close()
+            missing = [v for v in missing if _vkey(v) not in skip]
 
     if not missing:
         return jsonify({'success': True, 'started': False, 'count': 0})

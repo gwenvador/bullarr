@@ -315,7 +315,7 @@ async function _downloadNouveautesRelease(ev, seriesId, linkIndex = null) {
 // Éclair de Nouveautés (EBDZ, Telegram et RSS): ajoute la série déjà matchée (sans lancer la
 // recherche de tous ses tomes) puis télécharge le fichier de CETTE ligne. Sans fiche
 // Bédéthèque confirmée, la ligne est envoyée en validation.
-async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null) {
+async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, groupTargets = null) {
     const ev = allNouveautesEvents[index];
     // Ligne EBDZ = un fichier du sujet: l'éclair ne concerne que ce fichier.
     const target = linkIndex != null ? ev?.links?.[linkIndex] : ev;
@@ -333,7 +333,7 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null) {
     target._autoAddTriggered = true;
     button.disabled = true;
     button.innerHTML = svgIcon('loader-circle', 'icon-spin');
-    showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'lancement de la recherche de la série' : 'ajout de la série et recherche de tous ses tomes'} en cours…`, { icon: 'loader-circle' });
+    showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'envoi du fichier' : 'ajout de la série et envoi du fichier'} en cours…`, { icon: 'loader-circle' });
     const restore = () => { target._autoAddTriggered = false; button.disabled = false; button.innerHTML = original; };
     if (!seriesId) {
         try {
@@ -352,27 +352,58 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null) {
             return;
         }
     }
-    try {
-        // L'éclair vise toute la série : recherche automatique de TOUS ses tomes manquants
-        // (celui de cette release compris), comme le bouton « Recherche auto » de la fiche.
-        const data = await _startSeriesAutoAcquire(seriesId);
-        const added = seriesWasKnown ? '' : 'série ajoutée, ';
-        const message = data.started
-            ? `${added}recherche de ${data.count} tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée (${data.sources_count} source${data.sources_count > 1 ? 's' : ''}).`
-            : `${added}aucun tome manquant à télécharger.`;
-        showToast('nouveautes-auto-add', `« ${title} » : ${message}`,
-            { icon: data.started ? 'loader-circle' : 'check', autoHideMs: data.started ? 0 : 7000, href: `/series/${seriesId}` });
-        button.innerHTML = svgIcon('check');
-        button.style.color = 'var(--color-accent)';
-        // « ça devrait télécharger le fichier dans tous les cas quand je fais éclair ; juste si
-        // Prowlarr trouve mieux il le télécharge pas, sinon il le prend » : une fois la recherche
-        // finie, si elle n'a envoyé ni ce tome ni un pack, le fichier de CETTE ligne part.
-        if (data.started) await _nouveautesZapFallback(ev, target, linkIndex, rawHint, seriesId, title);
-    } catch (error) {
-        // La série reste ajoutée: seule la recherche est à relancer.
-        showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? '' : 'série ajoutée, mais '}${error.message}`,
+    const added = seriesWasKnown ? '' : 'série ajoutée, ';
+    // « j'ai cliqué sur l'éclair et ça a pris des liens amule alors que les fichiers sont des
+    // torrents » : les fichiers cliqués (la ligne, ou tous les albums du groupe pour l'éclair
+    // de l'en-tête) partent D'ABORD, vers le client de leur source ; la recherche auto ne
+    // cherche ensuite que les autres tomes manquants (sans ceux envoyés ni ceux déjà en cours).
+    const targets = [[index, linkIndex], ...(groupTargets || [])
+        .filter(([i, l]) => !(Number(i) === Number(index) && (l ?? null) === (linkIndex ?? null)))];
+    const sentVolumes = [];
+    const destinations = [];
+    const errors = [];
+    const seenVolumes = new Set();
+    for (const [i, l] of targets) {
+        const e = allNouveautesEvents[i];
+        const t = l != null ? e?.links?.[l] : e;
+        if (!e || !t) continue;
+        if (t !== target && t._autoAddTriggered) continue;
+        const hint = e.type === 'telegram' ? e.filename
+            : e.type === 'ebdz' ? ((l != null ? t : e.links?.[0])?.filename ? decodeFilename((l != null ? t : e.links[0]).filename) : e.title)
+            : e.title;
+        const volume = _nouveautesReleaseVolume(e, t, l, hint);
+        const key = volume ?? `#${i}:${l}`;
+        if (seenVolumes.has(key)) continue;
+        seenVolumes.add(key);
+        try {
+            destinations.push(await _downloadNouveautesRelease(e, seriesId, l));
+            t._autoAddTriggered = true;
+            if (volume) sentVolumes.push(volume);
+        } catch (error) {
+            errors.push(error.message);
+        }
+    }
+    if (!destinations.length && errors.length) {
+        showToast('nouveautes-auto-add', `« ${title} » : ${added}envoi du fichier impossible : ${errors[0]}`,
             { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
         restore();
+        return;
+    }
+    const sentText = destinations.length
+        ? `${destinations.length > 1 ? `${destinations.length} fichiers envoyés` : 'fichier envoyé'} à ${[...new Set(destinations)].join(', ')}`
+        : 'rien à envoyer pour cette ligne';
+    button.innerHTML = svgIcon('check');
+    button.style.color = 'var(--color-accent)';
+    try {
+        const data = await _startSeriesAutoAcquire(seriesId, sentVolumes);
+        const message = data.started
+            ? `${added}${sentText} ; recherche des ${data.count} autre${data.count > 1 ? 's' : ''} tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée.`
+            : `${added}${sentText} ; aucun autre tome manquant.`;
+        showToast('nouveautes-auto-add', `« ${title} » : ${message}`,
+            { icon: 'check', autoHideMs: 9000, href: `/series/${seriesId}` });
+    } catch (error) {
+        showToast('nouveautes-auto-add', `« ${title} » : ${added}${sentText}, mais recherche des autres tomes impossible : ${error.message}`,
+            { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
     }
 }
 
@@ -429,10 +460,10 @@ async function _nouveautesZapFallback(ev, target, linkIndex, rawHint, seriesId, 
     }
 }
 
-async function _startSeriesAutoAcquire(seriesId) {
+async function _startSeriesAutoAcquire(seriesId, excludeVolumes = []) {
     const response = await fetch('/api/bedetheque/auto-acquire/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ series_id: seriesId })
+        body: JSON.stringify({ series_id: seriesId, exclude_volumes: excludeVolumes })
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) throw new Error(data.error || `Recherche automatique impossible (HTTP ${response.status})`);
@@ -1929,26 +1960,38 @@ function _groupNouveautesSeriesRows(body) {
             const rest = first.cells.length - header.cells.length;
             if (rest > 0) {
                 // colSpan = 0 vaut 1 en HTML : la cellule n'est créée que s'il reste des colonnes.
-                const fillerSpan = zapArgs ? rest - 1 : rest;
+                // « il devrait y avoir le + aussi » : le « + » Découvrir des albums est repris.
+                const plus = members.map(r => r.querySelector('.nouveautes-actions-cell button[onclick*="/discover?q="]')).find(Boolean);
+                const hasActions = !!(zapArgs || plus);
+                const fillerSpan = hasActions ? rest - 1 : rest;
                 if (fillerSpan > 0) {
                     const filler = document.createElement('td');
                     filler.colSpan = fillerSpan;
                     header.appendChild(filler);
                 }
-                if (zapArgs) {
+                if (hasActions) {
                     const actions = document.createElement('td');
                     actions.className = 'nouveautes-actions-cell nouveautes-group-actions';
                     actions.style.padding = '10px';
                     const wrap = document.createElement('div');
+                    const groupTargets = zaps.map(z => z.getAttribute('onclick').match(/addSeriesAndDownloadNouveautes\((\d+), this(?:, (\d+))?\)/))
+                        .filter(Boolean).map(m => [Number(m[1]), m[2] != null ? Number(m[2]) : null]);
+                    if (zapArgs) {
                     const zap = document.createElement('button');
                     zap.type = 'button';
                     zap.className = 'btn-icon-only';
-                    zap.setAttribute('onclick', `addSeriesAndDownloadNouveautes(${Number(zapArgs[1])}, this${zapArgs[2] != null ? `, ${Number(zapArgs[2])}` : ''})`);
+                    zap.setAttribute('onclick', `addSeriesAndDownloadNouveautes(${Number(zapArgs[1])}, this, ${zapArgs[2] != null ? Number(zapArgs[2]) : 'null'}, ${JSON.stringify(groupTargets)})`);
                     zap.dataset.tooltip = `Ajouter la série (ou l'envoyer en validation si elle n'est pas reconnue) et télécharger tous ses tomes manquants`;
                     zap.setAttribute('aria-label', 'Ajouter la série et télécharger tous ses tomes manquants');
                     zap.innerHTML = svgIcon('zap');
                     zap.addEventListener('click', ev => ev.stopPropagation());
                     wrap.appendChild(zap);
+                    }
+                    if (plus) {
+                        const plusCopy = plus.cloneNode(true);
+                        plusCopy.addEventListener('click', ev => ev.stopPropagation());
+                        wrap.appendChild(plusCopy);
+                    }
                     actions.appendChild(wrap);
                     header.appendChild(actions);
                 }

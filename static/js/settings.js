@@ -2869,33 +2869,41 @@ async function saveAutoScrapeConfig() {
     }
 }
 
+// « vérifier le statut on dirait que ça fait rien » : le bloc Statut restait masqué tant
+// que le scraping automatique n'était pas coché, et le bouton ne donnait aucun retour.
 async function checkAutoScrapeStatus() {
+    const button = document.getElementById('btnCheckAutoStatus');
+    const statusDiv = document.getElementById('autoScrapeStatusDiv');
+    const statusText = document.getElementById('autoScrapeStatusText');
+    const nextRunText = document.getElementById('autoScrapeNextRunText');
+    const enabled = !!document.getElementById('ebdzAutoScrapeEnabled')?.checked;
+    const original = button ? button.innerHTML : '';
+    if (button) { button.disabled = true; button.innerHTML = `${svgIcon('loader-circle', 'icon-spin')} Vérification…`; }
+    if (statusDiv) statusDiv.style.display = 'block';
+    const checkedAt = new Date().toLocaleTimeString('fr-FR', { timeZone: BULLARR_DISPLAY_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     try {
         const response = await fetch('/api/ebdz/auto-scrape/status');
-        const data = await response.json();
-
-        if (data.success) {
-            const statusText = document.getElementById('autoScrapeStatusText');
-            const nextRunText = document.getElementById('autoScrapeNextRunText');
-
-            if (data.is_running) {
-                statusText.textContent = '🟢 Actif';
-                statusText.style.color = '#4CAF50';
-                
-                if (data.next_run) {
-                    const nextRun = new Date(data.next_run);
-                    nextRunText.textContent = nextRun.toLocaleString('fr-FR', { timeZone: BULLARR_DISPLAY_TZ });
-                } else {
-                    nextRunText.textContent = 'Calcul en cours...';
-                }
-            } else {
-                statusText.textContent = '🔴 Inactif';
-                statusText.style.color = '#f44336';
-                nextRunText.textContent = '-';
-            }
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        if (data.is_running && data.next_run) {
+            statusText.textContent = `🟢 Actif (vérifié à ${checkedAt})`;
+            statusText.style.color = '#4CAF50';
+            nextRunText.textContent = new Date(data.next_run).toLocaleString('fr-FR', { timeZone: BULLARR_DISPLAY_TZ });
+        } else if (data.is_running) {
+            statusText.textContent = `🟠 Planificateur actif mais aucun scraping programmé${enabled ? ' - cliquez sur Enregistrer pour le reprogrammer' : ' (scraping automatique désactivé)'} (vérifié à ${checkedAt})`;
+            statusText.style.color = '#ff9800';
+            nextRunText.textContent = '-';
+        } else {
+            statusText.textContent = `🔴 Inactif${enabled ? ' - cliquez sur Enregistrer pour le démarrer' : ' (scraping automatique désactivé)'} (vérifié à ${checkedAt})`;
+            statusText.style.color = '#f44336';
+            nextRunText.textContent = '-';
         }
     } catch (error) {
-        console.error('Erreur lors du vérification du statut:', error);
+        statusText.textContent = `❌ Statut indisponible : ${error.message} (${checkedAt})`;
+        statusText.style.color = '#f44336';
+        nextRunText.textContent = '-';
+    } finally {
+        if (button) { button.disabled = false; button.innerHTML = original; }
     }
 }
 
