@@ -3005,7 +3005,9 @@ function _refreshSeriesTagsEditor(seriesId, tags) {
     if (!menu) return;
     const list = menu.querySelector('.series-detail-tags-list');
     if (list) list.innerHTML = _seriesTagChipsHtml(seriesId, tags);
-    const trigger = menu.parentElement && menu.parentElement.querySelector('.series-detail-links-trigger');
+    // Par id : à l'ouverture, le menu est déplacé dans <body> (toggleToolbarDropdown), son
+    // parent n'est plus la fiche et querySelector réécrivait le bouton « Liens » à la place.
+    const trigger = document.getElementById(`series-tags-trigger-${seriesId}`);
     if (trigger) trigger.innerHTML = `${svgIcon('tag')} Tags (${tags.length})`;
     const input = document.getElementById(`series-tag-input-${seriesId}`);
     if (input) {
@@ -5521,7 +5523,7 @@ async function renderSeriesDetail(seriesId, { silent = false } = {}) {
         const seriesTags = data.tags || [];
         const seriesTagsHtml = `
                 <div class="toolbar-dropdown series-detail-tags">
-                    <span class="series-detail-links-trigger" onclick="toggleToolbarDropdown('${seriesTagsMenuId}', this)" title="Éditer les tags de la série">${svgIcon('tag')} Tags (${seriesTags.length})</span>
+                    <span class="series-detail-links-trigger" id="series-tags-trigger-${seriesId}" onclick="toggleToolbarDropdown('${seriesTagsMenuId}', this)" title="Éditer les tags de la série">${svgIcon('tag')} Tags (${seriesTags.length})</span>
                     <div class="toolbar-dropdown-menu series-detail-tags-menu" id="${seriesTagsMenuId}" style="display: none;">
                         <div class="series-detail-tags-list">
                             ${_seriesTagChipsHtml(seriesId, seriesTags)}
