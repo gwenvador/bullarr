@@ -96,12 +96,21 @@ def send_telegram_notification(message, bot_token=None, chat_id=None, photo_path
 
     try:
         if photo_path and os.path.isfile(photo_path):
+            # Légende d'une photo : 1024 caractères au plus. Fiche plus longue : la
+            # couverture seule, puis le texte complet dans un second message.
+            long_text = len(message) > 1024
             with open(photo_path, 'rb') as photo_file:
                 response = requests.post(
                     f'https://api.telegram.org/bot{bot_token}/sendPhoto',
-                    data={'chat_id': chat_id, 'caption': message},
+                    data={'chat_id': chat_id, **({} if long_text else {'caption': message})},
                     files={'photo': photo_file},
                     timeout=15
+                )
+            if long_text and response.status_code == 200:
+                response = requests.post(
+                    f'https://api.telegram.org/bot{bot_token}/sendMessage',
+                    json={'chat_id': chat_id, 'text': message, 'disable_web_page_preview': True},
+                    timeout=10
                 )
         else:
             response = requests.post(

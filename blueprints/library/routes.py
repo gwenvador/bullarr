@@ -309,6 +309,19 @@ def _notify_import_completed(imported_count, replaced_count, source, logs_to_rec
             entry for entry in (logs_to_record or [])
             if entry.get('action') in ('imported', 'replaced')
         ]
+        # Un seul album : fiche complète (titre, genre, auteurs, note, résumé, liens).
+        if len(relevant_entries) == 1 and relevant_entries[0].get('series_id'):
+            from notifications import album_card
+            entry = relevant_entries[0]
+            card = album_card(entry['series_id'], volume_id=entry.get('volume_id'), extra_lines=[
+                'Remplacé dans la bibliothèque' if entry.get('action') == 'replaced' else 'Ajouté à la bibliothèque'])
+            if card:
+                success, errors = send_notification(
+                    card['message'], kind='import_completed', icon='📚', title=card['title'], tags=['books'],
+                    click=card['click'], photo_path=card['photo_path'])
+                if errors:
+                    print(f"Erreur notification (import terminé): {'; '.join(errors)}")
+                return
 
         conn = get_db_connection()
         bedetheque_url_by_series = {}

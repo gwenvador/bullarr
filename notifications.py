@@ -263,6 +263,13 @@ def notify_download_added(title, client, series_id=None, volume_number=None):
     def run():
         with app.app_context():
             try:
+                card = album_card(series_id, volume_number=volume_number, extra_lines=[
+                    f"Téléchargement ajouté · {_CLIENT_LABELS.get(client, client)}", f"Fichier : {title}",
+                ]) if series_id else None
+                if card:
+                    send_notification(card['message'], kind='download_added', icon='⬇️', title=card['title'],
+                                      tags=['arrow_down'], click=card['click'], photo_path=card['photo_path'])
+                    return
                 lines = []
                 if series_id:
                     import sqlite3
@@ -282,3 +289,177 @@ def notify_download_added(title, client, series_id=None, volume_number=None):
                 print(f"Erreur notification (téléchargement ajouté) : {exc}")
 
     threading.Thread(target=run, name='notify-download-added', daemon=True).start()
+
+
+# --- Fiche album des notifications ---------------------------------------------------
+# « improve les notifications » (exemple : fiche film AlloCiné) : en-tête « Série - Tome N :
+# Titre (année) », genre · pages · éditeur, auteurs, note Bédéthèque, résumé, liens.
+
+_SUMMARY_MAX = 320
+
+
+def _short(text, limit=_SUMMARY_MAX):
+    import re
+    text = re.sub(r'\s+', ' ', str(text or '')).strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(' ', 1)[0].rstrip(' ,;:.')
+    return cut + '…'
+
+
+def _volume_kind_label(v):
+    def num(value):
+        if value is None:
+            return ''
+        return f" {int(value)}" if float(value).is_integer() else f" {value}"
+    if v.get('is_integral'):
+        return f"Intégrale{num(v.get('integral_number'))}"
+    if v.get('is_hs'):
+        return f"HS{num(v.get('hs_number'))}"
+    if v.get('is_episode'):
+        return f"Épisode{num(v.get('episode_number'))}"
+    if v.get('is_special'):
+        return v.get('special_label') or 'Spécial'
+    if v.get('volume_number') is not None:
+        suffix = f" {v['bis_suffix']}" if v.get('is_bis') and v.get('bis_suffix') else ''
+        return f"Tome{num(v['volume_number'])}{suffix}"
+    return ''
+
+
+def _match_album(albums, v, volume_number):
+    """Album Bédéthèque (series.bedetheque_albums) correspondant au tome."""
+    if not albums:
+        return None
+    number = v.get('volume_number') if v else volume_number
+    is_plain = not v or not (v.get('is_integral') or v.get('is_hs') or v.get('is_episode') or v.get('is_special'))
+    if number is not None and is_plain:
+        bis = (v or {}).get('bis_suffix') if (v or {}).get('is_bis') else None
+        for album in albums:
+            try:
+                same = album.get('number') is not None and float(album['number']) == float(number)
+            except (TypeError, ValueError):
+                same = False
+            if same and (album.get('bis_suffix') or None) == (bis or None):
+                return album
+    title = ''
+    if v:
+        try:
+            import json
+            title = (json.loads(v.get('comicinfo') or '{}') or {}).get('title') or ''
+        except Exception:
+            title = ''
+    if title:
+        wanted = title.strip().lower()
+        for album in albums:
+            if (album.get('title') or '').strip().lower() == wanted:
+                return album
+    if len(albums) == 1:
+        return albums[0]
+    return None
+
+
+def album_card(series_id, volume_id=None, volume_number=None, extra_lines=None, heading_prefix=''):
+    """Notification « fiche album » prête à envoyer : dict(title, message, click, photo_path).
+
+    title : « Série - Tome 3 : Titre (2015) » ; message : genre · pages · éditeur, auteurs,
+    note, résumé, puis extra_lines (fichier, client, source…) et les liens Bédéthèque/Bullarr.
+    None si la série est introuvable."""
+    import json
+    import os
+    import sqlite3
+    from flask import current_app
+    conn = sqlite3.connect(current_app.config['DATABASE'], timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        s = conn.execute('SELECT * FROM series WHERE id = ?', (series_id,)).fetchone()
+        v = None
+        if s and volume_id:
+            v = conn.execute('SELECT * FROM volumes WHERE id = ? AND series_id = ?', (volume_id, series_id)).fetchone()
+        if s and v is None and volume_number is not None:
+            v = conn.execute(
+                'SELECT * FROM volumes WHERE series_id = ? AND volume_number = ? AND COALESCE(is_bis, 0) = 0 '
+                'AND COALESCE(is_integral, 0) = 0 AND COALESCE(is_hs, 0) = 0 AND COALESCE(is_episode, 0) = 0 '
+                'ORDER BY id DESC LIMIT 1', (series_id, volume_number)).fetchone()
+    except sqlite3.Error:
+        s = None
+    finally:
+        conn.close()
+    if not s:
+        return None
+    s = dict(s)
+    v = dict(v) if v else None
+    try:
+        albums = json.loads(s.get('bedetheque_albums') or '[]') or []
+    except Exception:
+        albums = []
+    album = _match_album(albums, v, volume_number) or {}
+    try:
+        ci = json.loads((v or {}).get('comicinfo') or '{}') or {}
+    except Exception:
+        ci = {}
+
+    kind = _volume_kind_label(v) if v else (f"Tome {volume_number}" if volume_number is not None else '')
+    album_title = album.get('title') or ci.get('title') or ''
+    if album_title and album_title.strip().lower() == (s.get('title') or '').strip().lower():
+        album_title = ''
+    year = (album.get('date_publication') or '')[:4] or str((v or {}).get('year') or ci.get('year') or '').strip()
+    if s.get('is_oneshot') and not album_title:
+        kind = kind or ''
+    heading = s.get('title') or ''
+    if kind and not s.get('is_oneshot'):
+        heading += f" - {kind}"
+    if album_title:
+        heading += f" : {album_title}"
+    if year and year.isdigit():
+        heading += f" ({year})"
+    heading = f"{heading_prefix}{heading}"
+
+    genre = s.get('manual_genre') or s.get('bedetheque_genre') or s.get('local_genre') or ci.get('genre') or ''
+    if genre.strip().lower() in ('non défini', 'genre non défini'):
+        genre = ''
+    pages = album.get('pages') or (v or {}).get('page_count')
+    editor = album.get('editeur') or s.get('bedetheque_editeurs') or ''
+    meta = ' · '.join(part for part in (
+        genre.strip(), f"{pages} pages" if pages else '', editor.strip()) if part)
+
+    writer = album.get('scenario') or s.get('bedetheque_scenaristes') or ''
+    artist = album.get('dessin') or s.get('bedetheque_dessinateurs') or ''
+    if writer and artist and writer != artist:
+        authors = f"De {writer} & {artist}"
+    else:
+        authors = f"De {writer or artist}" if (writer or artist) else ''
+
+    rating = album.get('rating')
+    rating_line = ''
+    if rating:
+        count = album.get('rating_count')
+        rating_line = f"★ Bédéthèque {str(round(float(rating), 1)).replace('.', ',')}/5" + (
+            f" ({count} vote{'s' if count and int(count) > 1 else ''})" if count else '')
+
+    summary = _short(album.get('description') or ci.get('summary') or s.get('manual_summary')
+                     or s.get('bedetheque_description') or s.get('local_summary') or '')
+
+    lines = [line for line in (meta, authors, rating_line) if line]
+    if summary:
+        lines += ['', summary]
+    if extra_lines:
+        lines += [''] + [line for line in extra_lines if line]
+    bd_url = album.get('url') or s.get('bedetheque_url') or ''
+    bullarr_url = bullarr_link(f'/series/{series_id}')
+    links = [f"Bédéthèque : {bd_url}" if bd_url else '', f"Bullarr : {bullarr_url}" if bullarr_url else '']
+    links = [link for link in links if link]
+    if links:
+        lines += [''] + links
+
+    photo = None
+    cover = (v or {}).get('cover_path')
+    if cover:
+        candidate = os.path.join(current_app.config['DATA_DIR'], cover)
+        if os.path.isfile(candidate):
+            photo = candidate
+    return {
+        'title': heading,
+        'message': '\n'.join(lines),
+        'click': bullarr_url or bd_url or None,
+        'photo_path': photo or series_cover_path(series_id),
+    }

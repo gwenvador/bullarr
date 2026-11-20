@@ -281,11 +281,18 @@ def _process_typed_monitor_file(source, item, filename, parsed, typed, match, se
 
     stats['matched_missing'] += 1
     if action == 'notify':
-        from notifications import send_notification, series_cover_path
-        success, errors = send_notification(
-            f"Série : {match[3]}\nAlbum : {label}\nFichier : {filename}",
-            kind='monitor', icon='📚', title='Nouvel album surveillé', tags=['books'],
-            photo_path=series_cover_path(series_id))
+        from notifications import send_notification, series_cover_path, album_card
+        card = album_card(series_id, volume_id=volume_id, extra_lines=[
+            'Nouvel album surveillé disponible', f"Fichier : {filename}"])
+        if card:
+            success, errors = send_notification(
+                card['message'], kind='monitor', icon='🔔', title=card['title'], tags=['books'],
+                click=card['click'], photo_path=card['photo_path'])
+        else:
+            success, errors = send_notification(
+                f"Série : {match[3]}\nAlbum : {label}\nFichier : {filename}",
+                kind='monitor', icon='📚', title='Nouvel album surveillé', tags=['books'],
+                photo_path=series_cover_path(series_id))
         if success:
             stats['notifications_sent'] += 1
         else:
@@ -538,17 +545,25 @@ def process_new_monitor_files(source, items):
             # d'équivalent "notify", elle télécharge directement dès que les deux portes
             # de _quality_upgrade_match passent (voir sa docstring).
             if is_missing and action == "notify":
-                from notifications import send_notification, series_cover_path
+                from notifications import send_notification, series_cover_path, album_card
                 source_label = {"ebdz": "EBDZ", "rss": "RSS"}.get(source, "Telegram")
                 source_url = (item.get("thread_url") if source == "ebdz" else item.get("link") if source == "rss" else
                               f"https://t.me/{item.get("channel", "").lstrip("@")}/{item.get("message_id")}")
-                message = (f"Série : {match[3]}\n"
-                           f"Tome : {volume_number}\n"
-                           f"Source : {source_label}\n"
-                           f"Fichier : {filename}")
-                success, errors = send_notification(
-                    message, kind="monitor", icon="📚", title="Nouveau tome surveillé", tags=["books"],
-                    click=source_url or None, photo_path=series_cover_path(series_id))
+                card = album_card(series_id, volume_number=volume_number, extra_lines=[
+                    f"Nouveau tome surveillé disponible ({source_label})", f"Fichier : {filename}",
+                    f"Source : {source_url}" if source_url else ""])
+                if card:
+                    success, errors = send_notification(
+                        card["message"], kind="monitor", icon="🔔", title=card["title"], tags=["books"],
+                        click=source_url or card["click"], photo_path=card["photo_path"])
+                else:
+                    message = (f"Série : {match[3]}\n"
+                               f"Tome : {volume_number}\n"
+                               f"Source : {source_label}\n"
+                               f"Fichier : {filename}")
+                    success, errors = send_notification(
+                        message, kind="monitor", icon="📚", title="Nouveau tome surveillé", tags=["books"],
+                        click=source_url or None, photo_path=series_cover_path(series_id))
                 if success:
                     stats["notifications_sent"] += 1
                     print(f"  ✓ Notification envoyée pour {match[3]} tome {volume_number}")
