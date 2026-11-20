@@ -5947,3 +5947,58 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     /* Date, source et origine sur la première ligne ; titre et actions sur la suivante. */
     #nouveautes-events-body > tr.nouveautes-series-group-row > td.nouveautes-origin-cell { flex: 1 1 auto; }
 }
+
+/* « l'en-tête du tableau en mobile reste chargé » : recherche sur toute la largeur en
+   premier, puis tris (Date, Type, Origine) en petites pastilles et filtres Genre / Série
+   compacts ; la colonne « Actions » (sans contrôle) disparaît. */
+@media (max-width: 900px) {
+    .nouveautes-table > thead > tr {
+        gap: 6px;
+        padding: 8px 0 10px;
+        background: transparent;
+        border-bottom: 1px solid var(--color-border);
+        align-items: center;
+    }
+    .nouveautes-table > thead > tr > th {
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        font-size: .8em;
+    }
+    .nouveautes-table > thead > tr > th:nth-child(4) { order: -1; flex: 1 1 100% !important; }
+    .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-label { display: none; }
+    .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-row,
+    .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-filter,
+    .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-control { width: 100% !important; max-width: none; }
+    .nouveautes-table > thead > tr > th:nth-child(4) .th-filterable-control { font-size: 1.15em; padding-top: 7px; padding-bottom: 7px; }
+    .nouveautes-table > thead > tr > th:nth-child(1),
+    .nouveautes-table > thead > tr > th:nth-child(2),
+    .nouveautes-table > thead > tr > th:nth-child(3) {
+        border: 1px solid var(--color-border) !important;
+        border-radius: 999px;
+        padding: 3px 10px !important;
+        color: var(--color-text-muted);
+        line-height: 1.4;
+    }
+    .nouveautes-table > thead > tr > th:nth-child(3) .toolbar-btn {
+        padding: 0 2px !important;
+        border: 0;
+        background: transparent;
+        min-height: 0;
+    }
+    .nouveautes-table > thead > tr > th:nth-child(3) .toolbar-btn .icon { width: 13px; height: 13px; }
+    .nouveautes-table > thead > tr > th:nth-child(5),
+    .nouveautes-table > thead > tr > th:nth-child(6) { flex: 1 1 120px !important; }
+    .nouveautes-table > thead > tr > th:nth-child(5) .th-filterable-row,
+    .nouveautes-table > thead > tr > th:nth-child(6) .th-filterable-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+    }
+    .nouveautes-table > thead > tr > th:nth-child(5) .th-filterable-filter,
+    .nouveautes-table > thead > tr > th:nth-child(6) .th-filterable-filter { flex: 1 1 auto; min-width: 0; }
+    .nouveautes-table > thead > tr > th:nth-child(5) .th-filterable-control,
+    .nouveautes-table > thead > tr > th:nth-child(6) .th-filterable-control { width: 100% !important; }
+    .nouveautes-table > thead > tr > th:nth-child(7) { display: none !important; }
+}
