@@ -136,6 +136,7 @@ async function _renderAuthorAlbumsList() {
                     </div>
                     <div class="overview-actions">
                         <a href="${escapeHtml(a.bedetheque_url)}" target="_blank" rel="noopener" class="poster-action-btn poster-action-btn-light" data-tooltip="Voir sur Bédéthèque" onclick="event.stopPropagation()"><img src="/static/img/bedetheque-logo.png" alt="Bédéthèque" style="width:16px; height:16px; vertical-align:middle;"></a>
+                        ${_authorAlbumRowActionHtml(a, i)}
                     </div>
                 </label>
             `).join('')}
@@ -319,6 +320,66 @@ function _updateAuthorAlbumsBulkActionsBar() {
 // scrape chaque fiche Bédéthèque avec son propre délai anti-bot, les lancer en parallèle
 // depuis le client ne serait pas plus rapide, juste plus de requêtes en vol à la fois.
 // Colonne Action : « Ajouter » pour une série absente (une ligne), « Fiche » une fois ajoutée.
+// « dans lire aussi il y a un dossier et un éclair, il faut que ce soit similaire » :
+// mêmes actions que la modale Lire aussi - dossier si la série est en bibliothèque,
+// éclair sinon (ajoute la série ; ses albums sont téléchargés si la recherche
+// automatique est activée dans les réglages).
+function _authorAlbumRowActionHtml(a, i) {
+    if (a.already_in_library && a.series_id) {
+        return `<a href="/series/${a.series_id}" class="poster-action-btn poster-action-btn-light" data-tooltip="Ouvrir dans la bibliothèque" onclick="event.stopPropagation()">${svgIcon('folder')}</a>`;
+    }
+    if (a.already_in_library) return '';
+    return `<button type="button" class="poster-action-btn poster-action-btn-light read-also-add-btn" onclick="event.preventDefault(); event.stopPropagation(); addAuthorAlbumZap(${i}, this)" data-tooltip="Ajouter la série et télécharger ses tomes">${svgIcon('zap')}</button>`;
+}
+
+async function addAuthorAlbumZap(index, button) {
+    const album = _authorAlbumsCache[index];
+    let libraryId = _authorAlbumsSoleLibraryId;
+    if (!libraryId) {
+        const select = document.getElementById('author-albums-library-select');
+        libraryId = select ? parseInt(select.value, 10) : null;
+    }
+    if (!album || !libraryId || button.disabled) {
+        if (!libraryId) showToast('author-albums-add', 'Bibliothèque requise.', { icon: 'triangle-alert', autoHideMs: 4000 });
+        return;
+    }
+    button.disabled = true;
+    const original = button.innerHTML;
+    button.innerHTML = svgIcon('loader-circle', 'icon-spin');
+    showToast('author-albums-add', `« ${album.title} » : ajout de la série…`, { icon: 'loader-circle' });
+    try {
+        const response = await fetch('/api/bedetheque/add-series', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: album.bedetheque_url, library_id: libraryId })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Ajout impossible');
+        album.already_in_library = true;
+        album.series_id = data.series_id;
+        const row = button.closest('.author-album-row');
+        row?.classList.add('author-album-row-owned');
+        const checkbox = row?.querySelector('input[type="checkbox"]');
+        if (checkbox) { checkbox.checked = false; checkbox.disabled = true; }
+        const link = document.createElement('a');
+        link.href = `/series/${data.series_id}`;
+        link.className = 'poster-action-btn poster-action-btn-light read-also-added-btn';
+        link.dataset.tooltip = 'Ajoutée - ouvrir dans la bibliothèque';
+        link.innerHTML = svgIcon('check');
+        link.addEventListener('click', e => e.stopPropagation());
+        button.replaceWith(link);
+        _updateAuthorAlbumsBulkActionsBar();
+        const missing = (data.missing_volumes || []).length;
+        const dl = data.already_exists ? ' (déjà dans la bibliothèque)'
+            : data.auto_acquire_started ? ` ; téléchargement de ${missing} tome${missing > 1 ? 's' : ''} lancé.` : '.';
+        showToast('author-albums-add', `« ${album.title} » ajoutée${dl}`, { icon: 'check', autoHideMs: 6000, href: `/series/${data.series_id}` });
+    } catch (e) {
+        button.disabled = false;
+        button.innerHTML = original;
+        showToast('author-albums-add', `❌ ${e.message}`, { icon: 'triangle-alert', autoHideMs: 5000 });
+    }
+}
+
 async function addAuthorAlbum(index, button) {
     const album = _authorAlbumsCache[index];
     let libraryId = _authorAlbumsSoleLibraryId;
