@@ -5793,3 +5793,76 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     width: 13px; height: 13px; flex: none; stroke-width: 2; opacity: .55;
 }
 .volume-file-detail .volume-date { color: var(--text-secondary, inherit); font-variant-numeric: tabular-nums; }
+
+/* « en mobile les volumes en mode aperçu c'est pas très beau » : couverture seule sur sa
+   ligne (vide à droite), numéro + case flottants à côté, crédits empilés un par ligne.
+   Mobile : couverture à gauche avec le numéro en pastille dessus, titre / fichier / infos
+   à sa droite, puis crédits sur deux colonnes et résumé sur toute la largeur. */
+@media (max-width: 768px) {
+    .volume-item {
+        position: relative;
+        grid-template-columns: 84px minmax(0, 1fr);
+        grid-template-rows: auto auto auto 1fr;
+        column-gap: 12px;
+        row-gap: 0;
+        padding: 12px;
+        margin: 8px 0;
+        align-items: start;
+    }
+    .volume-item > .volume-number {
+        position: absolute !important;
+        top: 6px;
+        left: 6px;
+        z-index: 2;
+        width: auto;
+        min-width: 24px;
+        height: 24px;
+        padding: 0 7px;
+        border-radius: 12px;
+        margin: 0;
+        font-size: .78em;
+        background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+        backdrop-filter: blur(2px);
+    }
+    /* Case de sélection : coin bas-gauche de la couverture (plus de survol au doigt). */
+    .volume-item > .volume-number .volume-table-row-checkbox {
+        top: 96px !important;
+        left: 2px !important;
+        width: 18px !important;
+        height: 18px !important;
+        opacity: .9;
+    }
+    .volume-item > .volume-cover-wrapper { grid-column: 1; grid-row: 1 / 5; }
+    .volume-item .volume-cover,
+    .volume-item .volume-cover-placeholder { width: 84px; height: 126px; }
+    .volume-item > .volume-details { display: contents; }
+    .volume-item .volume-filename-row,
+    .volume-item .volume-file-name,
+    .volume-item .volume-file-stats,
+    .volume-item .volume-details > .volume-file-detail { grid-column: 2; min-width: 0; }
+    .volume-item .volume-filename-row { align-items: flex-start; gap: 4px; }
+    .volume-item .volume-filename {
+        font-size: 1em; line-height: 1.3; margin-bottom: 4px;
+        white-space: normal; text-overflow: clip;
+        display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+        overflow: hidden; flex: 1 1 auto; min-width: 0;
+    }
+    .volume-item .volume-filename-row > :not(.volume-filename) { flex-shrink: 0; }
+    .volume-item .volume-file-name { font-size: .7em; margin: 0 0 6px; }
+    .volume-item .volume-file-stats { font-size: .8em; line-height: 1.45; }
+    .volume-item .volume-credits,
+    .volume-item .volume-meta,
+    .volume-item .volume-summary { grid-column: 1 / -1; }
+    .volume-item .volume-credits {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 14px;
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--color-border);
+    }
+    .volume-item .volume-credits dt { font-size: .62em; }
+    .volume-item .volume-credits dd { font-size: .84em; }
+    .volume-item .volume-meta { margin-top: 10px; }
+    .volume-item .volume-summary { font-size: .84em; line-height: 1.5; margin-top: 10px; }
+}
