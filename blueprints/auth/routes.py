@@ -509,7 +509,8 @@ def logout():
     session.pop('next_url', None)
 
     show_provider_link = bool(_oidc_enabled(config) and config.get('issuer'))
-    return render_template('logout.html', show_provider_link=show_provider_link)
+    sso_key, sso_name = _sso_provider(config)
+    return render_template('logout.html', show_provider_link=show_provider_link, sso_key=sso_key, sso_name=sso_name)
 
 
 @auth_bp.route('/logout/provider')
