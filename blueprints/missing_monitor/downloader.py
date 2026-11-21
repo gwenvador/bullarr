@@ -307,7 +307,8 @@ def mark_download_pending(title: str, client: str, series_id: Optional[int] = No
 
 
 def attach_series_to_pending_download(client: str, series_id: int, link: Optional[str] = None,
-                                       channel: Optional[str] = None, message_id: Optional[int] = None) -> bool:
+                                       channel: Optional[str] = None, message_id: Optional[int] = None,
+                                       title: Optional[str] = None) -> bool:
     ""
     try:
         db_path = current_app.config.get('DATABASE')
@@ -330,6 +331,15 @@ def attach_series_to_pending_download(client: str, series_id: int, link: Optiona
                 "UPDATE active_downloads SET series_id = ? WHERE client = 'telegram' AND channel = ? "
                 "AND message_id = ? AND status = 'pending' AND series_id IS NULL",
                 (series_id, channel, message_id)
+            )
+        elif client in ('qbittorrent', 'rtorrent', 'deluge', 'vk') and title:
+            # « Ajouter et télécharger » de Nouveautés envoie le fichier AVANT d'ajouter la
+            # série : la ligne en attente, sans série, est retrouvée par son titre.
+            cursor = conn.execute(
+                "UPDATE active_downloads SET series_id = ? WHERE id = (SELECT id FROM active_downloads "
+                "WHERE client = ? AND title = ? AND status = 'pending' AND series_id IS NULL "
+                "ORDER BY id DESC LIMIT 1)",
+                (series_id, client, title)
             )
         else:
             conn.close()

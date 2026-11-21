@@ -568,6 +568,6 @@ def attach_pending_series():
     from .downloader import attach_series_to_pending_download
     attached = attach_series_to_pending_download(
         client, series_id, link=data.get('link'),
-        channel=data.get('channel'), message_id=data.get('message_id')
+        channel=data.get('channel'), message_id=data.get('message_id'), title=data.get('title')
     )
     return jsonify({'success': True, 'attached': attached})

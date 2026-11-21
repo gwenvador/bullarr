@@ -264,8 +264,12 @@ async function downloadVkNouveaute(eventIndex, button) {
 
 // Télécharge le(s) fichier(s) de la ligne (et uniquement ceux-là, sans recherche) vers le client
 // adapté à sa source. Retourne le libellé de la destination pour le message affiché.
-async function _downloadNouveautesRelease(ev, seriesId, linkIndex = null) {
-    if (ev.type === 'rss' && ev.vk) return await _downloadVkNouveaute(ev, seriesId);
+async function _downloadNouveautesRelease(ev, seriesId, linkIndex = null, attach = []) {
+    if (ev.type === 'rss' && ev.vk) {
+        const label = await _downloadVkNouveaute(ev, seriesId);
+        attach.push({ client: 'vk', title: ev.filename || ev.title || '' });
+        return label;
+    }
     if (ev.type === 'telegram') {
         const response = await fetch('/api/telegram-channels/download', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -278,6 +282,7 @@ async function _downloadNouveautesRelease(ev, seriesId, linkIndex = null) {
         });
         const data = await response.json();
         if (!response.ok || !data.success) throw new Error(data.error || 'Téléchargement Telegram impossible');
+        attach.push({ client: 'telegram', channel: ev.channel, message_id: ev.message_id });
         return 'Telegram';
     }
     if (ev.type === 'ebdz') {
@@ -305,19 +310,24 @@ async function _downloadNouveautesRelease(ev, seriesId, linkIndex = null) {
             });
             const data = await response.json();
             if (!response.ok || !data.success) throw new Error(data.error || 'Ajout à aMule impossible');
+            attach.push({ client: 'amule', link: link.link });
         }
         return links.length > 1 ? `aMule (${links.length} fichiers)` : 'aMule';
     }
     const torrentUrl = await _resolveRssTorrentUrl(ev);
-    return await _sendRssTorrentToClient(torrentUrl, ev, seriesId);
+    const client = await _sendRssTorrentToClient(torrentUrl, ev, seriesId);
+    attach.push({ client, title: ev.title });
+    return client;
 }
 
 // Éclair de Nouveautés (EBDZ, Telegram et RSS): ajoute la série déjà matchée (sans lancer la
 // recherche de tous ses tomes) puis télécharge le fichier de CETTE ligne. Sans fiche
 // Bédéthèque confirmée, la ligne est envoyée en validation.
 async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, groupTargets = null) {
+    // « dès que je clique sur le bouton ça télécharge les fichiers de la ligne. ensuite ça
+    // ajoute la série. si téléchargement automatique est actif alors ça cherche et
+    // télécharge les fichiers manquants (quitte à reprendre celui qui vient de partir) ».
     const ev = allNouveautesEvents[index];
-    // Ligne EBDZ = un fichier du sujet: l'éclair ne concerne que ce fichier.
     const target = linkIndex != null ? ev?.links?.[linkIndex] : ev;
     if (!ev || !target || target._autoAddTriggered) return;
     const title = ev.type === 'telegram'
@@ -327,41 +337,21 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, g
         : ev.type === 'ebdz' ? ((linkIndex != null ? target : ev.links?.[0])?.filename ? decodeFilename((linkIndex != null ? target : ev.links[0]).filename) : ev.title)
         : ev.title;
     const bedethequeUrl = (ev.type === 'ebdz' ? ev.matched_bedetheque_url : ev.bedetheque_url) || ev.bedetheque_url;
-    let seriesId = ev.type === 'ebdz' ? ev.matched_series_id : ev.series_id;
+    let seriesId = (ev.type === 'ebdz' ? ev.matched_series_id : ev.series_id) || null;
     const seriesWasKnown = !!seriesId;
     const original = button.innerHTML;
     target._autoAddTriggered = true;
     button.disabled = true;
     button.innerHTML = svgIcon('loader-circle', 'icon-spin');
-    showToast('nouveautes-auto-add', `« ${title} » : ${seriesWasKnown ? 'envoi du fichier' : 'ajout de la série et envoi du fichier'} en cours…`, { icon: 'loader-circle' });
+    showToast('nouveautes-auto-add', `« ${title} » : envoi du fichier en cours…`, { icon: 'loader-circle' });
     const restore = () => { target._autoAddTriggered = false; button.disabled = false; button.innerHTML = original; };
-    if (!seriesId) {
-        try {
-            seriesId = (await _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl, true)).seriesId;
-        } catch (error) {
-            let reviewQueued = false;
-            try {
-                await _queueNouveautesSeriesReview(ev, title, bedethequeUrl, error.message, linkIndex);
-                reviewQueued = true;
-            } catch (reviewError) {
-                console.error('Validation de série impossible', reviewError);
-            }
-            showToast('nouveautes-auto-add', `« ${title} » : ${error.message}${reviewQueued ? ' Envoyé en validation.' : ''}`,
-                { icon: 'circle-x', autoHideMs: 9000, ...(reviewQueued ? { href: '/validation' } : {}) });
-            restore();
-            return;
-        }
-    }
-    const added = seriesWasKnown ? '' : 'série ajoutée, ';
-    // « j'ai cliqué sur l'éclair et ça a pris des liens amule alors que les fichiers sont des
-    // torrents » : les fichiers cliqués (la ligne, ou tous les albums du groupe pour l'éclair
-    // de l'en-tête) partent D'ABORD, vers le client de leur source ; la recherche auto ne
-    // cherche ensuite que les autres tomes manquants (sans ceux envoyés ni ceux déjà en cours).
+
+    // 1. Les fichiers de la ligne (ou de tout le groupe) partent tout de suite.
     const targets = [[index, linkIndex], ...(groupTargets || [])
         .filter(([i, l]) => !(Number(i) === Number(index) && (l ?? null) === (linkIndex ?? null)))];
-    const sentVolumes = [];
     const destinations = [];
     const errors = [];
+    const attach = [];
     const seenVolumes = new Set();
     for (const [i, l] of targets) {
         const e = allNouveautesEvents[i];
@@ -375,40 +365,66 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, g
         const key = volume ?? `#${i}:${l}`;
         if (seenVolumes.has(key)) continue;
         seenVolumes.add(key);
-        // « ça prend le fichier de la ligne s'il n'existe pas déjà » : un tome déjà possédé
-        // n'est pas retéléchargé (le remplacement a son propre bouton).
-        if ((l != null ? t.already_owned : e.already_owned) === true) continue;
         try {
-            destinations.push(await _downloadNouveautesRelease(e, seriesId, l));
+            destinations.push(await _downloadNouveautesRelease(e, seriesId, l, attach));
             t._autoAddTriggered = true;
-            if (volume) sentVolumes.push(volume);
         } catch (error) {
             console.error('Nouveautés : envoi du fichier impossible', error);
             errors.push(error.message);
         }
     }
-    // « dans tous les cas ça doit télécharger quelque chose » : si le fichier de la ligne
-    // n'a pas pu partir, la recherche automatique (Prowlarr, EBDZ, Telegram…) prend le
-    // relais pour TOUS les tomes manquants, celui de la ligne compris.
     const sentText = destinations.length
         ? `${destinations.length > 1 ? `${destinations.length} fichiers envoyés` : 'fichier envoyé'} à ${[...new Set(destinations)].join(', ')}`
-        : errors.length ? `fichier de la ligne non envoyé (${errors[0]})` : 'fichier de la ligne déjà possédé';
-    button.innerHTML = svgIcon('check');
-    button.style.color = 'var(--color-accent)';
-    try {
-        const data = await _startSeriesAutoAcquire(seriesId, sentVolumes);
-        const message = data.started
-            ? `${added}${sentText} ; recherche des ${data.count} ${destinations.length ? 'autre' + (data.count > 1 ? 's ' : ' ') : ''}tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée.`
-            : `${added}${sentText} ; aucun ${destinations.length ? 'autre ' : ''}tome manquant.`;
-        const nothing = !destinations.length && !data.started;
-        showToast('nouveautes-auto-add', `« ${title} » : ${message}`,
-            { icon: nothing ? 'circle-x' : 'check', autoHideMs: 12000, href: `/series/${seriesId}` });
-        if (nothing && errors.length) restore();
-    } catch (error) {
-        showToast('nouveautes-auto-add', `« ${title} » : ${added}${sentText}, mais recherche des autres tomes impossible : ${error.message}`,
-            { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
-        if (!destinations.length) restore();
+        : `fichier non envoyé (${errors[0] || 'rien à envoyer'})`;
+    if (destinations.length) {
+        button.innerHTML = svgIcon('check');
+        button.style.color = 'var(--color-accent)';
+        showToast('nouveautes-auto-add', `« ${title} » : ${sentText}${seriesWasKnown ? '' : ' ; ajout de la série…'}`, { icon: 'loader-circle' });
     }
+
+    // 2. Puis la série est ajoutée ; le serveur lance la recherche des tomes manquants
+    //    seulement si « Télécharger automatiquement à l'ajout » est actif.
+    let searchText = '';
+    if (!seriesId) {
+        try {
+            const created = await _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl, true, true);
+            seriesId = created.seriesId;
+            for (const identity of attach) {
+                const { client, ...rest } = identity;
+                _attachSeriesToPendingDownload(client, seriesId, rest);
+            }
+            searchText = created.alreadyExists ? '' : created.autoAcquire
+                ? ` ; recherche des ${created.missing} tome${created.missing > 1 ? 's' : ''} manquant${created.missing > 1 ? 's' : ''} lancée`
+                : ' ; téléchargement automatique désactivé, pas de recherche des autres tomes';
+        } catch (error) {
+            let reviewQueued = false;
+            try {
+                await _queueNouveautesSeriesReview(ev, title, bedethequeUrl, error.message, linkIndex);
+                reviewQueued = true;
+            } catch (reviewError) {
+                console.error('Validation de série impossible', reviewError);
+            }
+            showToast('nouveautes-auto-add', `« ${title} » : ${sentText} ; série non ajoutée : ${error.message}${reviewQueued ? ' Envoyée en validation.' : ''}`,
+                { icon: destinations.length ? 'check' : 'circle-x', autoHideMs: 12000, ...(reviewQueued ? { href: '/validation' } : {}) });
+            if (!destinations.length) restore();
+            return;
+        }
+    } else {
+        // Série déjà connue : même règle, la recherche ne part que si l'option est active.
+        try {
+            const config = await (await fetch('/api/import/config')).json();
+            if (config.auto_acquire_on_add_enabled) {
+                const data = await _startSeriesAutoAcquire(seriesId);
+                searchText = data.started ? ` ; recherche des ${data.count} tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée` : ' ; aucun tome manquant';
+            }
+        } catch (error) {
+            searchText = ` ; recherche des tomes manquants impossible : ${error.message}`;
+        }
+    }
+    const added = seriesWasKnown ? '' : 'série ajoutée, ';
+    showToast('nouveautes-auto-add', `« ${title} » : ${added}${sentText}${searchText}.`,
+        { icon: destinations.length ? 'check' : 'circle-x', autoHideMs: 12000, href: `/series/${seriesId}` });
+    if (!destinations.length) restore();
 }
 
 // « le + c'est pour les albums, pas pour je ne sais quoi » / « ajoute et télécharge les
