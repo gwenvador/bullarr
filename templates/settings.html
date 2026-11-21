@@ -1847,7 +1847,7 @@
                             <div class="form-group checkbox-group" id="oidcEnabledGroup">
                                 <input type="checkbox" id="oidcEnabled" onchange="updateAuthModeFields()">
                                 <label for="oidcEnabled">
-                                    <strong>Activer la connexion OIDC (Pocket ID…)</strong>
+                                    <strong>Activer la connexion OIDC (SSO)</strong>
                                     <span class="help-text">Ajoute le bouton « Se connecter avec le SSO » sur la page de connexion, à côté du formulaire des comptes Bullarr.</span>
                                 </label>
                             </div>
@@ -1965,8 +1965,8 @@
                                 <div class="ua-option" id="adminGroupBlock">
                                     <span class="ua-option-icon" data-ua-icon="shield-check"></span>
                                     <div class="ua-option-copy">
-                                        <strong>Groupe Pocket ID des administrateurs</strong>
-                                        <small>Les comptes OIDC de ce groupe sont Admin, les autres Lecteur (vide : tout le monde est Admin). Reconnexion nécessaire pour relire le groupe.</small>
+                                        <strong>Groupe SSO des administrateurs</strong>
+                                        <small>Nom du groupe chez votre fournisseur d'identité (claim « groups »). Les comptes OIDC de ce groupe sont Admin, les autres Lecteur (vide : tout le monde est Admin). Reconnexion nécessaire pour relire le groupe.</small>
                                         <div class="ua-inline-form">
                                             <input type="text" id="adminGroupInput" placeholder="ex. bullarr-admins">
                                             <button type="button" class="btn btn-primary" onclick="saveAdminGroup()">Enregistrer</button>
@@ -1991,7 +1991,7 @@
                                     <li><strong>Admin</strong> : accès à tout, paramètres compris.</li>
                                     <li><strong>Lecteur</strong> : parcourir, lire, télécharger les fichiers, tenir ses listes (À lire / Favoris) et demander des BD.</li>
                                     <li><strong>Comptes locaux</strong> : créés ici ou par inscription, avec identifiant et mot de passe.</li>
-                                    <li><strong>Comptes OIDC</strong> : apparaissent après leur première connexion ; leur rôle vient du groupe Pocket ID et peut être forcé avec « Modifier ».</li>
+                                    <li><strong>Comptes OIDC</strong> : apparaissent après leur première connexion ; leur rôle vient de leur groupe SSO et peut être forcé avec « Modifier ».</li>
                                     <li><strong>Accès</strong> d’un lecteur : bibliothèques visibles et contrôle parental (genres masqués, préréglage « Enfant »).</li>
                                 </ul>
                             </details>

@@ -165,13 +165,37 @@ def _render_login(config, error=None, status=200, view='login', notice=None, for
     ), status
 
 
+_GROUPS_SCOPE_CACHE = {}
+
+
+def _provider_offers_groups(issuer):
+    """Le fournisseur annonce-t-il le scope « groups » (scopes_supported de sa découverte) ?
+    Résultat gardé une heure ; en cas d'erreur, on ne l'ajoute pas (un fournisseur strict
+    refuserait un scope inconnu)."""
+    import time
+    cached = _GROUPS_SCOPE_CACHE.get(issuer)
+    if cached and time.time() - cached[1] < 3600:
+        return cached[0]
+    try:
+        metadata = requests.get(f"{issuer}/.well-known/openid-configuration", timeout=5).json()
+        offers = 'groups' in (metadata.get('scopes_supported') or [])
+    except Exception:
+        offers = False
+    _GROUPS_SCOPE_CACHE[issuer] = (offers, time.time())
+    return offers
+
+
 def _get_oidc_client(config):
     """Construit un client OAuth Authlib à partir de la configuration OIDC sauvegardée"""
     issuer = normalize_issuer_url(config.get('issuer', ''))
     client_id = config.get('client_id', '')
     client_secret = config.get('client_secret_decrypted') or decrypt(config.get('client_secret', '')) or ''
     scopes = config.get('scopes') or 'openid profile email'
-    if (config.get('admin_group') or '').strip() and 'groups' not in scopes.split():
+    # Groupes : demandés dès que le fournisseur les propose, pas seulement une fois le groupe
+    # des administrateurs enregistré - sinon la session de l'admin ne contient jamais ses
+    # groupes et l'enregistrement du groupe le croit hors du groupe (« pourtant j'y suis »).
+    if 'groups' not in scopes.split() and (
+            (config.get('admin_group') or '').strip() or _provider_offers_groups(issuer)):
         scopes = f'{scopes} groups'
 
     oauth = OAuth(current_app)
@@ -1070,9 +1094,15 @@ def save_roles_config():
             conn.close()
         override = row['role_override'] if row else None
         if override != 'admin' and computed_role(me.get('groups'), admin_group) != 'admin':
-            return jsonify({'success': False, 'error': (
-                f"Vous n'êtes pas dans le groupe « {admin_group} » : vous perdriez l'accès administrateur. "
-                "Ajoutez-vous au groupe dans Pocket ID puis reconnectez-vous, ou forcez d'abord votre rôle à Admin.")}), 400
+            groups = me.get('groups') or []
+            if not groups:
+                error = ("Bullarr ne connaît pas encore vos groupes : votre connexion actuelle n'en contient aucun. "
+                         "Déconnectez-vous puis reconnectez-vous pour qu'ils soient relus, ou forcez d'abord votre rôle à Admin.")
+            else:
+                error = (f"Vous n'êtes pas dans le groupe « {admin_group} » (vos groupes : {', '.join(groups)}) : "
+                         "vous perdriez l'accès administrateur. Ajoutez-vous au groupe chez votre fournisseur d'identité "
+                         "puis reconnectez-vous, ou forcez d'abord votre rôle à Admin.")
+            return jsonify({'success': False, 'error': error}), 400
     config['admin_group'] = admin_group
     if save_oidc_config(config):
         return jsonify({'success': True})

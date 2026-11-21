@@ -1,7 +1,7 @@
 // Carte « Utilisateurs et rôles » (onglet Connexion des paramètres).
 // Comptes locaux : créés ici ou par inscription (validée par un admin), modifiables et
 // supprimables. Comptes OIDC : apparaissent après leur première connexion ; rôle calculé
-// depuis le groupe d'administrateurs Pocket ID (aucun groupe : tout le monde est Admin).
+// depuis le groupe d'administrateurs du SSO (aucun groupe : tout le monde est Admin).
 function usersEscape(value) {
     return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 }
@@ -170,7 +170,7 @@ function accountForm(user) {
             <label>E-mail<input type="email" name="email" maxlength="200" value="${usersEscape(user ? user.email : '')}"></label>
             <label>${user ? 'Nouveau mot de passe <small>(vide : inchangé)</small>' : 'Mot de passe <small>(8 caractères min.)</small>'}
                 <input type="password" name="password" ${user ? '' : 'required'} minlength="8" autocomplete="new-password"></label>`
-            : '<p class="ua-form-note">Le nom et l’e-mail d’un compte OIDC viennent de Pocket ID.</p>'}
+            : '<p class="ua-form-note">Le nom et l’e-mail d’un compte OIDC viennent du fournisseur d’identité.</p>'}
         <label>Rôle<select name="role">${roleOptions(user)}</select></label>
         </div>
         <div class="ua-form-actions">
@@ -239,7 +239,7 @@ async function deleteAccount(key) {
     const label = user.name || user.username || user.email || key;
     const warning = user.type === 'oidc'
         ? `Supprimer le compte « ${label} » de Bullarr ?\n\nSes listes personnelles et ses accès seront effacés et sa session fermée. `
-          + 'Il pourra se reconnecter via OIDC tant qu\'il existe dans Pocket ID : retirez-le là-bas pour le bloquer.'
+          + 'Il pourra se reconnecter via OIDC tant qu\'il existe chez le fournisseur d\'identité : retirez-le là-bas pour le bloquer.'
         : `Supprimer le compte « ${label} » ?\n\nSes listes personnelles seront effacées et sa session fermée. Action irréversible.`;
     if (!confirm(warning)) return;
     const result = await usersRequest('DELETE', {key});
@@ -281,12 +281,12 @@ function pendingRow(user) {
 function userRow(user) {
     const key = usersEscape(user.key);
     const typeTag = user.type === 'oidc'
-        ? `<span class="ua-tag ua-tag-oidc" data-tooltip="Connexion via Pocket ID">${uaIcon('shield-check')}OIDC</span>`
+        ? `<span class="ua-tag ua-tag-oidc" data-tooltip="Connexion via le fournisseur d’identité (SSO)">${uaIcon('shield-check')}OIDC</span>`
         : `<span class="ua-tag ua-tag-local" data-tooltip="Identifiant et mot de passe Bullarr">${uaIcon('key-round')}Local</span>`;
     const roleTag = user.role === 'admin'
         ? `<span class="ua-tag ua-tag-admin">${uaIcon('crown')}Admin</span>`
         : `<span class="ua-tag ua-tag-reader">${uaIcon('book-open')}Lecteur</span>`;
-    const forced = user.type === 'oidc' && user.role_override ? '<span class="ua-tag ua-tag-muted" data-tooltip="Rôle forcé, le groupe Pocket ID est ignoré">forcé</span>' : '';
+    const forced = user.type === 'oidc' && user.role_override ? '<span class="ua-tag ua-tag-muted" data-tooltip="Rôle forcé, le groupe SSO est ignoré">forcé</span>' : '';
     const groups = user.groups.map(g => `<span class="ua-tag ua-tag-muted">${usersEscape(g)}</span>`).join('');
     const seen = user.last_seen ? `<span class="ua-seen" data-tooltip="Dernière connexion">${uaIcon('clock')}${usersEscape(uaDate(user.last_seen))}</span>` : '';
     const access = user.role === 'reader'

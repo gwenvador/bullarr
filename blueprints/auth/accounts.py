@@ -159,7 +159,7 @@ def update_account(key, name=None, email=None, password=None):
     if not row:
         raise LookupError(key)
     if row['auth_method'] != 'password':
-        raise AccountError('Le nom et l’e-mail d’un compte OIDC viennent du fournisseur (Pocket ID)')
+        raise AccountError('Le nom et l’e-mail d’un compte OIDC viennent du fournisseur d’identité')
     fields = {}
     if name is not None:
         fields['name'] = name.strip() or key.split(':', 1)[1]
