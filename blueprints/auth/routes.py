@@ -27,7 +27,7 @@ from .roles import (request_user, ROLES, ROLE_READER, PARENTAL_PRESET, all_genre
 # l'utilisateur ne pourrait jamais atteindre le flux de connexion ou les assets statiques)
 _PUBLIC_ENDPOINTS = {
     'auth.login', 'auth.login_password', 'auth.login_redirect', 'auth.callback', 'auth.app_login',
-    'auth.signup', 'auth.api_token',
+    'auth.signup', 'auth.api_token', 'auth.sso_info',
     'auth.logout', 'auth.logout_provider',
     'static', 'serve_cover',
     # Serveur MCP : authentifié par son propre jeton (BULLARR_MCP_TOKEN), pas par la session
@@ -322,6 +322,21 @@ def enforce_login():
     if request.method == 'GET' and not request.path.startswith('/api/'):
         session['next_url'] = request.full_path if request.query_string else request.path
     return redirect(url_for('auth.login'))
+
+
+@auth_bp.route('/api/auth/sso-info')
+def sso_info():
+    """Public (écran de connexion des applis) : SSO actif, fournisseur et texte du bouton.
+    Aucune donnée sensible (ni issuer, ni client ID)."""
+    config = load_oidc_config()
+    sso_key, sso_name = _sso_provider(config)
+    return jsonify({
+        'enabled': bool(_oidc_ready(config)),
+        'password': bool(_password_enabled(config)),
+        'provider': sso_key or '',
+        'name': sso_name or '',
+        'label': config.get('button_label') or (f'Se connecter avec {sso_name}' if sso_name else 'Se connecter avec le SSO'),
+    })
 
 
 @auth_bp.route('/login')
