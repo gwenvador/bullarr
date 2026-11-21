@@ -1282,6 +1282,7 @@ const SIDEBAR_ICON_MAP = {
     '🧩': 'link',
     '📱': 'smartphone',
     '🔐': 'lock',
+    '👥': 'users',
     '🌓': 'moon',
     '🎨': 'palette',
     '🗂️': 'search',
