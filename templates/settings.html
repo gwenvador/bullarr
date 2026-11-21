@@ -44,7 +44,6 @@
                 <a href="#monitoring" class="nav-sublink" data-tab="monitoring" onclick="switchTab('monitoring'); return false;">📊 Surveillance</a>
                 <a href="#import-auto" class="nav-sublink" data-tab="import-auto" onclick="switchTab('import-auto'); return false;">📥 Imports</a>
                 <a href="#libraries" class="nav-sublink" data-tab="libraries" onclick="switchTab('libraries'); return false;">✏️ Format</a>
-                <a href="#integrations" class="nav-sublink" data-tab="integrations" onclick="switchTab('integrations'); return false;">🧩 Intégrations</a>
                 <a href="#ai" class="nav-sublink" data-tab="ai" onclick="switchTab('ai'); return false;">🤖 IA</a>
                 <a href="#upscale" class="nav-sublink" data-tab="upscale" onclick="switchTab('upscale'); return false;">✨ Upscaling</a>
                 <a href="#oidc" class="nav-sublink" data-tab="oidc" onclick="switchTab('oidc'); return false;">🔐 Login</a>
@@ -142,14 +141,6 @@
                                     <span class="overview-card-desc">Modèles de renommage des fichiers</span>
                                 </span>
                                 <span class="overview-card-status" data-overview-status="libraries" hidden></span>
-                            </button>
-                            <button type="button" class="overview-card" onclick="switchTab('integrations')">
-                                <span class="overview-card-icon" data-icon="link"></span>
-                                <span class="overview-card-text">
-                                    <span class="overview-card-name">Intégrations</span>
-                                    <span class="overview-card-desc">Komga : rescan, lecture</span>
-                                </span>
-                                <span class="overview-card-status" data-overview-status="integrations" hidden></span>
                             </button>
                             <button type="button" class="overview-card" onclick="switchTab('ai')">
                                 <span class="overview-card-icon" data-icon="bot"></span>
@@ -472,25 +463,6 @@
                 </div>
 
                 <!-- Onglet Intégrations : applications reliées à Bullarr (Komga). -->
-                <div class="tab-content" id="tab-integrations">
-                    <div class="settings-section">
-                        <div class="section-header">
-                            <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
-                            <h2>🧩 Intégrations</h2>
-                            <p class="section-description">
-                                Applications reliées à Bullarr. Cliquez sur une carte pour la configurer.
-                            </p>
-                        </div>
-                        <div class="integration-cards-grid">
-                            <div class="integration-card" onclick="openIntegrationModal('komga')">
-                                <img src="{{ url_for('static', filename='img/komga-logo.svg') }}" alt="" class="integration-card-logo">
-                                <div class="integration-card-name">Komga</div>
-                                <span class="integration-card-status" id="card-status-komga">…</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Onglet Clients : aMule et qBittorrent fusionnés, même principe que
                      l'onglet Indexeurs ci-dessus ("fait la meme chose pour les clients
                      avec qbittorent, amule"). -->

@@ -6138,3 +6138,7 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     background: color-mix(in srgb, var(--color-accent) 16%, transparent);
     color: var(--color-accent-hover);
 }
+
+/* Mon profil → Komga : lien administrateur vers les réglages Komga du serveur. */
+.pf-komga-server { display: inline-block; margin-top: 12px; font-size: .88em; color: var(--color-accent); text-decoration: none; }
+.pf-komga-server:hover { text-decoration: underline; }

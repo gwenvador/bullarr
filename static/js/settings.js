@@ -1805,6 +1805,16 @@ const INTEGRATION_MODAL_LOADERS = {
     rss: () => loadRssFeeds()
 };
 
+// /settings#komga (bouton « Réglages du serveur Komga » de Mon profil) : l'onglet
+// Intégrations a disparu (la connexion Komga de chacun est dans Mon profil), la fenêtre
+// Komga du serveur s'ouvre par-dessus la vue d'ensemble.
+window.addEventListener('load', () => {
+    if (window.location.hash === '#komga') {
+        switchTab('overview');
+        openIntegrationModal('komga');
+    }
+});
+
 function openIntegrationModal(name) {
     const modal = document.getElementById('tab-' + name);
     if (!modal) return;

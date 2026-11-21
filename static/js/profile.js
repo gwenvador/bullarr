@@ -134,8 +134,12 @@ function pfRenderKomga() {
     const card = document.getElementById('pf-komga-card');
     const form = document.getElementById('pf-komga-form');
     const body = document.getElementById('pf-komga-body');
-    card.hidden = !k || (!k.available && k.mode !== 'local');
+    // Administrateur : la carte reste visible (même sans Komga configuré) pour mener aux
+    // réglages Komga du serveur, qui vivaient dans l'onglet Intégrations supprimé.
+    const admin = document.body.dataset.role === 'admin';
+    card.hidden = !k || (!k.available && k.mode !== 'local' && !admin);
     if (card.hidden) return;
+    document.getElementById('pf-komga-server').hidden = !admin;
     if (!k.available) {
         body.innerHTML = '<p class="pf-hint">Komga n’est pas configuré sur ce serveur : votre avancement de lecture est enregistré par Bullarr, pour votre compte uniquement.</p>';
         form.hidden = true;
