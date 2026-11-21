@@ -352,6 +352,7 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, g
     const destinations = [];
     const errors = [];
     const attach = [];
+    const sentVolumes = [];
     const seenVolumes = new Set();
     for (const [i, l] of targets) {
         const e = allNouveautesEvents[i];
@@ -368,6 +369,7 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, g
         try {
             destinations.push(await _downloadNouveautesRelease(e, seriesId, l, attach));
             t._autoAddTriggered = true;
+            sentVolumes.push(volume ?? 'one-shot');
         } catch (error) {
             console.error('Nouveautés : envoi du fichier impossible', error);
             errors.push(error.message);
@@ -382,20 +384,13 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, g
         showToast('nouveautes-auto-add', `« ${title} » : ${sentText}${seriesWasKnown ? '' : ' ; ajout de la série…'}`, { icon: 'loader-circle' });
     }
 
-    // 2. Puis la série est ajoutée ; le serveur lance la recherche des tomes manquants
-    //    seulement si « Télécharger automatiquement à l'ajout » est actif.
+    // 2. Puis la série est ajoutée (sans recherche) et rattachée aux fichiers envoyés.
     let searchText = '';
     if (!seriesId) {
         try {
-            const created = await _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl, true, true);
+            const created = await _resolveSeriesForAutoAdd(title, rawHint, bedethequeUrl, true, false);
             seriesId = created.seriesId;
-            for (const identity of attach) {
-                const { client, ...rest } = identity;
-                _attachSeriesToPendingDownload(client, seriesId, rest);
-            }
-            searchText = created.alreadyExists ? '' : created.autoAcquire
-                ? ` ; recherche des ${created.missing} tome${created.missing > 1 ? 's' : ''} manquant${created.missing > 1 ? 's' : ''} lancée`
-                : ' ; téléchargement automatique désactivé, pas de recherche des autres tomes';
+            await Promise.all(attach.map(({ client, ...rest }) => _attachSeriesToPendingDownload(client, seriesId, rest)));
         } catch (error) {
             let reviewQueued = false;
             try {
@@ -409,17 +404,20 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, g
             if (!destinations.length) restore();
             return;
         }
-    } else {
-        // Série déjà connue : même règle, la recherche ne part que si l'option est active.
-        try {
-            const config = await (await fetch('/api/import/config')).json();
-            if (config.auto_acquire_on_add_enabled) {
-                const data = await _startSeriesAutoAcquire(seriesId);
-                searchText = data.started ? ` ; recherche des ${data.count} tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée` : ' ; aucun tome manquant';
-            }
-        } catch (error) {
-            searchText = ` ; recherche des tomes manquants impossible : ${error.message}`;
+    }
+    // 3. Si « Télécharger automatiquement à l'ajout » est actif : recherche des tomes
+    //    manquants, sans ceux qui viennent de partir (sinon une recherche peu sûre les
+    //    mettait en validation alors qu'ils sont déjà en téléchargement).
+    try {
+        const config = await (await fetch('/api/import/config')).json();
+        if (config.auto_acquire_on_add_enabled) {
+            const data = await _startSeriesAutoAcquire(seriesId, sentVolumes);
+            searchText = data.started
+                ? ` ; recherche des ${data.count} ${destinations.length ? 'autre' + (data.count > 1 ? 's ' : ' ') : ''}tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée`
+                : ` ; aucun ${destinations.length ? 'autre ' : ''}tome manquant`;
         }
+    } catch (error) {
+        searchText = ` ; recherche des tomes manquants impossible : ${error.message}`;
     }
     const added = seriesWasKnown ? '' : 'série ajoutée, ';
     showToast('nouveautes-auto-add', `« ${title} » : ${added}${sentText}${searchText}.`,

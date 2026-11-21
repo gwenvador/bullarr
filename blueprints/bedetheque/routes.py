@@ -2797,6 +2797,20 @@ def run_auto_acquire_now():
             finally:
                 check.close()
             missing = [v for v in missing if _vkey(v) not in skip]
+        elif missing == [None]:
+            # One-shot : l'album est déjà en téléchargement pour cette série (fichier envoyé
+            # par « Ajouter et télécharger » de Nouveautés) - ne pas le rechercher une
+            # seconde fois, une recherche peu sûre le mettait en validation.
+            check = get_db_connection()
+            try:
+                busy = check.execute(
+                    "SELECT 1 FROM active_downloads WHERE series_id = ? "
+                    "AND status IN ('pending', 'downloading', 'completed', 'importing') LIMIT 1",
+                    (series_id,)).fetchone()
+            finally:
+                check.close()
+            if busy or data.get('exclude_volumes'):
+                missing = []
 
     if not missing:
         return jsonify({'success': True, 'started': False, 'count': 0})
