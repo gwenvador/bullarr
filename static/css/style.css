@@ -6039,3 +6039,17 @@ a.history-source-link .icon { width: 12px; height: 12px; }
 .author-albums-list .overview-actions > .poster-action-btn img { width: 17px !important; height: 17px !important; display: block; }
 .author-albums-list .overview-actions > .series-add-btn { box-sizing: border-box; }
 .author-albums-list .overview-actions > .series-add-btn svg { display: block; }
+
+/* « en haut le header est trop compact, les icônes sortent de l écran » : hamburger, titre,
+   recherche, thème et notifications sur une seule ligne de 390 px. Titre sur une ligne
+   (points de suspension), boutons à 36 px, Renommer / Nouvelle bibliothèque en icônes. */
+@media (max-width: 768px) {
+    .header-content { gap: 6px; min-width: 0; width: 100%; }
+    .header-content > .header-left { flex: 1 1 auto; min-width: 0; }
+    .header-left h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .header-left .library-title-row { display: block; }
+    .header-content .header-search-btn { width: 36px; height: 36px; flex-shrink: 0; }
+    .library-title-mobile-actions { gap: 16px; margin-top: 2px; }
+    .library-title-mobile-action { font-size: 0; gap: 0; }
+    .library-title-mobile-action svg { width: 18px; height: 18px; }
+}
