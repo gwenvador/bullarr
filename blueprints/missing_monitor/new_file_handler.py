@@ -515,15 +515,18 @@ def process_new_monitor_files(source, items):
             # pas une invitation à redéduire la série depuis le titre.
             if thread_status in ('unmatched', 'ambiguous'):
                 continue
-            match = thread_match or _match_series_for_auto_import(normalized_parsed_title, monitored_series)
+            # Par défaut, la même reconnaissance que la page Nouveautés (toutes les séries
+            # connues, alias « X (Préfixe) », auteurs dans le nom) ; l'ancienne règle
+            # (préfixe parmi les seules séries surveillées) ne sert plus qu'en dernier
+            # recours, et passe alors par la revue manuelle si le titre n'est pas identique.
+            title_key_match = None if thread_match else nouveautes_match(filename)
+            match = thread_match or title_key_match
             hint = (item.get('bedetheque_url_hint') or '').strip().rstrip('/')
             if hint and not match:
                 match = next((row for row in monitored_series
                               if (bedetheque_url_by_series.get(row[0]) or '').strip().rstrip('/') == hint), None)
-            title_key_match = None
             if not match:
-                title_key_match = nouveautes_match(filename)
-                match = title_key_match
+                match = _match_series_for_auto_import(normalized_parsed_title, monitored_series)
             if not match:
                 continue
 

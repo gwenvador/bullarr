@@ -1979,13 +1979,7 @@ function _groupNouveautesSeriesRows(body) {
             // Surveillance : une propriété de la série, affichée une seule fois sur son en-tête.
             const monitored = members.some(r => r.querySelector('.badge-monitored'));
             members.forEach(r => r.querySelectorAll('.badge-monitored').forEach(el => el.remove()));
-            nameRow.append(name, pencil);
-            if (monitored) {
-                const eye = document.createElement('span');
-                eye.innerHTML = _nouveautesMonitoredBadge();
-                nameRow.append(eye.firstElementChild);
-            }
-            nameRow.append(btn);
+            nameRow.append(name, pencil, btn);
             if (groupTags) nameRow.append(groupTags);
             details.append(nameRow);
             header.appendChild(details);
@@ -2019,7 +2013,7 @@ function _groupNouveautesSeriesRows(body) {
                 // colSpan = 0 vaut 1 en HTML : la cellule n'est créée que s'il reste des colonnes.
                 // « il devrait y avoir le + aussi » : le « + » Découvrir des albums est repris.
                 const plus = null; // un seul bouton (téléchargement) : « l'éclair et le + c'est un peu confus »
-                const hasActions = !!(zapArgs || plus);
+                const hasActions = !!(zapArgs || plus || monitored);
                 const fillerSpan = hasActions ? rest - 1 : rest;
                 if (fillerSpan > 0) {
                     const filler = document.createElement('td');
@@ -2031,6 +2025,7 @@ function _groupNouveautesSeriesRows(body) {
                     actions.className = 'nouveautes-actions-cell nouveautes-group-actions';
                     actions.style.padding = '10px';
                     const wrap = document.createElement('div');
+                    wrap.style.cssText = 'display:flex; align-items:center; gap:8px;';
                     const groupTargets = zaps.map(z => z.getAttribute('onclick').match(/addSeriesAndDownloadNouveautes\((\d+), this(?:, (\d+))?\)/))
                         .filter(Boolean).map(m => [Number(m[1]), m[2] != null ? Number(m[2]) : null]);
                     if (zapArgs) {
@@ -2049,6 +2044,8 @@ function _groupNouveautesSeriesRows(body) {
                         plusCopy.addEventListener('click', ev => ev.stopPropagation());
                         wrap.appendChild(plusCopy);
                     }
+                    // « l'icône surveillé doit être à côté du téléchargement, à droite ».
+                    if (monitored) wrap.insertAdjacentHTML('beforeend', _nouveautesMonitoredBadge());
                     actions.appendChild(wrap);
                     header.appendChild(actions);
                 }
