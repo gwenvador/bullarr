@@ -173,6 +173,16 @@ def _resolve(conn, view_args, body):
             series_id = series_id or row[0]
             series_title = row[3]
             extra.append(f'T{row[1]}' if row[1] is not None else (row[2] or f'tome #{volume_id}'))
+    review_id = view_args.get('review_id')
+    if review_id and not series_id:
+        # Validation (ignorer, télécharger, choisir la série) : la série et le tome sont
+        # ceux de l'entrée de validation (sinon l'historique affichait « Série #null »).
+        row = conn.execute('SELECT series_id, series_title, volume_label FROM auto_acquire_reviews '
+                           'WHERE id = ?', (review_id,)).fetchone()
+        if row:
+            series_id, series_title = row[0], row[1]
+            if row[2]:
+                extra.append(str(row[2]))
     if series_id and not series_title:
         row = conn.execute('SELECT title FROM series WHERE id = ?', (series_id,)).fetchone()
         series_title = row[0] if row else None

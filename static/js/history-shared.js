@@ -337,7 +337,9 @@ function mapHistoryResponsesToEvents(importResp, downloadResp, actionResp, aiRes
         date: h.created_at,
         seriesId: h.action_type === 'delete' ? null : h.series_id,
         seriesTitle: h.series_title,
-        label: h.series_title || `Série #${h.series_id}`,
+        // Action sans série (réglages, validation d'un fichier non rattaché…) : pas de
+        // « Série #null », le libellé de l'action suffit.
+        label: h.series_title || (h.series_id != null ? `Série #${h.series_id}` : (h.detail || 'Action')),
         // Upscaling en échec : le nom de l'album (detail) reste affiché, l'erreur en dessous.
         detail: /^(up|down)scale/.test(h.action_type || '') && h.error && h.detail
             ? `${h.detail}\n⚠️ ${h.error}`
