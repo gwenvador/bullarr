@@ -609,9 +609,12 @@ def oidc_config():
                     "Créez d'abord un compte administrateur (onglet Utilisateurs) "
                     "ou activez la connexion OIDC")}), 400
             config['auto_redirect'] = bool(new_config.get('auto_redirect', False))
-            provider = new_config.get('provider') or ''
-            config['provider'] = provider if provider in SSO_PROVIDERS or provider == 'other' else ''
-            config['button_label'] = ' '.join(str(new_config.get('button_label') or '').split())[:60]
+            # Absents de la requête (ancienne appli) : on garde les valeurs enregistrées.
+            if 'provider' in new_config:
+                provider = new_config.get('provider') or ''
+                config['provider'] = provider if provider in SSO_PROVIDERS or provider == 'other' else ''
+            if 'button_label' in new_config:
+                config['button_label'] = ' '.join(str(new_config.get('button_label') or '').split())[:60]
 
             # Ne change le secret client que s'il n'est pas masqué
             new_secret = new_config.get('client_secret', '')
