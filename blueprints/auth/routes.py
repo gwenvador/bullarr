@@ -159,13 +159,44 @@ def _render_login(config, error=None, status=200, view='login', notice=None, for
     oidc_ready = _oidc_ready(config)
     if view == 'login' and _oidc_enabled(config) and not oidc_ready and not error:
         error = "Configuration OIDC incomplète : vérifiez l'issuer et le client ID dans les paramètres."
+    sso_key, sso_name = _sso_provider(config)
     return render_template(
         'login.html', password_enabled=_password_enabled(config), oidc_enabled=oidc_ready, error=error,
         signup_enabled=_signup_enabled(config), view=view, notice=notice, form=form or {},
+        sso_key=sso_key, sso_name=sso_name,
     ), status
 
 
 _GROUPS_SCOPE_CACHE = {}
+
+# Fournisseurs SSO connus : logo (static/img/sso/<clé>.svg) et nom sur le bouton de connexion.
+SSO_PROVIDERS = {
+    'pocket-id': 'Pocket ID', 'authentik': 'Authentik', 'authelia': 'Authelia', 'keycloak': 'Keycloak',
+    'zitadel': 'Zitadel', 'kanidm': 'Kanidm', 'logto': 'Logto', 'okta': 'Okta', 'google': 'Google',
+    'microsoft': 'Microsoft',
+}
+
+
+def _guess_sso_provider(issuer):
+    """Fournisseur deviné depuis l'URL de l'issuer (aucun choix enregistré)."""
+    url = (issuer or '').lower()
+    for needle, key in (('accounts.google.com', 'google'), ('microsoftonline', 'microsoft'), ('okta', 'okta'),
+                        ('zitadel', 'zitadel'), ('logto', 'logto'), ('/realms/', 'keycloak'),
+                        ('/application/o/', 'authentik'), ('authentik', 'authentik'), ('/oauth2/openid/', 'kanidm'),
+                        ('kanidm', 'kanidm'), ('authelia', 'authelia'), ('pocket', 'pocket-id'), ('keycloak', 'keycloak')):
+        if needle in url:
+            return key
+    return ''
+
+
+def _sso_provider(config):
+    """(clé, nom) du fournisseur affiché sur le bouton ; (None, None) : bouton générique."""
+    key = config.get('provider') or ''
+    if key == 'other':
+        return None, None
+    if key not in SSO_PROVIDERS:
+        key = _guess_sso_provider(config.get('issuer'))
+    return (key, SSO_PROVIDERS[key]) if key in SSO_PROVIDERS else (None, None)
 
 
 def _provider_offers_groups(issuer):
@@ -542,6 +573,8 @@ def oidc_config():
             'client_secret': '****' if config.get('client_secret') else '',
             'scopes': config.get('scopes', 'openid profile email'),
             'admin_group': config.get('admin_group', ''),
+            'provider': config.get('provider', ''),
+            'provider_guess': _guess_sso_provider(config.get('issuer')),
         })
 
     else:  # POST
@@ -570,9 +603,11 @@ def oidc_config():
             # Ne pas se fermer la porte : sans OIDC, il faut un compte administrateur local.
             if mode == 'auth' and not oidc_enabled and accounts.local_admin_count() == 0:
                 return jsonify({'success': False, 'error': (
-                    "Créez d'abord un compte administrateur (Utilisateurs et rôles, ci-dessous) "
+                    "Créez d'abord un compte administrateur (onglet Utilisateurs) "
                     "ou activez la connexion OIDC")}), 400
             config['auto_redirect'] = bool(new_config.get('auto_redirect', False))
+            provider = new_config.get('provider') or ''
+            config['provider'] = provider if provider in SSO_PROVIDERS or provider == 'other' else ''
 
             # Ne change le secret client que s'il n'est pas masqué
             new_secret = new_config.get('client_secret', '')

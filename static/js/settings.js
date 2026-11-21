@@ -1397,6 +1397,41 @@ async function checkTelegramAutoScrapeStatus() {
 // ===== SSO / OIDC =====
 let oidcPasswordVisible = false;
 
+// Fournisseurs SSO proposés (logos static/img/sso, même liste que SSO_PROVIDERS côté serveur) ;
+// l'exemple d'issuer sert de placeholder au champ URL.
+const SSO_PROVIDER_CHOICES = [
+    ['pocket-id', 'Pocket ID', 'https://id.example.com'],
+    ['authentik', 'Authentik', 'https://auth.example.com/application/o/bullarr'],
+    ['authelia', 'Authelia', 'https://auth.example.com'],
+    ['keycloak', 'Keycloak', 'https://keycloak.example.com/realms/mon-realm'],
+    ['zitadel', 'Zitadel', 'https://mon-instance.zitadel.cloud'],
+    ['kanidm', 'Kanidm', 'https://idm.example.com/oauth2/openid/bullarr'],
+    ['logto', 'Logto', 'https://mon-tenant.logto.app/oidc'],
+    ['okta', 'Okta', 'https://mon-org.okta.com'],
+    ['google', 'Google', 'https://accounts.google.com'],
+    ['microsoft', 'Microsoft', 'https://login.microsoftonline.com/<tenant>/v2.0'],
+    ['other', 'Autre', 'https://mon-fournisseur.example.com'],
+];
+
+function selectSsoProvider(key) {
+    document.getElementById('oidcProvider').value = key;
+    const choice = SSO_PROVIDER_CHOICES.find(c => c[0] === key);
+    if (choice) document.getElementById('oidcIssuer').placeholder = choice[2];
+    document.querySelectorAll('#ssoProviders .sso-provider').forEach(btn => {
+        const on = btn.dataset.provider === key;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+}
+
+function renderSsoProviders() {
+    const box = document.getElementById('ssoProviders');
+    if (!box || box.childElementCount) return;
+    box.innerHTML = SSO_PROVIDER_CHOICES.map(([key, name]) => `<button type="button" class="sso-provider" role="radio" aria-checked="false" data-provider="${key}" onclick="selectSsoProvider('${key}')">${key === 'other'
+        ? (typeof svgIcon === 'function' ? svgIcon('shield-check') : '')
+        : `<img class="sso-logo-${key}" src="/static/img/sso/${key}.svg" alt="" width="20" height="20">`}<span>${name}</span></button>`).join('');
+}
+
 async function loadOidcSettings() {
     try {
         const response = await fetch('/api/auth/config');
@@ -1408,6 +1443,8 @@ async function loadOidcSettings() {
         document.getElementById('oidcClientId').value = config.client_id || '';
         document.getElementById('oidcScopes').value = config.scopes || 'openid profile email';
         document.getElementById('oidcAutoRedirect').checked = !!config.auto_redirect;
+        renderSsoProviders();
+        selectSsoProvider(config.provider || config.provider_guess || '');
 
         // Voir le commentaire équivalent dans loadSettings (aMule) - même correctif
         if (config.client_secret) {
@@ -1428,7 +1465,8 @@ async function saveOidcSettings() {
         client_id: document.getElementById('oidcClientId').value.trim(),
         client_secret: document.getElementById('oidcClientSecret').value,
         scopes: document.getElementById('oidcScopes').value.trim() || 'openid profile email',
-        auto_redirect: document.getElementById('oidcAutoRedirect').checked
+        auto_redirect: document.getElementById('oidcAutoRedirect').checked,
+        provider: document.getElementById('oidcProvider').value
     };
     const usesOidc = config.oidc_enabled;
 

@@ -46,7 +46,7 @@
                 <a href="#libraries" class="nav-sublink" data-tab="libraries" onclick="switchTab('libraries'); return false;">✏️ Format</a>
                 <a href="#ai" class="nav-sublink" data-tab="ai" onclick="switchTab('ai'); return false;">🤖 IA</a>
                 <a href="#upscale" class="nav-sublink" data-tab="upscale" onclick="switchTab('upscale'); return false;">✨ Upscaling</a>
-                <a href="#oidc" class="nav-sublink" data-tab="oidc" onclick="switchTab('oidc'); return false;">🔐 Login</a>
+                <a href="#oidc" class="nav-sublink" data-tab="oidc" onclick="switchTab('oidc'); return false;">🔐 SSO</a>
                 <a href="#users" class="nav-sublink" data-tab="users" onclick="switchTab('users'); return false;">👥 Utilisateurs</a>
                 <a href="#telegram" class="nav-sublink" data-tab="telegram" onclick="switchTab('telegram'); return false;">📱 Notifications</a>
                 <a href="#theme" class="nav-sublink" data-tab="theme" onclick="switchTab('theme'); return false;">🎨 Thème</a>
@@ -166,8 +166,8 @@
                             <button type="button" class="overview-card" onclick="switchTab('oidc')">
                                 <span class="overview-card-icon" data-icon="lock"></span>
                                 <span class="overview-card-text">
-                                    <span class="overview-card-name">Login</span>
-                                    <span class="overview-card-desc">Mot de passe, SSO OIDC, clé API</span>
+                                    <span class="overview-card-name">SSO</span>
+                                    <span class="overview-card-desc">Mot de passe, fournisseur SSO (OIDC)</span>
                                 </span>
                                 <span class="overview-card-status" data-overview-status="oidc" hidden></span>
                             </button>
@@ -1789,7 +1789,7 @@
                     <div class="settings-section">
                         <div class="section-header">
                             <a href="#overview" class="settings-back-link" onclick="switchTab('overview'); return false;">← Retour à la vue d'ensemble</a>
-                            <h2>🔐 Configuration Login</h2>
+                            <h2>🔐 Connexion et SSO</h2>
                             <p class="section-description">
                                 Exigez une connexion pour accéder à Bullarr : comptes avec identifiant et mot de passe (gérés dans
                                 <a href="#users" onclick="switchTab('users'); return false;">Utilisateurs</a>),
@@ -1822,6 +1822,13 @@
                                     <strong>Activer la connexion OIDC (SSO)</strong>
                                     <span class="help-text">Ajoute le bouton « Se connecter avec le SSO » sur la page de connexion, à côté du formulaire des comptes Bullarr.</span>
                                 </label>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Fournisseur</label>
+                                <div class="sso-providers" id="ssoProviders" role="radiogroup" aria-label="Fournisseur SSO"></div>
+                                <input type="hidden" id="oidcProvider" value="">
+                                <small class="help-text">Son logo et son nom apparaissent sur le bouton de connexion (« Autre » : bouton générique « Se connecter avec le SSO »).</small>
                             </div>
 
                             <div class="form-group">
@@ -1894,7 +1901,7 @@
                             <p class="section-description">
                                 Les comptes qui peuvent se connecter à Bullarr, leur rôle (administrateur ou lecteur), leurs accès
                                 aux bibliothèques et les demandes de compte en attente. La façon de se connecter (mot de passe, OIDC)
-                                se règle dans <a href="#oidc" onclick="switchTab('oidc'); return false;">Login</a>.
+                                se règle dans <a href="#oidc" onclick="switchTab('oidc'); return false;">SSO</a>.
                             </p>
                         </div>
 
