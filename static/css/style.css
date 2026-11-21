@@ -6053,3 +6053,59 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     .library-title-mobile-action { font-size: 0; gap: 0; }
     .library-title-mobile-action svg { width: 18px; height: 18px; }
 }
+
+/* Suivi → Lectures (templates/reading-history.html, static/js/reading-history.js) :
+   « pas du tout synchrone avec le reste du site (taille de la police…) » - la page
+   reprenait les styles de l'Upscaling (police Inter, base 16,5 px, boutons pleins).
+   Mêmes composants que l'Historique : onglets .tab-button, .btn compacts, en-tête de
+   tableau partagé (table thead th), cellules 6px 8px, police du site. */
+.reading-intro { margin: 0 0 14px; color: var(--color-text-muted); font-size: .9em; line-height: 1.5; }
+.reading-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.reading-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.reading-tabs .tab-button { font-size: .85em; padding: 8px 14px; border-radius: 6px; }
+.reading-count { opacity: .7; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.reading-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.reading-page .reading-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 15px; font-size: 14px; margin: 0; }
+.reading-page .reading-btn:hover { transform: none; box-shadow: none; }
+.reading-page .reading-btn svg { width: 16px; height: 16px; }
+.reading-page .reading-btn-ghost { background: transparent; color: var(--color-text); border: 1px solid var(--color-border); cursor: pointer; }
+.reading-page .reading-btn-ghost:hover { background: var(--color-surface-alt); color: var(--color-accent); }
+.reading-source { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 12px; font-size: .88em; color: var(--color-text-muted); }
+.reading-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px; font-size: .9em; font-weight: 600; background: var(--color-surface-alt); color: var(--color-text); white-space: nowrap; }
+.reading-chip svg { width: 14px; height: 14px; }
+.reading-chip-done { background: color-mix(in srgb, #16a34a 14%, transparent); color: #15803d; }
+[data-theme="dark"] .reading-chip-done { color: #4ade80; }
+.reading-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.reading-input { font: inherit; font-size: .9em; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); color: var(--color-text); }
+.reading-input:focus { outline: none; border-color: var(--color-accent); }
+.reading-filter { flex: 1 1 220px; max-width: 360px; min-width: 0; }
+.reading-user { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; }
+.reading-muted { color: var(--color-text-muted); font-size: .9em; }
+.reading-muted svg { width: 15px; height: 15px; vertical-align: -2px; }
+.reading-table { width: 100%; border-collapse: collapse; }
+.reading-table td { padding: 6px 8px; border-bottom: 1px solid var(--color-border); vertical-align: middle; font-size: .9em; }
+.reading-table tbody tr:hover > td { background: var(--color-surface-alt); }
+.reading-album { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.reading-cover { flex: 0 0 32px; width: 32px; height: 45px; border-radius: 4px; overflow: hidden; background: var(--color-border); display: inline-flex; align-items: center; justify-content: center; }
+.reading-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.reading-title { display: flex; flex-direction: column; min-width: 0; }
+.reading-title a { color: var(--color-text); font-weight: 600; text-decoration: none; }
+.reading-title a:hover { color: var(--color-accent); text-decoration: underline; }
+.reading-title span { font-size: .88em; color: var(--color-text-muted); }
+.reading-prog { display: inline-flex; align-items: center; gap: 8px; }
+.reading-bar { width: 120px; height: 6px; border-radius: 3px; background: var(--color-border); overflow: hidden; }
+.reading-bar span { display: block; height: 100%; background: var(--color-accent); }
+.reading-bar.done span { background: #16a34a; }
+.reading-prog-label { font-size: .9em; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+.reading-nowrap { white-space: nowrap; color: var(--color-text-muted); }
+.reading-end { text-align: right !important; }
+.reading-more { display: flex; justify-content: center; padding: 12px; }
+#readingImportResult { margin-bottom: 12px; }
+@media (max-width: 700px) {
+    /* Date et Statut masqués : la barre (verte si lu) et « 56/56 » suffisent. */
+    .reading-table th:nth-child(3), .reading-table td:nth-child(3),
+    .reading-table th:nth-child(4), .reading-table td:nth-child(4) { display: none; }
+    .reading-bar { width: 60px; }
+    .reading-filter { max-width: none; }
+    .reading-tabs .tab-button { padding: 6px 10px; font-size: .82em; }
+}

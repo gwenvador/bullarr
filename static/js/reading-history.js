@@ -59,7 +59,7 @@ async function loadReadingHistory() {
         renderReadingLibraries();
         renderReadingHistory();
     } catch (error) {
-        document.getElementById('readingList').innerHTML = `<p class="upscaling-muted">${svgIcon('triangle-alert')} ${_rdEsc(error.message)}</p>`;
+        document.getElementById('readingList').innerHTML = `<p class="reading-muted">${svgIcon('triangle-alert')} ${_rdEsc(error.message)}</p>`;
     }
 }
 
@@ -67,13 +67,13 @@ function renderReadingSource() {
     const data = readingData;
     const sync = data.source !== 'local';
     const me = readingUsers?.find(u => u.me);
-    const picker = readingUsers ? `<label class="reading-user"><span>Compte</span><select class="upscaling-input" onchange="readingSelectUser(this.value)">${readingUsers.map(u =>
+    const picker = readingUsers ? `<label class="reading-user"><span>Compte</span><select class="reading-input" onchange="readingSelectUser(this.value)">${readingUsers.map(u =>
         `<option value="${_rdEsc(u.user_key)}"${(readingState.user || me?.user_key) === u.user_key ? ' selected' : ''}>${_rdEsc(u.name)}${u.me ? ' (moi)' : ''}${u.role === 'reader' ? ' · lecteur' : ''}</option>`).join('')}</select></label>` : '';
     const foreign = !!readingState.user;
     document.getElementById('readingSource').innerHTML = `${picker}
-        <span class="upscale-badge upscale-badge-ok">${svgIcon(sync ? 'refresh-cw' : 'book-open')} ${_rdEsc(data.source_label)}</span>
-        ${sync && !foreign ? `<span class="upscaling-muted">Dernière synchronisation : ${_rdDate(data.last_sync, true)}</span>
-            <button type="button" class="btn btn-ghost" id="readingSyncBtn" onclick="syncReadingHistory()">${svgIcon('refresh-cw')} Synchroniser</button>` : ''}`;
+        <span class="reading-chip">${svgIcon(sync ? 'refresh-cw' : 'book-open')} ${_rdEsc(data.source_label)}</span>
+        ${sync && !foreign ? `<span>Dernière synchronisation : ${_rdDate(data.last_sync, true)}</span>
+            <button type="button" class="btn reading-btn reading-btn-ghost" id="readingSyncBtn" onclick="syncReadingHistory()">${svgIcon('refresh-cw')} Synchroniser</button>` : ''}`;
 }
 
 function renderReadingLibraries() {
@@ -99,21 +99,21 @@ function renderReadingHistory() {
     document.getElementById('readingCountAll').textContent = all.length;
     document.getElementById('readingCountDone').textContent = done;
     document.getElementById('readingCountStarted').textContent = all.length - done;
-    document.querySelectorAll('.reading-seg [data-status]').forEach(btn => btn.classList.toggle('active', btn.dataset.status === readingState.status));
+    document.querySelectorAll('.reading-tabs [data-status]').forEach(btn => btn.classList.toggle('history-filter-active', btn.dataset.status === readingState.status));
     const items = _readingFiltered();
     const list = document.getElementById('readingList');
     if (!all.length) {
-        list.innerHTML = `<p class="upscaling-muted">${svgIcon('book-open')} Aucune lecture pour l'instant. Les albums lus dans Komga ou dans le lecteur de Bullarr apparaissent ici.</p>`;
+        list.innerHTML = `<p class="reading-muted">${svgIcon('book-open')} Aucune lecture pour l'instant. Les albums lus dans Komga ou dans le lecteur de Bullarr apparaissent ici.</p>`;
         return;
     }
     if (!items.length) {
-        list.innerHTML = '<p class="upscaling-muted">Aucune lecture ne correspond aux filtres.</p>';
+        list.innerHTML = '<p class="reading-muted">Aucune lecture ne correspond aux filtres.</p>';
         return;
     }
     // Rendu limité pour garder la page fluide sur de très longs historiques.
     const shown = items.slice(0, readingState.limit || 300);
-    list.innerHTML = `<table class="upscaling-table reading-table"><thead><tr>
-            <th>Album</th><th>Progression</th><th>Dernière lecture</th><th class="upscaling-end">Statut</th>
+    list.innerHTML = `<table class="reading-table"><thead><tr>
+            <th>Album</th><th>Progression</th><th>Dernière lecture</th><th class="reading-end">Statut</th>
         </tr></thead><tbody>${shown.map(item => {
         const pages = item.pages_count || 0;
         const page = item.completed ? (pages || item.page || 0) : (item.page || 0);
@@ -121,15 +121,15 @@ function renderReadingHistory() {
         const cover = item.cover_path ? `<img src="/${_rdEsc(item.cover_path)}" alt="" loading="lazy">` : '<span>📖</span>';
         return `<tr>
             <td><div class="reading-album"><span class="reading-cover">${cover}</span>
-                <div class="upscaling-album"><a href="/series/${item.series_id}">${_rdEsc(item.series_title)}</a><span>${_rdEsc(item.label)}${item.library_name && readingData.items.some(i => i.library_id !== item.library_id) ? ` · ${_rdEsc(item.library_name)}` : ''}</span></div></div></td>
-            <td><span class="upscaling-progress"><span class="upscale-progress reading-progress${item.completed ? ' done' : ''}"><span style="width:${pct}%"></span></span>
-                <span class="upscale-progress-label upscaling-progress-label">${pages ? `${page}/${pages}` : `p. ${page}`}</span></span></td>
-            <td class="upscaling-nowrap">${_rdDate(item.read_at, true)}</td>
-            <td class="upscaling-end">${item.completed
-                ? `<span class="upscale-badge upscale-badge-ok">${svgIcon('check')} Lu</span>`
-                : `<span class="upscale-badge">${pct} %</span>`}</td></tr>`;
+                <div class="reading-title"><a href="/series/${item.series_id}">${_rdEsc(item.series_title)}</a><span>${_rdEsc(item.label)}${item.library_name && readingData.items.some(i => i.library_id !== item.library_id) ? ` · ${_rdEsc(item.library_name)}` : ''}</span></div></div></td>
+            <td><span class="reading-prog"><span class="reading-bar${item.completed ? ' done' : ''}"><span style="width:${pct}%"></span></span>
+                <span class="reading-prog-label">${pages ? `${page}/${pages}` : `p. ${page}`}</span></span></td>
+            <td class="reading-nowrap">${_rdDate(item.read_at, true)}</td>
+            <td class="reading-end">${item.completed
+                ? `<span class="reading-chip reading-chip-done">${svgIcon('check')} Lu</span>`
+                : `<span class="reading-chip">${pct} %</span>`}</td></tr>`;
     }).join('')}</tbody></table>${items.length > shown.length
-        ? `<div class="reading-more"><button type="button" class="btn" onclick="readingState.limit = ${shown.length + 300}; renderReadingHistory()">Afficher plus (${items.length - shown.length} restantes)</button></div>` : ''}`;
+        ? `<div class="reading-more"><button type="button" class="btn reading-btn reading-btn-ghost" onclick="readingState.limit = ${shown.length + 300}; renderReadingHistory()">Afficher plus (${items.length - shown.length} restantes)</button></div>` : ''}`;
 }
 
 function readingSetStatus(status) {
