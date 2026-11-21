@@ -357,6 +357,44 @@ def _drop_volumes_covered_by_completion(cursor, series_ids, missing_by_series):
             missing.difference_update({n for n in missing if n <= total})
 
 
+def _build_nouveautes_series_matcher(cursor, monitored_series):
+    """Même identification que la page Nouveautés (series_title_match + clés de titre EBDZ) :
+    « Les.Nouvelles.Aventures.de.Cubitus.Erroc.Rodrigue.T13 » y était reconnu comme
+    « Cubitus (Les nouvelles aventures de) », mais pas par la surveillance (auteurs collés au
+    titre, article entre parenthèses) : les tomes manquants n'étaient jamais téléchargés.
+    Une clé partagée par plusieurs séries de la bibliothèque est ignorée (jamais de choix).
+    Retourne filename -> ligne de série surveillée, ou None."""
+    from series_title_match import index_series_by_title
+    from blueprints.ebdz.routes import _cached_title_match_key
+    from blueprints.library.scanner import LibraryScanner
+
+    all_rows = cursor.execute('SELECT id, title FROM series').fetchall()
+    index = {
+        key: (matches[0][0] if len({m[0] for m in matches}) == 1 else None)
+        for key, matches in index_series_by_title(all_rows, lambda row: row[1], _cached_title_match_key).items()
+    }
+    monitored_by_id = {row[0]: row for row in monitored_series}
+
+    def match(filename):
+        raw = str(filename or '').strip()
+        parsed = LibraryScanner.parse_filename(raw).get('title') or raw
+        variants = [raw, parsed]
+        words = parsed.split()
+        # Mots de fin retirés un à un (auteurs, éditeur…), du plus long au plus court.
+        variants += [' '.join(words[:-n]) for n in range(1, len(words))]
+        for value in variants:
+            key = _cached_title_match_key(value) if value else ''
+            if not key or key not in index:
+                continue
+            series_id = index[key]
+            if series_id is None:
+                return None
+            return monitored_by_id.get(series_id)
+        return None
+
+    return match
+
+
 def process_new_monitor_files(source, items):
     """Télécharge les nouveaux fichiers qui correspondent à un tome manquant surveillé -
     ou, si l'option "upgrade qualité" est activée, à un tome DÉJÀ possédé d'une série
@@ -450,6 +488,7 @@ def process_new_monitor_files(source, items):
         bedetheque_url_by_series = {}
         ebdz_identity_by_series = {}
         owned_volume_by_series_number = {}
+    nouveautes_match = _build_nouveautes_series_matcher(cursor, monitored_series) if monitored_series else (lambda _f: None)
     conn.close()
 
     scanner = LibraryScanner()
@@ -481,6 +520,10 @@ def process_new_monitor_files(source, items):
             if hint and not match:
                 match = next((row for row in monitored_series
                               if (bedetheque_url_by_series.get(row[0]) or '').strip().rstrip('/') == hint), None)
+            title_key_match = None
+            if not match:
+                title_key_match = nouveautes_match(filename)
+                match = title_key_match
             if not match:
                 continue
 
@@ -516,7 +559,9 @@ def process_new_monitor_files(source, items):
             is_exact_title_match = _normalize_title_for_match(match[3]) == normalized_parsed_title
             is_hint_confirmed = bool(hint) and (bedetheque_url_by_series.get(match[0]) or '').strip().rstrip('/') == hint
             is_thread_confirmed = bool(thread_match) and thread_match[0] == match[0]
-            if not is_exact_title_match and not is_hint_confirmed and not is_thread_confirmed:
+            # Reconnu sans ambiguïté par la règle de Nouveautés : aussi sûr qu'un titre identique.
+            is_title_key_confirmed = bool(title_key_match) and title_key_match[0] == match[0]
+            if not is_exact_title_match and not is_hint_confirmed and not is_thread_confirmed and not is_title_key_confirmed:
                 from blueprints.bedetheque.auto_acquire import queue_manual_review
                 candidate = _review_candidate(source, item)
                 review_reason = f"Titre détecté « {parsed.get('title')} » proche mais pas identique à « {match[3]} » - correspondance de série non confirmée, à vérifier manuellement."

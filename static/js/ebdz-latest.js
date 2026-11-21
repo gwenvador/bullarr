@@ -1458,6 +1458,12 @@ function _nouveautesMetaHtml(parts) {
     return items.length ? `<div class="nouveautes-meta">${items.join('')}</div>` : '';
 }
 
+// Série sous surveillance : un œil (même icône que « Surveillé » sur la fiche série).
+// Dans un groupe, il ne reste que sur l'en-tête de la série (voir _groupNouveautesSeriesRows).
+function _nouveautesMonitoredBadge() {
+    return `<span class="badge-monitored" data-tooltip="Série surveillée : ses tomes manquants sont téléchargés dès qu'ils sortent" aria-label="Série surveillée">${svgIcon('eye')}</span>`;
+}
+
 function _nouveautesEbdzRowHtml(event, index) {
     const safeThreadTitle = escapeHtml(event.title || '');
     const typeIconHtml = event.url
@@ -1465,7 +1471,7 @@ function _nouveautesEbdzRowHtml(event, index) {
         : `<span data-tooltip="EBDZ"><img src="/static/img/ebdz-logo.png" alt="EBDZ" class="nouveautes-source-icon"></span>`;
     const seriesMatched = _nouveautesMatched(event);
     const newRowClass = _nouveautesIsNew(event) ? ' nouveautes-row-new' : '';
-    const monitoredHtml = event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : '';
+    const monitoredHtml = event.already_monitored ? `${_nouveautesMonitoredBadge()}` : '';
     return (event.links || []).map((link, linkIndex) => {
         const filename = decodeFilename(link.filename) || event.title || '';
         const owned = link.already_owned === true;
@@ -1575,7 +1581,7 @@ function _nouveautesRssRowHtml(event) {
     const torrentClientButtons = event.vk
         ? `<button class="btn-icon-only" type="button" onclick="downloadVkNouveaute(${event._index}, this)" data-tooltip="Télécharger dans Bullarr (VK)" aria-label="Télécharger dans Bullarr (VK)">${svgIcon('download')}</button>`
         : (event.download_links || []).map((item, itemIndex) => _nouveautesRssTorrentClientButtons(event, item, itemIndex)).join('');
-    const rssMonitoredHtml = event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : '';
+    const rssMonitoredHtml = event.already_monitored ? `${_nouveautesMonitoredBadge()}` : '';
     const rssStatusHtml = `${rssMonitoredHtml}${_nouveautesImportStatusHtml(event)}`;
     // Release déjà possédée : ligne verte, comme les lignes EBDZ et Telegram.
     const ownedRowClass = event.already_owned === true ? 'volume-table-row-owned ' : '';
@@ -1614,7 +1620,7 @@ function _nouveautesTelegramRowHtml(event) {
             <td class="nouveautes-actions-cell" style="padding:10px; text-align:left;">
                 <div style="display:flex; align-items:center; justify-content:flex-start; gap:8px;">
                     <button class="btn-icon-only" onclick="downloadTelegramFile('${escapeForAttribute(event.channel)}', ${event.message_id}, this, '${escapeForAttribute(event.channel_title || '')}', '${escapeForAttribute(event.filename || '')}', ${event.series_id ?? 'null'}, null, ${event.volume ?? 'null'})" data-tooltip="Télécharger vers l'import">${svgIcon('download')}</button>
-                    ${event.already_monitored ? `<span class="badge-monitored" data-tooltip="Cette série fait partie de vos albums surveillés">📊</span>` : ''}
+                    ${event.already_monitored ? `${_nouveautesMonitoredBadge()}` : ''}
                     ${_nouveautesImportStatusHtml(event)}
                     ${addToLibraryHtml}
                 </div>
@@ -1970,7 +1976,16 @@ function _groupNouveautesSeriesRows(body) {
                 ev.stopPropagation();
                 openNouveautesGroupMatchModal(indices, first.dataset.seriesName || '');
             });
-            nameRow.append(name, pencil, btn);
+            // Surveillance : une propriété de la série, affichée une seule fois sur son en-tête.
+            const monitored = members.some(r => r.querySelector('.badge-monitored'));
+            members.forEach(r => r.querySelectorAll('.badge-monitored').forEach(el => el.remove()));
+            nameRow.append(name, pencil);
+            if (monitored) {
+                const eye = document.createElement('span');
+                eye.innerHTML = _nouveautesMonitoredBadge();
+                nameRow.append(eye.firstElementChild);
+            }
+            nameRow.append(btn);
             if (groupTags) nameRow.append(groupTags);
             details.append(nameRow);
             header.appendChild(details);

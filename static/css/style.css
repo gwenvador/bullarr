@@ -6142,3 +6142,14 @@ a.history-source-link .icon { width: 12px; height: 12px; }
 /* Mon profil → Komga : lien administrateur vers les réglages Komga du serveur. */
 .pf-komga-server { display: inline-block; margin-top: 12px; font-size: .88em; color: var(--color-accent); text-decoration: none; }
 .pf-komga-server:hover { text-decoration: underline; }
+
+/* Nouveautés : œil « série surveillée » (remplace l'émoji 📊), pastille teintée accent. */
+#nouveautes-events-body .badge-monitored {
+    display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0 !important;
+    border-radius: 999px; font-size: inherit;
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    color: var(--color-accent);
+}
+#nouveautes-events-body .badge-monitored svg { width: 15px; height: 15px; }
+#nouveautes-events-body .nouveautes-series-group-head .badge-monitored { margin-left: 2px; }
+#nouveautes-events-body .nouveautes-actions-cell > div > .badge-monitored { width: 32px; height: 32px; border-radius: 9px; }
