@@ -375,35 +375,39 @@ async function addSeriesAndDownloadNouveautes(index, button, linkIndex = null, g
         const key = volume ?? `#${i}:${l}`;
         if (seenVolumes.has(key)) continue;
         seenVolumes.add(key);
+        // « ça prend le fichier de la ligne s'il n'existe pas déjà » : un tome déjà possédé
+        // n'est pas retéléchargé (le remplacement a son propre bouton).
+        if ((l != null ? t.already_owned : e.already_owned) === true) continue;
         try {
             destinations.push(await _downloadNouveautesRelease(e, seriesId, l));
             t._autoAddTriggered = true;
             if (volume) sentVolumes.push(volume);
         } catch (error) {
+            console.error('Nouveautés : envoi du fichier impossible', error);
             errors.push(error.message);
         }
     }
-    if (!destinations.length && errors.length) {
-        showToast('nouveautes-auto-add', `« ${title} » : ${added}envoi du fichier impossible : ${errors[0]}`,
-            { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
-        restore();
-        return;
-    }
+    // « dans tous les cas ça doit télécharger quelque chose » : si le fichier de la ligne
+    // n'a pas pu partir, la recherche automatique (Prowlarr, EBDZ, Telegram…) prend le
+    // relais pour TOUS les tomes manquants, celui de la ligne compris.
     const sentText = destinations.length
         ? `${destinations.length > 1 ? `${destinations.length} fichiers envoyés` : 'fichier envoyé'} à ${[...new Set(destinations)].join(', ')}`
-        : 'rien à envoyer pour cette ligne';
+        : errors.length ? `fichier de la ligne non envoyé (${errors[0]})` : 'fichier de la ligne déjà possédé';
     button.innerHTML = svgIcon('check');
     button.style.color = 'var(--color-accent)';
     try {
         const data = await _startSeriesAutoAcquire(seriesId, sentVolumes);
         const message = data.started
-            ? `${added}${sentText} ; recherche des ${data.count} autre${data.count > 1 ? 's' : ''} tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée.`
-            : `${added}${sentText} ; aucun autre tome manquant.`;
+            ? `${added}${sentText} ; recherche des ${data.count} ${destinations.length ? 'autre' + (data.count > 1 ? 's ' : ' ') : ''}tome${data.count > 1 ? 's' : ''} manquant${data.count > 1 ? 's' : ''} lancée.`
+            : `${added}${sentText} ; aucun ${destinations.length ? 'autre ' : ''}tome manquant.`;
+        const nothing = !destinations.length && !data.started;
         showToast('nouveautes-auto-add', `« ${title} » : ${message}`,
-            { icon: 'check', autoHideMs: 9000, href: `/series/${seriesId}` });
+            { icon: nothing ? 'circle-x' : 'check', autoHideMs: 12000, href: `/series/${seriesId}` });
+        if (nothing && errors.length) restore();
     } catch (error) {
         showToast('nouveautes-auto-add', `« ${title} » : ${added}${sentText}, mais recherche des autres tomes impossible : ${error.message}`,
             { icon: 'circle-x', autoHideMs: 9000, href: `/series/${seriesId}` });
+        if (!destinations.length) restore();
     }
 }
 
