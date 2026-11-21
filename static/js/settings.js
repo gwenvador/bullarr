@@ -1413,23 +1413,49 @@ const SSO_PROVIDER_CHOICES = [
     ['other', 'Autre', 'https://mon-fournisseur.example.com'],
 ];
 
+function _ssoProviderLogo(key) {
+    return key === 'other' || !key
+        ? (typeof svgIcon === 'function' ? svgIcon('shield-check') : '')
+        : `<img class="sso-logo-${key}" src="/static/img/sso/${key}.svg" alt="" width="20" height="20">`;
+}
+
+function _ssoDefaultLabel(key) {
+    const choice = SSO_PROVIDER_CHOICES.find(c => c[0] === key);
+    return choice && key !== 'other' ? `Se connecter avec ${choice[1]}` : 'Se connecter avec le SSO';
+}
+
 function selectSsoProvider(key) {
     document.getElementById('oidcProvider').value = key;
     const choice = SSO_PROVIDER_CHOICES.find(c => c[0] === key);
     if (choice) document.getElementById('oidcIssuer').placeholder = choice[2];
-    document.querySelectorAll('#ssoProviders .sso-provider').forEach(btn => {
-        const on = btn.dataset.provider === key;
-        btn.classList.toggle('active', on);
-        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    document.getElementById('oidcButtonLabel').placeholder = _ssoDefaultLabel(key);
+    document.getElementById('ssoProviderBtn').innerHTML = `${_ssoProviderLogo(key || 'other')}<span>${choice ? choice[1] : 'Choisir…'}</span>${typeof svgIcon === 'function' ? svgIcon('chevron-down') : '▾'}`;
+    document.querySelectorAll('#ssoProviders .sso-option').forEach(opt => {
+        const on = opt.dataset.provider === key;
+        opt.classList.toggle('active', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
     });
+    toggleSsoDropdown(false);
 }
+
+function toggleSsoDropdown(open) {
+    const list = document.getElementById('ssoProviders');
+    const btn = document.getElementById('ssoProviderBtn');
+    if (!list || !btn) return;
+    const show = open === undefined ? list.hidden : open;
+    list.hidden = !show;
+    btn.setAttribute('aria-expanded', show ? 'true' : 'false');
+}
+
+document.addEventListener('click', event => {
+    if (!event.target.closest('#ssoDropdown')) toggleSsoDropdown(false);
+});
+document.addEventListener('keydown', event => { if (event.key === 'Escape') toggleSsoDropdown(false); });
 
 function renderSsoProviders() {
     const box = document.getElementById('ssoProviders');
     if (!box || box.childElementCount) return;
-    box.innerHTML = SSO_PROVIDER_CHOICES.map(([key, name]) => `<button type="button" class="sso-provider" role="radio" aria-checked="false" data-provider="${key}" onclick="selectSsoProvider('${key}')">${key === 'other'
-        ? (typeof svgIcon === 'function' ? svgIcon('shield-check') : '')
-        : `<img class="sso-logo-${key}" src="/static/img/sso/${key}.svg" alt="" width="20" height="20">`}<span>${name}</span></button>`).join('');
+    box.innerHTML = SSO_PROVIDER_CHOICES.map(([key, name]) => `<button type="button" class="sso-option" role="option" aria-selected="false" data-provider="${key}" onclick="selectSsoProvider('${key}')">${_ssoProviderLogo(key)}<span>${name}</span></button>`).join('');
 }
 
 async function loadOidcSettings() {
@@ -1444,6 +1470,7 @@ async function loadOidcSettings() {
         document.getElementById('oidcScopes').value = config.scopes || 'openid profile email';
         document.getElementById('oidcAutoRedirect').checked = !!config.auto_redirect;
         renderSsoProviders();
+        document.getElementById('oidcButtonLabel').value = config.button_label || '';
         selectSsoProvider(config.provider || config.provider_guess || '');
 
         // Voir le commentaire équivalent dans loadSettings (aMule) - même correctif
@@ -1466,7 +1493,8 @@ async function saveOidcSettings() {
         client_secret: document.getElementById('oidcClientSecret').value,
         scopes: document.getElementById('oidcScopes').value.trim() || 'openid profile email',
         auto_redirect: document.getElementById('oidcAutoRedirect').checked,
-        provider: document.getElementById('oidcProvider').value
+        provider: document.getElementById('oidcProvider').value,
+        button_label: document.getElementById('oidcButtonLabel').value.trim()
     };
     const usesOidc = config.oidc_enabled;
 

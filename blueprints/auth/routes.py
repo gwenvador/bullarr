@@ -160,10 +160,11 @@ def _render_login(config, error=None, status=200, view='login', notice=None, for
     if view == 'login' and _oidc_enabled(config) and not oidc_ready and not error:
         error = "Configuration OIDC incomplète : vérifiez l'issuer et le client ID dans les paramètres."
     sso_key, sso_name = _sso_provider(config)
+    sso_label = config.get('button_label') or (f'Se connecter avec {sso_name}' if sso_name else 'Se connecter avec le SSO')
     return render_template(
         'login.html', password_enabled=_password_enabled(config), oidc_enabled=oidc_ready, error=error,
         signup_enabled=_signup_enabled(config), view=view, notice=notice, form=form or {},
-        sso_key=sso_key, sso_name=sso_name,
+        sso_key=sso_key, sso_name=sso_name, sso_label=sso_label,
     ), status
 
 
@@ -575,6 +576,7 @@ def oidc_config():
             'admin_group': config.get('admin_group', ''),
             'provider': config.get('provider', ''),
             'provider_guess': _guess_sso_provider(config.get('issuer')),
+            'button_label': config.get('button_label', ''),
         })
 
     else:  # POST
@@ -608,6 +610,7 @@ def oidc_config():
             config['auto_redirect'] = bool(new_config.get('auto_redirect', False))
             provider = new_config.get('provider') or ''
             config['provider'] = provider if provider in SSO_PROVIDERS or provider == 'other' else ''
+            config['button_label'] = ' '.join(str(new_config.get('button_label') or '').split())[:60]
 
             # Ne change le secret client que s'il n'est pas masqué
             new_secret = new_config.get('client_secret', '')

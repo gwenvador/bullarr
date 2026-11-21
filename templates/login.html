@@ -88,7 +88,7 @@
         {% endif %}
         {% if password_enabled and oidc_enabled %}<div class="login-divider"><span>ou</span></div>{% endif %}
         {% if oidc_enabled %}
-        <a class="btn login-sso {% if password_enabled %}login-sso-secondary{% else %}btn-login{% endif %}" href="/login/redirect">{% if sso_key %}<img class="login-sso-logo login-sso-logo-{{ sso_key }}" src="{{ url_for('static', filename='img/sso/' ~ sso_key ~ '.svg') }}" width="18" height="18" alt="">Se connecter avec {{ sso_name }}{% else %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Se connecter avec le SSO{% endif %}</a>
+        <a class="btn login-sso {% if password_enabled %}login-sso-secondary{% else %}btn-login{% endif %}" href="/login/redirect">{% if sso_key %}<img class="login-sso-logo login-sso-logo-{{ sso_key }}" src="{{ url_for('static', filename='img/sso/' ~ sso_key ~ '.svg') }}" width="18" height="18" alt="">{{ sso_label }}{% else %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>{{ sso_label }}{% endif %}</a>
         {% endif %}
         {% if signup_enabled %}<p class="login-switch">Pas encore de compte ? <a href="/signup">Créer un compte</a></p>{% endif %}
         {% endif %}

@@ -1825,10 +1825,19 @@
                             </div>
 
                             <div class="form-group">
-                                <label>Fournisseur</label>
-                                <div class="sso-providers" id="ssoProviders" role="radiogroup" aria-label="Fournisseur SSO"></div>
+                                <label for="ssoProviderBtn">Fournisseur</label>
+                                <div class="sso-dropdown" id="ssoDropdown">
+                                    <button type="button" class="sso-dropdown-btn" id="ssoProviderBtn" aria-haspopup="listbox" aria-expanded="false" onclick="toggleSsoDropdown()"></button>
+                                    <div class="sso-dropdown-list" id="ssoProviders" role="listbox" aria-label="Fournisseur SSO" hidden></div>
+                                </div>
                                 <input type="hidden" id="oidcProvider" value="">
-                                <small class="help-text">Son logo et son nom apparaissent sur le bouton de connexion (« Autre » : bouton générique « Se connecter avec le SSO »).</small>
+                                <small class="help-text">Son logo apparaît sur le bouton de connexion (« Autre » : bouclier générique).</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="oidcButtonLabel">Texte du bouton de connexion</label>
+                                <input type="text" id="oidcButtonLabel" maxlength="60" placeholder="Se connecter avec le SSO">
+                                <small class="help-text">Vide : « Se connecter avec » suivi du nom du fournisseur.</small>
                             </div>
 
                             <div class="form-group">

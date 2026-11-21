@@ -1875,11 +1875,19 @@ button.ai-fallback-name:hover { color: var(--color-accent); text-decoration: und
 .settings-card.ai-pane-hidden { display: none !important; }
 @media (max-width: 560px) { .ai-panes-switch { grid-template-columns: 1fr; } }
 
-/* SSO → Fournisseur : logos des principaux fournisseurs OIDC (static/img/sso). */
-.sso-providers { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 6px; }
-.sso-provider { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); color: var(--color-text); font: inherit; font-size: .9em; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s; }
-.sso-provider:hover { border-color: var(--color-accent); }
-.sso-provider.active { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)); color: var(--color-accent-hover); box-shadow: inset 0 0 0 1px var(--color-accent); }
-.sso-provider img, .sso-provider svg { width: 20px; height: 20px; object-fit: contain; flex: 0 0 20px; }
-.sso-provider img.sso-logo-pocket-id { background: #111; border-radius: 5px; padding: 2px; box-sizing: border-box; }
-[data-theme="dark"] .sso-provider img.sso-logo-okta { filter: invert(1); }
+/* SSO → Fournisseur : liste déroulante avec les logos des principaux fournisseurs OIDC
+   (static/img/sso) - un <select> natif ne peut pas afficher d'images. */
+.sso-dropdown { position: relative; max-width: 320px; }
+.sso-dropdown-btn, .sso-option { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; font: inherit; font-size: .95em; color: var(--color-text); background: var(--color-surface); text-align: left; cursor: pointer; }
+.sso-dropdown-btn { border: 1px solid var(--color-border); border-radius: 8px; }
+.sso-dropdown-btn:hover, .sso-dropdown-btn[aria-expanded="true"] { border-color: var(--color-accent); }
+.sso-dropdown-btn > span { flex: 1 1 auto; font-weight: 600; }
+.sso-dropdown-btn > svg:last-child { width: 16px; height: 16px; color: var(--color-text-muted); transition: transform .15s; }
+.sso-dropdown-btn[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
+.sso-dropdown-list { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; max-height: 320px; overflow-y: auto; padding: 4px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18); }
+.sso-option { border: 0; border-radius: 6px; }
+.sso-option:hover { background: var(--color-surface-alt); }
+.sso-option.active { background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface)); color: var(--color-accent-hover); font-weight: 600; }
+.sso-dropdown img, .sso-dropdown svg { width: 20px; height: 20px; object-fit: contain; flex: 0 0 20px; }
+.sso-dropdown img.sso-logo-pocket-id { background: #111; border-radius: 5px; padding: 2px; box-sizing: border-box; }
+[data-theme="dark"] .sso-dropdown img.sso-logo-okta { filter: invert(1); }
