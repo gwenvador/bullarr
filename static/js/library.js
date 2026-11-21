@@ -589,7 +589,8 @@ async function loadKeepReading() {
     section.innerHTML = `
         <div class="keep-reading-header">
             <h3><button type="button" class="keep-reading-toggle" onclick="toggleKeepReading()" aria-expanded="${!_isKeepReadingCollapsed()}" aria-controls="keep-reading-body">${svgIcon('chevron-down')}<span>Continuer la lecture</span>${items.length ? `<span class="keep-reading-count">${items.length}</span>` : ''}</button></h3>
-            <button type="button" class="toolbar-btn keep-reading-sync" onclick="syncKomgaReading(this)" title="Relire l'avancement de lecture dans Komga">${svgIcon('refresh-cw')} Synchroniser avec Komga</button>
+            ${data.mode === 'local' ? '' /* pas de compte Komga relié : avancement gardé par Bullarr, rien à synchroniser */
+                : `<button type="button" class="toolbar-btn keep-reading-sync" onclick="syncKomgaReading(this)" title="Relire l'avancement de lecture dans Komga">${svgIcon('refresh-cw')} Synchroniser avec Komga</button>`}
             <span class="keep-reading-status" id="keep-reading-status"></span>
         </div>
         <div class="keep-reading-body" id="keep-reading-body">${items.length
@@ -622,6 +623,7 @@ async function syncKomgaReading(button) {
         const response = await fetch('/api/komga/read-progress/sync', { method: 'POST' });
         const data = await response.json();
         if (!data.success) throw new Error(data.error || `HTTP ${response.status}`);
+        if (data.local) { status().textContent = ''; await loadKeepReading(); return; }
         await loadLibraryData();
         await loadKeepReading();
         const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
