@@ -406,7 +406,6 @@ def process_new_monitor_files(source, items):
     """
     from blueprints.library.action_history import log_action
     from blueprints.library.routes import (
-        _match_series_for_auto_import,
         _normalize_title_for_match,
         get_db_connection,
     )
@@ -515,18 +514,16 @@ def process_new_monitor_files(source, items):
             # pas une invitation à redéduire la série depuis le titre.
             if thread_status in ('unmatched', 'ambiguous'):
                 continue
-            # Par défaut, la même reconnaissance que la page Nouveautés (toutes les séries
-            # connues, alias « X (Préfixe) », auteurs dans le nom) ; l'ancienne règle
-            # (préfixe parmi les seules séries surveillées) ne sert plus qu'en dernier
-            # recours, et passe alors par la revue manuelle si le titre n'est pas identique.
+            # La même reconnaissance que la page Nouveautés (toutes les séries connues, alias
+            # « X (Préfixe) », auteurs dans le nom). L'ancienne règle (préfixe parmi les seules
+            # séries surveillées) est retirée : elle ratait Cubitus et pouvait attribuer le
+            # fichier d'une série non surveillée à une série surveillée au titre plus court.
             title_key_match = None if thread_match else nouveautes_match(filename)
             match = thread_match or title_key_match
             hint = (item.get('bedetheque_url_hint') or '').strip().rstrip('/')
             if hint and not match:
                 match = next((row for row in monitored_series
                               if (bedetheque_url_by_series.get(row[0]) or '').strip().rstrip('/') == hint), None)
-            if not match:
-                match = _match_series_for_auto_import(normalized_parsed_title, monitored_series)
             if not match:
                 continue
 
