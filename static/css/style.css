@@ -6109,3 +6109,32 @@ a.history-source-link .icon { width: 12px; height: 12px; }
     .reading-filter { max-width: none; }
     .reading-tabs .tab-button { padding: 6px 10px; font-size: .82em; }
 }
+
+/* Barre latérale, mode sombre : « c'est un peu moche » - le sous-menu ouvert (Suivi,
+   Actions, Configuration) formait un bloc plus sombre encadré, avec deux barres
+   d'accent empilées (parent + lien actif). Parent d'un groupe ouvert sans fond ni
+   barre, sous-menu transparent relié par un trait fin, lien actif en pastille. */
+[data-theme="dark"] .sidebar-nav a.active:has(+ .nav-subgroup) {
+    background: transparent;
+    border-left-color: transparent;
+    color: var(--color-text);
+}
+[data-theme="dark"] .nav-subgroup {
+    background: transparent;
+    margin-left: 32px;
+    border-left: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+}
+[data-theme="dark"] .nav-subgroup .nav-sublink {
+    border-left: 0;
+    margin: 1px 10px 1px 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-radius: 8px;
+}
+[data-theme="dark"] .nav-subgroup .nav-sublink:hover {
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+[data-theme="dark"] .nav-subgroup .nav-sublink.active {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    color: var(--color-accent-hover);
+}
