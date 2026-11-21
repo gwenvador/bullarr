@@ -148,7 +148,7 @@ function pfRenderKomga() {
     if (k.linked) {
         const stats = k.stats ? `<p class="pf-hint">${k.stats.read} lu(s) · ${k.stats.reading} en cours</p>` : '';
         const error = k.last_error ? `<p class="pf-message is-error">${pfEscape(k.last_error)}</p>` : '';
-        body.innerHTML = `<p>Relié au compte ${pfEscape(k.komga_user || 'Komga')}. Ce que vous lisez dans Bullarr y est enregistré, et ce que vous lisez dans Komga (ou Mihon, Tachiyomi…) apparaît dans Bullarr.</p>${stats}${error}
+        body.innerHTML = `<p class="pf-hint">Relié au compte ${pfEscape(k.komga_user || 'Komga')}. Ce que vous lisez dans Bullarr y est enregistré, et ce que vous lisez dans Komga (ou Mihon, Tachiyomi…) apparaît dans Bullarr.</p>${stats}${error}
             <div class="pf-form-foot"><div id="pf-komga-message" class="pf-message"></div>
             <button type="button" id="pf-komga-sync" class="rq-btn rq-btn-ghost">${svgIcon('refresh-cw')}<span>Synchroniser</span></button>
             <button type="button" id="pf-komga-unlink" class="rq-btn rq-btn-ghost pf-danger">${svgIcon('log-out')}<span>Délier</span></button></div>`;
