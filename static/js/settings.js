@@ -1876,7 +1876,7 @@ const INTEGRATION_MODAL_LOADERS = {
 // Komga du serveur s'ouvre par-dessus la vue d'ensemble.
 window.addEventListener('load', () => {
     if (window.location.hash === '#komga') {
-        switchTab('overview');
+        switchTab('integrations');
         openIntegrationModal('komga');
     }
 });
