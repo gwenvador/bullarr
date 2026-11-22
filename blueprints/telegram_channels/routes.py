@@ -552,7 +552,7 @@ def _annotate_already_in_library(files):
     ("compares les volumes existants avec ceux nouveau et si ceux de nouveautés sont
     manquants ou non de la série"), pas seulement "la série existe-t-elle"."""
     from blueprints.library.routes import (
-        get_db_connection, _normalize_title_for_match, get_owned_volume_signatures,
+        get_db_connection, get_owned_volume_signatures,
         volume_possession_status
     )
     from blueprints.library.scanner import LibraryScanner
@@ -566,13 +566,12 @@ def _annotate_already_in_library(files):
     ''')
     all_series = cursor.fetchall()
     series_by_id = {row[0]: row for row in all_series}
-    from series_identity import build_series_identifier
-    identify_series = build_series_identifier([(row[0], row[3]) for row in all_series])
+    # Le matching de Nouveautés (le même que reprend la surveillance) : series_identity.
+    from series_identity import NouveautesMatcher
+    nouveautes_matcher = NouveautesMatcher(cursor)
     owned_by_series = get_owned_volume_signatures([row[0] for row in all_series], conn=conn)
     cursor.execute('SELECT series_id FROM missing_volume_monitor WHERE enabled = 1')
     monitored_series_ids = {row[0] for row in cursor.fetchall()}
-    cursor.execute('SELECT normalized_title, series_id FROM telegram_title_overrides')
-    title_overrides = {row[0]: row[1] for row in cursor.fetchall() if row[1] in series_by_id}
     conn.close()
 
     # "dans nouveautés telegram et ebdz non pas le meme format. pas les memes infos sur
@@ -586,24 +585,11 @@ def _annotate_already_in_library(files):
 
     for f in files:
         parsed = scanner.parse_filename(f['filename'])
-        normalized = _normalize_title_for_match(parsed.get('title', ''))
-        override_series_id = title_overrides.get(normalized)
-        # Même identification que la surveillance et les autres sources (series_identity).
-        identified = None if override_series_id else identify_series(f['filename'])
-        match = series_by_id[override_series_id] if override_series_id else series_by_id.get(identified)
-        f['match_overridden'] = bool(override_series_id)
-        # "in telegram if there is a bedetheque link use it in the nouveautes serie
-        # column" - un lien bedetheque.com extrait de la légende du message (voir
-        # bedetheque_url_hint, blueprints/telegram_channels/scraper.py) identifie la
-        # série de façon bien plus fiable que le matching flou par titre ci-dessus -
-        # retrouve ici une série que ce matching aurait manquée (article déplacé,
-        # orthographe différente...) dès que son bedetheque_url correspond exactement.
-        bedetheque_hint = (f.get('bedetheque_url_hint') or '').strip().rstrip('/') or None
-        if bedetheque_hint and not match:
-            match = next(
-                (row for row in all_series if (row[5] or '').strip().rstrip('/') == bedetheque_hint),
-                None
-            )
+        # Correction manuelle, nom du fichier puis lien Bédéthèque de la légende ("in telegram
+        # if there is a bedetheque link use it in the nouveautes serie column").
+        identified, how = nouveautes_matcher.series_for('telegram', f)
+        match = series_by_id.get(identified)
+        f['match_overridden'] = how == 'override'
         f['parsed_title'] = parsed.get('title')
         f['parsed_volume'] = MissingVolumeSearcher._parsed_volume_label(f['filename'])
         f['volume'] = parsed.get('volume')

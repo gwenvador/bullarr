@@ -91,7 +91,8 @@ class TelegramChannelsScheduler:
                                           'channel_title': channel_summary.get('title')})
                 if new_items:
                     from blueprints.missing_monitor.new_file_handler import process_new_monitor_files
-                    stats = process_new_monitor_files('telegram', new_items)
+                    from series_identity import match_new_items
+                    stats = process_new_monitor_files('telegram', match_new_items('telegram', new_items))
                     print(f"  ✓ Surveillance directe Telegram: {stats['matched_missing']} correspondant(s), "
                           f"{stats['downloads_sent']} téléchargement(s), {stats['notifications_sent']} notification(s), "
                           f"{stats['queued_for_review']} en validation, "

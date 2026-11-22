@@ -164,7 +164,8 @@ class EBDZScheduler:
                 # recherche EBDZ/Prowlarr supplémentaire n'est lancée ici.
                 if new_items_this_run:
                     from blueprints.missing_monitor.new_file_handler import process_new_monitor_files
-                    stats = process_new_monitor_files('ebdz', new_items_this_run)
+                    from series_identity import match_new_items
+                    stats = process_new_monitor_files('ebdz', match_new_items('ebdz', new_items_this_run))
                     print(f"  ✓ Surveillance directe EBDZ: {stats['matched_missing']} correspondant(s), "
                           f"{stats['downloads_sent']} téléchargement(s), {stats['notifications_sent']} notification(s), "
                           f"{stats['queued_for_review']} en validation, "

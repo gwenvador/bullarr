@@ -72,3 +72,120 @@ def build_series_identifier(rows):
 
     identify.detailed = detailed
     return identify
+
+
+# Façons dont Nouveautés a trouvé la série : toutes sont sûres sauf le repli approximatif.
+SURE_MATCHES = {'thread', 'override', 'hint', 'exact'}
+
+
+def _field(item, key):
+    try:
+        return item[key]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+class NouveautesMatcher:
+    """LA série d'une nouveauté, telle que la page Nouveautés l'affiche. C'est Nouveautés qui
+    fait le matching ; la surveillance, appelée quand un nouveau fichier est découvert, reprend
+    ce résultat et vérifie seulement que la série est surveillée et que le tome manque.
+
+    series_for(source, item) -> (series_id ou None, comment) ; comment parmi
+    'thread' (sujet EBDZ lié à la série), 'override' (série choisie à la main dans Nouveautés),
+    'hint' (lien Bédéthèque de la légende Telegram), 'exact' (clé de titre), 'approx' (repli
+    approximatif, à valider). La source (EBDZ, Telegram, RSS) n'intervient pas : seules les
+    informations portées par le fichier comptent, dans cet ordre : sujet EBDZ lié, correction
+    manuelle, lien Bédéthèque, titre.
+    """
+
+    def __init__(self, cursor):
+        from blueprints.missing_monitor.new_file_handler import _canonical_ebdz_thread_id
+        self._canonical_thread = _canonical_ebdz_thread_id
+        # Colonne absente (base ancienne ou minimale) : lue comme NULL.
+        columns = {row[1] for row in cursor.execute('PRAGMA table_info(series)').fetchall()}
+        select = ', '.join(name if name in columns else 'NULL'
+                           for name in ('id', 'title', 'ebdz_thread_id', 'ebdz_thread_url', 'bedetheque_url'))
+        rows = cursor.execute(f'SELECT {select} FROM series').fetchall()
+        self.series_ids = {row[0] for row in rows}
+        self.identify = build_series_identifier([(row[0], row[1]) for row in rows])
+        self.thread_series = {}
+        self.bedetheque_series = {}
+        for series_id, _title, thread_id, thread_url, bedetheque_url in rows:
+            thread = _canonical_ebdz_thread_id(thread_id, thread_url)
+            if thread:
+                self.thread_series.setdefault(thread, []).append(series_id)
+            url = (bedetheque_url or '').strip().rstrip('/')
+            if url:
+                self.bedetheque_series.setdefault(url, []).append(series_id)
+        try:
+            overrides = cursor.execute('SELECT normalized_title, series_id FROM telegram_title_overrides').fetchall()
+        except Exception:  # table absente
+            overrides = []
+        self.telegram_overrides = {row[0]: row[1] for row in overrides if row[1] in self.series_ids}
+        self._rss_overrides = None
+
+    def _rss_override(self, item):
+        if self._rss_overrides is None:
+            from blueprints.ebdz.routes import _load_rss_match_overrides
+            self._rss_overrides = _load_rss_match_overrides()
+        value = self._rss_overrides.get(_field(item, 'link')) or self._rss_overrides.get(_field(item, 'title'))
+        try:
+            value = int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+        return value if value in self.series_ids else None
+
+    def _detailed(self, name, exact_only=False):
+        series_id, exact = self.identify.detailed(name, exact_only)
+        if series_id is None:
+            return None, None
+        return series_id, ('exact' if exact else 'approx')
+
+    def series_for(self, source, item):
+        """``source`` est ignoré : la règle ne dépend que de ce que porte le fichier."""
+        from blueprints.library.routes import _normalize_title_for_match
+        from blueprints.library.scanner import LibraryScanner
+        # 1. Sujet EBDZ lié à une série.
+        thread = self._canonical_thread(_field(item, 'thread_id'), _field(item, 'thread_url'))
+        linked = self.thread_series.get(thread) if thread else None
+        if linked:
+            # Plusieurs séries liées au même sujet : la première, à valider.
+            return linked[0], ('thread' if len(linked) == 1 else 'approx')
+        # 2. Série choisie à la main dans Nouveautés (par lien, titre ou titre normalisé).
+        override = self._rss_override(item)
+        filename = _field(item, 'filename') or ''
+        if override is None and filename:
+            parsed = LibraryScanner.parse_filename(filename).get('title', '')
+            override = self.telegram_overrides.get(_normalize_title_for_match(parsed))
+        if override is not None:
+            return override, 'override'
+        # 3. Lien Bédéthèque donné avec le fichier.
+        hint = (_field(item, 'bedetheque_url_hint') or '').strip().rstrip('/')
+        hinted = self.bedetheque_series.get(hint) if hint else None
+        if hinted:
+            return hinted[0], ('hint' if len(hinted) == 1 else 'approx')
+        # 4. Titre. Un titre de sujet (thread_title) est déjà un nom de série : clé exacte
+        # seulement ; un nom de release ou de fichier passe aussi par le repli approximatif.
+        thread_title = _field(item, 'thread_title')
+        if thread_title:
+            return self._detailed(thread_title, exact_only=True)
+        return self._detailed(_field(item, 'title') or filename)
+
+def match_new_items(source, items, matcher=None):
+    """Matching de Nouveautés des fichiers qui viennent d'être découverts : chaque item reçoit
+    ``nouveautes_series_id`` et ``nouveautes_match`` (voir NouveautesMatcher.series_for).
+    La surveillance (process_new_monitor_files) est appelée ensuite avec ces items."""
+    if matcher is None and items:
+        from blueprints.library.routes import get_db_connection
+        conn = get_db_connection()
+        try:
+            matcher = NouveautesMatcher(conn.cursor())
+        finally:
+            conn.close()
+    for item in items:
+        if 'nouveautes_match' in item:
+            continue
+        series_id, how = matcher.series_for(source, item)
+        item['nouveautes_series_id'] = series_id
+        item['nouveautes_match'] = how
+    return items

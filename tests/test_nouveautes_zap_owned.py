@@ -13,11 +13,18 @@ class NouveautesZapAndOwnedTest(unittest.TestCase):
         self.icons = (ROOT / 'static/js/icons.js').read_text()
         self.css = (ROOT / 'static/css/style-search.css').read_text()
 
-    def test_zap_searches_every_missing_volume_of_the_series(self):
+    def test_zap_downloads_the_row_then_searches_the_other_missing_volumes(self):
+        # « dès que je clique sur le bouton ça télécharge les fichiers de la ligne. ensuite ça
+        # ajoute la série. si téléchargement automatique est actif alors ça cherche ».
         start = self.nouveautes.index('async function addSeriesAndDownloadNouveautes(')
         body = self.nouveautes[start:self.nouveautes.index('async function _attachSeriesToPendingDownload(', start)]
-        self.assertIn('_startSeriesAutoAcquire(seriesId)', body)
-        self.assertNotIn('_downloadNouveautesRelease(', body)
+        main = body[:body.index('async function addSeriesFromNouveautes(')]
+        sent = main.index('_downloadNouveautesRelease(')
+        added = main.index('_resolveSeriesForAutoAdd(')
+        searched = main.index('_startSeriesAutoAcquire(seriesId, sentVolumes)')
+        self.assertLess(sent, added)
+        self.assertLess(added, searched)
+        self.assertIn('auto_acquire_on_add_enabled', main)
         helper = body[body.index('async function _startSeriesAutoAcquire('):]
         self.assertIn("/api/bedetheque/auto-acquire/run", helper)
         self.assertIn('series_id: seriesId', helper)
@@ -26,7 +33,7 @@ class NouveautesZapAndOwnedTest(unittest.TestCase):
     def test_zap_tooltips_say_the_whole_series(self):
         self.assertNotIn('télécharger cette release', self.nouveautes)
         self.assertNotIn('télécharger ce fichier"', self.nouveautes.replace('Télécharger et remplacer ce fichier', ''))
-        self.assertGreaterEqual(self.nouveautes.count('télécharger tous ses tomes manquants'), 3)
+        self.assertGreaterEqual(self.nouveautes.count('télécharger ce fichier, puis ses autres tomes manquants'), 3)
 
     def test_library_pill_uses_the_bullarr_logo_and_is_green(self):
         self.assertIn('function libraryIconHtml()', self.icons)

@@ -403,17 +403,15 @@ def latest_scrape():
         monitored_titles = set().union(*(title_keys(row[0], _title_match_key) for row in library_cursor.fetchall() if row[0]))
         library_cursor.execute("SELECT id, ebdz_thread_id, bedetheque_url, title FROM series")
         all_series_rows = library_cursor.fetchall()
-        # Même identification que la surveillance et les autres sources (series_identity).
-        from series_identity import build_series_identifier
-        identify_series = build_series_identifier([(row[0], row[3]) for row in all_series_rows])
+        # Le matching de Nouveautés (le même que reprend la surveillance) : series_identity.
+        from series_identity import NouveautesMatcher
+        nouveautes_matcher = NouveautesMatcher(library_cursor)
         series_info_by_id = {row[0]: (row[0], row[2], row[3]) for row in all_series_rows}
         thread_to_series_ids = {}
-        thread_to_first_series = {}
         for series_id, thread_id, bedetheque_url, series_title in all_series_rows:
             if thread_id is None:
                 continue
             thread_to_series_ids.setdefault(str(thread_id), []).append(series_id)
-            thread_to_first_series.setdefault(str(thread_id), (series_id, bedetheque_url, series_title))
         matched_thread_ids = set(thread_to_series_ids.keys())
 
         # "compares les volumes existants avec ceux nouveau et si ceux de nouveautés sont
@@ -510,16 +508,13 @@ def latest_scrape():
                     # [Murawiec]" ne matchait jamais la série locale "Le grand vide
                     # (Murawiec)" (article en fin + suffixe différent des deux côtés).
                     normalized_core_title = _title_match_key(row['thread_title'] or '')
-                    matched_series_id, matched_bedetheque_url, matched_series_title = thread_to_first_series.get(str(thread_id), (None, None, None))
                     # Le lien explicite de sujet EBDZ est prioritaire. Sans ce lien, un
                     # titre local unique (Carthago [auteurs] -> Carthago) est suffisamment
                     # sûr pour exposer les actions UI, mais n'écrit jamais ebdz_thread_id:
                     # l'utilisateur peut corriger le match depuis la fiche si nécessaire.
-                    if matched_series_id is None:
-                        identified = identify_series(row['thread_title'] or '', exact_only=True)
-                        title_match = series_info_by_id.get(identified) if identified is not None else None
-                        if title_match is not None:
-                            matched_series_id, matched_bedetheque_url, matched_series_title = title_match
+                    identified, _how = nouveautes_matcher.series_for('ebdz', row)
+                    matched_series_id, matched_bedetheque_url, matched_series_title = series_info_by_id.get(
+                        identified, (None, None, None))
                     grouped[thread_id] = {
                         'thread_id': thread_id,
                         'title': row['thread_title'],
@@ -783,6 +778,9 @@ def _annotate_rss_entries(events):
             HAVING SUM(CASE WHEN filepath IS NULL OR filepath = '' THEN 1 ELSE 0 END) = 0
         ''').fetchall()
     }
+    # Le matching de Nouveautés (le même que reprend la surveillance) : series_identity.
+    from series_identity import NouveautesMatcher
+    nouveautes_matcher = NouveautesMatcher(conn.cursor())
     conn.close()
 
 
@@ -873,25 +871,15 @@ def _annotate_rss_entries(events):
                 return True
         return False
 
-    rss_overrides = _load_rss_match_overrides()
     series_by_id = {int(series_id): (series_id, title, url) for series_id, title, url in rows}
-    from series_identity import build_series_identifier
-    identify_series = build_series_identifier([(sid, title) for sid, title, _url in rows])
 
     catalog_match = bedetheque_catalog_match
 
     fingerprint = _rss_library_fingerprint()
     annotated = []
     for event in events:
-        # Même identification que la surveillance et les autres sources (series_identity).
-        identified = identify_series(event.get('title'))
+        identified, _how = nouveautes_matcher.series_for('rss', event)
         match = series_by_id.get(int(identified)) if identified is not None else None
-        override_id = rss_overrides.get(event.get('link')) or rss_overrides.get(event.get('title'))
-        if override_id is not None:
-            try:
-                match = series_by_id.get(int(override_id)) or match
-            except (TypeError, ValueError):
-                pass
         catalog = catalog_match(event.get('title')) if match is None else None
         exact_event_keys = exact_keys(event.get('title'))
         signature = event_volume_signature(event, match[0]) if match else None
@@ -1367,8 +1355,18 @@ def poll_rss_for_monitoring():
             }))
     totals = None
     # Une release à la fois: on sait ainsi laquelle a échoué, pour la retenter plus tard.
+    nouveautes_matcher = None
+    if new_items:
+        from series_identity import NouveautesMatcher
+        from blueprints.library.routes import get_db_connection
+        matcher_conn = get_db_connection()
+        try:
+            nouveautes_matcher = NouveautesMatcher(matcher_conn.cursor())
+        finally:
+            matcher_conn.close()
     for key, item in new_items:
-        stats = process_new_monitor_files('rss', [item]) or {}
+        from series_identity import match_new_items
+        stats = process_new_monitor_files('rss', match_new_items('rss', [item], nouveautes_matcher)) or {}
         if stats.get('errors') and retries.get(key, 0) + 1 < RSS_MONITOR_MAX_RETRIES:
             retries[key] = retries.get(key, 0) + 1
         else:

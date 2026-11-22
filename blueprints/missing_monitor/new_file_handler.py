@@ -70,32 +70,6 @@ def _canonical_ebdz_thread_id(raw_id=None, raw_url=None):
         return None
 
 
-def _resolve_ebdz_thread_series(item, monitored_series, identities_by_series):
-    """Résout une nouveauté EBDZ par son thread: ``(série, état)``.
-
-    États: ``absent`` (aucune identité EBDZ valide, le vieux matching de titre peut
-    encore servir), ``matched`` (une seule série liée), ``unmatched`` ou ``ambiguous``.
-    Ces deux derniers états sont bloquants: une identité forte inconnue/ambiguë ne doit
-    jamais être remplacée par une déduction de titre.
-    """
-    item_thread_id = _canonical_ebdz_thread_id(item.get('thread_id'), item.get('thread_url'))
-    if not item_thread_id:
-        return None, 'absent'
-    matches = []
-    for row in monitored_series:
-        identity = identities_by_series.get(row[0]) or {}
-        series_thread_id = _canonical_ebdz_thread_id(
-            identity.get('thread_id'), identity.get('thread_url')
-        )
-        if series_thread_id == item_thread_id:
-            matches.append(row)
-    if len(matches) == 1:
-        return matches[0], 'matched'
-    if len(matches) > 1:
-        return None, 'ambiguous'
-    return None, 'unmatched'
-
-
 def _typed_identity(parsed):
     """Hors-série, intégrale ou épisode reconnu dans le nom: (colonne type, colonne numéro,
     numéro, libellé). None pour un tome classique ou un fichier sans type reconnu."""
@@ -357,44 +331,6 @@ def _drop_volumes_covered_by_completion(cursor, series_ids, missing_by_series):
             missing.difference_update({n for n in missing if n <= total})
 
 
-def _build_nouveautes_series_matcher(cursor, monitored_series, source):
-    """La série d'un fichier est celle que Nouveautés affiche : même identification
-    (series_identity.build_series_identifier) et mêmes corrections manuelles (choix de
-    série fait dans Nouveautés pour une release RSS ou un titre Telegram). Retourne
-    match(item, filename) -> (ligne de série surveillée ou None, sûr) ; « sûr » = correction
-    manuelle ou clé de titre exacte (pas le repli approximatif), donc téléchargeable sans
-    validation."""
-    from series_identity import build_series_identifier
-    from blueprints.library.routes import _normalize_title_for_match
-    from blueprints.library.scanner import LibraryScanner
-
-    identify = build_series_identifier(cursor.execute('SELECT id, title FROM series').fetchall())
-    monitored_by_id = {row[0]: row for row in monitored_series}
-    rss_overrides, telegram_overrides = {}, {}
-    if source == 'rss':
-        from blueprints.ebdz.routes import _load_rss_match_overrides
-        rss_overrides = _load_rss_match_overrides()
-    elif source == 'telegram':
-        telegram_overrides = {row[0]: row[1] for row in cursor.execute(
-            'SELECT normalized_title, series_id FROM telegram_title_overrides').fetchall()}
-
-    def match(item, filename):
-        override = None
-        if rss_overrides:
-            override = rss_overrides.get(item.get('link')) or rss_overrides.get(item.get('title'))
-        elif telegram_overrides:
-            parsed = LibraryScanner.parse_filename(filename).get('title', '')
-            override = telegram_overrides.get(_normalize_title_for_match(parsed))
-        if override is not None:
-            series_id, sure = int(override), True
-        else:
-            series_id, sure = identify.detailed(filename)
-        row = monitored_by_id.get(series_id) if series_id is not None else None
-        return row, bool(row) and sure
-
-    return match
-
-
 def process_new_monitor_files(source, items):
     """Télécharge les nouveaux fichiers qui correspondent à un tome manquant surveillé -
     ou, si l'option "upgrade qualité" est activée, à un tome DÉJÀ possédé d'une série
@@ -403,6 +339,11 @@ def process_new_monitor_files(source, items):
 
     Cette voie ne lance aucune recherche: ``items`` contient exclusivement les lignes
     réellement insérées pendant le scrape courant.
+
+    La série n'est pas recherchée ici : c'est le matching de Nouveautés
+    (series_identity.match_new_items, appelé par chaque source juste avant) qui l'a trouvée.
+    La surveillance vérifie seulement que la série est surveillée et que le tome manque ;
+    une série trouvée par le repli approximatif part en validation.
     """
     from blueprints.library.action_history import log_action
     from blueprints.library.routes import (
@@ -461,13 +402,6 @@ def process_new_monitor_files(source, items):
         for missing_series_id, numbers in _placeholder_missing_volumes(cursor, series_ids).items():
             missing_by_series.setdefault(missing_series_id, set()).update(numbers)
         _drop_volumes_covered_by_completion(cursor, series_ids, missing_by_series)
-        cursor.execute(f'SELECT id, bedetheque_url FROM series WHERE id IN ({placeholders})', series_ids)
-        bedetheque_url_by_series = {row[0]: row[1] for row in cursor.fetchall()}
-        cursor.execute(f'SELECT id, ebdz_thread_id, ebdz_thread_url FROM series WHERE id IN ({placeholders})', series_ids)
-        ebdz_identity_by_series = {
-            row[0]: {'thread_id': row[1], 'thread_url': row[2]}
-            for row in cursor.fetchall()
-        }
         # Uniquement nécessaire pour l'upgrade qualité - tomes déjà possédés (tome
         # "plain", même périmètre que le matching manquant ci-dessous qui ne gère lui
         # aussi que volume_number, pas intégrale/HS/épisode).
@@ -484,12 +418,12 @@ def process_new_monitor_files(source, items):
             }
     else:
         missing_by_series = {}
-        bedetheque_url_by_series = {}
-        ebdz_identity_by_series = {}
         owned_volume_by_series_number = {}
-    nouveautes_match = (_build_nouveautes_series_matcher(cursor, monitored_series, source)
-                        if monitored_series else (lambda _i, _f: (None, False)))
     conn.close()
+    monitored_by_id = {row[0]: row for row in monitored_series}
+    if monitored_series:
+        from series_identity import match_new_items
+        match_new_items(source, items)  # sans effet si la source l'a déjà fait
 
     scanner = LibraryScanner()
     downloader = MissingVolumeDownloader()
@@ -507,26 +441,12 @@ def process_new_monitor_files(source, items):
                 continue
 
             normalized_parsed_title = _normalize_title_for_match(parsed.get('title', ''))
-            thread_match, thread_status = (
-                _resolve_ebdz_thread_series(item, monitored_series, ebdz_identity_by_series)
-                if source == 'ebdz' else (None, 'absent')
-            )
-            # Une identité EBDZ valide mais inconnue/ambiguë est un conflit de données,
-            # pas une invitation à redéduire la série depuis le titre.
-            if thread_status in ('unmatched', 'ambiguous'):
-                continue
-            # La même reconnaissance que la page Nouveautés (toutes les séries connues, alias
-            # « X (Préfixe) », auteurs dans le nom). L'ancienne règle (préfixe parmi les seules
-            # séries surveillées) est retirée : elle ratait Cubitus et pouvait attribuer le
-            # fichier d'une série non surveillée à une série surveillée au titre plus court.
-            title_key_match, title_key_sure = (None, False) if thread_match else nouveautes_match(item, filename)
-            match = thread_match or title_key_match
-            hint = (item.get('bedetheque_url_hint') or '').strip().rstrip('/')
-            if hint and not match:
-                match = next((row for row in monitored_series
-                              if (bedetheque_url_by_series.get(row[0]) or '').strip().rstrip('/') == hint), None)
+            # Série trouvée par Nouveautés ; la surveillance ne s'occupe que des séries surveillées.
+            match = monitored_by_id.get(item.get('nouveautes_series_id'))
             if not match:
                 continue
+            from series_identity import SURE_MATCHES
+            is_sure = item.get('nouveautes_match') in SURE_MATCHES
 
             series_id = match[0]
             if typed is not None:
@@ -535,7 +455,7 @@ def process_new_monitor_files(source, items):
                     continue
                 handled.add(handled_key)
                 _process_typed_monitor_file(source, item, filename, parsed, typed, match, series_id,
-                                            thread_match, hint, bedetheque_url_by_series, action,
+                                            match if is_sure else None, '', {}, action,
                                             downloader, stats, log_action)
                 continue
             is_missing = volume_number in missing_by_series.get(series_id, set())
@@ -558,12 +478,9 @@ def process_new_monitor_files(source, items):
             handled.add(identity)
 
             is_exact_title_match = _normalize_title_for_match(match[3]) == normalized_parsed_title
-            is_hint_confirmed = bool(hint) and (bedetheque_url_by_series.get(match[0]) or '').strip().rstrip('/') == hint
-            is_thread_confirmed = bool(thread_match) and thread_match[0] == match[0]
-            # Reconnu sans ambiguïté par la règle de Nouveautés (clé exacte ou correction manuelle) :
-            # aussi sûr qu'un titre identique. Le repli approximatif reste en validation.
-            is_title_key_confirmed = title_key_sure and title_key_match[0] == match[0]
-            if not is_exact_title_match and not is_hint_confirmed and not is_thread_confirmed and not is_title_key_confirmed:
+            # Sujet lié, correction manuelle, lien Bédéthèque ou clé exacte : sûr. Le repli
+            # approximatif de Nouveautés reste en validation.
+            if not is_exact_title_match and not is_sure:
                 from blueprints.bedetheque.auto_acquire import queue_manual_review
                 candidate = _review_candidate(source, item)
                 review_reason = f"Titre détecté « {parsed.get('title')} » proche mais pas identique à « {match[3]} » - correspondance de série non confirmée, à vérifier manuellement."
