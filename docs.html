@@ -251,7 +251,7 @@
         </div>
         <div class="guide-card">
           <h3>📡 Surveillance</h3>
-          <p>Bullarr lit les flux RSS, EBDZ et Telegram, repère les nouveaux albums de vos séries et télécharge ceux qui vous manquent. Quand un résultat est douteux, il attend votre choix dans <em>Validation</em>. Les <em>Nouveautés</em> regroupent les tomes d'une même série publiés en moins de deux heures.</p>
+          <p>Bullarr lit les flux RSS, EBDZ et Telegram, repère les nouveaux albums de vos séries et télécharge ceux qui vous manquent. Chaque nouvel album est matché une seule fois, quelle que soit la source (sujet EBDZ lié, correction manuelle, lien Bédéthèque, puis titre) ; s'il manque à une série surveillée, il est téléchargé. Quand un résultat est douteux, il attend votre choix dans <em>Validation</em>. Le bouton de téléchargement des <em>Nouveautés</em> envoie le fichier, ajoute la série puis, si l'option est active, cherche ses autres tomes manquants. Les <em>Nouveautés</em> regroupent les tomes d'une même série publiés en moins de deux heures.</p>
         </div>
         <div class="guide-card">
           <h3>🧭 Enrichir</h3>
@@ -353,7 +353,7 @@
       <p>Bullarr dans la poche : bibliothèque, recherche, téléchargements, import et réglages. Elle lit vos albums (webtoon, sens manga, double page en paysage), les garde sur le téléphone pour lire hors ligne et reçoit les notifications par ntfy.</p>
       <ol class="guide-steps">
         <li>Installez-la au choix : <a href="https://gwenvador.github.io/bullarr-android/repo/">dépôt F-Droid</a>, <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/gwenvador/bullarr-android">Obtainium</a> (mises à jour signalées) ou <a href="https://github.com/gwenvador/bullarr-android/releases/latest">APK</a> direct.</li>
-        <li>Indiquez l'adresse du serveur (par exemple <code>http://192.168.1.10:4000</code>), puis connectez-vous : identifiant et mot de passe, SSO ou clé API.</li>
+        <li>Indiquez l'adresse du serveur (par exemple <code>http://192.168.1.10:4000</code>), puis connectez-vous avec votre compte ou par SSO.</li>
       </ol>
     </section>
 
@@ -382,7 +382,7 @@
     <section id="securite">
       <h2><span class="guide-num">10</span> Sécurité, comptes et thèmes</h2>
       <h3>Connexion</h3>
-      <p>Sans réglage, Bullarr est ouvert à tous sur votre réseau. Activez la connexion dans <em>Configuration → Login</em> : comptes locaux (identifiant et mot de passe) et, en option, un bouton SSO (OIDC). Les mots de passe et clés enregistrés sont chiffrés sur le disque.</p>
+      <p>Sans réglage, Bullarr est ouvert à tous sur votre réseau. Activez la connexion dans <em>Configuration → Connexion</em> : comptes locaux (identifiant et mot de passe) et, en option, un bouton SSO (OIDC), avec le fournisseur choisi dans une liste (son logo apparaît sur le bouton) et un texte modifiable. Les comptes se gèrent dans <em>Configuration → Utilisateurs</em>. Les mots de passe et clés enregistrés sont chiffrés sur le disque.</p>
       <h3>Comptes et rôles</h3>
       <ul>
         <li><strong>Admin</strong> : accès à tout.</li>
