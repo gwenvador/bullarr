@@ -403,7 +403,10 @@ def latest_scrape():
         monitored_titles = set().union(*(title_keys(row[0], _title_match_key) for row in library_cursor.fetchall() if row[0]))
         library_cursor.execute("SELECT id, ebdz_thread_id, bedetheque_url, title FROM series")
         all_series_rows = library_cursor.fetchall()
-        title_to_unambiguous_series = _build_nouveautes_title_match_index(all_series_rows, _title_match_key)
+        # Même identification que la surveillance et les autres sources (series_identity).
+        from series_identity import build_series_identifier
+        identify_series = build_series_identifier([(row[0], row[3]) for row in all_series_rows])
+        series_info_by_id = {row[0]: (row[0], row[2], row[3]) for row in all_series_rows}
         thread_to_series_ids = {}
         thread_to_first_series = {}
         for series_id, thread_id, bedetheque_url, series_title in all_series_rows:
@@ -513,7 +516,8 @@ def latest_scrape():
                     # sûr pour exposer les actions UI, mais n'écrit jamais ebdz_thread_id:
                     # l'utilisateur peut corriger le match depuis la fiche si nécessaire.
                     if matched_series_id is None:
-                        title_match = title_to_unambiguous_series.get(normalized_core_title)
+                        identified = identify_series(row['thread_title'] or '', exact_only=True)
+                        title_match = series_info_by_id.get(identified) if identified is not None else None
                         if title_match is not None:
                             matched_series_id, matched_bedetheque_url, matched_series_title = title_match
                     grouped[thread_id] = {
@@ -781,21 +785,6 @@ def _annotate_rss_entries(events):
     }
     conn.close()
 
-    from series_title_match import index_series_by_title
-    from blueprints.library.routes import (
-        _normalize_title_for_match, _match_series_for_auto_import, _build_auto_import_series_match_index)
-
-    def rss_title_key(title):
-        return normalize_search_text(LibraryScanner.unscramble_trailing_article(ebdz_core_title(title or '')))
-
-    by_title = {
-        key: (matches[0][0], matches[0][1], matches[0][2]) if len({m[0] for m in matches}) == 1 else None
-        for key, matches in index_series_by_title(rows, lambda row: row[1], rss_title_key).items()
-    }
-    # Repli : même identification que Telegram et l'import automatique, pour qu'une release
-    # reconnue dans une source ne soit pas ignorée dans une autre.
-    auto_rows = [(sid, None, None, title, 0, url) for sid, title, url in rows]
-    auto_index = _build_auto_import_series_match_index(auto_rows)
 
     # Le statut de téléchargement ne doit jamais reposer sur une variante de titre
     # raccourcie (par exemple "le"), sinon toute release commençant par cet article
@@ -886,18 +875,17 @@ def _annotate_rss_entries(events):
 
     rss_overrides = _load_rss_match_overrides()
     series_by_id = {int(series_id): (series_id, title, url) for series_id, title, url in rows}
+    from series_identity import build_series_identifier
+    identify_series = build_series_identifier([(sid, title) for sid, title, _url in rows])
 
     catalog_match = bedetheque_catalog_match
 
     fingerprint = _rss_library_fingerprint()
     annotated = []
     for event in events:
-        event_keys = keys(event.get('title'))
-        match = next((by_title.get(candidate) for candidate in event_keys if by_title.get(candidate) is not None), None)
-        if match is None:
-            parsed_title = LibraryScanner.parse_filename(str(event.get('title') or '')).get('title') or ''
-            auto = _match_series_for_auto_import(_normalize_title_for_match(parsed_title), auto_rows, auto_index)
-            match = (auto[0], auto[3], auto[5]) if auto else None
+        # Même identification que la surveillance et les autres sources (series_identity).
+        identified = identify_series(event.get('title'))
+        match = series_by_id.get(int(identified)) if identified is not None else None
         override_id = rss_overrides.get(event.get('link')) or rss_overrides.get(event.get('title'))
         if override_id is not None:
             try:

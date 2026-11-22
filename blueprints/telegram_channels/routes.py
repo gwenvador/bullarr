@@ -552,8 +552,7 @@ def _annotate_already_in_library(files):
     ("compares les volumes existants avec ceux nouveau et si ceux de nouveautés sont
     manquants ou non de la série"), pas seulement "la série existe-t-elle"."""
     from blueprints.library.routes import (
-        get_db_connection, _normalize_title_for_match, _match_series_for_auto_import,
-        _build_auto_import_series_match_index, get_owned_volume_signatures,
+        get_db_connection, _normalize_title_for_match, get_owned_volume_signatures,
         volume_possession_status
     )
     from blueprints.library.scanner import LibraryScanner
@@ -567,7 +566,8 @@ def _annotate_already_in_library(files):
     ''')
     all_series = cursor.fetchall()
     series_by_id = {row[0]: row for row in all_series}
-    series_match_index = _build_auto_import_series_match_index(all_series)
+    from series_identity import build_series_identifier
+    identify_series = build_series_identifier([(row[0], row[3]) for row in all_series])
     owned_by_series = get_owned_volume_signatures([row[0] for row in all_series], conn=conn)
     cursor.execute('SELECT series_id FROM missing_volume_monitor WHERE enabled = 1')
     monitored_series_ids = {row[0] for row in cursor.fetchall()}
@@ -588,7 +588,9 @@ def _annotate_already_in_library(files):
         parsed = scanner.parse_filename(f['filename'])
         normalized = _normalize_title_for_match(parsed.get('title', ''))
         override_series_id = title_overrides.get(normalized)
-        match = series_by_id[override_series_id] if override_series_id else _match_series_for_auto_import(normalized, all_series, series_match_index)
+        # Même identification que la surveillance et les autres sources (series_identity).
+        identified = None if override_series_id else identify_series(f['filename'])
+        match = series_by_id[override_series_id] if override_series_id else series_by_id.get(identified)
         f['match_overridden'] = bool(override_series_id)
         # "in telegram if there is a bedetheque link use it in the nouveautes serie
         # column" - un lien bedetheque.com extrait de la légende du message (voir

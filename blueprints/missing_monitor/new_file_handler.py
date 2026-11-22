@@ -357,40 +357,40 @@ def _drop_volumes_covered_by_completion(cursor, series_ids, missing_by_series):
             missing.difference_update({n for n in missing if n <= total})
 
 
-def _build_nouveautes_series_matcher(cursor, monitored_series):
-    """Même identification que la page Nouveautés (series_title_match + clés de titre EBDZ) :
-    « Les.Nouvelles.Aventures.de.Cubitus.Erroc.Rodrigue.T13 » y était reconnu comme
-    « Cubitus (Les nouvelles aventures de) », mais pas par la surveillance (auteurs collés au
-    titre, article entre parenthèses) : les tomes manquants n'étaient jamais téléchargés.
-    Une clé partagée par plusieurs séries de la bibliothèque est ignorée (jamais de choix).
-    Retourne filename -> ligne de série surveillée, ou None."""
-    from series_title_match import index_series_by_title
-    from blueprints.ebdz.routes import _cached_title_match_key
+def _build_nouveautes_series_matcher(cursor, monitored_series, source):
+    """La série d'un fichier est celle que Nouveautés affiche : même identification
+    (series_identity.build_series_identifier) et mêmes corrections manuelles (choix de
+    série fait dans Nouveautés pour une release RSS ou un titre Telegram). Retourne
+    match(item, filename) -> (ligne de série surveillée ou None, sûr) ; « sûr » = correction
+    manuelle ou clé de titre exacte (pas le repli approximatif), donc téléchargeable sans
+    validation."""
+    from series_identity import build_series_identifier
+    from blueprints.library.routes import _normalize_title_for_match
     from blueprints.library.scanner import LibraryScanner
 
-    all_rows = cursor.execute('SELECT id, title FROM series').fetchall()
-    index = {
-        key: (matches[0][0] if len({m[0] for m in matches}) == 1 else None)
-        for key, matches in index_series_by_title(all_rows, lambda row: row[1], _cached_title_match_key).items()
-    }
+    identify = build_series_identifier(cursor.execute('SELECT id, title FROM series').fetchall())
     monitored_by_id = {row[0]: row for row in monitored_series}
+    rss_overrides, telegram_overrides = {}, {}
+    if source == 'rss':
+        from blueprints.ebdz.routes import _load_rss_match_overrides
+        rss_overrides = _load_rss_match_overrides()
+    elif source == 'telegram':
+        telegram_overrides = {row[0]: row[1] for row in cursor.execute(
+            'SELECT normalized_title, series_id FROM telegram_title_overrides').fetchall()}
 
-    def match(filename):
-        raw = str(filename or '').strip()
-        parsed = LibraryScanner.parse_filename(raw).get('title') or raw
-        variants = [raw, parsed]
-        words = parsed.split()
-        # Mots de fin retirés un à un (auteurs, éditeur…), du plus long au plus court.
-        variants += [' '.join(words[:-n]) for n in range(1, len(words))]
-        for value in variants:
-            key = _cached_title_match_key(value) if value else ''
-            if not key or key not in index:
-                continue
-            series_id = index[key]
-            if series_id is None:
-                return None
-            return monitored_by_id.get(series_id)
-        return None
+    def match(item, filename):
+        override = None
+        if rss_overrides:
+            override = rss_overrides.get(item.get('link')) or rss_overrides.get(item.get('title'))
+        elif telegram_overrides:
+            parsed = LibraryScanner.parse_filename(filename).get('title', '')
+            override = telegram_overrides.get(_normalize_title_for_match(parsed))
+        if override is not None:
+            series_id, sure = int(override), True
+        else:
+            series_id, sure = identify.detailed(filename)
+        row = monitored_by_id.get(series_id) if series_id is not None else None
+        return row, bool(row) and sure
 
     return match
 
@@ -487,7 +487,8 @@ def process_new_monitor_files(source, items):
         bedetheque_url_by_series = {}
         ebdz_identity_by_series = {}
         owned_volume_by_series_number = {}
-    nouveautes_match = _build_nouveautes_series_matcher(cursor, monitored_series) if monitored_series else (lambda _f: None)
+    nouveautes_match = (_build_nouveautes_series_matcher(cursor, monitored_series, source)
+                        if monitored_series else (lambda _i, _f: (None, False)))
     conn.close()
 
     scanner = LibraryScanner()
@@ -518,7 +519,7 @@ def process_new_monitor_files(source, items):
             # « X (Préfixe) », auteurs dans le nom). L'ancienne règle (préfixe parmi les seules
             # séries surveillées) est retirée : elle ratait Cubitus et pouvait attribuer le
             # fichier d'une série non surveillée à une série surveillée au titre plus court.
-            title_key_match = None if thread_match else nouveautes_match(filename)
+            title_key_match, title_key_sure = (None, False) if thread_match else nouveautes_match(item, filename)
             match = thread_match or title_key_match
             hint = (item.get('bedetheque_url_hint') or '').strip().rstrip('/')
             if hint and not match:
@@ -559,8 +560,9 @@ def process_new_monitor_files(source, items):
             is_exact_title_match = _normalize_title_for_match(match[3]) == normalized_parsed_title
             is_hint_confirmed = bool(hint) and (bedetheque_url_by_series.get(match[0]) or '').strip().rstrip('/') == hint
             is_thread_confirmed = bool(thread_match) and thread_match[0] == match[0]
-            # Reconnu sans ambiguïté par la règle de Nouveautés : aussi sûr qu'un titre identique.
-            is_title_key_confirmed = bool(title_key_match) and title_key_match[0] == match[0]
+            # Reconnu sans ambiguïté par la règle de Nouveautés (clé exacte ou correction manuelle) :
+            # aussi sûr qu'un titre identique. Le repli approximatif reste en validation.
+            is_title_key_confirmed = title_key_sure and title_key_match[0] == match[0]
             if not is_exact_title_match and not is_hint_confirmed and not is_thread_confirmed and not is_title_key_confirmed:
                 from blueprints.bedetheque.auto_acquire import queue_manual_review
                 candidate = _review_candidate(source, item)
